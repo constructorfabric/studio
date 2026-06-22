@@ -16,13 +16,15 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..utils.artifacts_meta import create_backup
 from ..utils import toml_utils
 from ..utils._tomllib_compat import tomllib
 from ..utils.ui import is_json_mode, ui
+from .agents import _read_existing_text_file
 from .init import DEFAULT_INSTALL_DIR, _inject_root_agents, _inject_root_claude
 
 LEGACY_MARKER_START = "<!-- @cpt:root-agents -->"
@@ -43,6 +45,341 @@ SUPPORTED_LEGACY_MIGRATION_VERSIONS = {"3.9.0", "3.10.0"}
 # diff-engine update flow (same UX as a user-initiated kit update).
 CONSTRUCTOR_KIT_VERSION = "0"
 # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migration-module
+
+
+@dataclass
+class _MigrationState:
+    project_root: Path
+    legacy_rel: str
+    target_rel: str
+    legacy_dir: Path
+    target_dir: Path
+    dry_run: bool
+    force: bool
+    yes: bool
+    skip_update: bool
+    force_overwrite_root: bool
+    actions: Dict[str, Any] = field(default_factory=dict)
+    backups: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+
+def _migration_error(
+    state: _MigrationState,
+    message: str,
+    **extra: Any,
+) -> tuple[int, Dict[str, Any]]:
+    result: Dict[str, Any] = {
+        "status": "ERROR",
+        "message": message,
+        "project_root": state.project_root.as_posix(),
+        "from_dir": state.legacy_rel,
+        "studio_dir": state.target_dir.as_posix(),
+    }
+    if state.actions:
+        result["actions"] = dict(state.actions)
+    if state.backups:
+        result["backups"] = list(state.backups)
+    result.update(extra)
+    return 1, result
+
+
+def _missing_migration_dir_result(
+    *,
+    resolved_project_root: Path,
+    label: str,
+    rel_value: str,
+    message: str,
+) -> tuple[None, tuple[int, Dict[str, Any]]]:
+    return None, (
+        1,
+        {
+            "status": "ERROR",
+            "message": message,
+            "project_root": resolved_project_root.as_posix(),
+            label: rel_value,
+        },
+    )
+
+
+def _missing_legacy_install_result(project_root: Path) -> tuple[None, tuple[int, Dict[str, Any]]]:
+    """Return the standard error payload when the legacy install is absent."""
+    return None, (
+        1,
+        {
+            "status": "ERROR",
+            "message": "Cyber Pilot install directory was not found",
+            "project_root": project_root.as_posix(),
+        },
+    )
+
+
+def _resolve_migration_child_dir(
+    *,
+    project_root: Path,
+    rel_value: str,
+    flag: str,
+    label: str,
+) -> tuple[Optional[Path], Optional[tuple[None, tuple[int, Dict[str, Any]]]]]:
+    """Resolve a migration subdirectory or return the standard argument error."""
+    child_dir, child_error = _resolve_project_child_dir(project_root, rel_value, flag)
+    if child_error:
+        return None, _missing_migration_dir_result(
+            resolved_project_root=project_root,
+            label=label,
+            rel_value=rel_value,
+            message=child_error,
+        )
+    return child_dir, None
+
+
+def _resolve_migration_state(  # pylint: disable=too-many-locals
+    *,
+    project_root: Path,
+    from_dir: Optional[str],
+    to_dir: str,
+    dry_run: bool,
+    force: bool,
+    yes: bool,
+    skip_update: bool,
+    force_overwrite_root: bool,
+) -> tuple[Optional[_MigrationState], Optional[tuple[int, Dict[str, Any]]]]:
+    resolved_project_root = project_root.resolve()
+    legacy_rel = from_dir or detect_legacy_cypilot_install(resolved_project_root)
+    if not legacy_rel:
+        return _missing_legacy_install_result(resolved_project_root)
+
+    legacy_rel = str(legacy_rel).strip()
+    target_rel = str(to_dir).strip() or DEFAULT_INSTALL_DIR
+    legacy_dir, legacy_dir_error = _resolve_migration_child_dir(
+        project_root=resolved_project_root,
+        rel_value=legacy_rel,
+        flag="--from-dir",
+        label="from_dir",
+    )
+    if legacy_dir_error is not None:
+        return legacy_dir_error
+    target_dir, target_dir_error = _resolve_migration_child_dir(
+        project_root=resolved_project_root,
+        rel_value=target_rel,
+        flag="--to-dir",
+        label="to_dir",
+    )
+    if target_dir_error is not None:
+        return target_dir_error
+    assert legacy_dir is not None
+    assert target_dir is not None
+    state = _MigrationState(
+        project_root=resolved_project_root,
+        legacy_rel=legacy_rel,
+        target_rel=target_rel,
+        legacy_dir=legacy_dir,
+        target_dir=target_dir,
+        dry_run=dry_run,
+        force=force,
+        yes=yes,
+        skip_update=skip_update,
+        force_overwrite_root=force_overwrite_root,
+    )
+    if not legacy_dir.is_dir():
+        return None, (
+            1,
+            {
+                "status": "ERROR",
+                "message": f"Cyber Pilot directory not found: {legacy_dir}",
+                "project_root": resolved_project_root.as_posix(),
+            },
+        )
+    return state, None
+
+
+def _validate_migration_target(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
+    if state.legacy_dir == state.target_dir or not state.target_dir.exists():
+        return None
+    if state.force:
+        return None
+    return _migration_error(
+        state,
+        f"Target directory already exists: {state.target_dir}",
+        hint="Re-run with --force to replace it, or pass --to-dir to choose another directory.",
+        actions={"target_dir": "exists"},
+    )
+
+
+def _check_root_file_cleanliness(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
+    if state.dry_run or state.force_overwrite_root:
+        return None
+    dirty = _probe_root_files_dirty(
+        state.project_root,
+        [state.project_root / "AGENTS.md", state.project_root / "CLAUDE.md"],
+    )
+    if not dirty:
+        return None
+    return 1, _dirty_root_files_result(
+        project_root=state.project_root,
+        legacy_rel=state.legacy_rel,
+        target_dir=state.target_dir,
+        actions=state.actions,
+        backups=state.backups,
+        dirty=dirty,
+    )
+
+
+def _replace_target_dir(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
+    backup_path = create_backup(state.target_dir)
+    if backup_path is None:
+        return _migration_error(
+            state,
+            f"Failed to create backup before replacing target directory: {state.target_dir}",
+            actions={"target_dir": "backup_failed"},
+        )
+    state.backups.append(backup_path.as_posix())
+    try:
+        shutil.rmtree(state.target_dir)
+        shutil.copytree(state.legacy_dir, state.target_dir)
+    except (OSError, shutil.Error) as exc:
+        restore_action, restore_error = _restore_target_backup_after_replace_failure(
+            backup_path,
+            state.target_dir,
+        )
+        extra: Dict[str, Any] = {
+            "actions": {
+                "target_dir": "replace_failed",
+                "target_dir_restore": restore_action,
+            },
+            "error": str(exc),
+        }
+        if restore_error:
+            extra["restore_error"] = restore_error
+        return _migration_error(
+            state,
+            f"Failed to replace target directory after backup: {state.target_dir}",
+            **extra,
+        )
+    state.actions["target_dir"] = "replaced"
+    return None
+
+
+def _create_target_dir(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
+    state.actions["target_dir"] = "created"
+    if state.dry_run:
+        return None
+    try:
+        shutil.copytree(state.legacy_dir, state.target_dir)
+        return None
+    except (OSError, shutil.Error) as exc:
+        cleanup_action = "not_needed"
+        cleanup_error: Optional[str] = None
+        if state.target_dir.exists():
+            try:
+                shutil.rmtree(state.target_dir)
+                cleanup_action = "removed"
+            except (OSError, shutil.Error) as cleanup_exc:
+                cleanup_action = "cleanup_failed"
+                cleanup_error = str(cleanup_exc)
+        extra: Dict[str, Any] = {
+            "actions": {
+                "target_dir": "create_failed",
+                "target_dir_cleanup": cleanup_action,
+            },
+            "error": str(exc),
+        }
+        if cleanup_error:
+            extra["cleanup_error"] = cleanup_error
+        return _migration_error(
+            state,
+            f"Failed to create target directory from legacy directory: {state.target_dir}",
+            **extra,
+        )
+
+
+def _copy_into_target(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
+    if state.legacy_dir == state.target_dir:
+        state.actions["target_dir"] = "reused"
+        return None
+    if not state.target_dir.exists():
+        return _create_target_dir(state)
+    if state.dry_run:
+        state.actions["target_dir"] = "replaced"
+        return None
+    return _replace_target_dir(state)
+
+
+def _record_dry_run_rewrites(actions: Dict[str, Any]) -> None:
+    actions["core_toml"] = "dry_run"
+    actions["artifacts_toml"] = "dry_run"
+    actions["config_toml_template_vars"] = "dry_run"
+    actions["config_markdown"] = "dry_run"
+    actions["root_agents"] = "dry_run"
+    actions["root_claude"] = "dry_run"
+
+
+def _run_followup_steps(state: _MigrationState) -> tuple[Optional[int], Optional[Any]]:
+    update_rc: Optional[int] = None
+    update_result: Optional[Any] = None
+    if not state.skip_update and not state.dry_run:
+        update_rc, update_result = _run_followup_update(state.project_root, yes=state.yes)
+        state.actions["update"] = "PASS" if not update_rc else "FAIL"
+        if update_rc:
+            state.warnings.append("follow-up update failed")
+        kit_update_rc = _run_followup_kit_update(project_root=state.project_root, yes=state.yes)
+        state.actions["kit_update"] = "PASS" if not kit_update_rc else "FAIL"
+        if kit_update_rc:
+            state.warnings.append("follow-up kit update failed")
+        return update_rc, update_result
+    suffix = "skipped" if state.skip_update else "dry_run"
+    state.actions["update"] = suffix
+    state.actions["kit_update"] = suffix
+    return update_rc, update_result
+
+
+def _build_migration_result(
+    state: _MigrationState,
+    update_rc: Optional[int],
+    update_result: Optional[Any],
+) -> tuple[int, Dict[str, Any]]:
+    result: Dict[str, Any] = {
+        "status": "PASS" if update_rc in (None, 0) else "WARN",
+        "project_root": state.project_root.as_posix(),
+        "from_dir": state.legacy_rel,
+        "studio_dir": state.target_dir.as_posix(),
+        "dry_run": bool(state.dry_run),
+        "actions": state.actions,
+    }
+    if update_result is not None:
+        result["update_result"] = update_result
+    if state.backups:
+        result["backups"] = state.backups
+    if state.warnings:
+        result["warnings"] = state.warnings
+    return 0 if update_rc in (None, 0) else update_rc, result
+
+
+def _run_migration_phases(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
+    target_error = _validate_migration_target(state)
+    if target_error is not None:
+        return target_error
+    dirty_error = _check_root_file_cleanliness(state)
+    if dirty_error is not None:
+        return dirty_error
+    copy_error = _copy_into_target(state)
+    if copy_error is not None:
+        return copy_error
+    if state.dry_run:
+        _record_dry_run_rewrites(state.actions)
+        return None
+    rewrite_error = _run_post_copy_rewrites(
+        project_root=state.project_root,
+        legacy_rel=state.legacy_rel,
+        target_rel=state.target_rel,
+        target_dir=state.target_dir,
+        actions=state.actions,
+        backups=state.backups,
+        warnings=state.warnings,
+    )
+    if rewrite_error is not None:
+        return 1, rewrite_error
+    return None
 
 
 def migrate_from_cypilot(
@@ -69,239 +406,26 @@ def migrate_from_cypilot(
     Set ``force_overwrite_root`` to skip the AGENTS.md / CLAUDE.md
     uncommitted-changes probe and rewrite their managed blocks anyway.
     """
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-dirs
-    project_root = project_root.resolve()
-    legacy_rel = from_dir or detect_legacy_cypilot_install(project_root)
-    if not legacy_rel:
-        return 1, {
-            "status": "ERROR",
-            "message": "Cyber Pilot install directory was not found",
-            "project_root": project_root.as_posix(),
-        }
+    state, state_error = _resolve_migration_state(
+        project_root=project_root,
+        from_dir=from_dir,
+        to_dir=to_dir,
+        dry_run=dry_run,
+        force=force,
+        yes=yes,
+        skip_update=skip_update,
+        force_overwrite_root=force_overwrite_root,
+    )
+    if state_error is not None:
+        return state_error
+    assert state is not None
 
-    legacy_rel = str(legacy_rel).strip()
-    target_rel = str(to_dir).strip() or DEFAULT_INSTALL_DIR
-    legacy_dir, legacy_error = _resolve_project_child_dir(project_root, legacy_rel, "--from-dir")
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-dirs
+    phase_error = _run_migration_phases(state)
+    if phase_error is not None:
+        return phase_error
 
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
-    if legacy_error:
-        return 1, {
-            "status": "ERROR",
-            "message": legacy_error,
-            "project_root": project_root.as_posix(),
-            "from_dir": legacy_rel,
-        }
-
-    target_dir, target_error = _resolve_project_child_dir(project_root, target_rel, "--to-dir")
-    if target_error:
-        return 1, {
-            "status": "ERROR",
-            "message": target_error,
-            "project_root": project_root.as_posix(),
-            "to_dir": target_rel,
-        }
-
-    if not legacy_dir.is_dir():
-        return 1, {
-            "status": "ERROR",
-            "message": f"Cyber Pilot directory not found: {legacy_dir}",
-            "project_root": project_root.as_posix(),
-        }
-
-    actions: Dict[str, Any] = {}
-    backups: List[str] = []
-    warnings: List[str] = []
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
-
-    if legacy_dir != target_dir:
-        if target_dir.exists():
-            # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
-            if not force:
-                return 1, {
-                    "status": "ERROR",
-                    "message": f"Target directory already exists: {target_dir}",
-                    "hint": "Re-run with --force to replace it, or pass --to-dir to choose another directory.",
-                    "project_root": project_root.as_posix(),
-                    "from_dir": legacy_rel,
-                    "studio_dir": target_dir.as_posix(),
-                    "actions": {"target_dir": "exists"},
-                }
-            # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
-
-    if not dry_run and not force_overwrite_root:
-        # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
-        dirty = _probe_root_files_dirty(
-            project_root,
-            [project_root / "AGENTS.md", project_root / "CLAUDE.md"],
-        )
-        if dirty:
-            return 1, _dirty_root_files_result(
-                project_root=project_root,
-                legacy_rel=legacy_rel,
-                target_dir=target_dir,
-                actions=actions,
-                backups=backups,
-                dirty=dirty,
-            )
-        # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
-
-    if legacy_dir != target_dir:
-        if target_dir.exists():
-            if not dry_run:
-                # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
-                backup_path = create_backup(target_dir)
-                if backup_path is None:
-                    return 1, {
-                        "status": "ERROR",
-                        "message": f"Failed to create backup before replacing target directory: {target_dir}",
-                        "project_root": project_root.as_posix(),
-                        "from_dir": legacy_rel,
-                        "studio_dir": target_dir.as_posix(),
-                        "actions": {"target_dir": "backup_failed"},
-                    }
-                backups.append(backup_path.as_posix())
-                try:
-                    shutil.rmtree(target_dir)
-                    shutil.copytree(legacy_dir, target_dir)
-                except (OSError, shutil.Error) as exc:
-                    restore_action, restore_error = _restore_target_backup_after_replace_failure(
-                        backup_path,
-                        target_dir,
-                    )
-                    error_result: Dict[str, Any] = {
-                        "status": "ERROR",
-                        "message": f"Failed to replace target directory after backup: {target_dir}",
-                        "project_root": project_root.as_posix(),
-                        "from_dir": legacy_rel,
-                        "studio_dir": target_dir.as_posix(),
-                        "actions": {
-                            "target_dir": "replace_failed",
-                            "target_dir_restore": restore_action,
-                        },
-                        "backups": backups,
-                        "error": str(exc),
-                    }
-                    if restore_error:
-                        error_result["restore_error"] = restore_error
-                    return 1, error_result
-                actions["target_dir"] = "replaced"
-                # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
-            else:
-                # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
-                actions["target_dir"] = "replaced"
-                # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
-        else:
-            # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
-            actions["target_dir"] = "created"
-            if not dry_run:
-                try:
-                    shutil.copytree(legacy_dir, target_dir)
-                except (OSError, shutil.Error) as exc:
-                    cleanup_action = "not_needed"
-                    cleanup_error: Optional[str] = None
-                    if target_dir.exists():
-                        try:
-                            shutil.rmtree(target_dir)
-                            cleanup_action = "removed"
-                        except (OSError, shutil.Error) as cleanup_exc:
-                            cleanup_action = "cleanup_failed"
-                            cleanup_error = str(cleanup_exc)
-                    error_result: Dict[str, Any] = {
-                        "status": "ERROR",
-                        "message": f"Failed to create target directory from legacy directory: {target_dir}",
-                        "project_root": project_root.as_posix(),
-                        "from_dir": legacy_rel,
-                        "studio_dir": target_dir.as_posix(),
-                        "actions": {
-                            "target_dir": "create_failed",
-                            "target_dir_cleanup": cleanup_action,
-                        },
-                        "error": str(exc),
-                    }
-                    if cleanup_error:
-                        error_result["cleanup_error"] = cleanup_error
-                    return 1, error_result
-            # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
-    else:
-        # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-reuse-target
-        actions["target_dir"] = "reused"
-        # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-reuse-target
-
-    if not dry_run:
-        # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-post-copy-rewrites
-        rewrite_error = _run_post_copy_rewrites(
-            project_root=project_root,
-            legacy_rel=legacy_rel,
-            target_rel=target_rel,
-            target_dir=target_dir,
-            actions=actions,
-            backups=backups,
-            warnings=warnings,
-        )
-        if rewrite_error is not None:
-            return 1, rewrite_error
-        # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-post-copy-rewrites
-    else:
-        # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
-        actions["core_toml"] = "dry_run"
-        actions["artifacts_toml"] = "dry_run"
-        actions["config_toml_template_vars"] = "dry_run"
-        actions["config_markdown"] = "dry_run"
-        actions["root_agents"] = "dry_run"
-        actions["root_claude"] = "dry_run"
-        # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
-
-    update_rc: Optional[int] = None
-    update_result: Optional[Any] = None
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
-    if not skip_update and not dry_run:
-        update_rc, update_result = _run_followup_update(project_root, yes=yes)
-        actions["update"] = "PASS" if not update_rc else "FAIL"
-        if update_rc:
-            warnings.append("follow-up update failed")
-    elif skip_update:
-        actions["update"] = "skipped"
-    else:
-        actions["update"] = "dry_run"
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
-
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
-    # Kits previously flavoured as cypilot got their `version` reset to "0"
-    # in `_migrate_core_toml`. Running `cfs kit update` here triggers the
-    # standard diff-engine update path against each kit's (now renamed)
-    # source, pulling the latest release tag from
-    # `constructorfabric/studio-kit-sdlc` (or the user's mirror) and
-    # presenting any file-level conflicts through the same UX the user
-    # sees on a manual `cfs kit update`.
-    if not skip_update and not dry_run:
-        kit_update_rc = _run_followup_kit_update(project_root=project_root, yes=yes)
-        actions["kit_update"] = "PASS" if not kit_update_rc else "FAIL"
-        if kit_update_rc:
-            warnings.append("follow-up kit update failed")
-    elif skip_update:
-        actions["kit_update"] = "skipped"
-    else:
-        actions["kit_update"] = "dry_run"
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
-
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
-    result: Dict[str, Any] = {
-        "status": "PASS" if update_rc in (None, 0) else "WARN",
-        "project_root": project_root.as_posix(),
-        "from_dir": legacy_rel,
-        "studio_dir": target_dir.as_posix(),
-        "dry_run": bool(dry_run),
-        "actions": actions,
-    }
-    if update_result is not None:
-        result["update_result"] = update_result
-    if backups:
-        result["backups"] = backups
-    if warnings:
-        result["warnings"] = warnings
-    return 0 if update_rc in (None, 0) else update_rc, result
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
+    update_rc, update_result = _run_followup_steps(state)
+    return _build_migration_result(state, update_rc, update_result)
 
 
 def detect_legacy_cypilot_install(project_root: Path) -> Optional[str]:
@@ -731,6 +855,96 @@ def _restore_target_backup_after_replace_failure(backup_path: Path, target_dir: 
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-restore-target
 
 
+def _backup_migration_markdown_files(  # pylint: disable=too-many-locals
+    *,
+    project_root: Path,
+    target_dir: Path,
+    backups: List[str],
+    actions: Dict[str, Any],
+) -> Tuple[Dict[str, Optional[Path]], Dict[str, Path], Dict[str, Optional[Path]]]:
+    root_paths = {
+        "root_agents": project_root / "AGENTS.md",
+        "root_claude": project_root / "CLAUDE.md",
+    }
+    root_backups: Dict[str, Optional[Path]] = {}
+    for action_key, path in root_paths.items():
+        backup = create_backup(path) if path.is_file() else None
+        root_backups[action_key] = backup
+        if backup is None:
+            continue
+        backups.append(backup.as_posix())
+        actions[f"{action_key}_backup"] = "created"
+
+    config_md_paths = {
+        name: (target_dir / "config" / name)
+        for name in ("AGENTS.md", "SKILL.md", "README.md")
+    }
+    config_md_backups: Dict[str, Optional[Path]] = {}
+    for name, path in config_md_paths.items():
+        backup = create_backup(path) if path.is_file() else None
+        config_md_backups[name] = backup
+        if backup is not None:
+            backups.append(backup.as_posix())
+            actions.setdefault("config_md_backup", {})[name] = "created"
+    return config_md_backups, config_md_paths, root_backups
+
+
+def _post_copy_rewrites(
+    *,
+    project_root: Path,
+    target_dir: Path,
+    target_rel: str,
+    warnings: List[str],
+) -> List[tuple[str, Callable[[], Any]]]:
+    """Build the ordered rewrite steps for migration after the directory copy."""
+    return [
+        ("core_toml", lambda: _migrate_core_toml(target_dir / "config" / "core.toml", warnings=warnings)),
+        ("artifacts_toml", lambda: _migrate_artifacts_toml(target_dir / "config" / "artifacts.toml", warnings=warnings)),
+        ("config_toml_template_vars", lambda: _migrate_config_toml_template_vars(target_dir / "config")),
+        ("config_markdown", lambda: _migrate_config_markdown(target_dir / "config")),
+        ("root_agents", lambda: _replace_root_block_with_warnings(project_root / "AGENTS.md", target_rel, warnings)),
+        ("root_claude", lambda: _replace_root_block_with_warnings(project_root / "CLAUDE.md", target_rel, warnings)),
+        ("host_integrations", lambda: _cleanup_legacy_host_integrations(project_root, warnings, studio_dir=target_dir)),
+    ]
+
+
+def _restore_rewrite_backups(
+    *,
+    actions: Dict[str, Any],
+    config_md_backups: Dict[str, Optional[Path]],
+    config_md_paths: Dict[str, Path],
+    project_root: Path,
+    root_backups: Dict[str, Optional[Path]],
+) -> None:
+    """Best-effort restore of root/config markdown files after a rewrite failure."""
+    restore_actions: Dict[str, str] = {}
+    for label, backup_path, dest_path in (
+        ("root_agents", root_backups["root_agents"], project_root / "AGENTS.md"),
+        ("root_claude", root_backups["root_claude"], project_root / "CLAUDE.md"),
+    ):
+        if backup_path is None:
+            restore_actions[label] = "no_backup"
+            continue
+        try:
+            shutil.copy2(backup_path, dest_path)
+            restore_actions[label] = "restored"
+        except (OSError, shutil.Error) as restore_exc:
+            restore_actions[label] = f"restore_failed: {restore_exc}"
+    actions["root_files_restore"] = restore_actions
+
+    md_restore_actions: Dict[str, str] = {}
+    for md_name, md_backup_path in config_md_backups.items():
+        if md_backup_path is None:
+            md_restore_actions[md_name] = "no_backup"
+            continue
+        try:
+            shutil.copy2(md_backup_path, config_md_paths[md_name])
+            md_restore_actions[md_name] = "restored"
+        except (OSError, shutil.Error) as restore_exc:
+            md_restore_actions[md_name] = f"restore_failed: {restore_exc}"
+    actions["config_md_restore"] = md_restore_actions
+
+
 def _run_post_copy_rewrites(
     *,
     project_root: Path,
@@ -742,56 +956,21 @@ def _run_post_copy_rewrites(
     warnings: List[str],
 ) -> Optional[Dict[str, Any]]:
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-backup-root-files
-    root_agents_path = project_root / "AGENTS.md"
-    root_claude_path = project_root / "CLAUDE.md"
-    root_agents_backup = (
-        create_backup(root_agents_path) if root_agents_path.is_file() else None
+    config_md_backups, config_md_paths, root_backups = _backup_migration_markdown_files(
+        project_root=project_root,
+        target_dir=target_dir,
+        backups=backups,
+        actions=actions,
     )
-    root_claude_backup = (
-        create_backup(root_claude_path) if root_claude_path.is_file() else None
-    )
-    if root_agents_backup is not None:
-        backups.append(root_agents_backup.as_posix())
-        actions["root_agents_backup"] = "created"
-    if root_claude_backup is not None:
-        backups.append(root_claude_backup.as_posix())
-        actions["root_claude_backup"] = "created"
-
-    config_md_names = ("AGENTS.md", "SKILL.md", "README.md")
-    config_md_dir = target_dir / "config"
-    config_md_paths: Dict[str, Path] = {
-        name: config_md_dir / name for name in config_md_names
-    }
-    config_md_backups: Dict[str, Optional[Path]] = {}
-    for name, path in config_md_paths.items():
-        backup = create_backup(path) if path.is_file() else None
-        config_md_backups[name] = backup
-        if backup is not None:
-            backups.append(backup.as_posix())
-            actions.setdefault("config_md_backup", {})[name] = "created"
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-backup-root-files
 
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-rewrite-steps
-    rewrites: List[tuple[str, Callable[[], Any]]] = [
-        ("core_toml",
-         lambda: _migrate_core_toml(
-             target_dir / "config" / "core.toml",
-             warnings=warnings,
-         )),
-        ("artifacts_toml",
-         lambda: _migrate_artifacts_toml(
-             target_dir / "config" / "artifacts.toml",
-             warnings=warnings,
-         )),
-        ("config_toml_template_vars",
-         lambda: _migrate_config_toml_template_vars(target_dir / "config")),
-        ("config_markdown", lambda: _migrate_config_markdown(target_dir / "config")),
-        ("root_agents", lambda: _replace_root_block_with_warnings(project_root / "AGENTS.md", target_rel, warnings)),
-        ("root_claude", lambda: _replace_root_block_with_warnings(project_root / "CLAUDE.md", target_rel, warnings)),
-        ("host_integrations", lambda: _cleanup_legacy_host_integrations(project_root, warnings, studio_dir=target_dir)),
-    ]
-
-    for rewrite_step, rewrite in rewrites:
+    for rewrite_step, rewrite in _post_copy_rewrites(
+        project_root=project_root,
+        target_dir=target_dir,
+        target_rel=target_rel,
+        warnings=warnings,
+    ):
         try:
             actions[rewrite_step] = rewrite()
         except OSError as exc:
@@ -809,31 +988,13 @@ def _run_post_copy_rewrites(
                 result["backups"] = list(backups)
             if warnings:
                 result["warnings"] = list(warnings)
-            restore_actions: Dict[str, str] = {}
-            for label, backup_path, dest_path in (
-                ("root_agents", root_agents_backup, root_agents_path),
-                ("root_claude", root_claude_backup, root_claude_path),
-            ):
-                if backup_path is None:
-                    restore_actions[label] = "no_backup"
-                    continue
-                try:
-                    shutil.copy2(backup_path, dest_path)
-                    restore_actions[label] = "restored"
-                except (OSError, shutil.Error) as restore_exc:
-                    restore_actions[label] = f"restore_failed: {restore_exc}"
-            actions["root_files_restore"] = restore_actions
-            md_restore_actions: Dict[str, str] = {}
-            for md_name, md_backup_path in config_md_backups.items():
-                if md_backup_path is None:
-                    md_restore_actions[md_name] = "no_backup"
-                    continue
-                try:
-                    shutil.copy2(md_backup_path, config_md_paths[md_name])
-                    md_restore_actions[md_name] = "restored"
-                except (OSError, shutil.Error) as restore_exc:
-                    md_restore_actions[md_name] = f"restore_failed: {restore_exc}"
-            actions["config_md_restore"] = md_restore_actions
+            _restore_rewrite_backups(
+                actions=actions,
+                config_md_backups=config_md_backups,
+                config_md_paths=config_md_paths,
+                project_root=project_root,
+                root_backups=root_backups,
+            )
             result["actions"] = dict(actions)
             return result
     return None
@@ -967,7 +1128,7 @@ def _dirty_root_files_result(
     return result
 
 
-def _replace_root_block_with_warnings(target_file: Path, install_dir: str, warnings: List[str]) -> str:
+def _replace_root_block_with_warnings(target_file: Path, install_dir: str, warnings: List[str]) -> str:  # pylint: disable=too-many-branches
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-root-blocks
     if target_file.is_file():
         content = target_file.read_text(encoding="utf-8")
@@ -1056,30 +1217,7 @@ def _migrate_core_toml(core_toml: Path, warnings: Optional[List[str]] = None) ->
         for kit_data in kits.values():
             if not isinstance(kit_data, dict):
                 continue
-            had_legacy_kit_signal = (
-                kit_data.get("path") == LEGACY_KIT_PATH
-                or kit_data.get("source") == LEGACY_KIT_SOURCE
-                or kit_data.get("format") == "Cypilot"
-            )
-            if kit_data.get("path") == LEGACY_KIT_PATH:
-                kit_data["path"] = CONSTRUCTOR_KIT_PATH
-                changed = True
-            if kit_data.get("source") == LEGACY_KIT_SOURCE:
-                kit_data["source"] = CONSTRUCTOR_KIT_SOURCE
-                changed = True
-            # Kit-bundle format identifier rename: Cypilot -> CFS
-            if kit_data.get("format") == "Cypilot":
-                kit_data["format"] = "CFS"
-                changed = True
-            # Reset pre-rebrand kit version to the sentinel "0". Any kit
-            # that was previously cypilot-flavoured (legacy path / source /
-            # format) gets `version = "0"` so the follow-up `cfs kit update`
-            # invocation sees the install as outdated and pulls the latest
-            # release of the renamed kit repo through the normal diff-engine
-            # update flow.
-            if had_legacy_kit_signal and kit_data.get("version") != CONSTRUCTOR_KIT_VERSION:
-                kit_data["version"] = CONSTRUCTOR_KIT_VERSION
-                changed = True
+            changed = _rewrite_legacy_kit_entry(kit_data) or changed
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-core-toml
 
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-core-toml
@@ -1098,6 +1236,29 @@ def _migrate_core_toml(core_toml: Path, warnings: Optional[List[str]] = None) ->
         return "updated"
     return "unchanged"
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-core-toml
+
+
+def _rewrite_legacy_kit_entry(kit_data: Dict[str, Any]) -> bool:
+    """Rewrite one legacy kit entry in-place and report whether it changed."""
+    changed = False
+    had_legacy_kit_signal = (
+        kit_data.get("path") == LEGACY_KIT_PATH
+        or kit_data.get("source") == LEGACY_KIT_SOURCE
+        or kit_data.get("format") == "Cypilot"
+    )
+    if kit_data.get("path") == LEGACY_KIT_PATH:
+        kit_data["path"] = CONSTRUCTOR_KIT_PATH
+        changed = True
+    if kit_data.get("source") == LEGACY_KIT_SOURCE:
+        kit_data["source"] = CONSTRUCTOR_KIT_SOURCE
+        changed = True
+    if kit_data.get("format") == "Cypilot":
+        kit_data["format"] = "CFS"
+        changed = True
+    if had_legacy_kit_signal and kit_data.get("version") != CONSTRUCTOR_KIT_VERSION:
+        kit_data["version"] = CONSTRUCTOR_KIT_VERSION
+        changed = True
+    return changed
 
 
 def _migrate_artifacts_toml(
@@ -1149,7 +1310,7 @@ def _migrate_system_kit_refs(system: Any) -> bool:
     return changed
 
 
-def _migrate_config_toml_template_vars(config_dir: Path) -> List[str]:
+def _migrate_config_toml_template_vars(config_dir: Path) -> List[str]:  # pylint: disable=too-many-locals
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-config-toml-template-vars
     # Rewrite the single template placeholder {cypilot_path} -> {cf-studio-path}
     # in all *.toml files under config_dir (e.g. pr-review.toml). Structured
@@ -1208,7 +1369,7 @@ def _migrate_config_markdown(config_dir: Path) -> List[str]:
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-config-markdown
 
 
-def _cleanup_legacy_host_integrations(
+def _cleanup_legacy_host_integrations(  # pylint: disable=too-many-locals
     project_root: Path,
     warnings: List[str],
     studio_dir: Optional[Path] = None,
@@ -1253,40 +1414,15 @@ def _cleanup_legacy_host_integrations(
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-cleanup-legacy-host-sweep
     removed_by_agent: Dict[str, List[str]] = {}
     for agent in ("claude", "windsurf", "cursor", "copilot", "openai"):
-        removed: List[str] = []
-        removed.extend(
-            _cleanup_studio_legacy_subagents(
-                agent, project_root, dry_run=False, remove_cypilot=True,
-            )
+        removed = _cleanup_legacy_agent(
+            agent=agent,
+            project_root=project_root,
+            legacy_skill_paths=_LEGACY_TOOL_SKILL_PATHS,
+            is_legacy_generator_stub=_is_legacy_generator_stub,
+            cleanup_subagents=_cleanup_studio_legacy_subagents,
+            cleanup_markers=_cleanup_studio_legacy_markers,
+            cleanup_skill_dirs=_cleanup_legacy_skill_dirs,
         )
-        removed.extend(
-            _cleanup_studio_legacy_markers(
-                agent, project_root, dry_run=False, remove_cypilot=True,
-            )
-        )
-        removed.extend(
-            _cleanup_legacy_skill_dirs(
-                agent, project_root, dry_run=False, remove_cypilot=True,
-            )
-        )
-        # Per-tool single-file legacy skill paths (bare `cypilot.md`,
-        # `cypilot.mdc`, etc.) — only delete when the content is a pure
-        # legacy generator stub. Files with user-added content are kept.
-        for legacy_rel in _LEGACY_TOOL_SKILL_PATHS.get(agent, []):
-            legacy_file = project_root / legacy_rel
-            if not legacy_file.is_file():
-                continue
-            try:
-                content = legacy_file.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            if not _is_legacy_generator_stub(content):
-                continue
-            try:
-                legacy_file.unlink()
-                removed.append(legacy_rel)
-            except OSError:
-                pass
         if removed:
             removed_by_agent[agent] = removed
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-cleanup-legacy-host-sweep
@@ -1318,6 +1454,35 @@ def _cleanup_legacy_host_integrations(
 
     return {"removed": removed_by_agent, "regenerated": regenerated}
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-cleanup-legacy-host-regen
+
+
+def _cleanup_legacy_agent(
+    *,
+    agent: str,
+    project_root: Path,
+    legacy_skill_paths: Dict[str, List[str]],
+    is_legacy_generator_stub,
+    cleanup_subagents,
+    cleanup_markers,
+    cleanup_skill_dirs,
+) -> List[str]:
+    """Remove legacy integration artifacts for one agent and return removed paths."""
+    removed = list(cleanup_subagents(agent, project_root, dry_run=False, remove_cypilot=True))
+    removed.extend(cleanup_markers(agent, project_root, dry_run=False, remove_cypilot=True))
+    removed.extend(cleanup_skill_dirs(agent, project_root, dry_run=False, remove_cypilot=True))
+    for legacy_rel in legacy_skill_paths.get(agent, []):
+        legacy_file = project_root / legacy_rel
+        content = _read_existing_text_file(legacy_file)
+        if content is None:
+            continue
+        if not is_legacy_generator_stub(content):
+            continue
+        try:
+            legacy_file.unlink()
+            removed.append(legacy_rel)
+        except OSError:
+            pass
+    return removed
 
 
 def _human_migrate_ok(data: Dict[str, Any]) -> None:  # pyright: ignore

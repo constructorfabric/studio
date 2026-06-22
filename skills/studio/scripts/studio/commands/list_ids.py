@@ -12,6 +12,9 @@ from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 
 
+ArtifactScanList = List[Tuple[Path, str]]
+
+
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 def _collect_workspace_source_artifacts(ctx, source_name: str) -> List[Tuple[Path, str]]:
     """Collect artifacts from one reachable workspace source."""
@@ -82,6 +85,189 @@ def _scan_code_references(ctx) -> Tuple[List[Dict[str, object]], int]:
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 
 
+def _resolve_registered_artifact_scan(
+    artifact_arg: str,
+    *,
+    init_message: str,
+    registry_message: str,
+) -> Optional[Tuple[object, ArtifactScanList]]:
+    """Load context for one artifact argument and return its registered scan entry."""
+    artifact_path = Path(artifact_arg).resolve()
+    if not artifact_path.exists():
+        ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
+        return None
+
+    from ..utils.context import StudioContext
+
+    ctx = StudioContext.load(artifact_path.parent)
+    if not ctx:
+        ui.result({"status": "ERROR", "message": init_message})
+        return None
+
+    try:
+        rel_path = artifact_path.relative_to(ctx.project_root).as_posix()
+    except ValueError:
+        rel_path = None
+
+    artifacts_to_scan: ArtifactScanList = []
+    if rel_path:
+        result = ctx.meta.get_artifact_by_path(rel_path)
+        if result:
+            artifact_meta, _system_node = result
+            artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
+
+    if not artifacts_to_scan:
+        ui.result({"status": "ERROR", "message": registry_message.format(artifact=artifact_arg, rel_path=rel_path)})
+        return None
+    return ctx, artifacts_to_scan
+
+
+def _load_active_context(init_message: str) -> Optional[object]:
+    """Load the active Studio context from the current working directory."""
+    from ..utils.context import get_context
+
+    ctx = get_context()
+    if ctx:
+        return ctx
+    ui.result({"status": "ERROR", "message": init_message})
+    return None
+
+
+def _collect_known_kinds(ctx: object) -> Set[str]:
+    """Collect known ID kinds from the active context and loaded kits."""
+    from ..utils.context import collect_known_id_kinds
+
+    return collect_known_id_kinds(ctx)
+
+
+def _get_registered_systems(ctx: object) -> Set[str]:
+    """Collect registered system slugs, including workspace sources when available."""
+    from ..utils.context import WorkspaceContext
+
+    if isinstance(ctx, WorkspaceContext):
+        return set(ctx.get_all_registered_systems())
+    return set((ctx.registered_systems or set()) if ctx else set())
+
+
+def _match_system_prefix(cpt_id: str, registered_systems: Set[str]) -> Optional[str]:
+    """Return the longest registered system slug that matches a CPT ID."""
+    best: Optional[str] = None
+    for sys_slug in registered_systems:
+        prefix = f"cpt-{sys_slug}-"
+        if cpt_id.lower().startswith(prefix.lower()):
+            if best is None or len(sys_slug) > len(best):
+                best = sys_slug
+    return best
+
+
+def _split_registered_kind_tokens(
+    cpt_id: str,
+    registered_systems: Set[str],
+    known_kinds: Set[str],
+) -> List[str]:
+    """Return candidate kind tokens from a CPT ID after the system slug."""
+    sys_slug = _match_system_prefix(cpt_id, registered_systems)
+    if not sys_slug:
+        return []
+    remainder = cpt_id[len(f"cpt-{sys_slug}-"):]
+    if not remainder:
+        return []
+    parts = [part.lower() for part in remainder.split("-") if part]
+    if not known_kinds:
+        return parts
+    return [part for part in parts if part in known_kinds]
+
+
+def _infer_primary_kind(
+    cpt_id: str,
+    registered_systems: Set[str],
+    known_kinds: Set[str],
+) -> Optional[str]:
+    """Infer the first matching kind token from a CPT ID."""
+    kind_tokens = _split_registered_kind_tokens(cpt_id, registered_systems, known_kinds)
+    return kind_tokens[0] if kind_tokens else None
+
+
+def _dedupe_hits(hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    """Keep the first hit per ID while preserving input order."""
+    seen: Set[str] = set()
+    unique_hits: List[Dict[str, object]] = []
+    for hit in hits:
+        id_val = str(hit.get("id", ""))
+        if id_val in seen:
+            continue
+        seen.add(id_val)
+        unique_hits.append(hit)
+    return unique_hits
+
+
+def _collect_artifact_hits(
+    artifacts_to_scan: ArtifactScanList,
+    registered_systems: Set[str],
+    known_kinds: Set[str],
+) -> List[Dict[str, object]]:
+    """Scan artifact IDs and annotate each hit with inferred kind metadata."""
+    hits: List[Dict[str, object]] = []
+    for artifact_path, artifact_type in artifacts_to_scan:
+        for fh in scan_cpt_ids(artifact_path):
+            cid = str(fh.get("id") or "").strip()
+            if not cid:
+                continue
+            hit: Dict[str, object] = {
+                "id": cid,
+                "kind": _infer_primary_kind(cid, registered_systems, known_kinds),
+                "type": fh.get("type"),
+                "artifact_type": artifact_type,
+                "line": fh.get("line"),
+                "artifact": str(artifact_path),
+                "checked": bool(fh.get("checked", False)),
+            }
+            if fh.get("priority") is not None:
+                hit["priority"] = fh.get("priority")
+            hits.append(hit)
+    return hits
+
+
+def _apply_hit_filters(hits: List[Dict[str, object]], args: argparse.Namespace) -> List[Dict[str, object]]:
+    """Apply kind, pattern, and duplicate filters to query hits."""
+    filtered_hits = list(hits)
+    if args.kind:
+        kind_filter = str(args.kind)
+        filtered_hits = [hit for hit in filtered_hits if str(hit.get("kind", "")) == kind_filter]
+
+    if args.pattern:
+        pattern = str(args.pattern)
+        if args.regex:
+            regex = re.compile(pattern)
+            filtered_hits = [hit for hit in filtered_hits if regex.search(str(hit.get("id", ""))) is not None]
+        else:
+            filtered_hits = [hit for hit in filtered_hits if pattern in str(hit.get("id", ""))]
+
+    if not args.all:
+        filtered_hits = _dedupe_hits(filtered_hits)
+    return filtered_hits
+
+
+def _group_hits_by_kind(ids: List[Dict[str, object]]) -> Dict[str, List[Dict[str, object]]]:
+    """Group ID hits by inferred kind for human-readable output."""
+    grouped_hits: Dict[str, List[Dict[str, object]]] = {}
+    for hit in ids:
+        kind_name = str(hit.get("kind") or "unknown")
+        grouped_hits.setdefault(kind_name, []).append(hit)
+    return grouped_hits
+
+
+def _render_kind_hits(kind_name: str, items: List[Dict[str, object]]) -> None:
+    """Render one kind section in the human formatter."""
+    ui.step(f"{kind_name} ({len(items)})")
+    for hit in items:
+        line = hit.get("line", "")
+        artifact = hit.get("artifact", "")
+        suffix = f":{line}" if line else ""
+        artifact_label = ui.relpath(artifact) if artifact else ""
+        ui.substep(f"  {hit.get('id', '?')}  ({hit.get('type', '')}, {artifact_label}{suffix})")
+
+
 # @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
 def cmd_list_ids(argv: List[str]) -> int:
     """List Studio IDs from artifacts.
@@ -102,52 +288,26 @@ def cmd_list_ids(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
     # Collect artifacts to scan: (artifact_path, artifact_kind)
-    artifacts_to_scan: List[Tuple[Path, str]] = []
+    artifacts_to_scan: ArtifactScanList = []
     ctx = None
 
     if args.artifact:
-        # Single artifact specified - find context from artifact's location
-        artifact_path = Path(args.artifact).resolve()
-        if not artifact_path.exists():
-            ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
+        resolved = _resolve_registered_artifact_scan(
+            args.artifact,
+            init_message="Constructor Studio not initialized. Run 'cfs init' first or specify --artifact.",
+            registry_message="Artifact not registered in Constructor Studio registry.",
+        )
+        if resolved is None:
             return 1
-
-        from ..utils.context import StudioContext
-
-        ctx = StudioContext.load(artifact_path.parent)
-        if not ctx:
-            ui.result({"status": "ERROR", "message": "Constructor Studio not initialized. Run 'cfs init' first or specify --artifact."})
-            return 1
-
-        project_root = ctx.project_root
-        meta = ctx.meta
-
-        # Find artifact in registry
-        try:
-            rel_path = artifact_path.relative_to(project_root).as_posix()
-        except ValueError:
-            rel_path = None
-
-        if rel_path:
-            result = meta.get_artifact_by_path(rel_path)
-            if result:
-                artifact_meta, _system_node = result
-                artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
-
-        if not artifacts_to_scan:
-            ui.result({"status": "ERROR", "message": "Artifact not registered in Constructor Studio registry."})
-            return 1
+        ctx, artifacts_to_scan = resolved
     else:
         # No artifact specified - use global context from cwd
-        from ..utils.context import get_context, collect_artifacts_to_scan, WorkspaceContext
+        from ..utils.context import collect_artifacts_to_scan, WorkspaceContext
 
-        ctx = get_context()
-        if not ctx:
-            ui.result({"status": "ERROR", "message": "Constructor Studio not initialized. Run 'cfs init' first or specify --artifact."})
+        ctx = _load_active_context("Constructor Studio not initialized. Run 'cfs init' first or specify --artifact.")
+        if ctx is None:
             return 1
 
-        meta = ctx.meta
-        project_root = ctx.project_root
         is_workspace = isinstance(ctx, WorkspaceContext)
 
         if args.source and not is_workspace:
@@ -169,59 +329,9 @@ def cmd_list_ids(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-scan-all
     # Parse artifacts and collect IDs
-    hits: List[Dict[str, object]] = []
-
-    from ..utils.context import WorkspaceContext as _WsCtx
-    if ctx and isinstance(ctx, _WsCtx):
-        registered_systems = set(ctx.get_all_registered_systems())
-    else:
-        registered_systems = set((ctx.registered_systems or set()) if ctx else set())
-    known_kinds = set((ctx.get_known_id_kinds() if ctx else set()) or set())
-
-    def _match_system_prefix(cpt_id: str) -> Optional[str]:
-        best: Optional[str] = None
-        for sys_slug in registered_systems:
-            prefix = f"cpt-{sys_slug}-"
-            if cpt_id.lower().startswith(prefix.lower()):
-                if best is None or len(sys_slug) > len(best):
-                    best = sys_slug
-        return best
-
-    def _infer_kind(cpt_id: str) -> Optional[str]:
-        sys_slug = _match_system_prefix(cpt_id)
-        if not sys_slug:
-            return None
-        remainder = cpt_id[len(f"cpt-{sys_slug}-"):]
-        if not remainder:
-            return None
-        parts = [p for p in remainder.split("-") if p]
-        if not parts:
-            return None
-        # Infer kind by scanning left-to-right and returning the first token
-        # that matches `known_kinds` (to avoid slug tokens overriding earlier matches).
-        for part in parts:
-            k = part.lower()
-            if known_kinds and k in known_kinds:
-                return k
-        return None
-
-    for artifact_path, artifact_type in artifacts_to_scan:
-        for fh in scan_cpt_ids(artifact_path):
-            cid = str(fh.get("id") or "").strip()
-            if not cid:
-                continue
-            h: Dict[str, object] = {
-                "id": cid,
-                "kind": _infer_kind(cid),
-                "type": fh.get("type"),
-                "artifact_type": artifact_type,
-                "line": fh.get("line"),
-                "artifact": str(artifact_path),
-                "checked": bool(fh.get("checked", False)),
-            }
-            if fh.get("priority") is not None:
-                h["priority"] = fh.get("priority")
-            hits.append(h)
+    registered_systems = _get_registered_systems(ctx)
+    known_kinds = _collect_known_kinds(ctx)
+    hits = _collect_artifact_hits(artifacts_to_scan, registered_systems, known_kinds)
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-scan-all
 
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-list-code
@@ -234,28 +344,7 @@ def cmd_list_ids(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-list
     # Apply filters
-    if args.kind:
-        kind_filter = str(args.kind)
-        hits = [h for h in hits if str(h.get("kind", "")) == kind_filter]
-
-    if args.pattern:
-        pat = str(args.pattern)
-        if args.regex:
-            rx = re.compile(pat)
-            hits = [h for h in hits if rx.search(str(h.get("id", ""))) is not None]
-        else:
-            hits = [h for h in hits if pat in str(h.get("id", ""))]
-
-    if not args.all:
-        seen: Set[str] = set()
-        uniq: List[Dict[str, object]] = []
-        for h in hits:
-            id_val = str(h.get("id", ""))
-            if id_val in seen:
-                continue
-            seen.add(id_val)
-            uniq.append(h)
-        hits = uniq
+    hits = _apply_hit_filters(hits, args)
 
     hits = sorted(hits, key=lambda h: (str(h.get("id", "")), int(h.get("line", 0))))
 
@@ -292,24 +381,11 @@ def _human_list_ids(data: dict) -> None:
         ui.blank()
         return
 
-    # Group by kind for readability
-    by_kind: Dict[str, List[Dict]] = {}
-    for h in ids:
-        k = str(h.get("kind") or "unknown")
-        by_kind.setdefault(k, []).append(h)
+    grouped_hits = _group_hits_by_kind(ids)
 
     ui.blank()
-    for kind_name in sorted(by_kind.keys()):
-        items = by_kind[kind_name]
-        ui.step(f"{kind_name} ({len(items)})")
-        for h in items:
-            cid = h.get("id", "?")
-            htype = h.get("type", "")
-            line = h.get("line", "")
-            artifact = h.get("artifact", "")
-            loc = f":{line}" if line else ""
-            art_label = ui.relpath(artifact) if artifact else ""
-            ui.substep(f"  {cid}  ({htype}, {art_label}{loc})")
+    for kind_name in sorted(grouped_hits.keys()):
+        _render_kind_hits(kind_name, grouped_hits[kind_name])
 
     ui.blank()
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-format

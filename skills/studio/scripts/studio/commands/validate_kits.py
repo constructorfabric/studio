@@ -8,6 +8,7 @@ consistency against constraints.
 
 # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-imports
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -15,6 +16,17 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from ..utils.constraints import error as constraints_error
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-imports
+
+
+@dataclass(frozen=True)
+class _PathValidationContext:
+    slug: str
+    has_model_input: bool
+    model: Any
+    model_error: Optional[Exception]
+    constraints: Any
+    constraint_errors: List[Any]
+    constraints_error_path: Path
 
 def _constraint_artifact_bindings(loaded_kit: Any) -> Dict[str, Dict[str, str]]:
     """Return explicit artifact-kind bindings declared on constraints resources."""
@@ -166,20 +178,7 @@ def _synthesized_meta_from_resource_bindings(
     if not isinstance(rb, dict) or not rb:
         return None, []
 
-    artifact_bindings = _constraint_artifact_bindings(loaded_kit)
-    artifacts: Dict[str, Dict[str, str]] = {}
-    for kind, binding_spec in sorted(artifact_bindings.items()):
-        spec: Dict[str, str] = {}
-        template = _resource_binding_path(rb, str(binding_spec.get("template", "") or ""))
-        if not template:
-            template = ""
-        if template:
-            spec["template"] = template
-        example_path = _resource_binding_path(rb, str(binding_spec.get("examples", "") or ""))
-        if example_path:
-            spec["examples"] = example_path
-        if spec:
-            artifacts[kind] = spec
+    artifacts = _bound_artifacts_from_resources(rb, loaded_kit)
 
     known_kinds = _known_constraint_kinds(loaded_kit)
     for kind in sorted(known_kinds):
@@ -194,11 +193,11 @@ def _synthesized_meta_from_resource_bindings(
         return None, warnings
 
     constraints_path = _constraints_binding_path(loaded_kit, rb)
-    if constraints_path:
-        kit_base = Path(constraints_path).parent
-    else:
-        kit_root = getattr(loaded_kit, "kit_root", None)
-        kit_base = kit_root if isinstance(kit_root, Path) else adapter_dir
+    kit_base = _resolve_bound_kit_base(
+        adapter_dir=adapter_dir,
+        loaded_kit=loaded_kit,
+        constraints_path=constraints_path,
+    )
 
     kit = Kit(
         kit_id=kit_id,
@@ -220,6 +219,51 @@ def _synthesized_meta_from_resource_bindings(
         ignore=list(getattr(base_meta, "ignore", []) or []),
     ), warnings
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+
+
+def _bound_artifacts_from_resources(
+    resource_bindings: Dict[str, str],
+    loaded_kit: Any,
+) -> Dict[str, Dict[str, str]]:
+    artifact_bindings = _constraint_artifact_bindings(loaded_kit)
+    artifacts: Dict[str, Dict[str, str]] = {}
+    for kind, binding_spec in sorted(artifact_bindings.items()):
+        spec = _bound_artifact_spec(resource_bindings, binding_spec)
+        if spec:
+            artifacts[kind] = spec
+    return artifacts
+
+
+def _bound_artifact_spec(
+    resource_bindings: Dict[str, str],
+    binding_spec: Dict[str, str],
+) -> Dict[str, str]:
+    spec: Dict[str, str] = {}
+    template = _resource_binding_path(
+        resource_bindings,
+        str(binding_spec.get("template", "") or ""),
+    )
+    if template:
+        spec["template"] = template
+    example_path = _resource_binding_path(
+        resource_bindings,
+        str(binding_spec.get("examples", "") or ""),
+    )
+    if example_path:
+        spec["examples"] = example_path
+    return spec
+
+
+def _resolve_bound_kit_base(
+    *,
+    adapter_dir: Path,
+    loaded_kit: Any,
+    constraints_path: str,
+) -> Path:
+    if constraints_path:
+        return Path(constraints_path).parent
+    kit_root = getattr(loaded_kit, "kit_root", None)
+    return kit_root if isinstance(kit_root, Path) else adapter_dir
 
 
 def _synthesized_meta_from_kit_model(
@@ -289,6 +333,224 @@ def _merge_self_check_report(
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+def _collect_context_kit_errors(ctx: Any, kit_filter: Optional[str]) -> Tuple[List[Dict[str, object]], Dict[str, List[Dict[str, object]]]]:
+    all_errors: List[Dict[str, object]] = []
+    context_kit_errors: Dict[str, List[Dict[str, object]]] = {}
+    for err in (getattr(ctx, "_errors", []) or []):
+        if not isinstance(err, dict) or err.get("type") not in {"resources", "constraints"}:
+            continue
+        err_kit = str(err.get("kit", "") or "")
+        if kit_filter and err_kit != str(kit_filter):
+            continue
+        if err_kit:
+            context_kit_errors.setdefault(err_kit, []).append(err)
+        all_errors.append(err)
+    return all_errors, context_kit_errors
+
+
+def _append_loaded_kit_reports(
+    *,
+    ctx: Any,
+    kit_filter: Optional[str],
+    verbose: bool,
+    kit_reports: List[Dict[str, object]],
+    kit_reports_by_id: Dict[str, Dict[str, object]],
+    kit_errors_by_id: Dict[str, List[Dict[str, object]]],
+    context_kit_errors: Dict[str, List[Dict[str, object]]],
+) -> None:
+    for kit_id, loaded_kit in (ctx.kits or {}).items():
+        kit_id_str = str(kit_id)
+        if kit_filter and kit_id_str != str(kit_filter):
+            continue
+        rep = _new_loaded_kit_report(kit_id_str, loaded_kit, verbose)
+        rep_errors = list(context_kit_errors.get(kit_id_str, []))
+        kit_reports.append(rep)
+        kit_reports_by_id[kit_id_str] = rep
+        if rep_errors:
+            kit_errors_by_id[kit_id_str] = rep_errors
+        _sync_kit_report(rep, kit_errors_by_id.get(kit_id_str, []), verbose)
+
+
+def _new_loaded_kit_report(kit_id: str, loaded_kit: Any, verbose: bool) -> Dict[str, object]:
+    kit_root = getattr(loaded_kit, "kit_root", None)
+    kit_path_value = str(getattr(getattr(loaded_kit, "kit", None), "path", "") or "")
+    reported_kit_path = str(kit_root) if isinstance(kit_root, Path) else kit_path_value
+    rep: Dict[str, object] = {
+        "kit": kit_id,
+        "path": reported_kit_path,
+        "status": "PASS",
+        "error_count": 0,
+    }
+    constraints = getattr(loaded_kit, "constraints", None)
+    if verbose and constraints is not None and getattr(constraints, "by_kind", None):
+        rep["kinds"] = sorted(constraints.by_kind.keys())
+    return rep
+
+
+def _sync_kit_report(rep: Dict[str, object], rep_errors: List[Dict[str, object]], verbose: bool) -> None:
+    rep["status"] = "FAIL" if rep_errors else "PASS"
+    rep["error_count"] = len(rep_errors)
+    if not verbose:
+        return
+    if rep_errors:
+        rep["errors"] = rep_errors
+    else:
+        rep.pop("errors", None)
+
+
+def _verify_loaded_kit_resource_paths(
+    *,
+    ctx: Any,
+    kit_filter: Optional[str],
+    all_errors: List[Dict[str, object]],
+    kit_reports_by_id: Dict[str, Dict[str, object]],
+    kit_errors_by_id: Dict[str, List[Dict[str, object]]],
+    verbose: bool,
+) -> None:
+    for kit_id, loaded_kit in (ctx.kits or {}).items():
+        kit_id_str = str(kit_id)
+        if kit_filter and kit_id_str != str(kit_filter):
+            continue
+        resource_bindings = getattr(loaded_kit, "resource_bindings", None)
+        if not resource_bindings:
+            continue
+        for err in _missing_resource_binding_errors(kit_id_str, resource_bindings):
+            all_errors.append(err)
+            kit_errors_by_id.setdefault(kit_id_str, []).append(err)
+        rep = kit_reports_by_id.get(kit_id_str)
+        if rep is not None:
+            _sync_kit_report(rep, kit_errors_by_id.get(kit_id_str, []), verbose)
+
+
+def _missing_resource_binding_errors(
+    kit_id: str,
+    resource_bindings: Dict[str, str],
+) -> List[Dict[str, object]]:
+    errors: List[Dict[str, object]] = []
+    for res_id, res_path_str in resource_bindings.items():
+        abs_path = Path(res_path_str)
+        if abs_path.exists():
+            continue
+        errors.append(
+            constraints_error(
+                "resources",
+                f"Resource '{res_id}' path not found: {res_path_str}",
+                path=str(abs_path),
+                line=1,
+                kit=kit_id,
+            )
+        )
+    return errors
+
+
+def _run_registered_self_check(
+    *,
+    project_root: Path,
+    adapter_dir: Path,
+    kit_filter: Optional[str],
+    verbose: bool,
+    ctx: Any,
+    artifacts_meta: Any,
+) -> Dict[str, object]:
+    from .self_check import run_self_check_from_meta
+
+    self_check_report: Dict[str, object] = {}
+    manifest_checked_kits: Set[str] = set()
+    for kit_id, loaded_kit in (ctx.kits or {}).items():
+        kit_id_str = str(kit_id)
+        if kit_filter and kit_id_str != str(kit_filter):
+            continue
+        bound_meta, binding_warnings = _synthesized_meta_from_resource_bindings(
+            base_meta=artifacts_meta,
+            adapter_dir=adapter_dir,
+            kit_id=kit_id_str,
+            loaded_kit=loaded_kit,
+        )
+        _record_binding_warnings(self_check_report, binding_warnings)
+        if getattr(loaded_kit, "resource_bindings", None):
+            manifest_checked_kits.add(kit_id_str)
+        if bound_meta is None:
+            continue
+        _, sc_out = run_self_check_from_meta(
+            project_root=project_root,
+            adapter_dir=adapter_dir,
+            artifacts_meta=bound_meta,
+            kit_filter=kit_id_str,
+            verbose=verbose,
+        )
+        _merge_self_check_report(self_check_report, sc_out)
+    for kit_id in (artifacts_meta.kits or {}).keys():
+        kit_id_str = str(kit_id)
+        if kit_filter and kit_id_str != str(kit_filter):
+            continue
+        if kit_id_str in manifest_checked_kits:
+            continue
+        _, sc_out = run_self_check_from_meta(
+            project_root=project_root,
+            adapter_dir=adapter_dir,
+            artifacts_meta=artifacts_meta,
+            kit_filter=kit_id_str,
+            verbose=verbose,
+        )
+        _merge_self_check_report(self_check_report, sc_out)
+    return self_check_report
+
+
+def _record_binding_warnings(
+    self_check_report: Dict[str, object],
+    binding_warnings: List[Dict[str, object]],
+) -> None:
+    if not binding_warnings:
+        return
+    self_check_report.setdefault("results", [])
+    self_check_report["results"].extend(binding_warnings)  # type: ignore[union-attr]
+    self_check_report.setdefault("status", "PASS")
+    self_check_report.setdefault("templates_checked", 0)
+    self_check_report.setdefault("kits_checked", 0)
+
+
+def _collect_self_check_failures(
+    self_check_report: Dict[str, object],
+    all_errors: List[Dict[str, object]],
+) -> None:
+    for result in self_check_report.get("results", []):
+        if isinstance(result, dict) and result.get("status") == "FAIL":
+            errors = result.get("errors", [])
+            if isinstance(errors, list):
+                all_errors.extend(errors)
+
+
+def _build_validate_kits_result(
+    *,
+    verbose: bool,
+    kit_reports: List[Dict[str, object]],
+    all_errors: List[Dict[str, object]],
+    self_check_report: Dict[str, object],
+) -> Tuple[int, Dict[str, Any]]:
+    overall_status = "PASS" if not all_errors else "FAIL"
+    result: Dict[str, Any] = {
+        "status": overall_status,
+        "kits_validated": len(kit_reports),
+        "error_count": len(all_errors),
+    }
+    if self_check_report:
+        result["templates_checked"] = self_check_report.get("templates_checked", 0)
+        result["self_check_results"] = self_check_report.get("results", [])
+    if verbose:
+        result["kits"] = kit_reports
+        if all_errors:
+            result["errors"] = all_errors
+    else:
+        failed = [r for r in kit_reports if r.get("status") == "FAIL"]
+        if failed:
+            result["failed_kits"] = [{"kit": r.get("kit"), "error_count": r.get("error_count")} for r in failed]
+        if all_errors:
+            result["errors"] = all_errors[:10]
+            if len(all_errors) > 10:
+                result["errors_truncated"] = len(all_errors) - 10
+    return (0 if overall_status == "PASS" else 2), result
+
+
 # @cpt-dod:cpt-studio-dod-kit-validate:p1
 # @cpt-algo:cpt-studio-algo-kit-validate:p1
 def run_validate_kits(
@@ -317,82 +579,28 @@ def run_validate_kits(
     kit_reports: List[Dict[str, object]] = []
     kit_reports_by_id: Dict[str, Dict[str, object]] = {}
     kit_errors_by_id: Dict[str, List[Dict[str, object]]] = {}
-    all_errors: List[Dict[str, object]] = []
-    context_kit_errors: Dict[str, List[Dict[str, object]]] = {}
-
-    def _sync_kit_report(kit_id: str) -> None:
-        rep = kit_reports_by_id.get(kit_id)
-        if rep is None:
-            return
-        rep_errors = list(kit_errors_by_id.get(kit_id, []))
-        rep["status"] = "FAIL" if rep_errors else "PASS"
-        rep["error_count"] = len(rep_errors)
-        if verbose:
-            if rep_errors:
-                rep["errors"] = rep_errors
-            else:
-                rep.pop("errors", None)
-
-    for err in (getattr(ctx, "_errors", []) or []):
-        if not isinstance(err, dict) or err.get("type") not in {"resources", "constraints"}:
-            continue
-        err_kit = str(err.get("kit", "") or "")
-        if kit_filter and err_kit != str(kit_filter):
-            continue
-        if err_kit:
-            context_kit_errors.setdefault(err_kit, []).append(err)
-        all_errors.append(err)
-
-    for kit_id, loaded_kit in (ctx.kits or {}).items():
-        if kit_filter and str(kit_id) != str(kit_filter):
-            continue
-
-        kit_root = getattr(loaded_kit, "kit_root", None)
-        kit_path_value = str(getattr(getattr(loaded_kit, "kit", None), "path", "") or "")
-        reported_kit_path = str(kit_root) if isinstance(kit_root, Path) else kit_path_value
-        kit_id_str = str(kit_id)
-        kit_context_errors = context_kit_errors.get(kit_id_str, [])
-        rep_errors: List[Dict[str, object]] = list(kit_context_errors)
-
-        rep: Dict[str, object] = {
-            "kit": kit_id_str,
-            "path": reported_kit_path,
-            "status": "PASS",
-            "error_count": 0,
-        }
-        _kc = getattr(loaded_kit, "constraints", None)
-        if verbose and _kc is not None and getattr(_kc, "by_kind", None):
-            rep["kinds"] = sorted(_kc.by_kind.keys())
-
-        kit_reports.append(rep)
-        kit_reports_by_id[kit_id_str] = rep
-        if rep_errors:
-            kit_errors_by_id[kit_id_str] = rep_errors
-        _sync_kit_report(kit_id_str)
+    all_errors, context_kit_errors = _collect_context_kit_errors(ctx, kit_filter)
+    _append_loaded_kit_reports(
+        ctx=ctx,
+        kit_filter=kit_filter,
+        verbose=verbose,
+        kit_reports=kit_reports,
+        kit_reports_by_id=kit_reports_by_id,
+        kit_errors_by_id=kit_errors_by_id,
+        context_kit_errors=context_kit_errors,
+    )
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-structural-check
 
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-resolve-resource-paths
     # ── Phase 1b: Resource path verification (manifest-driven kits) ───
-    for kit_id, loaded_kit in (ctx.kits or {}).items():
-        if kit_filter and str(kit_id) != str(kit_filter):
-            continue
-        kit_id_str = str(kit_id)
-        rb = getattr(loaded_kit, "resource_bindings", None)
-        if not rb:
-            continue
-        for res_id, res_path_str in rb.items():
-            abs_path = Path(res_path_str)
-            if not abs_path.exists():
-                err = constraints_error(
-                    "resources",
-                    f"Resource '{res_id}' path not found: {res_path_str}",
-                    path=str(abs_path),
-                    line=1,
-                    kit=kit_id_str,
-                )
-                all_errors.append(err)
-                kit_errors_by_id.setdefault(kit_id_str, []).append(err)
-        _sync_kit_report(kit_id_str)
+    _verify_loaded_kit_resource_paths(
+        ctx=ctx,
+        kit_filter=kit_filter,
+        all_errors=all_errors,
+        kit_reports_by_id=kit_reports_by_id,
+        kit_errors_by_id=kit_errors_by_id,
+        verbose=verbose,
+    )
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-resolve-resource-paths
 
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-template-check
@@ -402,86 +610,25 @@ def run_validate_kits(
     artifacts_meta, meta_err = load_artifacts_meta(adapter_dir)
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
     if artifacts_meta is not None and not meta_err:
-        from .self_check import run_self_check_from_meta
-        manifest_checked_kits: Set[str] = set()
-        for kit_id, loaded_kit in (ctx.kits or {}).items():
-            kit_id_str = str(kit_id)
-            if kit_filter and kit_id_str != str(kit_filter):
-                continue
-            bound_meta, binding_warnings = _synthesized_meta_from_resource_bindings(
-                base_meta=artifacts_meta,
-                adapter_dir=adapter_dir,
-                kit_id=kit_id_str,
-                loaded_kit=loaded_kit,
-            )
-            if binding_warnings:
-                self_check_report.setdefault("results", [])
-                self_check_report["results"].extend(binding_warnings)  # type: ignore[union-attr]
-                self_check_report.setdefault("status", "PASS")
-                self_check_report.setdefault("templates_checked", 0)
-                self_check_report.setdefault("kits_checked", 0)
-            if getattr(loaded_kit, "resource_bindings", None):
-                manifest_checked_kits.add(kit_id_str)
-            if bound_meta is None:
-                continue
-            _, sc_out = run_self_check_from_meta(
-                project_root=project_root,
-                adapter_dir=adapter_dir,
-                artifacts_meta=bound_meta,
-                kit_filter=kit_id_str,
-                verbose=verbose,
-            )
-            _merge_self_check_report(self_check_report, sc_out)
-
-        for kit_id in (artifacts_meta.kits or {}).keys():
-            kit_id_str = str(kit_id)
-            if kit_filter and kit_id_str != str(kit_filter):
-                continue
-            if kit_id_str in manifest_checked_kits:
-                continue
-            _, sc_out = run_self_check_from_meta(
-                project_root=project_root,
-                adapter_dir=adapter_dir,
-                artifacts_meta=artifacts_meta,
-                kit_filter=kit_id_str,
-                verbose=verbose,
-            )
-            _merge_self_check_report(self_check_report, sc_out)
-
-        for r in self_check_report.get("results", []):
-            if isinstance(r, dict) and r.get("status") == "FAIL":
-                sc_errs = r.get("errors", [])
-                if isinstance(sc_errs, list):
-                    all_errors.extend(sc_errs)
+        self_check_report = _run_registered_self_check(
+            project_root=project_root,
+            adapter_dir=adapter_dir,
+            kit_filter=kit_filter,
+            verbose=verbose,
+            ctx=ctx,
+            artifacts_meta=artifacts_meta,
+        )
+        _collect_self_check_failures(self_check_report, all_errors)
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-template-check
 
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-build-result
     # ── Build result ──────────────────────────────────────────────────
-    overall_status = "PASS" if not all_errors else "FAIL"
-    result: Dict[str, Any] = {
-        "status": overall_status,
-        "kits_validated": len(kit_reports),
-        "error_count": len(all_errors),
-    }
-
-    if self_check_report:
-        result["templates_checked"] = self_check_report.get("templates_checked", 0)
-        result["self_check_results"] = self_check_report.get("results", [])
-
-    if verbose:
-        result["kits"] = kit_reports
-        if all_errors:
-            result["errors"] = all_errors
-    else:
-        failed = [r for r in kit_reports if r.get("status") == "FAIL"]
-        if failed:
-            result["failed_kits"] = [{"kit": r.get("kit"), "error_count": r.get("error_count")} for r in failed]
-        if all_errors:
-            result["errors"] = all_errors[:10]
-            if len(all_errors) > 10:
-                result["errors_truncated"] = len(all_errors) - 10
-
-    return (0 if overall_status == "PASS" else 2), result
+    return _build_validate_kits_result(
+        verbose=verbose,
+        kit_reports=kit_reports,
+        all_errors=all_errors,
+        self_check_report=self_check_report,
+    )
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-build-result
 
 
@@ -535,7 +682,87 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
     if not kit_dir.is_dir():
         return 1, {"status": "ERROR", "message": f"Kit directory not found: {kit_dir}"}
 
-    # Derive slug from directory name
+    validation = _prepare_path_validation(
+        kit_dir=kit_dir,
+        load_constraints_files=load_constraints_files,
+        load_constraints_toml=load_constraints_toml,
+    )
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-resolve-dir
+
+    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
+    # ── Phase 1: Structural — KitModel constraints resources ──────────
+    all_errors: List[Dict[str, object]] = []
+    kit_report = _new_path_kit_report(
+        slug=validation.slug,
+        kit_dir=kit_dir,
+        verbose=verbose,
+        constraints=validation.constraints,
+        kc_errs=validation.constraint_errors,
+        constraints_error_path=validation.constraints_error_path,
+        all_errors=all_errors,
+    )
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
+
+    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
+    # ── Phase 1b: KitModel resource verification ─────────────────────
+    _apply_path_model_info(
+        model=validation.model,
+        model_error=validation.model_error,
+        has_model_input=validation.has_model_input,
+        kit_dir=kit_dir,
+        slug=validation.slug,
+        verbose=verbose,
+        kit_report=kit_report,
+        all_errors=all_errors,
+    )
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
+
+    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
+    # ── Phase 2: Template & example validation ────────────────────────
+    base_meta = ArtifactsMeta.from_dict({
+        "version": "1.1",
+        "project_root": str(kit_dir.parent),
+        "kits": {validation.slug: {"format": "CFS", "path": str(kit_dir)}},
+    })
+    meta, binding_warnings = _build_path_validation_meta(
+        ArtifactsMeta=ArtifactsMeta,
+        base_meta=base_meta,
+        kit_dir=kit_dir,
+        slug=validation.slug,
+        model=validation.model,
+        constraints=validation.constraints,
+    )
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
+
+    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
+    self_check_report = _run_path_self_check(
+        kc_errs=validation.constraint_errors,
+        binding_warnings=binding_warnings,
+        meta=meta,
+        kit_dir=kit_dir,
+        slug=validation.slug,
+        verbose=verbose,
+        all_errors=all_errors,
+    )
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
+
+    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
+    # ── Build result ──────────────────────────────────────────────────
+    return _build_validate_kits_result(
+        verbose=verbose,
+        kit_reports=[kit_report],
+        all_errors=all_errors,
+        self_check_report=self_check_report,
+    )
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
+
+
+def _prepare_path_validation(
+    *,
+    kit_dir: Path,
+    load_constraints_files: Any,
+    load_constraints_toml: Any,
+) -> _PathValidationContext:
     slug = kit_dir.name
     has_model_input = (
         (kit_dir / ".cf-studio-kit.toml").is_file()
@@ -543,21 +770,37 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         or (kit_dir / "conf.toml").is_file()
         or any((kit_dir / dirname).exists() for dirname in ("artifacts", "codebase", "scripts", "workflows"))
     )
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-resolve-dir
-
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
-    # ── Phase 1: Structural — KitModel constraints resources ──────────
-    all_errors: List[Dict[str, object]] = []
     model = None
     model_error: Optional[Exception] = None
     try:
         from ..utils.kit_model import load_kit_model
         model = load_kit_model(kit_dir)
-    except ValueError as exc:
+    except (ValueError, OSError, KeyError) as exc:
         model_error = exc
-    except (OSError, KeyError) as exc:
-        model_error = exc
+    constraints, constraint_errors, _constraint_paths, constraints_error_path = _load_path_validation_constraints(
+        kit_dir=kit_dir,
+        model=model,
+        load_constraints_files=load_constraints_files,
+        load_constraints_toml=load_constraints_toml,
+    )
+    return _PathValidationContext(
+        slug=slug,
+        has_model_input=has_model_input,
+        model=model,
+        model_error=model_error,
+        constraints=constraints,
+        constraint_errors=constraint_errors,
+        constraints_error_path=constraints_error_path,
+    )
 
+
+def _load_path_validation_constraints(
+    *,
+    kit_dir: Path,
+    model: Any,
+    load_constraints_files: Any,
+    load_constraints_toml: Any,
+) -> Tuple[Any, List[Any], List[Path], Path]:
     constraint_paths: List[Path] = []
     if model is not None:
         constraint_paths = [
@@ -566,12 +809,22 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
             if str(getattr(resource, "kind", "") or "").strip().lower() == "constraints"
         ]
     if constraint_paths:
-        _kc, kc_errs = load_constraints_files(constraint_paths)
-        constraints_error_path = constraint_paths[0]
-    else:
-        _kc, kc_errs = load_constraints_toml(kit_dir)
-        constraints_error_path = kit_dir / "constraints.toml"
+        constraints, errors = load_constraints_files(constraint_paths)
+        return constraints, errors, constraint_paths, constraint_paths[0]
+    constraints, errors = load_constraints_toml(kit_dir)
+    return constraints, errors, constraint_paths, kit_dir / "constraints.toml"
 
+
+def _new_path_kit_report(
+    *,
+    slug: str,
+    kit_dir: Path,
+    verbose: bool,
+    constraints: Any,
+    kc_errs: List[Any],
+    constraints_error_path: Path,
+    all_errors: List[Dict[str, object]],
+) -> Dict[str, object]:
     kit_report: Dict[str, object] = {
         "kit": slug,
         "path": str(kit_dir),
@@ -583,13 +836,23 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         if verbose:
             kit_report["errors"] = errs
         all_errors.extend(errs)
-    else:
-        if verbose and _kc is not None and getattr(_kc, "by_kind", None):
-            kit_report["kinds"] = sorted(_kc.by_kind.keys())
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
+        return kit_report
+    if verbose and constraints is not None and getattr(constraints, "by_kind", None):
+        kit_report["kinds"] = sorted(constraints.by_kind.keys())
+    return kit_report
 
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
-    # ── Phase 1b: KitModel resource verification ─────────────────────
+
+def _apply_path_model_info(
+    *,
+    model: Any,
+    model_error: Optional[Exception],
+    has_model_input: bool,
+    kit_dir: Path,
+    slug: str,
+    verbose: bool,
+    kit_report: Dict[str, object],
+    all_errors: List[Dict[str, object]],
+) -> None:
     if model is not None:
         if verbose:
             kit_report["manifest_source"] = model.manifest_source
@@ -598,115 +861,100 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
                 component.generated_name
                 for component in model.public_components
             ]
-    elif isinstance(model_error, ValueError) and has_model_input:
-        err = constraints_error(
-            "resources",
-            str(model_error),
-            path=kit_dir,
-            line=1,
-            kit=slug,
-        )
-        all_errors.append(err)
-        kit_report["status"] = "FAIL"
-        kit_report["error_count"] = int(kit_report.get("error_count", 0)) + 1
-        if verbose:
-            kit_report.setdefault("errors", []).append(err)
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
+        return
+    if not isinstance(model_error, ValueError) or not has_model_input:
+        return
+    err = constraints_error(
+        "resources",
+        str(model_error),
+        path=kit_dir,
+        line=1,
+        kit=slug,
+    )
+    all_errors.append(err)
+    kit_report["status"] = "FAIL"
+    kit_report["error_count"] = int(kit_report.get("error_count", 0)) + 1
+    if verbose:
+        kit_report.setdefault("errors", []).append(err)
 
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
-    # ── Phase 2: Template & example validation ────────────────────────
-    base_meta = ArtifactsMeta.from_dict({
-        "version": "1.1",
-        "project_root": str(kit_dir.parent),
-        "kits": {slug: {"format": "CFS", "path": str(kit_dir)}},
-    })
-    meta = base_meta
-    binding_warnings: List[Dict[str, object]] = []
+
+def _build_path_validation_meta(
+    *,
+    ArtifactsMeta: Any,
+    base_meta: Any,
+    kit_dir: Path,
+    slug: str,
+    model: Any,
+    constraints: Any,
+) -> Tuple[Optional[Any], List[Dict[str, object]]]:
     model_source = str(getattr(model, "manifest_source", "") or "") if model is not None else ""
     if model is not None and model_source in {"canonical", "core"}:
-        bound_meta, binding_warnings = _synthesized_meta_from_kit_model(
+        return _synthesized_meta_from_kit_model(
             base_meta=base_meta,
             kit_dir=kit_dir,
             kit_id=slug,
             model=model,
-            constraints=_kc,
+            constraints=constraints,
         )
-        meta = bound_meta
-    else:
-        # Legacy package-layout fallback. Canonical manifests must use explicit
-        # constraints artifact bindings instead of this directory convention.
-        artifacts_dict: Dict[str, Dict[str, str]] = {}
-        artifacts_dir = kit_dir / "artifacts"
-        if artifacts_dir.is_dir():
-            for kind_dir in sorted(artifacts_dir.iterdir()):
-                if not kind_dir.is_dir():
-                    continue
-                kind = kind_dir.name
-                tpl = kind_dir / "template.md"
-                examples = kind_dir / "examples"
-                if tpl.is_file():
-                    artifacts_dict[kind] = {
-                        "template": str(tpl),
-                        "examples": str(examples),  # path may not exist; self_check handles that
-                    }
+    return _legacy_path_validation_meta(ArtifactsMeta, kit_dir, slug), []
 
-        meta = ArtifactsMeta.from_dict({
-            "version": "1.1",
-            "project_root": str(kit_dir.parent),
-            "kits": {slug: {"format": "CFS", "path": str(kit_dir), "artifacts": artifacts_dict}},
-        })
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
-    self_check_report: Dict[str, object] = {}
-    if not kc_errs:  # Only run template checks if constraints parsed OK
-        from .self_check import run_self_check_from_meta
-        if binding_warnings:
-            self_check_report = {
-                "status": "PASS",
-                "project_root": kit_dir.parent.as_posix(),
-                "studio_dir": kit_dir.parent.as_posix(),
-                "kits_checked": 0,
-                "templates_checked": 0,
-                "results": list(binding_warnings),
+def _legacy_path_validation_meta(artifacts_meta_cls: Any, kit_dir: Path, slug: str) -> Any:
+    artifacts_dict: Dict[str, Dict[str, str]] = {}
+    artifacts_dir = kit_dir / "artifacts"
+    if artifacts_dir.is_dir():
+        for kind_dir in sorted(artifacts_dir.iterdir()):
+            if not kind_dir.is_dir():
+                continue
+            template = kind_dir / "template.md"
+            if not template.is_file():
+                continue
+            artifacts_dict[kind_dir.name] = {
+                "template": str(template),
+                "examples": str(kind_dir / "examples"),
             }
-        if meta is not None:
-            _, sc_out = run_self_check_from_meta(
-                project_root=kit_dir.parent,
-                adapter_dir=kit_dir.parent,
-                artifacts_meta=meta,
-                kit_filter=slug,
-                verbose=verbose,
-            )
-            _merge_self_check_report(self_check_report, sc_out)
-        for r in self_check_report.get("results", []):
-            if r.get("status") == "FAIL":
-                all_errors.extend(r.get("errors", []))
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
+    return artifacts_meta_cls.from_dict({
+        "version": "1.1",
+        "project_root": str(kit_dir.parent),
+        "kits": {slug: {"format": "CFS", "path": str(kit_dir), "artifacts": artifacts_dict}},
+    })
 
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
-    # ── Build result ──────────────────────────────────────────────────
-    overall_status = "PASS" if not all_errors else "FAIL"
-    result: Dict[str, Any] = {
-        "status": overall_status,
-        "kits_validated": 1,
-        "error_count": len(all_errors),
-    }
-    if self_check_report:
-        result["templates_checked"] = self_check_report.get("templates_checked", 0)
-        result["self_check_results"] = self_check_report.get("results", [])
-    if verbose:
-        result["kits"] = [kit_report]
-        if all_errors:
-            result["errors"] = all_errors
-    else:
-        if all_errors:
-            result["errors"] = all_errors[:10]
-            if len(all_errors) > 10:
-                result["errors_truncated"] = len(all_errors) - 10
 
-    return (0 if overall_status == "PASS" else 2), result
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
+def _run_path_self_check(
+    *,
+    kc_errs: List[Any],
+    binding_warnings: List[Dict[str, object]],
+    meta: Optional[Any],
+    kit_dir: Path,
+    slug: str,
+    verbose: bool,
+    all_errors: List[Dict[str, object]],
+) -> Dict[str, object]:
+    if kc_errs:
+        return {}
+    from .self_check import run_self_check_from_meta
+
+    self_check_report: Dict[str, object] = {}
+    if binding_warnings:
+        self_check_report = {
+            "status": "PASS",
+            "project_root": kit_dir.parent.as_posix(),
+            "studio_dir": kit_dir.parent.as_posix(),
+            "kits_checked": 0,
+            "templates_checked": 0,
+            "results": list(binding_warnings),
+        }
+    if meta is not None:
+        _, sc_out = run_self_check_from_meta(
+            project_root=kit_dir.parent,
+            adapter_dir=kit_dir.parent,
+            artifacts_meta=meta,
+            kit_filter=slug,
+            verbose=verbose,
+        )
+        _merge_self_check_report(self_check_report, sc_out)
+    _collect_self_check_failures(self_check_report, all_errors)
+    return self_check_report
 
 # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 def _show_error(e: object, *, prefix: str = "\u2717") -> None:
@@ -747,66 +995,10 @@ def _human_validate_kits(data: dict) -> None:
         ui.detail("Templates checked", str(n_tpl))
     ui.detail("Errors", str(n_err))
 
-    # Verbose mode: full kit reports (structural)
-    for k in data.get("kits", []):
-        kit_id = k.get("kit", "?")
-        status = k.get("status", "?")
-        kinds = k.get("kinds", [])
-        if status == "PASS":
-            kind_str = f"  ({', '.join(kinds)})" if kinds else ""
-            ui.step(f"{kit_id}: PASS{kind_str}")
-        else:
-            ui.warn(f"{kit_id}: {status} ({k.get('error_count', 0)} errors)")
-            for e in k.get("errors", [])[:10]:
-                _show_error(e)
-
-    # Template/example validation results (self-check)
+    _render_verbose_kit_reports(data.get("kits", []))
     sc_results = data.get("self_check_results", [])
-    if sc_results:
-        ui.blank()
-        ui.substep("Templates & examples:")
-        for r in sc_results:
-            kit_id = r.get("kit") or "?"
-            kind = r.get("kind") or "?"
-            rs = r.get("status", "?")
-            n_r_err = r.get("error_count", 0)
-            n_r_warn = r.get("warning_count", 0)
-            if rs == "PASS":
-                suffix = ""
-                if n_r_warn:
-                    suffix = f" ({n_r_warn} warning(s))"
-                    if not data.get("kits"):  # non-verbose
-                        suffix += " — use --verbose for details"
-                ui.step(f"{kit_id}/{kind}: PASS{suffix}")
-            else:
-                ui.warn(f"{kit_id}/{kind}: {rs} — {n_r_err} error(s), {n_r_warn} warning(s)")
-            for e in r.get("errors", [])[:10]:
-                _show_error(e)
-            for w in r.get("warnings", [])[:10]:
-                _show_error(w, prefix="⚠")
-
-    # Non-verbose mode: show errors not already displayed via sc_results
-    if not data.get("kits"):
-        if not sc_results:
-            failed = data.get("failed_kits", [])
-            if failed:
-                ui.blank()
-                for fk in failed:
-                    ui.warn(f"{fk.get('kit', '?')}: {fk.get('error_count', 0)} error(s)")
-        # Deduplicate: skip messages already shown inline in sc_results
-        _shown_msgs: set = set()
-        for r in sc_results:
-            for e in r.get("errors", []):
-                if isinstance(e, dict):
-                    _shown_msgs.add(e.get("message", ""))
-        _top = (data.get("errors") or [])[:10]
-        _unseen = [e for e in _top
-                   if not isinstance(e, dict) or e.get("message", "") not in _shown_msgs]
-        for e in _unseen:
-            _show_error(e)
-        truncated = data.get("errors_truncated", 0)
-        if truncated:
-            ui.substep(f"  ... and {truncated} more error(s)")
+    _render_self_check_results(sc_results, show_verbose=bool(data.get("kits")))
+    _render_non_verbose_validate_errors(data, sc_results)
 
     overall = data.get("status", "")
     ui.blank()
@@ -816,3 +1008,78 @@ def _human_validate_kits(data: dict) -> None:
         ui.error(f"{n} kit(s) validated, {n_err} error(s).")
     ui.blank()
 # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
+
+
+def _render_verbose_kit_reports(kits: List[dict]) -> None:
+    for kit_report in kits:
+        kit_id = kit_report.get("kit", "?")
+        status = kit_report.get("status", "?")
+        kinds = kit_report.get("kinds", [])
+        if status == "PASS":
+            kind_str = f"  ({', '.join(kinds)})" if kinds else ""
+            ui.step(f"{kit_id}: PASS{kind_str}")
+            continue
+        ui.warn(f"{kit_id}: {status} ({kit_report.get('error_count', 0)} errors)")
+        for error in kit_report.get("errors", [])[:10]:
+            _show_error(error)
+
+
+def _render_self_check_results(sc_results: List[dict], *, show_verbose: bool) -> None:
+    if not sc_results:
+        return
+    ui.blank()
+    ui.substep("Templates & examples:")
+    for result in sc_results:
+        _render_self_check_result(result, show_verbose=show_verbose)
+
+
+def _render_self_check_result(result: dict, *, show_verbose: bool) -> None:
+    kit_id = result.get("kit") or "?"
+    kind = result.get("kind") or "?"
+    status = result.get("status", "?")
+    error_count = result.get("error_count", 0)
+    warning_count = result.get("warning_count", 0)
+    if status == "PASS":
+        suffix = ""
+        if warning_count:
+            suffix = f" ({warning_count} warning(s))"
+            if not show_verbose:
+                suffix += " - use --verbose for details"
+        ui.step(f"{kit_id}/{kind}: PASS{suffix}")
+    else:
+        ui.warn(f"{kit_id}/{kind}: {status} - {error_count} error(s), {warning_count} warning(s)")
+    for error in result.get("errors", [])[:10]:
+        _show_error(error)
+    for warning in result.get("warnings", [])[:10]:
+        _show_error(warning, prefix="!")
+
+
+def _render_non_verbose_validate_errors(data: dict, sc_results: List[dict]) -> None:
+    if data.get("kits"):
+        return
+    if not sc_results:
+        failed = data.get("failed_kits", [])
+        if failed:
+            ui.blank()
+            for failed_kit in failed:
+                ui.warn(f"{failed_kit.get('kit', '?')}: {failed_kit.get('error_count', 0)} error(s)")
+    shown_msgs = _shown_self_check_messages(sc_results)
+    top_errors = (data.get("errors") or [])[:10]
+    unseen = [
+        error for error in top_errors
+        if not isinstance(error, dict) or error.get("message", "") not in shown_msgs
+    ]
+    for error in unseen:
+        _show_error(error)
+    truncated = data.get("errors_truncated", 0)
+    if truncated:
+        ui.substep(f"  ... and {truncated} more error(s)")
+
+
+def _shown_self_check_messages(sc_results: List[dict]) -> Set[str]:
+    shown_msgs: Set[str] = set()
+    for result in sc_results:
+        for error in result.get("errors", []):
+            if isinstance(error, dict):
+                shown_msgs.add(str(error.get("message", "")))
+    return shown_msgs

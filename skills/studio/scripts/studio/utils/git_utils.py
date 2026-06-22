@@ -80,6 +80,14 @@ def _lookup_namespace(host: str, rules: list) -> "Optional[NamespaceRule]":
         if rule.host == host:
             return rule
     return None
+
+
+def _resolve_git_template(host: str, resolve_config: "ResolveConfig") -> str:
+    """Return the directory template for a host, falling back to the default."""
+    default_template = "{org}/{repo}"
+    namespace_rules = getattr(resolve_config, "namespace", []) or []
+    rule = _lookup_namespace(host, namespace_rules)
+    return getattr(rule, "template", default_template) if rule else default_template
 # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-lookup-namespace
 
 
@@ -173,15 +181,10 @@ def _compute_local_path(
 
     host, org, repo = parsed
 
-    # Look up namespace rule (exact match → default fallback)
-    namespace_rules = getattr(resolve_config, "namespace", []) or []
-    # @cpt-begin:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
-    rule = _lookup_namespace(host, namespace_rules)
-    # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
-
     # Apply template and compute local path
-    default_template = "{org}/{repo}"
-    template = getattr(rule, "template", default_template) if rule else default_template
+    # @cpt-begin:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
+    template = _resolve_git_template(host, resolve_config)
+    # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
     try:
         templated = _apply_template(template, org, repo)
     except ValueError:

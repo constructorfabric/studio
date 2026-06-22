@@ -23,6 +23,15 @@ _VAR_PATH_RE = re.compile(
 )
 
 
+def _link_edge_targets(content: str, src: Node, known: set[str], template_vars: Dict[str, str]):
+    for match in _LINK_RE.finditer(content):
+        target = match.group("target").strip()
+        yield match, _resolve(src.rel_path, _expand_vars(target, template_vars), known)
+    for match in _VAR_PATH_RE.finditer(content):
+        expanded = _expand_vars(match.group(0), template_vars)
+        yield match, _resolve(src.rel_path, "/" + expanded.lstrip("/"), known)
+
+
 def extract_file_links(nodes: Sequence[Node],
                        project_root: Optional[Union[Path, str]] = None,
                        template_vars: Optional[Dict[str, str]] = None) -> List[Edge]:
@@ -59,24 +68,9 @@ def extract_file_links(nodes: Sequence[Node],
 
         targets_seen: set[str] = set()
 
-        # Pass 1: standard markdown [label](target) links — also handles
-        # targets that contain template variables.
-        for m in _LINK_RE.finditer(content):
-            target = m.group("target").strip()
-            expanded = _expand_vars(target, template_vars)
-            resolved = _resolve(src.rel_path, expanded, known)
+        for match, resolved in _link_edge_targets(content, src, known, template_vars):
             edge_id = _append_file_link_edge(
-                edges, edge_id, by_rel, src, resolved, targets_seen, content, m.start()
-            )
-
-        # Pass 2: prose references like `{cf-studio-path}/.core/skills/foo.md`.
-        for m in _VAR_PATH_RE.finditer(content):
-            full = m.group(0)
-            expanded = _expand_vars(full, template_vars)
-            # Treat as absolute project-root-relative.
-            resolved = _resolve(src.rel_path, "/" + expanded.lstrip("/"), known)
-            edge_id = _append_file_link_edge(
-                edges, edge_id, by_rel, src, resolved, targets_seen, content, m.start()
+                edges, edge_id, by_rel, src, resolved, targets_seen, content, match.start()
             )
 
     return edges

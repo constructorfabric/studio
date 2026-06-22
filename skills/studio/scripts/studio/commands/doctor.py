@@ -17,6 +17,48 @@ from ..utils.ui import ui
 logger = logging.getLogger(__name__)
 
 
+def _run_doctor_checks(project_root: Path) -> list[dict]:
+    checks = []
+    for check_name, check_fn in [("ralphex", _check_ralphex)]:
+        try:
+            checks.append(check_fn(project_root))
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            checks.append({
+                "level": "FAIL",
+                "name": check_name,
+                "message": f"Check raised an exception: {exc}",
+            })
+    return checks
+
+
+def _render_doctor_checks(checks: list[dict]) -> tuple[bool, bool]:
+    has_fail = False
+    has_warn = False
+    for check in checks:
+        level = check["level"]
+        name = check["name"]
+        message = check["message"]
+        if level == "PASS":
+            ui.step(f"[PASS] {name}: {message}")
+        elif level == "WARN":
+            ui.step(f"[WARN] {name}: {message}")
+            has_warn = True
+        elif level == "FAIL":
+            ui.error(f"[FAIL] {name}: {message}")
+            has_fail = True
+    return has_fail, has_warn
+
+
+def _doctor_result_payload(checks: list[dict], has_fail: bool, has_warn: bool, summary: str) -> dict:
+    level_to_status = {"PASS": "pass", "WARN": "warn", "FAIL": "fail"}
+    spec_checks = [
+        {"name": check["name"], "status": level_to_status.get(check["level"], check["level"].lower()), "detail": check["message"]}
+        for check in checks
+    ]
+    overall = "unhealthy" if has_fail else "degraded" if has_warn else "healthy"
+    return {"status": overall, "checks": spec_checks, "summary": summary}
+
+
 # @cpt-begin:cpt-studio-dod-ralphex-delegation-diagnostics:p1:inst-cmd-doctor
 def cmd_doctor(argv: List[str]) -> int:
     """Run environment health checks and report results."""
@@ -34,35 +76,8 @@ def cmd_doctor(argv: List[str]) -> int:
 
     ui.header("Studio Doctor")
 
-    has_fail = False
-    has_warn = False
-    check_fns = [
-        ("ralphex", _check_ralphex),
-    ]
-    checks = []
-    for check_name, check_fn in check_fns:
-        try:
-            checks.append(check_fn(project_root))
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            checks.append({
-                "level": "FAIL",
-                "name": check_name,
-                "message": f"Check raised an exception: {exc}",
-            })
-
-    for check in checks:
-        level = check["level"]
-        name = check["name"]
-        message = check["message"]
-
-        if level == "PASS":
-            ui.step(f"[PASS] {name}: {message}")
-        elif level == "WARN":
-            ui.step(f"[WARN] {name}: {message}")
-            has_warn = True
-        elif level == "FAIL":
-            ui.error(f"[FAIL] {name}: {message}")
-            has_fail = True
+    checks = _run_doctor_checks(project_root)
+    has_fail, has_warn = _render_doctor_checks(checks)
 
     ui.blank()
     if has_fail:
@@ -80,15 +95,8 @@ def cmd_doctor(argv: List[str]) -> int:
 
     # Map internal check dicts to the documented JSON contract shape
     # (cli.md specifies {"status": "healthy", "checks": [{"status": "pass", ...}]})
-    _level_to_status = {"PASS": "pass", "WARN": "warn", "FAIL": "fail"}
-    spec_checks = [
-        {"name": c["name"], "status": _level_to_status.get(c["level"], c["level"].lower()), "detail": c["message"]}
-        for c in checks
-    ]
-    overall = "unhealthy" if has_fail else "degraded" if has_warn else "healthy"
-
     ui.result(
-        {"status": overall, "checks": spec_checks, "summary": summary},
+        _doctor_result_payload(checks, has_fail, has_warn, summary),
         human_fn=lambda d: None,  # already printed above
     )
 

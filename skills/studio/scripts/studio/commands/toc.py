@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List
 
 from studio.utils.toc import (
+    add_toc_max_level_argument,
     process_file as _process_file,
     validate_toc as _validate_toc,
 )
@@ -30,12 +31,7 @@ def cmd_toc(argv: List[str]) -> int:
         nargs="+",
         help="Markdown file path(s) to process",
     )
-    p.add_argument(
-        "--max-level",
-        type=int,
-        default=3,
-        help="Maximum heading level to include (default: 3)",
-    )
+    add_toc_max_level_argument(p)
     p.add_argument(
         "--indent",
         type=int,

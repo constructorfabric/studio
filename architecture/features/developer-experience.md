@@ -18,6 +18,7 @@
   - [Run Doctor Checks](#run-doctor-checks)
   - [Run Self-Check](#run-self-check)
   - [Resolve Variables](#resolve-variables-1)
+  - [Pylint Rollout Phase 0](#pylint-rollout-phase-0)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Developer Experience State](#developer-experience-state)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -216,6 +217,20 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 4. [x] - `p1` - Merge system + all kit variables into flat dict (kit IDs are globally unique) - `inst-merge-flat-dict`
 5. [x] - `p1` - Return structured result: {status, system, kits, variables, counts} - `inst-return-structured`
 
+### Pylint Rollout Phase 0
+
+- [ ] `p2` - **ID**: `cpt-studio-algo-developer-experience-pylint-rollout-phase-0`
+
+**Input**: Prioritized Pylint backlog in `pyproject.toml`
+
+**Output**: Docs-first rollout scope for the initial architectural refactor tranche
+
+**Rules**:
+1. - `p2` - Treat Phase 0 as an architecture note only: no code changes and no `pyproject.toml` enablement changes yet - `inst-pylint-phase-0-docs-only`
+2. - `p2` - Scope the first rollout tranche to the first half of the prioritized backlog: `R0911`, `R0914`, `R0801`, `R0912`, `R0915`, and `R0913` - `inst-pylint-phase-0-first-half`
+3. - `p2` - Keep the remaining backlog deferred for later rollout phases, starting with `R0917`, `R0902`, `C0302`, `C0415`, `R0401`, and `C0301` - `inst-pylint-phase-0-deferred-half`
+4. - `p2` - Keep the rollout aligned with `cpt-studio-nfr-zero-harm`: stage advisory cleanup before enabling additional checks - `inst-pylint-phase-0-zero-harm`
+
 ## 4. States (CDSL)
 
 ### Developer Experience State
@@ -281,6 +296,7 @@ No feature-specific state machines. Self-check is stateless (run → report).
 - [x] `cfs self-check` validates kit integrity and reports per-kind results
 - [x] `cfs resolve-vars` resolves all template variables to absolute paths
 - [x] `cfs info` includes `variables` in output for agent variable resolution
+- [ ] Architecture records the Phase 0 Pylint rollout scope before enabling any of `R0911`, `R0914`, `R0801`, `R0912`, `R0915`, or `R0913`
 - [ ] `cfs doctor` reports environment health with pass/fail/warn per check (including optional `ralphex` availability)
 - [ ] Pre-commit hooks enforce validation on staged artifacts
 - [ ] Shell completions work for all documented commands

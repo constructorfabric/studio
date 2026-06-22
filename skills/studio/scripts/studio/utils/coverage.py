@@ -54,6 +54,17 @@ class CoverageReport:
     flagged_files: List[str]  # files with granularity < 0.5
 # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-datamodel
 
+
+@dataclass(frozen=True)
+class _CoverageScanSummary:
+    """Intermediate coverage metrics for a single file."""
+
+    effective_lines: int
+    covered_lines: int
+    covered_ranges: List[Tuple[int, int]]
+    uncovered_ranges: List[Tuple[int, int]]
+    granularity: float
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -70,12 +81,7 @@ def _is_blank_or_comment(line: str, ext: str, state: Optional[Dict[str, Any]] = 
     if not stripped:
         return True
 
-    # Inside a multi-line comment block? (stateful tracking)
-    if state is not None and state.get("in_block"):
-        end_marker = state["end_marker"]
-        if end_marker in stripped:
-            state["in_block"] = False
-            state["end_marker"] = ""
+    if _consume_multiline_comment_state(stripped, state):
         return True
 
     comment_info = EXTENSION_COMMENT_DEFAULTS.get(ext)
@@ -83,25 +89,11 @@ def _is_blank_or_comment(line: str, ext: str, state: Optional[Dict[str, Any]] = 
         return False
 
     single_line, multi_line, block_prefixes = comment_info
-
-    for prefix in single_line:
-        if stripped.startswith(prefix):
-            return True
-
-    for prefix in block_prefixes:
-        if stripped.startswith(prefix):
-            return True
-
-    for mlc in multi_line:
-        if stripped.startswith(mlc["start"]):
-            # Check if block closes on same line
-            rest = stripped[len(mlc["start"]):]
-            if mlc["end"] not in rest and state is not None:
-                state["in_block"] = True
-                state["end_marker"] = mlc["end"]
-            return True
-
-    return False
+    if any(stripped.startswith(prefix) for prefix in single_line):
+        return True
+    if any(stripped.startswith(prefix) for prefix in block_prefixes):
+        return True
+    return _starts_multiline_comment(stripped, multi_line, state)
 
 def _build_ranges(sorted_lines: List[int]) -> List[Tuple[int, int]]:
     """Build contiguous ranges from sorted line numbers."""
@@ -119,6 +111,127 @@ def _build_ranges(sorted_lines: List[int]) -> List[Tuple[int, int]]:
             end = ln
     ranges.append((start, end))
     return ranges
+
+
+def _consume_multiline_comment_state(stripped: str, state: Optional[Dict[str, Any]]) -> bool:
+    """Return True when the current line is inside an active multiline comment."""
+    if state is None or not state.get("in_block"):
+        return False
+    end_marker = state["end_marker"]
+    if end_marker in stripped:
+        state["in_block"] = False
+        state["end_marker"] = ""
+    return True
+
+
+def _starts_multiline_comment(
+    stripped: str,
+    multi_line: List[Dict[str, str]],
+    state: Optional[Dict[str, Any]],
+) -> bool:
+    """Return True when the line starts a multiline comment block."""
+    for comment_block in multi_line:
+        start_marker = comment_block["start"]
+        if not stripped.startswith(start_marker):
+            continue
+        rest = stripped[len(start_marker):]
+        if comment_block["end"] not in rest and state is not None:
+            state["in_block"] = True
+            state["end_marker"] = comment_block["end"]
+        return True
+    return False
+
+
+def _collect_effective_line_numbers(lines: List[str], ext: str) -> Set[int]:
+    """Return all non-blank, non-comment line numbers for a file."""
+    effective_lines: Set[int] = set()
+    comment_state: Dict[str, Any] = {"in_block": False, "end_marker": ""}
+    for idx, line in enumerate(lines, start=1):
+        if not _is_blank_or_comment(line, ext, comment_state):
+            effective_lines.add(idx)
+    return effective_lines
+
+
+def _collect_marker_data(lines: List[str]) -> Tuple[List[int], List[Tuple[int, int]]]:
+    """Collect scope markers and closed block ranges from a file."""
+    scope_markers: List[int] = []
+    block_ranges: List[Tuple[int, int]] = []
+    open_blocks: Dict[str, int] = {}
+    for line_no, line in enumerate(lines, start=1):
+        for marker in _SCOPE_MARKER_RE.finditer(line):
+            del marker
+            scope_markers.append(line_no)
+        for marker in _BLOCK_BEGIN_RE.finditer(line):
+            key = f"{marker.group('id')}:{marker.group('phase')}:{marker.group('inst')}"
+            open_blocks.setdefault(key, line_no)
+        for marker in _BLOCK_END_RE.finditer(line):
+            key = f"{marker.group('id')}:{marker.group('phase')}:{marker.group('inst')}"
+            start = open_blocks.pop(key, None)
+            if start is not None:
+                block_ranges.append((start, line_no))
+    return scope_markers, block_ranges
+
+
+def _build_coverage_set(
+    effective_line_set: Set[int],
+    scope_markers: List[int],
+    block_ranges: List[Tuple[int, int]],
+) -> Set[int]:
+    """Build the set of covered effective lines."""
+    if scope_markers and not block_ranges:
+        return set(effective_line_set)
+
+    covered_set: Set[int] = set()
+    for start, end in block_ranges:
+        for line_no in range(start, end + 1):
+            if line_no in effective_line_set:
+                covered_set.add(line_no)
+    covered_set.update(line_no for line_no in scope_markers if line_no in effective_line_set)
+    return covered_set
+
+
+def _calculate_granularity(effective_lines: int, block_count: int, has_scope_only: bool) -> float:
+    """Calculate the instruction-density granularity score."""
+    if has_scope_only or not block_count:
+        return 0.0
+    ideal_blocks = max(1.0, effective_lines / 10.0)
+    return min(1.0, block_count / ideal_blocks)
+
+
+def _empty_file_coverage(path: Path, total_lines: int) -> FileCoverage:
+    """Build a zero-coverage record for files with no effective lines."""
+    return FileCoverage(
+        path=str(path),
+        total_lines=total_lines,
+        effective_lines=0,
+        covered_lines=0,
+        covered_ranges=[],
+        uncovered_ranges=[],
+        scope_marker_count=0,
+        block_marker_count=0,
+        has_scope_only=False,
+        coverage_pct=0.0,
+        granularity=0.0,
+    )
+
+
+def _summarize_file_coverage(
+    effective_line_set: Set[int],
+    scope_markers: List[int],
+    block_ranges: List[Tuple[int, int]],
+) -> _CoverageScanSummary:
+    """Calculate aggregate coverage values from parsed marker data."""
+    covered_set = _build_coverage_set(effective_line_set, scope_markers, block_ranges)
+    effective_lines = len(effective_line_set)
+    block_count = len(block_ranges)
+    has_scope_only = bool(scope_markers) and not block_count
+    return _CoverageScanSummary(
+        effective_lines=effective_lines,
+        covered_lines=len(covered_set),
+        covered_ranges=_build_ranges(sorted(covered_set)),
+        uncovered_ranges=_build_ranges(sorted(effective_line_set - covered_set)),
+        granularity=_calculate_granularity(effective_lines, block_count, has_scope_only),
+    )
 # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-helpers
 
 # ---------------------------------------------------------------------------
@@ -141,103 +254,46 @@ def scan_file_coverage(path: Path) -> Optional[FileCoverage]:
     # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-init
 
     # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-count-lines
-    effective_lines = 0
-    effective_line_set: Set[int] = set()
-    comment_state: Dict[str, Any] = {"in_block": False, "end_marker": ""}
-    for idx, line in enumerate(lines):
-        line_no = idx + 1
-        if not _is_blank_or_comment(line, ext, comment_state):
-            effective_lines += 1
-            effective_line_set.add(line_no)
+    effective_line_set = _collect_effective_line_numbers(lines, ext)
+    effective_lines = len(effective_line_set)
     # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-count-lines
 
     if not effective_lines:
-        return FileCoverage(
-            path=str(path),
-            total_lines=total_lines,
-            effective_lines=0,
-            covered_lines=0,
-            covered_ranges=[],
-            uncovered_ranges=[],
-            scope_marker_count=0,
-            block_marker_count=0,
-            has_scope_only=False,
-            coverage_pct=0.0,
-            granularity=0.0,
-        )
+        return _empty_file_coverage(path, total_lines)
 
     # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-scope-markers
-    scope_markers: List[int] = []
+    scope_markers, block_ranges = _collect_marker_data(lines)
     # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-scope-markers
     # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-block-markers
-    block_ranges: List[Tuple[int, int]] = []
-    open_blocks: Dict[str, int] = {}
+    # Marker data is collected above so block ranges and scope markers stay in sync.
     # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-block-markers
-
-    for idx, line in enumerate(lines):
-        line_no = idx + 1
-
-        for m in _SCOPE_MARKER_RE.finditer(line):
-            scope_markers.append(line_no)
-
-        for m in _BLOCK_BEGIN_RE.finditer(line):
-            key = f"{m.group('id')}:{m.group('phase')}:{m.group('inst')}"
-            if key not in open_blocks:
-                open_blocks[key] = line_no
-
-        for m in _BLOCK_END_RE.finditer(line):
-            key = f"{m.group('id')}:{m.group('phase')}:{m.group('inst')}"
-            if key in open_blocks:
-                start = open_blocks.pop(key)
-                block_ranges.append((start, line_no))
 
     scope_count = len(scope_markers)
     block_count = len(block_ranges)
     has_scope_only = scope_count > 0 and not block_count
 
     # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-calc-ranges
-    covered_set: Set[int] = set()
-
-    if has_scope_only:
-        covered_set = set(effective_line_set)
-    else:
-        for start, end in block_ranges:
-            for ln in range(start, end + 1):
-                if ln in effective_line_set:
-                    covered_set.add(ln)
-        for ln in scope_markers:
-            if ln in effective_line_set:
-                covered_set.add(ln)
-
-    covered_lines = len(covered_set)
-    coverage_pct = (covered_lines / effective_lines * 100.0) if effective_lines > 0 else 0.0
-
-    covered_ranges = _build_ranges(sorted(covered_set))
-    uncovered_effective = sorted(effective_line_set - covered_set)
-    uncovered_ranges = _build_ranges(uncovered_effective)
-
-    if has_scope_only:
-        granularity = 0.0
-    elif not block_count:
-        granularity = 0.0
-    else:
-        ideal_blocks = max(1.0, effective_lines / 10.0)
-        granularity = min(1.0, block_count / ideal_blocks)
+    summary = _summarize_file_coverage(
+        effective_line_set,
+        scope_markers,
+        block_ranges,
+    )
+    coverage_pct = summary.covered_lines / summary.effective_lines * 100.0
     # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-calc-ranges
 
     # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-return
     return FileCoverage(
         path=str(path),
         total_lines=total_lines,
-        effective_lines=effective_lines,
-        covered_lines=covered_lines,
-        covered_ranges=covered_ranges,
-        uncovered_ranges=uncovered_ranges,
+        effective_lines=summary.effective_lines,
+        covered_lines=summary.covered_lines,
+        covered_ranges=summary.covered_ranges,
+        uncovered_ranges=summary.uncovered_ranges,
         scope_marker_count=scope_count,
         block_marker_count=block_count,
         has_scope_only=has_scope_only,
         coverage_pct=round(coverage_pct, 2),
-        granularity=round(granularity, 4),
+        granularity=round(summary.granularity, 4),
     )
     # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-return
 

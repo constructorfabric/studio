@@ -455,11 +455,14 @@ def _human_workspace_init(data: dict) -> None:
         ui.info(hint)
 
     ui.blank()
-    if status in ("CREATED", "DRY_RUN"):
+    success_statuses = {"CREATED", "DRY_RUN"}
+    if status in success_statuses:
         ui.success(message)
     elif status == "ERROR":
         ui.error(message)
+    elif message:
+        ui.info(f"Status: {status} — {message}")
     else:
-        ui.info(f"Status: {status}" + (f" — {message}" if message else ""))
+        ui.info(f"Status: {status}")
     ui.blank()
 # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-init-human-fmt

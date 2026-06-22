@@ -12,6 +12,103 @@ from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-imports
 
 
+def _build_language_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="check-language",
+        description=(
+            "Scan Markdown artifacts for characters outside the allowed Unicode "
+            "script set.  Language policy is read from workspace config "
+            "([validation] allowed_content_languages) or set via --languages."
+        ),
+    )
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        metavar="path",
+        help="Files or directories to scan (default: project architecture/ folder)",
+    )
+    parser.add_argument(
+        "--languages",
+        default=None,
+        metavar="CODES",
+        help="Comma-separated language codes to allow, e.g. 'en' or 'en,ru'. "
+             "Overrides workspace config.",
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress summary header; show violations only.",
+    )
+    parser.add_argument(
+        "--ignore",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="Glob pattern of files to skip (e.g. 'translations/**/*.md'). "
+             "Can be repeated. Also reads ignore_paths from workspace config.",
+    )
+    return parser
+
+
+def _emit_language_error(message: str) -> int:
+    ui.result({"status": "ERROR", "message": message})
+    return 1
+
+
+def _resolve_allowed_languages(args, supported_languages: List[str]) -> List[str]:
+    if args.languages is None:
+        return _read_config_languages()
+    raw_langs = [lang_code.strip().lower() for lang_code in args.languages.split(",") if lang_code.strip()]
+    unknown = [lang_code for lang_code in raw_langs if lang_code not in supported_languages]
+    if unknown:
+        supported = ", ".join(supported_languages)
+        raise ValueError(f"Unknown language code(s): {', '.join(unknown)}. Supported: {supported}")
+    return raw_langs
+
+
+def _resolve_scan_roots(path_args: List[str]) -> List[Path]:
+    roots = [Path(pth) for pth in path_args] if path_args else _default_roots()
+    missing = [str(root) for root in roots if not root.exists()]
+    if missing:
+        raise ValueError(f"Path(s) not found: {', '.join(missing)}")
+    return roots
+
+
+def _group_violations(violations) -> tuple[dict[str, list], list[dict]]:
+    by_file: dict[str, list] = {}
+    violation_items: list[dict] = []
+    for violation in violations:
+        path_str = str(violation.path)
+        by_file.setdefault(path_str, []).append(violation)
+        violation_items.append({
+            "path": path_str,
+            "line": violation.lineno,
+            "chars": violation.bad_chars_preview(),
+            "preview": violation.line_preview(),
+            "code": EC.CONTENT_LANGUAGE_VIOLATION,
+        })
+    return by_file, violation_items
+
+
+def _run_language_scan(args, supported_languages):
+    from ..utils.content_language import LangScanError, build_allowed_ranges, scan_paths
+
+    allowed_langs = _resolve_allowed_languages(args, supported_languages)
+    ignore_patterns: List[str] = list(args.ignore)
+    ignore_patterns.extend(_read_config_ignore_patterns())
+    roots = _resolve_scan_roots(args.paths)
+    try:
+        violations = scan_paths(
+            roots,
+            build_allowed_ranges(allowed_langs),
+            ignore_patterns=ignore_patterns,
+        )
+    except LangScanError as exc:
+        raise ValueError(str(exc)) from exc
+    return allowed_langs, _count_md_files(roots), violations
+
+
 # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-cmd-check-language
 def cmd_check_language(argv: List[str]) -> int:
     """Scan Markdown files for characters outside the allowed language set.
@@ -21,102 +118,14 @@ def cmd_check_language(argv: List[str]) -> int:
         1 — configuration / path error
         2 — one or more language violations found
     """
-    p = argparse.ArgumentParser(
-        prog="check-language",
-        description=(
-            "Scan Markdown artifacts for characters outside the allowed Unicode "
-            "script set.  Language policy is read from workspace config "
-            "([validation] allowed_content_languages) or set via --languages."
-        ),
-    )
-    p.add_argument(
-        "paths",
-        nargs="*",
-        metavar="path",
-        help="Files or directories to scan (default: project architecture/ folder)",
-    )
-    p.add_argument(
-        "--languages",
-        default=None,
-        metavar="CODES",
-        help="Comma-separated language codes to allow, e.g. 'en' or 'en,ru'. "
-             "Overrides workspace config.",
-    )
-    p.add_argument(
-        "--quiet",
-        "-q",
-        action="store_true",
-        help="Suppress summary header; show violations only.",
-    )
-    p.add_argument(
-        "--ignore",
-        action="append",
-        default=[],
-        metavar="PATTERN",
-        help="Glob pattern of files to skip (e.g. 'translations/**/*.md'). "
-             "Can be repeated. Also reads ignore_paths from workspace config.",
-    )
-    args = p.parse_args(argv)
+    args = _build_language_parser().parse_args(argv)
 
-    from ..utils.content_language import (
-        SUPPORTED_LANGUAGES,
-        LangScanError,
-        build_allowed_ranges,
-        scan_paths,
-    )
-
-    # ── Resolve allowed languages ────────────────────────────────────────────
-    if args.languages is not None:
-        raw_langs = [lang_code.strip().lower() for lang_code in args.languages.split(",") if lang_code.strip()]
-        unknown = [lang_code for lang_code in raw_langs if lang_code not in SUPPORTED_LANGUAGES]
-        if unknown:
-            ui.result({
-                "status": "ERROR",
-                "message": (
-                    f"Unknown language code(s): {', '.join(unknown)}. "
-                    f"Supported: {', '.join(SUPPORTED_LANGUAGES)}"
-                ),
-            })
-            return 1
-        allowed_langs = raw_langs
-    else:
-        try:
-            allowed_langs = _read_config_languages()
-        except ValueError as exc:
-            ui.result({"status": "ERROR", "message": str(exc)})
-            return 1
-
-    # ── Resolve ignore patterns ──────────────────────────────────────────────
-    ignore_patterns: List[str] = list(args.ignore)
     try:
-        ignore_patterns.extend(_read_config_ignore_patterns())
+        from ..utils.content_language import SUPPORTED_LANGUAGES
+
+        allowed_langs, files_scanned, violations = _run_language_scan(args, SUPPORTED_LANGUAGES)
     except ValueError as exc:
-        ui.result({"status": "ERROR", "message": str(exc)})
-        return 1
-
-    # ── Resolve scan roots ───────────────────────────────────────────────────
-    if args.paths:
-        roots = [Path(pth) for pth in args.paths]
-    else:
-        roots = _default_roots()
-
-    missing = [str(r) for r in roots if not r.exists()]
-    if missing:
-        ui.result({
-            "status": "ERROR",
-            "message": f"Path(s) not found: {', '.join(missing)}",
-        })
-        return 1
-
-    # ── Scan ─────────────────────────────────────────────────────────────────
-    allowed_ranges = build_allowed_ranges(allowed_langs)
-    try:
-        violations = scan_paths(roots, allowed_ranges, ignore_patterns=ignore_patterns)
-    except LangScanError as exc:
-        ui.result({"status": "ERROR", "message": str(exc)})
-        return 1
-
-    files_scanned = _count_md_files(roots)
+        return _emit_language_error(str(exc))
 
     if not violations:
         result = {
@@ -129,20 +138,7 @@ def cmd_check_language(argv: List[str]) -> int:
         return 0
 
     # Group violations by file for reporting
-    by_file: dict = {}
-    for v in violations:
-        by_file.setdefault(str(v.path), []).append(v)
-
-    violation_items = []
-    for file_path, file_violations in by_file.items():
-        for v in file_violations:
-            violation_items.append({
-                "path": file_path,
-                "line": v.lineno,
-                "chars": v.bad_chars_preview(),
-                "preview": v.line_preview(),
-                "code": EC.CONTENT_LANGUAGE_VIOLATION,
-            })
+    by_file, violation_items = _group_violations(violations)
 
     result = {
         "status": "FAIL",
@@ -223,9 +219,8 @@ def _default_roots() -> List[Path]:
 def _count_md_files(roots: List[Path]) -> int:
     count = 0
     for root in roots:
-        if root.is_file():
-            if root.suffix.lower() == ".md":
-                count += 1
+        if root.is_file() and root.suffix.lower() == ".md":
+            count += 1
         elif root.is_dir():
             count += sum(1 for _ in root.rglob("*.md"))
     return count

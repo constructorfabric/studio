@@ -334,16 +334,7 @@ def cross_validate_code(
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-docs-only
     if traceability == "DOCS-ONLY":
-        # In DOCS-ONLY mode, code markers are prohibited
-        for cf in code_files:
-            if cf.scope_markers or cf.block_markers:
-                errors.append(error(
-                    "traceability",
-                    f"@cpt markers found in `{cf.path.name}` but traceability mode is DOCS-ONLY — remove all markers or switch to FULL",
-                    code=EC.CODE_DOCS_ONLY,
-                    path=cf.path,
-                    line=1,
-                ))
+        _collect_docs_only_errors(code_files, errors)
         return {"errors": errors, "warnings": warnings}
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-docs-only
 
@@ -358,54 +349,23 @@ def cross_validate_code(
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-foreach-orphan
     # Check for orphaned markers (code refs IDs not in artifacts)
-    first_forbidden: Dict[str, Tuple[Path, int]] = {}
-    for cf in code_files:
-        for ref in cf.references:
-            if forbidden_code_ids and ref.id in forbidden_code_ids and ref.id not in first_forbidden:
-                first_forbidden[ref.id] = (cf.path, int(ref.line))
-            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-emit-orphan
-            if ref.id not in artifact_ids:
-                errors.append(error(
-                    "traceability",
-                    f"Code marker references `{ref.id}` in `{cf.path.name}` at line {ref.line} but this ID is not defined in any artifact",
-                    code=EC.CODE_ORPHAN_REF,
-                    path=cf.path,
-                    line=ref.line,
-                    id=ref.id,
-                ))
-            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-emit-orphan
+    first_forbidden = _collect_code_reference_errors(
+        code_files,
+        artifact_ids,
+        forbidden_code_ids,
+        errors,
+    )
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-foreach-orphan
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-foreach-forbidden
     if forbidden_code_ids:
-        # Pre-collect code instructions per ID for checking completeness
-        _code_inst_lookup: Dict[str, Set[str]] = {}
-        for cf in code_files:
-            for bm in cf.block_markers:
-                _code_inst_lookup.setdefault(bm.id, set()).add(bm.inst)
-
-        for fid in sorted(first_forbidden.keys()):
-            p, ln = first_forbidden[fid]
-            # If this ID has CDSL instructions defined in the artifact,
-            # only require the checkbox when ALL instructions are implemented.
-            # Unchecked parent with missing child instructions is legitimate.
-            _all = artifact_instances_all or artifact_instances
-            if _all and fid in _all:
-                art_insts = _all[fid]
-                code_insts = _code_inst_lookup.get(fid, set())
-                if art_insts - code_insts:
-                    # Some instructions not yet implemented — skip error
-                    continue
-            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-emit-forbidden
-            errors.append(error(
-                "structure",
-                f"`{fid}` is marked to_code=\"true\" and referenced in code at line {ln} but its task checkbox is not checked in the artifact",
-                code=EC.CODE_TASK_UNCHECKED,
-                path=p,
-                line=ln,
-                id=fid,
-            ))
-            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-emit-forbidden
+        _collect_forbidden_code_errors(
+            code_files,
+            first_forbidden,
+            artifact_instances,
+            artifact_instances_all,
+            errors,
+        )
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-foreach-forbidden
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-foreach-missing
@@ -427,48 +387,123 @@ def cross_validate_code(
     # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-foreach-inst
     # Instruction-level cross-validation
     if artifact_instances:
-        # Collect code instructions per ID from block markers
-        code_inst_by_id: Dict[str, Dict[str, Tuple[Path, int]]] = {}
-        for cf in code_files:
-            for bm in cf.block_markers:
-                code_inst_by_id.setdefault(bm.id, {})[bm.inst] = (cf.path, bm.start_line)
-
-        for cid, art_insts in sorted(artifact_instances.items()):
-            code_insts = set(code_inst_by_id.get(cid, {}).keys())
-
-            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-missing
-            # Artifact instruction not in code → missing implementation
-            for inst in sorted(art_insts - code_insts):
-                errors.append(error(
-                    "coverage",
-                    f"CDSL instruction `{inst}` of `{cid}` is defined in artifact but has no @cpt-begin/@cpt-end block in code",
-                    code=EC.CODE_INST_MISSING,
-                    path=Path("."),
-                    line=1,
-                    id=cid,
-                    inst=inst,
-                ))
-            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-missing
-
-            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-orphan
-            # Code instruction not in artifact → orphaned marker
-            for inst in sorted(code_insts - art_insts):
-                loc_path, loc_line = code_inst_by_id[cid][inst]
-                errors.append(error(
-                    "traceability",
-                    f"Code block `inst-{inst}` of `{cid}` in `{loc_path.name}` at line {loc_line} has no matching CDSL step in the artifact",
-                    code=EC.CODE_INST_ORPHAN,
-                    path=loc_path,
-                    line=loc_line,
-                    id=cid,
-                    inst=inst,
-                ))
-            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-orphan
+        _collect_instruction_errors(code_files, artifact_instances, errors)
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-foreach-inst
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-return-code-cross
     return {"errors": errors, "warnings": warnings}
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-return-code-cross
+
+
+def _collect_docs_only_errors(
+    code_files: Sequence[CodeFile],
+    errors: List[Dict[str, object]],
+) -> None:
+    """Record DOCS-ONLY violations for files that still contain markers."""
+    for cf in code_files:
+        if cf.scope_markers or cf.block_markers:
+            errors.append(error(
+                "traceability",
+                f"@cpt markers found in `{cf.path.name}` but traceability mode is DOCS-ONLY — remove all markers or switch to FULL",
+                code=EC.CODE_DOCS_ONLY,
+                path=cf.path,
+                line=1,
+            ))
+
+
+def _collect_code_reference_errors(
+    code_files: Sequence[CodeFile],
+    artifact_ids: Set[str],
+    forbidden_code_ids: Optional[Set[str]],
+    errors: List[Dict[str, object]],
+) -> Dict[str, Tuple[Path, int]]:
+    """Collect orphaned code reference errors and first forbidden locations."""
+    first_forbidden: Dict[str, Tuple[Path, int]] = {}
+    for cf in code_files:
+        for ref in cf.references:
+            if forbidden_code_ids and ref.id in forbidden_code_ids and ref.id not in first_forbidden:
+                first_forbidden[ref.id] = (cf.path, int(ref.line))
+            if ref.id not in artifact_ids:
+                errors.append(error(
+                    "traceability",
+                    f"Code marker references `{ref.id}` in `{cf.path.name}` at line {ref.line} but this ID is not defined in any artifact",
+                    code=EC.CODE_ORPHAN_REF,
+                    path=cf.path,
+                    line=ref.line,
+                    id=ref.id,
+                ))
+    return first_forbidden
+
+
+def _build_code_inst_lookup(
+    code_files: Sequence[CodeFile],
+) -> Dict[str, Set[str]]:
+    """Return block-marker instruction IDs grouped by artifact ID."""
+    code_inst_lookup: Dict[str, Set[str]] = {}
+    for cf in code_files:
+        for bm in cf.block_markers:
+            code_inst_lookup.setdefault(bm.id, set()).add(bm.inst)
+    return code_inst_lookup
+
+
+def _collect_forbidden_code_errors(
+    code_files: Sequence[CodeFile],
+    first_forbidden: Dict[str, Tuple[Path, int]],
+    artifact_instances: Optional[Dict[str, Set[str]]],
+    artifact_instances_all: Optional[Dict[str, Set[str]]],
+    errors: List[Dict[str, object]],
+) -> None:
+    """Record code references that require a checked artifact task."""
+    code_inst_lookup = _build_code_inst_lookup(code_files)
+    all_instances = artifact_instances_all or artifact_instances
+    for fid in sorted(first_forbidden.keys()):
+        path, line = first_forbidden[fid]
+        if all_instances and fid in all_instances and all_instances[fid] - code_inst_lookup.get(fid, set()):
+            continue
+        errors.append(error(
+            "structure",
+            f"`{fid}` is marked to_code=\"true\" and referenced in code at line {line} but its task checkbox is not checked in the artifact",
+            code=EC.CODE_TASK_UNCHECKED,
+            path=path,
+            line=line,
+            id=fid,
+        ))
+
+
+def _collect_instruction_errors(
+    code_files: Sequence[CodeFile],
+    artifact_instances: Dict[str, Set[str]],
+    errors: List[Dict[str, object]],
+) -> None:
+    """Record instruction-level code/artifact mismatches."""
+    code_inst_by_id: Dict[str, Dict[str, Tuple[Path, int]]] = {}
+    for cf in code_files:
+        for bm in cf.block_markers:
+            code_inst_by_id.setdefault(bm.id, {})[bm.inst] = (cf.path, bm.start_line)
+
+    for cid, art_insts in sorted(artifact_instances.items()):
+        code_insts = set(code_inst_by_id.get(cid, {}).keys())
+        for inst in sorted(art_insts - code_insts):
+            errors.append(error(
+                "coverage",
+                f"CDSL instruction `{inst}` of `{cid}` is defined in artifact but has no @cpt-begin/@cpt-end block in code",
+                code=EC.CODE_INST_MISSING,
+                path=Path("."),
+                line=1,
+                id=cid,
+                inst=inst,
+            ))
+        for inst in sorted(code_insts - art_insts):
+            loc_path, loc_line = code_inst_by_id[cid][inst]
+            errors.append(error(
+                "traceability",
+                f"Code block `inst-{inst}` of `{cid}` in `{loc_path.name}` at line {loc_line} has no matching CDSL step in the artifact",
+                code=EC.CODE_INST_ORPHAN,
+                path=loc_path,
+                line=loc_line,
+                id=cid,
+                inst=inst,
+            ))
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
 def load_code_file(code_path: Path) -> Tuple[Optional[CodeFile], List[Dict[str, object]]]:

@@ -40,6 +40,12 @@ _LEGACY_WORKFLOW_DEPRECATION_WARNING = (
     "use kind = \"skill\" in .cf-studio-kit.toml"
 )
 _UPDATE_CFS_HINT = "Update Constructor Studio with `pipx upgrade constructor-studio` and retry."
+_EMPTY_TEXT = ""
+_DEFAULT_ROLE = "any"
+_DEFAULT_TARGET = "any"
+_DEFAULT_PROVIDER = "anthropic"
+_DEFAULT_MODE = "readwrite"
+_NO_POLICY_OVERRIDE = None
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-datamodel
@@ -66,14 +72,15 @@ class KitResource:
     mode: str = "readwrite"
     isolation: bool = False
     model: str = ""
+    # Agent/runtime policy fields.
     skills: List[str] = field(default_factory=list)
-    color: str = ""
-    memory_dir: str = ""
-    role: str = "any"
-    target: str = "any"
-    provider: str = "anthropic"
-    reasoning_effort: Optional[str] = None
-    context_window: Optional[str] = None
+    color: str = _EMPTY_TEXT
+    memory_dir: str = _EMPTY_TEXT
+    role: str = _DEFAULT_ROLE
+    target: str = _DEFAULT_TARGET
+    provider: str = _DEFAULT_PROVIDER
+    reasoning_effort: Optional[str] = _NO_POLICY_OVERRIDE
+    context_window: Optional[str] = _NO_POLICY_OVERRIDE
     subagents: List[Dict[str, Any]] = field(default_factory=list)
     target_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
@@ -98,14 +105,15 @@ class PublicComponent:
     mode: str = "readwrite"
     isolation: bool = False
     model: str = ""
+    # Agent/runtime policy fields.
     skills: List[str] = field(default_factory=list)
-    color: str = ""
-    memory_dir: str = ""
-    role: str = "any"
-    target: str = "any"
-    provider: str = "anthropic"
-    reasoning_effort: Optional[str] = None
-    context_window: Optional[str] = None
+    color: str = _EMPTY_TEXT
+    memory_dir: str = _EMPTY_TEXT
+    role: str = _DEFAULT_ROLE
+    target: str = _DEFAULT_TARGET
+    provider: str = _DEFAULT_PROVIDER
+    reasoning_effort: Optional[str] = _NO_POLICY_OVERRIDE
+    context_window: Optional[str] = _NO_POLICY_OVERRIDE
     subagents: List[Dict[str, Any]] = field(default_factory=list)
     target_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
@@ -704,8 +712,6 @@ def _canonical_model_from_entry(
         warnings,
     )
     slug = _require_string(meta, "slug", kit_context)
-    name = _optional_string(meta, "name") or slug
-    version = _optional_string(meta, "version")
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-metadata
 
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
@@ -740,104 +746,13 @@ def _canonical_model_from_entry(
             resource_context,
             warnings,
         )
-        agent_config = raw.get("agent") if isinstance(raw.get("agent"), dict) else {}
-        if isinstance(agent_config, dict):
-            _warn_unknown_keys(
-                agent_config,
-                {
-                    "mode", "isolation", "model", "tools", "disallowed_tools",
-                    "skills", "color", "memory_dir", "role", "target",
-                    "provider", "reasoning_effort", "context_window",
-                    "subagents",
-                },
-                f"{resource_context}.agent",
-                warnings,
-            )
-        kind = _normalize_kind(
-            _require_string(raw, "kind", resource_context),
-            warnings=warnings,
+        resource = _canonical_resource_from_raw(
+            kit_source=kit_source,
+            slug=slug,
+            raw=raw,
+            resource_context=resource_context,
             resource_id=resource_id,
-        )
-        source = _require_string(raw, "source", resource_context)
-        resource_type = _optional_string(raw, "type") or "file"
-        if resource_type not in {"file", "directory"}:
-            raise ValueError(
-                f"Resource '{resource_id}': type must be 'file' or 'directory'",
-            )
-        install_path = _optional_string(raw, "install_path") or source
-        public = _optional_bool(raw, "public", kind in _PUBLIC_KINDS)
-        prefix_generated_name = _optional_bool(raw, "prefix_generated_name", True)
-        generated_targets = _string_list(raw.get("generated_targets"), "generated_targets")
-        if public and kind not in _PUBLIC_KINDS:
-            raise ValueError(
-                f"Resource '{resource_id}': public=true is only allowed for skill, agent, and rule resources",
-            )
-        if not public and not prefix_generated_name:
-            raise ValueError(
-                f"Resource '{resource_id}': prefix_generated_name=false is only allowed for public resources",
-            )
-        if not public and generated_targets:
-            raise ValueError(
-                f"Resource '{resource_id}': generated_targets is only allowed for public resources",
-            )
-        # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
-        artifact_bindings = _artifact_bindings(raw.get("artifacts"), f"resources.{resource_id}.artifacts")
-        if artifact_bindings and kind != "constraints":
-            raise ValueError(
-                f"Resource '{resource_id}': artifacts bindings are only allowed for constraints resources",
-            )
-        # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
-        permissions_config = raw.get("permissions") if isinstance(raw.get("permissions"), dict) else {}
-        resource = KitResource(
-            id=resource_id,
-            kind=kind,
-            source=source,
-            install_path=install_path,
-            type=resource_type,
-            public=public,
-            description=_optional_string(raw, "description"),
-            user_modifiable=_optional_bool(raw, "user_modifiable", True),
-            aliases=_string_list(raw.get("aliases"), "aliases"),
-            # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
-            generated_targets=generated_targets or (["installed"] if public else []),
-            # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
-            origin=_optional_string(raw, "origin"),
-            generated_name=_resource_generated_name(
-                slug,
-                public,
-                prefix_generated_name,
-                _public_name_from_source(kit_source, source, kind, resource_id),
-            ),
-            prefix_generated_name=prefix_generated_name,
-            tools=_string_list(
-                agent_config.get("tools", raw.get("tools", permissions_config.get("tools"))),
-                f"resources.{resource_id}.tools",
-            ),
-            disallowed_tools=_string_list(
-                agent_config.get(
-                    "disallowed_tools",
-                    raw.get("disallowed_tools", permissions_config.get("disallowed_tools")),
-                ),
-                f"resources.{resource_id}.disallowed_tools",
-            ),
-            # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
-            # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
-            mode=_config_string(raw, agent_config, "mode", "readwrite") or "readwrite",
-            isolation=_config_bool(raw, agent_config, "isolation", False),
-            model=_config_string(raw, agent_config, "model"),
-            skills=_config_string_list(raw, agent_config, "skills", f"resources.{resource_id}.skills"),
-            color=_config_string(raw, agent_config, "color"),
-            memory_dir=_config_string(raw, agent_config, "memory_dir"),
-            role=_config_string(raw, agent_config, "role", "any") or "any",
-            target=_config_string(raw, agent_config, "target", "any") or "any",
-            provider=_config_string(raw, agent_config, "provider", "anthropic") or "anthropic",
-            reasoning_effort=_config_optional_string(raw, agent_config, "reasoning_effort"),
-            context_window=_config_optional_string(raw, agent_config, "context_window"),
-            subagents=_config_subagents(raw, agent_config, f"resources.{resource_id}.subagents"),
-            target_configs=_config_table(raw, "targets", f"resources.{resource_id}.targets"),
-            artifact_bindings=artifact_bindings,
-            # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
-            # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
+            warnings=warnings,
         )
         _validate_relative_source(kit_source, resource)
         _validate_install_path(resource)
@@ -848,8 +763,8 @@ def _canonical_model_from_entry(
         kit_source,
         KitModel(
             slug=slug,
-            name=name,
-            version=version,
+            name=_optional_string(meta, "name") or slug,
+            version=_optional_string(meta, "version"),
             manifest_source="canonical",
             resources=resources,
             warnings=warnings,
@@ -960,22 +875,120 @@ def _resource_kind_from_path(source: str, resource_id: str) -> str:
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-kinds
     source_name = Path(source).name
     normalized_id = resource_id.strip().lower()
-    if normalized_id == "constraints" or source_name == "constraints.toml":
-        return "constraints"
-    if source == "SKILL.md":
-        return "skill"
-    if source == "AGENTS.md":
-        return "rule"
-    if source.endswith("template.md"):
-        return "template"
-    if source.endswith("checklist.md"):
-        return "checklist"
-    if source.startswith("scripts/"):
-        return "script"
-    if resource_id == "workflows" or source.startswith("workflows/"):
-        return "skill"
+    special_kinds = (
+        ("constraints", normalized_id == "constraints" or source_name == "constraints.toml"),
+        ("skill", source == "SKILL.md" or resource_id == "workflows" or source.startswith("workflows/")),
+        ("rule", source == "AGENTS.md"),
+        ("template", source.endswith("template.md")),
+        ("checklist", source.endswith("checklist.md")),
+        ("script", source.startswith("scripts/")),
+    )
+    for kind, matches in special_kinds:
+        if matches:
+            return kind
     return "directory" if "." not in Path(source).name else "other"
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-kinds
+
+
+def _canonical_resource_from_raw(
+    *,
+    kit_source: Path,
+    slug: str,
+    raw: Dict[str, Any],
+    resource_context: str,
+    resource_id: str,
+    warnings: List[str],
+) -> KitResource:
+    agent_config = raw.get("agent") if isinstance(raw.get("agent"), dict) else {}
+    if isinstance(agent_config, dict):
+        _warn_unknown_keys(
+            agent_config,
+            {
+                "mode", "isolation", "model", "tools", "disallowed_tools",
+                "skills", "color", "memory_dir", "role", "target",
+                "provider", "reasoning_effort", "context_window",
+                "subagents",
+            },
+            f"{resource_context}.agent",
+            warnings,
+        )
+    kind = _normalize_kind(
+        _require_string(raw, "kind", resource_context),
+        warnings=warnings,
+        resource_id=resource_id,
+    )
+    source = _require_string(raw, "source", resource_context)
+    resource_type = _optional_string(raw, "type") or "file"
+    if resource_type not in {"file", "directory"}:
+        raise ValueError(
+            f"Resource '{resource_id}': type must be 'file' or 'directory'",
+        )
+    public = _optional_bool(raw, "public", kind in _PUBLIC_KINDS)
+    prefix_generated_name = _optional_bool(raw, "prefix_generated_name", True)
+    generated_targets = _string_list(raw.get("generated_targets"), "generated_targets")
+    if public and kind not in _PUBLIC_KINDS:
+        raise ValueError(
+            f"Resource '{resource_id}': public=true is only allowed for skill, agent, and rule resources",
+        )
+    if not public and not prefix_generated_name:
+        raise ValueError(
+            f"Resource '{resource_id}': prefix_generated_name=false is only allowed for public resources",
+        )
+    if not public and generated_targets:
+        raise ValueError(
+            f"Resource '{resource_id}': generated_targets is only allowed for public resources",
+        )
+    artifact_bindings = _artifact_bindings(raw.get("artifacts"), f"resources.{resource_id}.artifacts")
+    if artifact_bindings and kind != "constraints":
+        raise ValueError(
+            f"Resource '{resource_id}': artifacts bindings are only allowed for constraints resources",
+        )
+    permissions_config = raw.get("permissions") if isinstance(raw.get("permissions"), dict) else {}
+    return KitResource(
+        id=resource_id,
+        kind=kind,
+        source=source,
+        install_path=_optional_string(raw, "install_path") or source,
+        type=resource_type,
+        public=public,
+        description=_optional_string(raw, "description"),
+        user_modifiable=_optional_bool(raw, "user_modifiable", True),
+        aliases=_string_list(raw.get("aliases"), "aliases"),
+        generated_targets=generated_targets or (["installed"] if public else []),
+        origin=_optional_string(raw, "origin"),
+        generated_name=_resource_generated_name(
+            slug,
+            public,
+            prefix_generated_name,
+            _public_name_from_source(kit_source, source, kind, resource_id),
+        ),
+        prefix_generated_name=prefix_generated_name,
+        tools=_string_list(
+            agent_config.get("tools", raw.get("tools", permissions_config.get("tools"))),
+            f"resources.{resource_id}.tools",
+        ),
+        disallowed_tools=_string_list(
+            agent_config.get(
+                "disallowed_tools",
+                raw.get("disallowed_tools", permissions_config.get("disallowed_tools")),
+            ),
+            f"resources.{resource_id}.disallowed_tools",
+        ),
+        mode=_config_string(raw, agent_config, "mode", _DEFAULT_MODE) or _DEFAULT_MODE,
+        isolation=_config_bool(raw, agent_config, "isolation", False),
+        model=_config_string(raw, agent_config, "model"),
+        skills=_config_string_list(raw, agent_config, "skills", f"resources.{resource_id}.skills"),
+        color=_config_string(raw, agent_config, "color"),
+        memory_dir=_config_string(raw, agent_config, "memory_dir"),
+        role=_config_string(raw, agent_config, "role", _DEFAULT_ROLE) or _DEFAULT_ROLE,
+        target=_config_string(raw, agent_config, "target", _DEFAULT_TARGET) or _DEFAULT_TARGET,
+        provider=_config_string(raw, agent_config, "provider", _DEFAULT_PROVIDER) or _DEFAULT_PROVIDER,
+        reasoning_effort=_config_optional_string(raw, agent_config, "reasoning_effort"),
+        context_window=_config_optional_string(raw, agent_config, "context_window"),
+        subagents=_config_subagents(raw, agent_config, f"resources.{resource_id}.subagents"),
+        target_configs=_config_table(raw, "targets", f"resources.{resource_id}.targets"),
+        artifact_bindings=artifact_bindings,
+    )
 
 
 def _from_manifest_resource(
@@ -1072,6 +1085,42 @@ def _append_unique_legacy_resource(
     resources.append(resource)
 
 
+def _append_manifest_resources(
+    resources: List[KitResource],
+    seen_ids: set[str],
+    manifest_resources: List[ManifestResource],
+    kit_source: Path,
+    slug: str,
+    warnings: List[str],
+) -> None:
+    """Normalize legacy manifest resources into KitResource entries."""
+    for res in manifest_resources:
+        _append_unique_legacy_resource(
+            resources,
+            seen_ids,
+            _from_manifest_resource(kit_source, slug, res, warnings),
+        )
+
+
+def _append_legacy_component_resource(
+    resources: List[KitResource],
+    seen_ids: set[str],
+    warnings: List[str],
+    resource: Optional[KitResource],
+    *,
+    warning_message: str = "",
+    deprecation_warning: str = "",
+) -> None:
+    """Append an optional normalized component resource and related warnings."""
+    if resource is None:
+        return
+    _append_unique_legacy_resource(resources, seen_ids, resource)
+    if warning_message:
+        warnings.append(warning_message)
+    if deprecation_warning and deprecation_warning not in warnings:
+        warnings.append(deprecation_warning)
+
+
 def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
     manifest = load_manifest(kit_source)
@@ -1088,44 +1137,47 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
     resources: List[KitResource] = []
     seen_ids: set[str] = set()
     if isinstance(manifest, Manifest):
-        for res in manifest.resources:
-            _append_unique_legacy_resource(
-                resources,
-                seen_ids,
-                _from_manifest_resource(kit_source, slug, res, warnings),
-            )
+        _append_manifest_resources(
+            resources,
+            seen_ids,
+            manifest.resources,
+            kit_source,
+            slug,
+            warnings,
+        )
         version = manifest.version or conf_version
     elif isinstance(manifest, ManifestV2):
         version = manifest.version or conf_version
-        for res in manifest.resources:
-            _append_unique_legacy_resource(
+        _append_manifest_resources(
+            resources,
+            seen_ids,
+            manifest.resources,
+            kit_source,
+            slug,
+            warnings,
+        )
+        for workflow in manifest.workflows:
+            _append_legacy_component_resource(
                 resources,
                 seen_ids,
-                _from_manifest_resource(kit_source, slug, res, warnings),
+                warnings,
+                _from_manifest_component(
+                    kit_source,
+                    slug,
+                    workflow,
+                    "skill",
+                    origin="legacy-workflow",
+                ),
+                warning_message=f"Legacy workflow '{workflow.id}' normalized to public skill resource",
+                deprecation_warning=_LEGACY_WORKFLOW_DEPRECATION_WARNING,
             )
-        for workflow in manifest.workflows:
-            resource = _from_manifest_component(
-                kit_source,
-                slug,
-                workflow,
-                "skill",
-                origin="legacy-workflow",
-            )
-            if resource is not None:
-                # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
-                # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
-                _append_unique_legacy_resource(resources, seen_ids, resource)
-                warnings.append(
-                    f"Legacy workflow '{workflow.id}' normalized to public skill resource",
-                )
-                if _LEGACY_WORKFLOW_DEPRECATION_WARNING not in warnings:
-                    warnings.append(_LEGACY_WORKFLOW_DEPRECATION_WARNING)
-                # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
-                # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
         for skill in manifest.skills:
-            resource = _from_manifest_component(kit_source, slug, skill, "skill")
-            if resource is not None:
-                _append_unique_legacy_resource(resources, seen_ids, resource)
+            _append_legacy_component_resource(
+                resources,
+                seen_ids,
+                warnings,
+                _from_manifest_component(kit_source, slug, skill, "skill"),
+            )
         for agent in manifest.agents:
             resource = _from_manifest_component(kit_source, slug, agent, "agent")
             if resource is not None:
@@ -1265,6 +1317,83 @@ def _find_core_kit_entry(kit_source: Path) -> tuple[Path, str, Dict[str, Any]]:
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
 
 
+def _core_binding_resource(
+    *,
+    kit_source: Path,
+    studio_root: Path,
+    slug: str,
+    resource_id: Any,
+    binding: Any,
+    warnings: List[str],
+) -> Optional[KitResource]:
+    raw_binding = binding.get("path") if isinstance(binding, dict) else binding
+    if not isinstance(raw_binding, str) or not raw_binding.strip():
+        warnings.append(f"Resource '{resource_id}' has no usable binding path; skipped")
+        return None
+    bound_path = _resolve_core_path(studio_root, raw_binding)
+    try:
+        source = bound_path.relative_to(kit_source.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError(
+            f"Resource '{resource_id}' binding '{raw_binding}' is outside selected kit root '{kit_source}'",
+        ) from exc
+    if not bound_path.exists():
+        raise ValueError(f"Resource '{resource_id}' binding path does not exist: {bound_path}")
+    binding_dict = binding if isinstance(binding, dict) else {}
+    kind = (
+        _normalize_kind(str(binding_dict.get("kind", "")).strip(), warnings=warnings, resource_id=str(resource_id))
+        if str(binding_dict.get("kind", "")).strip()
+        else _resource_kind_from_path(source, str(resource_id))
+    )
+    artifact_bindings = _artifact_bindings(binding_dict.get("artifacts"), f"resources.{resource_id}.artifacts")
+    if artifact_bindings and kind != "constraints":
+        raise ValueError(
+            f"Resource '{resource_id}': artifacts bindings are only allowed for constraints resources",
+        )
+    origin = str(binding_dict.get("origin", "")).strip()
+    if not origin and kind == "skill" and source.startswith("workflows/"):
+        origin = "legacy-workflow"
+    return KitResource(
+        id=str(resource_id),
+        kind=kind,
+        source=source,
+        install_path=source,
+        type="directory" if bound_path.is_dir() else "file",
+        public=kind in _PUBLIC_KINDS,
+        description=str(binding_dict.get("description", "")).strip(),
+        user_modifiable=bool(binding_dict.get("user_modifiable", True)),
+        aliases=_string_list(binding_dict.get("aliases"), f"resources.{resource_id}.aliases"),
+        generated_targets=_string_list(binding_dict.get("generated_targets"), f"resources.{resource_id}.generated_targets") or ["installed"],
+        origin=origin,
+        generated_name=_resource_generated_name(
+            slug,
+            kind in _PUBLIC_KINDS,
+            bool(binding_dict.get("prefix_generated_name", True)),
+            _public_name_from_source(kit_source, source, kind, resource_id),
+        ),
+        prefix_generated_name=bool(binding_dict.get("prefix_generated_name", True)),
+        tools=_string_list(binding_dict.get("tools"), f"resources.{resource_id}.tools"),
+        disallowed_tools=_string_list(
+            binding_dict.get("disallowed_tools"),
+            f"resources.{resource_id}.disallowed_tools",
+        ),
+        mode=str(binding_dict.get("mode", _DEFAULT_MODE) or _DEFAULT_MODE),
+        isolation=bool(binding_dict.get("isolation", False)),
+        model=str(binding_dict.get("model", _EMPTY_TEXT) or _EMPTY_TEXT),
+        skills=_string_list(binding_dict.get("skills"), f"resources.{resource_id}.skills"),
+        color=str(binding_dict.get("color", _EMPTY_TEXT) or _EMPTY_TEXT),
+        memory_dir=str(binding_dict.get("memory_dir", _EMPTY_TEXT) or _EMPTY_TEXT),
+        role=str(binding_dict.get("role", _DEFAULT_ROLE) or _DEFAULT_ROLE),
+        target=str(binding_dict.get("target", _DEFAULT_TARGET) or _DEFAULT_TARGET),
+        provider=str(binding_dict.get("provider", _DEFAULT_PROVIDER) or _DEFAULT_PROVIDER),
+        reasoning_effort=str(binding_dict.get("reasoning_effort", _EMPTY_TEXT) or _EMPTY_TEXT) if binding_dict.get("reasoning_effort") else None,
+        context_window=str(binding_dict.get("context_window", _EMPTY_TEXT) or _EMPTY_TEXT) if binding_dict.get("context_window") else None,
+        subagents=_config_subagents(binding_dict, {}, f"resources.{resource_id}.subagents"),
+        target_configs=_config_table(binding_dict, "targets", f"resources.{resource_id}.targets"),
+        artifact_bindings=artifact_bindings,
+    )
+
+
 def _load_core_model(kit_source: Path) -> KitModel:
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
     studio_root, slug, entry = _find_core_kit_entry(kit_source)
@@ -1275,84 +1404,16 @@ def _load_core_model(kit_source: Path) -> KitModel:
     warnings = ["installed core.toml resource bindings normalized to canonical KitModel"]
     resources: List[KitResource] = []
     for resource_id, binding in sorted(bindings.items()):
-        raw_binding = binding.get("path") if isinstance(binding, dict) else binding
-        if not isinstance(raw_binding, str) or not raw_binding.strip():
-            warnings.append(f"Resource '{resource_id}' has no usable binding path; skipped")
-            continue
-        bound_path = _resolve_core_path(studio_root, raw_binding)
-        try:
-            source = bound_path.relative_to(kit_source.resolve()).as_posix()
-        except ValueError as exc:
-            # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-containment
-            raise ValueError(
-                f"Resource '{resource_id}' binding '{raw_binding}' is outside selected kit root '{kit_source}'",
-            ) from exc
-            # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-containment
-        if not bound_path.exists():
-            raise ValueError(f"Resource '{resource_id}' binding path does not exist: {bound_path}")
-        resource_type = "directory" if bound_path.is_dir() else "file"
-        raw_kind = binding.get("kind") if isinstance(binding, dict) else None
-        if isinstance(raw_kind, str) and raw_kind.strip():
-            kind = _normalize_kind(raw_kind, warnings=warnings, resource_id=str(resource_id))
-        else:
-            kind = _resource_kind_from_path(source, str(resource_id))
-        origin = str(binding.get("origin", "")).strip() if isinstance(binding, dict) else ""
-        if not origin and kind == "skill" and source.startswith("workflows/"):
-            origin = "legacy-workflow"
-        artifact_bindings = _artifact_bindings(binding.get("artifacts") if isinstance(binding, dict) else None, f"resources.{resource_id}.artifacts")
-        if artifact_bindings and kind != "constraints":
-            raise ValueError(
-                f"Resource '{resource_id}': artifacts bindings are only allowed for constraints resources",
-            )
-        resources.append(KitResource(
-            id=str(resource_id),
-            kind=kind,
-            source=source,
-            install_path=source,
-            type=resource_type,
-            public=kind in _PUBLIC_KINDS,
-            description=str(binding.get("description", "")).strip() if isinstance(binding, dict) else "",
-            user_modifiable=bool(binding.get("user_modifiable", True)) if isinstance(binding, dict) else True,
-            aliases=_string_list(binding.get("aliases") if isinstance(binding, dict) else None, f"resources.{resource_id}.aliases"),
-            generated_targets=_string_list(binding.get("generated_targets") if isinstance(binding, dict) else None, f"resources.{resource_id}.generated_targets") or ["installed"],
-            origin=origin,
-            generated_name=_resource_generated_name(
-                slug,
-                kind in _PUBLIC_KINDS,
-                bool(binding.get("prefix_generated_name", True)) if isinstance(binding, dict) else True,
-                _public_name_from_source(kit_source, source, kind, resource_id),
-            ),
-            prefix_generated_name=bool(binding.get("prefix_generated_name", True)) if isinstance(binding, dict) else True,
-            tools=_string_list(binding.get("tools") if isinstance(binding, dict) else None, f"resources.{resource_id}.tools"),
-            disallowed_tools=_string_list(
-                binding.get("disallowed_tools") if isinstance(binding, dict) else None,
-                f"resources.{resource_id}.disallowed_tools",
-            ),
-            mode=str(binding.get("mode", "readwrite") or "readwrite") if isinstance(binding, dict) else "readwrite",
-            isolation=bool(binding.get("isolation", False)) if isinstance(binding, dict) else False,
-            model=str(binding.get("model", "") or "") if isinstance(binding, dict) else "",
-            skills=_string_list(binding.get("skills") if isinstance(binding, dict) else None, f"resources.{resource_id}.skills"),
-            color=str(binding.get("color", "") or "") if isinstance(binding, dict) else "",
-            memory_dir=str(binding.get("memory_dir", "") or "") if isinstance(binding, dict) else "",
-            role=str(binding.get("role", "any") or "any") if isinstance(binding, dict) else "any",
-            target=str(binding.get("target", "any") or "any") if isinstance(binding, dict) else "any",
-            provider=str(binding.get("provider", "anthropic") or "anthropic") if isinstance(binding, dict) else "anthropic",
-            reasoning_effort=str(binding.get("reasoning_effort", "") or "") if isinstance(binding, dict) and binding.get("reasoning_effort") else None,
-            context_window=str(binding.get("context_window", "") or "") if isinstance(binding, dict) and binding.get("context_window") else None,
-            subagents=_config_subagents(
-                binding if isinstance(binding, dict) else {},
-                {},
-                f"resources.{resource_id}.subagents",
-            ) if isinstance(binding, dict) else [],
-            target_configs=_config_table(
-                binding if isinstance(binding, dict) else {},
-                "targets",
-                f"resources.{resource_id}.targets",
-            ) if isinstance(binding, dict) else {},
-            # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
-            artifact_bindings=artifact_bindings,
-            # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
-        ))
+        resource = _core_binding_resource(
+            kit_source=kit_source,
+            studio_root=studio_root,
+            slug=slug,
+            resource_id=resource_id,
+            binding=binding,
+            warnings=warnings,
+        )
+        if resource is not None:
+            resources.append(resource)
     if not resources:
         raise ValueError(f"No usable resource bindings found for kit '{slug}'")
 
@@ -1481,6 +1542,53 @@ def load_installed_kit_model(
             return _with_hashes(kit_source, _merge_core_authoritative_model(core_model, source_model))
     return load_kit_model(kit_source, kit_slug=kit_slug)
 
+
+def _resource_to_toml_item(resource: KitResource) -> Dict[str, Any]:
+    item: Dict[str, Any] = {
+        "id": resource.id,
+        "kind": resource.kind,
+        "source": resource.source,
+        "install_path": resource.install_path,
+        "type": resource.type,
+        "user_modifiable": resource.user_modifiable,
+    }
+    optional_values = {
+        "description": resource.description,
+        "aliases": resource.aliases,
+        "generated_targets": resource.generated_targets,
+        "origin": resource.origin,
+        "tools": resource.tools,
+        "disallowed_tools": resource.disallowed_tools,
+        "model": resource.model,
+        "skills": resource.skills,
+        "color": resource.color,
+        "memory_dir": resource.memory_dir,
+        "reasoning_effort": resource.reasoning_effort,
+        "context_window": resource.context_window,
+        "subagents": resource.subagents,
+        "targets": resource.target_configs,
+        "artifacts": resource.artifact_bindings,
+    }
+    if resource.public:
+        item["public"] = True
+    if not resource.prefix_generated_name:
+        item["prefix_generated_name"] = False
+    if resource.mode != _DEFAULT_MODE:
+        item["mode"] = resource.mode
+    if resource.isolation:
+        item["isolation"] = resource.isolation
+    if resource.role != _DEFAULT_ROLE:
+        item["role"] = resource.role
+    if resource.target != _DEFAULT_TARGET:
+        item["target"] = resource.target
+    if resource.provider != _DEFAULT_PROVIDER:
+        item["provider"] = resource.provider
+    for key, value in optional_values.items():
+        if value:
+            item[key] = value
+    return item
+
+
 def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
     """Convert one or more KitModels to canonical manifest TOML data."""
     if not models:
@@ -1488,68 +1596,11 @@ def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
     kits: List[Dict[str, Any]] = []
     for model in models:
-        resources: List[Dict[str, Any]] = []
-        for resource in model.resources:
-            item: Dict[str, Any] = {
-                "id": resource.id,
-                "kind": resource.kind,
-                "source": resource.source,
-                "install_path": resource.install_path,
-                "type": resource.type,
-                "user_modifiable": resource.user_modifiable,
-            }
-            if resource.public:
-                item["public"] = True
-            if resource.description:
-                item["description"] = resource.description
-            if resource.aliases:
-                item["aliases"] = resource.aliases
-            if resource.generated_targets:
-                item["generated_targets"] = resource.generated_targets
-            if resource.origin:
-                item["origin"] = resource.origin
-            if not resource.prefix_generated_name:
-                item["prefix_generated_name"] = False
-            if resource.tools:
-                item["tools"] = resource.tools
-            if resource.disallowed_tools:
-                item["disallowed_tools"] = resource.disallowed_tools
-            if resource.mode != "readwrite":
-                item["mode"] = resource.mode
-            if resource.isolation:
-                item["isolation"] = resource.isolation
-            if resource.model:
-                item["model"] = resource.model
-            if resource.skills:
-                item["skills"] = resource.skills
-            if resource.color:
-                item["color"] = resource.color
-            if resource.memory_dir:
-                item["memory_dir"] = resource.memory_dir
-            if resource.role != "any":
-                item["role"] = resource.role
-            if resource.target != "any":
-                item["target"] = resource.target
-            if resource.provider != "anthropic":
-                item["provider"] = resource.provider
-            if resource.reasoning_effort:
-                item["reasoning_effort"] = resource.reasoning_effort
-            if resource.context_window:
-                item["context_window"] = resource.context_window
-            if resource.subagents:
-                item["subagents"] = resource.subagents
-            if resource.target_configs:
-                item["targets"] = resource.target_configs
-            # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
-            if resource.artifact_bindings:
-                item["artifacts"] = resource.artifact_bindings
-            # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
-            resources.append(item)
         kits.append({
             "slug": model.slug,
             "name": model.name,
             "version": model.version,
-            "resources": resources,
+            "resources": [_resource_to_toml_item(resource) for resource in model.resources],
         })
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 

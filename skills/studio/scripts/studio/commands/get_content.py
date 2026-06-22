@@ -8,7 +8,75 @@ from typing import List
 from ..utils.codebase import CodeFile
 from ..utils.document import get_content_scoped
 from ..utils.ui import ui
+from .list_ids import _resolve_registered_artifact_scan
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
+
+
+def _emit_code_content(args: argparse.Namespace) -> int:
+    """Resolve and print scoped content for a code file."""
+    code_path = Path(args.code).resolve()
+    if not code_path.is_file():
+        ui.result({"status": "ERROR", "message": f"Code file not found: {code_path}"})
+        return 1
+
+    cf, errs = CodeFile.from_path(code_path)
+    if errs or cf is None:
+        ui.result({"status": "ERROR", "message": f"Failed to parse code file: {errs}"})
+        return 1
+
+    content = cf.get_by_inst(args.inst) if args.inst else None
+    if content is None:
+        content = cf.get(args.id)
+    if content is None:
+        ui.result({"status": "NOT_FOUND", "id": args.id, "inst": args.inst})
+        return 2
+
+    ui.result({"status": "FOUND", "id": args.id, "inst": args.inst, "text": content}, human_fn=_human_get_content)
+    return 0
+
+
+def _emit_artifact_content(args: argparse.Namespace) -> int:
+    """Resolve and print scoped content for a registered artifact."""
+    resolved = _resolve_registered_artifact_scan(
+        args.artifact,
+        init_message="Constructor Studio not initialized",
+        registry_message="Artifact not registered: {rel_path}",
+    )
+    if resolved is None:
+        return 1
+
+    ctx, artifacts_to_scan = resolved
+    artifact_path, artifact_kind = artifacts_to_scan[0]
+    result = get_content_scoped(artifact_path, id_value=args.id)
+    if result is None:
+        ui.result({"status": "NOT_FOUND", "id": args.id})
+        return 2
+
+    try:
+        rel_path = artifact_path.relative_to(ctx.project_root).as_posix()
+    except ValueError:
+        ui.result({"status": "ERROR", "message": f"Artifact not under project root: {artifact_path}"})
+        return 1
+
+    artifact_entry = ctx.meta.get_artifact_by_path(rel_path)
+    if artifact_entry is None:
+        ui.result({"status": "ERROR", "message": f"Artifact not registered: {rel_path}"})
+        return 1
+
+    _artifact_meta, system = artifact_entry
+    text, start_line, end_line = result
+    ui.result({
+        "status": "FOUND",
+        "id": args.id,
+        "text": text,
+        "artifact": str(artifact_path),
+        "start_line": start_line,
+        "end_line": end_line,
+        "kind": artifact_kind,
+        "system": system.name,
+        "traceability": getattr(_artifact_meta, "traceability", None),
+    }, human_fn=_human_get_content)
+    return 0
 
 # @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
 def cmd_get_content(argv: List[str]) -> int:
@@ -23,83 +91,14 @@ def cmd_get_content(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-get-content
     # Handle code file path
     if args.code:
-        code_path = Path(args.code).resolve()
-        if not code_path.is_file():
-            ui.result({"status": "ERROR", "message": f"Code file not found: {code_path}"})
-            return 1
-
-        cf, errs = CodeFile.from_path(code_path)
-        if errs or cf is None:
-            ui.result({"status": "ERROR", "message": f"Failed to parse code file: {errs}"})
-            return 1
-
-        # Try to get content by ID or inst
-        content = None
-        if args.inst:
-            content = cf.get_by_inst(args.inst)
-        if content is None:
-            content = cf.get(args.id)
-
-        if content is None:
-            ui.result({"status": "NOT_FOUND", "id": args.id, "inst": args.inst})
-            return 2
-
-        ui.result({"status": "FOUND", "id": args.id, "inst": args.inst, "text": content}, human_fn=_human_get_content)
-        return 0
+        return _emit_code_content(args)
 
     # Handle artifact path
     if not args.artifact:
         ui.result({"status": "ERROR", "message": "Either --artifact or --code must be specified"})
         return 1
-
-    artifact_path = Path(args.artifact).resolve()
-    if not artifact_path.is_file():
-        ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
-        return 1
-
-    # Load StudioContext from artifact's location
-    from ..utils.context import StudioContext
-
-    ctx = StudioContext.load(artifact_path.parent)
-    if not ctx:
-        ui.result({"status": "ERROR", "message": "Constructor Studio not initialized"})
-        return 1
-
-    meta = ctx.meta
-    project_root = ctx.project_root
-
-    # Find artifact in registry to get its template
-    try:
-        rel_path = artifact_path.relative_to(project_root).as_posix()
-    except ValueError:
-        ui.result({"status": "ERROR", "message": f"Artifact not under project root: {artifact_path}"})
-        return 1
-
-    artifact_entry = meta.get_artifact_by_path(rel_path)
-    if artifact_entry is None:
-        ui.result({"status": "ERROR", "message": f"Artifact not registered: {rel_path}"})
-        return 1
-
-    artifact_meta, system = artifact_entry
-    result = get_content_scoped(artifact_path, id_value=args.id)
-    if result is None:
-        ui.result({"status": "NOT_FOUND", "id": args.id})
-        return 2
-
-    text, start_line, end_line = result
-    ui.result({
-        "status": "FOUND",
-        "id": args.id,
-        "text": text,
-        "artifact": str(artifact_path),
-        "start_line": start_line,
-        "end_line": end_line,
-        "kind": artifact_meta.kind,
-        "system": system.name,
-        "traceability": artifact_meta.traceability,
-    }, human_fn=_human_get_content)
+    return _emit_artifact_content(args)
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-get-content
-    return 0
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-format
 def _human_get_content(data: dict) -> None:

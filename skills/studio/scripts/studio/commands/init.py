@@ -6,12 +6,14 @@ import json
 import re
 import shutil
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
 from ..utils._tomllib_compat import tomllib
 from ..utils.artifacts_meta import create_backup, generate_default_registry, generate_slug
+from ..utils.files import read_root_agents_marked_text
 from ..utils import toml_utils
 from ..utils.ui import ui
 from .agents import list_managed_agent_output_paths
@@ -40,6 +42,15 @@ KIT_TRACKING_POLICIES = ("tracked", "ignored")
 KIT_TRACKING_ALIASES = {"untracked": "ignored"}
 GITIGNORE_MARKER_START = "# BEGIN Constructor Studio"
 GITIGNORE_MARKER_END = "# END Constructor Studio"
+LEGACY_MIGRATION_CHOICES = ("ask", "yes", "no")
+_CONFIG_README_PREAMBLE = (
+    "# config -- User Configuration\n"
+    "\n"
+    "This directory contains **user-editable** configuration files.\n"
+    "\n"
+    "## Files\n"
+    "\n"
+)
 
 def _cache_allows_root_metadata(cache_dir: Path) -> bool:
     """Return False for local/path cache sources where version metadata is not authoritative."""
@@ -52,6 +63,142 @@ def _cache_allows_root_metadata(cache_dir: Path) -> bool:
         return True
     source_type = str(data.get("source_type") or "").strip().lower()
     return source_type not in {"local", "local_path", "path"}
+
+
+def _pre_force_existing_names(core_dir: Path, target_dir: Path) -> set[str]:
+    existing: set[str] = set()
+    for name in COPY_DIRS:
+        if (core_dir / name).exists():
+            existing.add(name)
+    for name in COPY_ROOT_DIRS:
+        if (target_dir / name).exists():
+            existing.add(name)
+    for name in COPY_ROOT_FILES:
+        if (target_dir / name).exists():
+            existing.add(name)
+    return existing
+
+
+def _copy_cache_dir(
+    *,
+    src: Path,
+    dst: Path,
+    name: str,
+    force: bool,
+    pre_force_existed: set[str],
+    results: Dict[str, str],
+) -> None:
+    if not src.is_dir():
+        results[name] = "missing_in_cache"
+        return
+    if dst.exists():
+        if not force:
+            results[name] = "skipped"
+            return
+        shutil.rmtree(dst)
+        results[name] = "updated"
+    else:
+        results[name] = "updated" if force and name in pre_force_existed else "created"
+    shutil.copytree(src, dst)
+
+
+def _remove_existing_path(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+        return
+    path.unlink()
+
+
+def _copy_cache_file(
+    *,
+    src: Path,
+    dst: Path,
+    name: str,
+    force: bool,
+    pre_force_existed: set[str],
+    results: Dict[str, str],
+) -> None:
+    if not src.is_file():
+        if force and name in COPY_ROOT_FILES and (dst.exists() or dst.is_symlink()):
+            _remove_existing_path(dst)
+        results[name] = "missing_in_cache"
+        return
+    if dst.is_symlink():
+        if not force:
+            results[name] = "skipped"
+            return
+        dst.unlink()
+        results[name] = "updated"
+    if dst.exists():
+        if not force:
+            results[name] = "skipped"
+            return
+        _remove_existing_path(dst)
+        results[name] = "updated"
+    else:
+        results[name] = "updated" if force and name in pre_force_existed else "created"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+
+
+def _copy_architecture_items(
+    *,
+    cache_dir: Path,
+    core_dir: Path,
+    force: bool,
+    pre_force_existed: set[str],
+    results: Dict[str, str],
+) -> None:
+    arch_src = cache_dir / "architecture"
+    arch_dst = core_dir / "architecture"
+    for item in COPY_ARCHITECTURE_ITEMS:
+        name = f"architecture/{item}"
+        src = arch_src / item
+        dst = arch_dst / item
+        if src.is_dir():
+            _copy_cache_dir(
+                src=src,
+                dst=dst,
+                name=name,
+                force=force,
+                pre_force_existed=pre_force_existed,
+                results=results,
+            )
+            continue
+        if src.is_file():
+            _copy_cache_file(
+                src=src,
+                dst=dst,
+                name=name,
+                force=force,
+                pre_force_existed=pre_force_existed,
+                results=results,
+            )
+            continue
+        results[name] = "missing_in_cache"
+
+
+def _copy_root_metadata_files(
+    *,
+    cache_dir: Path,
+    target_dir: Path,
+    force: bool,
+    pre_force_existed: set[str],
+    results: Dict[str, str],
+) -> None:
+    if not _cache_allows_root_metadata(cache_dir):
+        for name in COPY_ROOT_FILES:
+            results[name] = "skipped_local_path_source"
+        return
+    for name in COPY_ROOT_FILES:
+        _copy_cache_file(
+            src=cache_dir / name,
+            dst=target_dir / name,
+            name=name,
+            force=force,
+            pre_force_existed=pre_force_existed,
+            results=results,
+        )
 
 
 def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> Dict[str, str]:
@@ -69,20 +216,7 @@ def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> 
     """
     core_dir = target_dir / CORE_SUBDIR
     results: Dict[str, str] = {}
-
-    # Snapshot which directories existed before rmtree so force re-copies
-    # are reported as "updated" rather than "created".
-    pre_force_existed: set = set()
-    if force:
-        for name in COPY_DIRS:
-            if (core_dir / name).exists():
-                pre_force_existed.add(name)
-        for name in COPY_ROOT_DIRS:
-            if (target_dir / name).exists():
-                pre_force_existed.add(name)
-        for name in COPY_ROOT_FILES:
-            if (target_dir / name).exists():
-                pre_force_existed.add(name)
+    pre_force_existed = _pre_force_existing_names(core_dir, target_dir) if force else set()
 
     # Full cleanup of .core/ when force=True (ensures no stale files)
     # This is the mode used by `cfs update` which always passes force=True
@@ -91,75 +225,41 @@ def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> 
 
     core_dir.mkdir(parents=True, exist_ok=True)
 
-    def _copy_dir(src: Path, dst: Path, name: str) -> None:
-        """Copy a directory."""
-        if not src.is_dir():
-            results[name] = "missing_in_cache"
-            return
-        if dst.exists():
-            if not force:
-                results[name] = "skipped"
-                return
-            shutil.rmtree(dst)
-            results[name] = "updated"
-        else:
-            results[name] = "updated" if force and name in pre_force_existed else "created"
-        shutil.copytree(src, dst)
-
-    def _copy_file(src: Path, dst: Path, name: str) -> None:
-        """Copy a single file."""
-        if not src.is_file():
-            if force and name in COPY_ROOT_FILES and (dst.exists() or dst.is_symlink()):
-                if dst.is_dir() and not dst.is_symlink():
-                    shutil.rmtree(dst)
-                else:
-                    dst.unlink()
-            results[name] = "missing_in_cache"
-            return
-        if dst.is_symlink():
-            if not force:
-                results[name] = "skipped"
-                return
-            dst.unlink()
-            results[name] = "updated"
-        if dst.exists():
-            if not force:
-                results[name] = "skipped"
-                return
-            if dst.is_dir():
-                shutil.rmtree(dst)
-            results[name] = "updated"
-        else:
-            results[name] = "updated" if force and name in pre_force_existed else "created"
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-
-    # Copy full directories
     for name in COPY_DIRS:
-        _copy_dir(cache_dir / name, core_dir / name, name)
+        _copy_cache_dir(
+            src=cache_dir / name,
+            dst=core_dir / name,
+            name=name,
+            force=force,
+            pre_force_existed=pre_force_existed,
+            results=results,
+        )
 
-    # Copy selective items from architecture/
-    arch_src = cache_dir / "architecture"
-    arch_dst = core_dir / "architecture"
-    for item in COPY_ARCHITECTURE_ITEMS:
-        src = arch_src / item
-        dst = arch_dst / item
-        if src.is_dir():
-            _copy_dir(src, dst, f"architecture/{item}")
-        elif src.is_file():
-            _copy_file(src, dst, f"architecture/{item}")
-        else:
-            results[f"architecture/{item}"] = "missing_in_cache"
+    _copy_architecture_items(
+        cache_dir=cache_dir,
+        core_dir=core_dir,
+        force=force,
+        pre_force_existed=pre_force_existed,
+        results=results,
+    )
 
     for name in COPY_ROOT_DIRS:
-        _copy_dir(cache_dir / name, target_dir / name, name)
+        _copy_cache_dir(
+            src=cache_dir / name,
+            dst=target_dir / name,
+            name=name,
+            force=force,
+            pre_force_existed=pre_force_existed,
+            results=results,
+        )
 
-    if _cache_allows_root_metadata(cache_dir):
-        for name in COPY_ROOT_FILES:
-            _copy_file(cache_dir / name, target_dir / name, name)
-    else:
-        for name in COPY_ROOT_FILES:
-            results[name] = "skipped_local_path_source"
+    _copy_root_metadata_files(
+        cache_dir=cache_dir,
+        target_dir=target_dir,
+        force=force,
+        pre_force_existed=pre_force_existed,
+        results=results,
+    )
 
     return results
 
@@ -233,12 +333,7 @@ def _gen_readme() -> str:
 def _config_readme() -> str:
     """README.md content for config/ directory."""
     return (
-        "# config — User Configuration\n"
-        "\n"
-        "This directory contains **user-editable** configuration files.\n"
-        "\n"
-        "## Files\n"
-        "\n"
+        _CONFIG_README_PREAMBLE +
         "- `core.toml` — project settings (system name, slug, kit references)\n"
         "- `artifacts.toml` — artifacts registry (systems, ignore patterns)\n"
         "- `AGENTS.md` — custom agent navigation rules (add your own WHEN rules here)\n"
@@ -254,6 +349,441 @@ def _config_readme() -> str:
         "- `AGENTS.md` and `SKILL.md` start empty. Add any project-specific rules or\n"
         "  skill instructions here — they will be picked up alongside the kit ones.\n"
         "- Kit files can be edited directly; `cfs kit update` shows a diff for changes.\n"
+    )
+
+
+def _add_legacy_migration_args(parser: argparse.ArgumentParser) -> None:
+    """Add the shared Cyber Pilot migration flags to a parser."""
+    parser.add_argument(
+        "--migrate-from-cypilot",
+        choices=LEGACY_MIGRATION_CHOICES,
+        default="ask",
+        metavar="{ask,yes,no}",
+        help="Migrate an existing Cyber Pilot (cypilot) project. Use --migrate-from-cypilot={ask,yes,no} (default: ask)",
+    )
+    parser.add_argument(
+        "--update-legacy-studio",
+        choices=LEGACY_MIGRATION_CHOICES,
+        default="ask",
+        metavar="{ask,yes,no}",
+        help="Update unsupported Constructor Studio installs to the migration baseline first. Use --update-legacy-studio={ask,yes,no} (default: ask)",
+    )
+
+
+def _emit_legacy_migration_result(
+    result: Dict[str, Any],
+    preflight: Dict[str, Any],
+    *,
+    human_fn: Any,
+) -> None:
+    """Merge legacy preflight details into the migration result and render it."""
+    from .migrate_from_cypilot import merge_legacy_preflight_result
+
+    merge_legacy_preflight_result(result, preflight)
+    ui.result(result, human_fn=human_fn)
+
+
+def _run_legacy_migration(
+    *,
+    project_root: Path,
+    from_dir: str,
+    to_dir: str,
+    dry_run: bool,
+    force: bool,
+    yes: bool,
+) -> tuple[int, Dict[str, Any]]:
+    """Run the shared Cyber Pilot migration command."""
+    from .migrate_from_cypilot import migrate_from_cypilot
+
+    options = {
+        "project_root": project_root,
+        "from_dir": from_dir,
+        "to_dir": to_dir,
+        "dry_run": dry_run,
+        "force": force,
+        "yes": yes,
+    }
+    return _legacy_migration_kwargs(
+        migrate_from_cypilot=migrate_from_cypilot,
+        **options,
+    )
+
+
+def _legacy_migration_kwargs(
+    *,
+    migrate_from_cypilot,
+    project_root: Path,
+    from_dir: str,
+    to_dir: str,
+    dry_run: bool,
+    force: bool,
+    yes: bool,
+) -> tuple[int, Dict[str, Any]]:
+    options = {
+        "project_root": project_root,
+        "from_dir": from_dir,
+        "to_dir": to_dir,
+        "dry_run": dry_run,
+        "force": force,
+        "yes": yes,
+        "skip_update": False,
+    }
+    return migrate_from_cypilot(**options)
+
+
+def _run_and_emit_legacy_migration(
+    *,
+    project_root: Path,
+    from_dir: str,
+    to_dir: str,
+    dry_run: bool,
+    force: bool,
+    yes: bool,
+    preflight: Dict[str, Any],
+    human_fn: Any,
+) -> tuple[int, Dict[str, Any]]:
+    """Run the migration command and emit the merged result."""
+    migration_args = {
+        "project_root": project_root,
+        "from_dir": from_dir,
+        "to_dir": to_dir,
+        "dry_run": dry_run,
+        "force": force,
+        "yes": yes,
+    }
+    rc, result = _run_legacy_migration(**migration_args)
+    _emit_legacy_migration_result(result, preflight, human_fn=human_fn)
+    return rc, result
+
+
+def _run_default_legacy_migration(
+    *,
+    args: argparse.Namespace,
+    project_root: Path,
+    from_dir: str,
+    to_dir: str,
+    preflight: Dict[str, Any],
+    human_fn: Any,
+    force: bool = False,
+) -> int:
+    """Run the standard legacy migration flow using CLI defaults."""
+    rc, _result = _run_and_emit_legacy_migration(
+        project_root=project_root,
+        from_dir=from_dir,
+        to_dir=to_dir,
+        dry_run=args.dry_run,
+        force=force,
+        yes=args.yes or args.migrate_from_cypilot == "yes",
+        preflight=preflight,
+        human_fn=human_fn,
+    )
+    return rc
+
+
+def _render_error_entries(errors: object) -> None:
+    """Render a mixed list of string/dict errors."""
+    for err in errors if isinstance(errors, list) else []:
+        if isinstance(err, dict):
+            ui.substep(f"• {err.get('path', '?')}: {err.get('error', '?')}")
+        else:
+            ui.substep(f"• {err}")
+
+
+@dataclass
+class _InitState:
+    project_root: Path
+    install_rel: str
+    project_name: str
+    runtime_tracking: str
+    agent_tracking: str
+    default_kit_tracking: str
+    kit_tracking_overrides: Dict[str, str]
+    root_system: Dict[str, str]
+    install_options_prompted: bool = False
+    legacy_migration_declined: bool = False
+    legacy_install_rel: Optional[str] = None
+
+
+@dataclass
+class _InitLayout:
+    studio_dir: Path
+    config_dir: Path
+    gen_dir: Path
+    core_dir: Path
+    core_toml_path: Path
+    config_agents_path: Path
+
+
+@dataclass
+class _InitTrackingOptions:
+    default_kit_tracking: str
+    kit_tracking_overrides: Dict[str, str]
+    runtime_tracking: str
+    agent_tracking: str
+
+
+@dataclass
+class _InstallTrackingSettings:
+    kit_tracking: str
+    runtime_tracking: str
+    agent_tracking: str
+
+
+@dataclass
+class _InitRunState:
+    actions: Dict[str, str] = field(default_factory=dict)
+    errors: List[Dict[str, str]] = field(default_factory=list)
+    backups: List[str] = field(default_factory=list)
+
+
+def _parse_init_args(
+    argv: List[str],
+) -> Tuple[argparse.Namespace, _InitTrackingOptions]:
+    p = argparse.ArgumentParser(prog="init", description="Initialize Constructor Studio in a project")
+    p.add_argument("--project-root", default=None, help="Project root directory")
+    p.add_argument("--install-dir", default=None, help="Constructor Studio directory relative to project root (default: .cf-studio)")
+    p.add_argument("--from-dir", default=None, help="Constructor Studio directory relative to project root when migrating")
+    p.add_argument("--project-name", default=None, help="Project name (default: project root folder name)")
+    p.add_argument(
+        "--runtime-tracking",
+        default="ignored",
+        metavar="tracked|ignored",
+        help="Git tracking policy for .core/.gen runtime files (default: ignored; alias: untracked)",
+    )
+    p.add_argument(
+        "--agent-tracking",
+        default="ignored",
+        metavar="tracked|ignored",
+        help="Git tracking policy for generated agent integration files (default: ignored; alias: untracked)",
+    )
+    p.add_argument(
+        "--kit-tracking",
+        action="append",
+        default=None,
+        metavar="tracked|ignored|KIT=tracked|ignored",
+        help=(
+            "Kit git tracking policy. Use tracked/ignored as the default, or "
+            "KIT=tracked|ignored for a specific kit. May be repeated. "
+            "Alias: untracked=ignored."
+        ),
+    )
+    p.add_argument("--yes", action="store_true", help="Do not prompt; accept defaults")
+    p.add_argument("--dry-run", action="store_true", help="Compute changes without writing files")
+    p.add_argument("--force", action="store_true", help="Overwrite existing files")
+    _add_legacy_migration_args(p)
+    args = p.parse_args(argv)
+    try:
+        default_kit_tracking, kit_tracking_overrides = _parse_kit_tracking_args(args.kit_tracking)
+        runtime_tracking = _normalize_kit_tracking(args.runtime_tracking)
+        agent_tracking = _normalize_kit_tracking(args.agent_tracking)
+        if runtime_tracking is None:
+            raise ValueError("--runtime-tracking must be tracked, ignored, or untracked")
+        if agent_tracking is None:
+            raise ValueError("--agent-tracking must be tracked, ignored, or untracked")
+    except ValueError as exc:
+        p.error(str(exc))
+    return args, _InitTrackingOptions(
+        default_kit_tracking=default_kit_tracking,
+        kit_tracking_overrides=kit_tracking_overrides,
+        runtime_tracking=runtime_tracking,
+        agent_tracking=agent_tracking,
+    )
+
+
+def _show_init_welcome(interactive: bool) -> None:
+    if not interactive:
+        return
+    sys.stderr.write("\n")
+    sys.stderr.write("  \033[1mWelcome to Constructor Studio\033[0m\n")
+    sys.stderr.write("  Set up AI-powered architecture traceability for your project.\n")
+    sys.stderr.write("  Constructor Studio will create a configuration directory with design artifacts,\n")
+    sys.stderr.write("  validation rules, and agent integration files.\n")
+    sys.stderr.write("\n")
+
+
+def _resolve_init_project_root(args: argparse.Namespace, cwd: Path, interactive: bool) -> Path:
+    default_project_root = cwd
+    if args.project_root is None and interactive:
+        sys.stderr.write("  \033[2mThe project root is the top-level directory of your repository.\033[0m\n")
+        sys.stderr.write("  \033[2mPress Enter to use the current directory.\033[0m\n")
+        raw_root = _prompt_path("Project root directory?", default_project_root.as_posix())
+        return _resolve_user_path(raw_root, cwd)
+    raw_root = args.project_root or default_project_root.as_posix()
+    return _resolve_user_path(raw_root, cwd)
+
+
+def _build_init_state(
+    *,
+    args: argparse.Namespace,
+    project_root: Path,
+    existing_install_rel: Optional[str],
+    default_kit_tracking: str,
+    kit_tracking_overrides: Dict[str, str],
+    runtime_tracking: str,
+    agent_tracking: str,
+) -> _InitState:
+    default_install_dir = existing_install_rel or DEFAULT_INSTALL_DIR
+    install_rel = (args.install_dir or default_install_dir).strip() or default_install_dir
+    root_system = _define_root_system(project_root)
+    project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
+    return _InitState(
+        project_root=project_root,
+        install_rel=install_rel,
+        project_name=project_name,
+        runtime_tracking=runtime_tracking,
+        agent_tracking=agent_tracking,
+        default_kit_tracking=default_kit_tracking,
+        kit_tracking_overrides=dict(kit_tracking_overrides),
+        root_system=root_system,
+    )
+
+
+def _maybe_run_init_legacy_migration(
+    *,
+    args: argparse.Namespace,
+    interactive: bool,
+    existing_install_rel: Optional[str],
+    state: _InitState,
+) -> Optional[int]:
+    if existing_install_rel is not None:
+        return None
+    from .migrate_from_cypilot import (
+        detect_legacy_cypilot_install,
+        ensure_supported_legacy_version,
+        should_migrate_from_cypilot,
+        _human_migrate_ok,
+    )
+
+    legacy_rel = args.from_dir or detect_legacy_cypilot_install(state.project_root)
+    if not legacy_rel:
+        return None
+
+    state.legacy_install_rel = legacy_rel
+    migrate = should_migrate_from_cypilot(
+        args.migrate_from_cypilot,
+        interactive=interactive,
+        project_root=state.project_root,
+        legacy_rel=legacy_rel,
+        decline_hint="Press N to initialize Constructor Studio side-by-side and keep Cyber Pilot unchanged.",
+    )
+    if not migrate:
+        state.legacy_migration_declined = True
+        return None
+
+    supported, preflight = ensure_supported_legacy_version(
+        project_root=state.project_root,
+        legacy_rel=legacy_rel,
+        update_choice=args.update_legacy_studio,
+        interactive=interactive,
+        dry_run=args.dry_run,
+    )
+    if not supported:
+        ui.result(preflight)
+        return 1
+
+    migration_was_interactive = (
+        args.migrate_from_cypilot == "ask"
+        and interactive
+        and sys.stdin.isatty()
+    )
+    if args.install_dir is None and migration_was_interactive:
+        state.install_rel = legacy_rel.strip() or state.install_rel
+    if migration_was_interactive:
+        (
+            state.install_rel,
+            state.project_name,
+            state.runtime_tracking,
+            state.agent_tracking,
+            state.default_kit_tracking,
+            state.kit_tracking_overrides,
+        ) = _prompt_install_options(
+            state.project_root,
+            state.install_rel,
+            state.project_name,
+            state.runtime_tracking,
+            state.agent_tracking,
+            state.default_kit_tracking,
+            state.kit_tracking_overrides,
+            interactive,
+        )
+        state.install_options_prompted = True
+
+    return _run_default_legacy_migration(
+        args=args,
+        project_root=state.project_root,
+        from_dir=legacy_rel,
+        to_dir=state.install_rel,
+        preflight=preflight,
+        human_fn=_human_migrate_ok,
+    )
+
+
+def _prompt_remaining_init_options(interactive: bool, state: _InitState) -> None:
+    if not interactive or state.install_options_prompted:
+        return
+    (
+        state.install_rel,
+        state.project_name,
+        state.runtime_tracking,
+        state.agent_tracking,
+        state.default_kit_tracking,
+        state.kit_tracking_overrides,
+    ) = _prompt_install_options(
+        state.project_root,
+        state.install_rel,
+        state.project_name,
+        state.runtime_tracking,
+        state.agent_tracking,
+        state.default_kit_tracking,
+        state.kit_tracking_overrides,
+        interactive,
+    )
+
+
+def _emit_declined_legacy_install_dir_error(
+    *,
+    project_root: Path,
+    install_rel: str,
+    legacy_dir: Path,
+) -> int:
+    ui.result(
+        {
+            "status": "ERROR",
+            "message": (
+                "Migration was declined, but --install-dir resolves to the existing Constructor Studio "
+                "directory. Choose a different --install-dir or approve migration."
+            ),
+            "project_root": project_root.as_posix(),
+            "install_dir": install_rel,
+            "legacy_studio_dir": legacy_dir.as_posix(),
+            "actions": {
+                "legacy_studio": "detected",
+                "migration": "declined",
+                "migration_decline_action": "rejected_legacy_install_dir",
+            },
+        },
+        human_fn=lambda d: (
+            ui.error(str(d["message"])),
+            ui.detail("Legacy Constructor Studio directory", str(d["legacy_studio_dir"])),
+            ui.blank(),
+            ui.hint("Choose a side-by-side directory:  cfs init --install-dir .cf-studio --migrate-from-cypilot=no"),
+            ui.hint("Or approve migration:             cfs init --install-dir .cf-studio --migrate-from-cypilot=yes"),
+            ui.blank(),
+        ),
+    )
+    return 1
+
+
+def _validate_declined_legacy_target(state: _InitState, studio_dir: Path) -> Optional[int]:
+    if not state.legacy_migration_declined or not state.legacy_install_rel:
+        return None
+    legacy_dir = (state.project_root / state.legacy_install_rel).resolve()
+    if studio_dir != legacy_dir:
+        return None
+    return _emit_declined_legacy_install_dir_error(
+        project_root=state.project_root,
+        install_rel=state.install_rel,
+        legacy_dir=legacy_dir,
     )
 
 def _default_core_toml() -> dict:
@@ -442,6 +972,73 @@ def _compute_gitignore_block(
     return "\n".join(lines)
 
 
+def _rewrite_managed_block_content(
+    content: str,
+    expected_block: str,
+    *,
+    marker_start: str,
+    marker_end: str,
+    insert_mode: str,
+    malformed_label: Optional[str] = None,
+    validate_order: bool = False,
+) -> Tuple[str, Optional[str]]:
+    """Return the action and rewritten content for a managed text block."""
+    has_start = marker_start in content
+    has_end = marker_end in content
+    if malformed_label and has_start != has_end:
+        raise ValueError(f"{malformed_label} contains a malformed Constructor Studio managed block")
+    if has_start and has_end:
+        start_idx = content.index(marker_start)
+        end_idx = content.index(marker_end)
+        if validate_order and end_idx < start_idx:
+            raise ValueError(f"{malformed_label} contains a malformed Constructor Studio managed block")
+        end_idx += len(marker_end)
+        current_block = content[start_idx:end_idx]
+        if current_block == expected_block:
+            return "unchanged", None
+        return "updated", content[:start_idx] + expected_block + content[end_idx:]
+    if insert_mode == "append":
+        prefix = content.rstrip("\n")
+        return "updated", (prefix + "\n\n" if prefix else "") + expected_block + "\n"
+    if insert_mode == "prepend":
+        return "updated", expected_block + "\n\n" + content
+    raise ValueError(f"unsupported managed block insert mode: {insert_mode}")
+
+
+def _write_managed_block_file(
+    target_file: Path,
+    expected_block: str,
+    *,
+    marker_start: str,
+    marker_end: str,
+    insert_mode: str,
+    dry_run: bool = False,
+    malformed_label: Optional[str] = None,
+    validate_order: bool = False,
+) -> str:
+    """Create or update a file that contains a managed Constructor Studio block."""
+    if not target_file.is_file():
+        if not dry_run:
+            target_file.write_text(expected_block + "\n", encoding="utf-8")
+        return "created"
+
+    content = target_file.read_text(encoding="utf-8")
+    action, new_content = _rewrite_managed_block_content(
+        content,
+        expected_block,
+        marker_start=marker_start,
+        marker_end=marker_end,
+        insert_mode=insert_mode,
+        malformed_label=malformed_label,
+        validate_order=validate_order,
+    )
+    if action == "unchanged":
+        return action
+    if not dry_run and new_content is not None:
+        target_file.write_text(new_content, encoding="utf-8")
+    return action
+
+
 def _write_gitignore_block(
     project_root: Path,
     install_dir: str,
@@ -457,33 +1054,16 @@ def _write_gitignore_block(
         runtime_tracking=_read_install_tracking(core_toml_path, "runtime_tracking", default="ignored"),
         agent_tracking=_read_install_tracking(core_toml_path, "agent_tracking", default="ignored"),
     )
-    if not gitignore_path.is_file():
-        if not dry_run:
-            gitignore_path.write_text(expected_block + "\n", encoding="utf-8")
-        return "created"
-
-    content = gitignore_path.read_text(encoding="utf-8")
-    has_start = GITIGNORE_MARKER_START in content
-    has_end = GITIGNORE_MARKER_END in content
-    if has_start != has_end:
-        raise ValueError(".gitignore contains a malformed Constructor Studio managed block")
-    if has_start and has_end:
-        start_idx = content.index(GITIGNORE_MARKER_START)
-        end_idx = content.index(GITIGNORE_MARKER_END)
-        if end_idx < start_idx:
-            raise ValueError(".gitignore contains a malformed Constructor Studio managed block")
-        end_idx += len(GITIGNORE_MARKER_END)
-        current_block = content[start_idx:end_idx]
-        if current_block == expected_block:
-            return "unchanged"
-        new_content = content[:start_idx] + expected_block + content[end_idx:]
-    else:
-        prefix = content.rstrip("\n")
-        new_content = (prefix + "\n\n" if prefix else "") + expected_block + "\n"
-
-    if not dry_run:
-        gitignore_path.write_text(new_content, encoding="utf-8")
-    return "updated"
+    return _write_managed_block_file(
+        gitignore_path,
+        expected_block,
+        marker_start=GITIGNORE_MARKER_START,
+        marker_end=GITIGNORE_MARKER_END,
+        insert_mode="append",
+        dry_run=dry_run,
+        malformed_label=".gitignore",
+        validate_order=True,
+    )
 
 
 def _persist_install_metadata(
@@ -754,14 +1334,8 @@ def _read_existing_install(project_root: Path) -> Optional[str]:
 
     Returns install dir relative path if found, None otherwise.
     """
-    agents_file = project_root / _AGENTS_FILENAME
-    if not agents_file.is_file():
-        return None
-    try:
-        content = agents_file.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    if MARKER_START not in content:
+    content = read_root_agents_marked_text(project_root)
+    if content is None:
         return None
     for m in _TOML_FENCE_RE.finditer(content):
         try:
@@ -802,44 +1376,14 @@ def _inject_managed_block(target_file: Path, install_dir: str, dry_run: bool = F
             raise ValueError(f"Refusing to write outside project root: {resolved_target}")
     # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-validate-path
     expected_block = _compute_managed_block(install_dir)
-
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-no-agents
-    if not target_file.is_file():
-        # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-create-agents-file
-        if not dry_run:
-            target_file.write_text(expected_block + "\n", encoding="utf-8")
-        return "created"
-        # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-create-agents-file
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-no-agents
-
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-read-existing
-    content = target_file.read_text(encoding="utf-8")
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-read-existing
-
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-markers-exist
-    if MARKER_START in content and MARKER_END in content:
-        start_idx = content.index(MARKER_START)
-        end_idx = content.index(MARKER_END) + len(MARKER_END)
-        current_block = content[start_idx:end_idx]
-        if current_block == expected_block:
-            return "unchanged"
-        # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-replace-block
-        new_content = content[:start_idx] + expected_block + content[end_idx:]
-        # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-replace-block
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-markers-exist
-    else:
-        # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
-        new_content = expected_block + "\n\n" + content
-        # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
-
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
-    if not dry_run:
-        target_file.write_text(new_content, encoding="utf-8")
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
-
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-return-agents-path
-    return "updated"
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-return-agents-path
+    return _write_managed_block_file(
+        target_file,
+        expected_block,
+        marker_start=MARKER_START,
+        marker_end=MARKER_END,
+        insert_mode="prepend",
+        dry_run=dry_run,
+    )
 
 _DEFAULT_KIT_SOURCE = "constructorfabric/studio-kit-sdlc"
 
@@ -864,6 +1408,47 @@ def _prompt_kit_install_flag(interactive: bool) -> bool:
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-kit
 
 
+def _record_default_kit_actions(
+    *,
+    actions: Dict[str, str],
+    errors: List[Dict[str, str]],
+    kit_slug: str,
+    kit_result: Dict[str, Any],
+) -> None:
+    kit_status = kit_result.get("status", "")
+    if kit_result.get("errors") and kit_status not in ("PASS", "WARN"):
+        errors.extend({"path": kit_slug, "error": error} for error in kit_result["errors"])
+    for key, val in kit_result.get("actions", {}).items():
+        actions[f"kit_{kit_slug}_{key}"] = val
+    if kit_status == "WARN":
+        ui.warn(f"Kit '{kit_slug}' installed with warnings")
+    elif kit_status and kit_status != "PASS":
+        ui.warn(f"Kit '{kit_slug}' installed with status: {kit_status}")
+
+
+def _download_default_kit_bundle() -> tuple[str, str, Optional[str], Path]:
+    from .kit import _download_kit_from_github, _parse_github_source
+
+    owner, repo, version = _parse_github_source(_DEFAULT_KIT_SOURCE)
+    ui.step(f"Downloading {_DEFAULT_KIT_SOURCE}...")
+    kit_source_dir, resolved_version = _download_kit_from_github(owner, repo, version)
+    github_source = f"github:{owner}/{repo}"
+    return github_source, resolved_version, version, kit_source_dir
+
+
+def _build_default_kit_summary(studio_dir: Path, kit_result: Dict[str, Any]) -> Dict[str, Any]:
+    art_dir = studio_dir / "config" / "kits" / "sdlc" / "artifacts"
+    artifact_kinds = (
+        sorted(d.name for d in art_dir.iterdir() if d.is_dir())
+        if art_dir.is_dir() else []
+    )
+    return {
+        "files_written": kit_result.get("files_copied", 0),
+        "errors": kit_result.get("errors", []),
+        "artifact_kinds": artifact_kinds,
+    }
+
+
 def _install_default_kit(
     studio_dir: Path,
     interactive: bool,
@@ -871,49 +1456,32 @@ def _install_default_kit(
     errors: List[Dict[str, str]],
 ) -> Dict[str, Any]:
     """Download and install the default SDLC kit. Returns kit_results dict."""
-    from .kit import (
-        install_kit, _parse_github_source, _download_kit_from_github,
-    )
+    from .kit import _InstallContext, install_kit
+
     kit_results: Dict[str, Any] = {}
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
     tmp_to_clean: Optional[Path] = None
     try:
-        owner, repo, version = _parse_github_source(_DEFAULT_KIT_SOURCE)
-        ui.step(f"Downloading {_DEFAULT_KIT_SOURCE}...")
-        kit_source_dir, resolved_version = _download_kit_from_github(owner, repo, version)
+        github_source, resolved_version, _version, kit_source_dir = _download_default_kit_bundle()
         tmp_to_clean = kit_source_dir.parent
 
         kit_slug = "sdlc"
-        github_source = f"github:{owner}/{repo}"
         kit_result = install_kit(
             kit_source_dir, studio_dir, kit_slug,
-            kit_version=resolved_version, source=github_source,
-            interactive=interactive,
+            kit_version=resolved_version,
+            install_context=_InstallContext(
+                interactive=interactive,
+                source=github_source,
+            ),
         )
-
-        art_dir = studio_dir / "config" / "kits" / kit_slug / "artifacts"
-        artifact_kinds = (
-            sorted(d.name for d in art_dir.iterdir() if d.is_dir())
-            if art_dir.is_dir() else []
+        kit_results[kit_slug] = _build_default_kit_summary(studio_dir, kit_result)
+        _record_default_kit_actions(
+            actions=actions,
+            errors=errors,
+            kit_slug=kit_slug,
+            kit_result=kit_result,
         )
-        kit_results[kit_slug] = {
-            "files_written": kit_result.get("files_copied", 0),
-            "errors": kit_result.get("errors", []),
-            "artifact_kinds": artifact_kinds,
-        }
-        kit_status = kit_result.get("status", "")
-        if kit_result.get("errors") and kit_status not in ("PASS", "WARN"):
-            errors.extend(
-                {"path": kit_slug, "error": e} for e in kit_result["errors"]
-            )
-        for key, val in kit_result.get("actions", {}).items():
-            actions[f"kit_{kit_slug}_{key}"] = val
-
-        if kit_status == "WARN":
-            ui.warn(f"Kit '{kit_slug}' installed with warnings")
-        elif kit_status and kit_status != "PASS":
-            ui.warn(f"Kit '{kit_slug}' installed with status: {kit_status}")
-        else:
+        if kit_result.get("status", "") in ("", "PASS"):
             ui.substep(f"Kit '{kit_slug}' installed (v{resolved_version or 'dev'})")
     except (OSError, ValueError, RuntimeError) as exc:
         ui.warn(f"Kit installation failed: {exc}")
@@ -936,6 +1504,300 @@ def _inject_root_claude(project_root: Path, install_dir: str, dry_run: bool = Fa
 # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-inject-claude
 
 
+def _ensure_repair_config_files(
+    *,
+    config_dir: Path,
+    actions: Dict[str, object],
+) -> None:
+    config_agents_path = config_dir / _AGENTS_FILENAME
+    if not config_agents_path.is_file():
+        config_agents_path.write_text(
+            "# Custom Agent Navigation Rules\n\n"
+            "Add your project-specific WHEN rules here.\n"
+            "These rules are loaded alongside the generated rules in `{cf-studio-path}/.gen/"
+            + _AGENTS_FILENAME
+            + "`.\n",
+            encoding="utf-8",
+        )
+        actions["config_agents"] = "created"
+    config_skill_path = config_dir / "SKILL.md"
+    if not config_skill_path.is_file():
+        config_skill_path.write_text(
+            "# Custom Skill Extensions\n\n"
+            "Add your project-specific skill instructions here.\n"
+            "Agent-facing skills and workflows are generated into agent integration files.\n",
+            encoding="utf-8",
+        )
+        actions["config_skill"] = "created"
+
+
+def _emit_missing_cache_error(project_root: Path, *, studio_dir: Optional[Path] = None) -> int:
+    payload: Dict[str, object] = {
+        "status": "ERROR",
+        "message": f"Constructor Studio cache not found at {CACHE_DIR}. Run 'cfs update' first.",
+        "project_root": project_root.as_posix(),
+    }
+    if studio_dir is not None:
+        payload["studio_dir"] = studio_dir.as_posix()
+    ui.result(
+        payload,
+        human_fn=lambda d: (
+            ui.error("Constructor Studio cache not found."),
+            ui.detail("Expected at", str(CACHE_DIR)),
+            ui.blank(),
+            ui.hint("Install Constructor Studio first:  pipx install git+https://github.com/constructorfabric/studio.git && cfs update"),
+            ui.blank(),
+        ),
+    )
+    return 1
+
+
+def _prepare_init_layout(studio_dir: Path, args: argparse.Namespace, actions: Dict[str, str]) -> _InitLayout:
+    if not args.dry_run:
+        studio_dir.mkdir(parents=True, exist_ok=True)
+        copy_results = _copy_from_cache(CACHE_DIR, studio_dir, force=args.force)
+    else:
+        copy_results = _dry_run_copy_results(CACHE_DIR, studio_dir, force=args.force)
+    actions["copy"] = json.dumps(copy_results)
+
+    config_dir = studio_dir / "config"
+    gen_dir = studio_dir / GEN_SUBDIR
+    core_dir = studio_dir / CORE_SUBDIR
+    if not args.dry_run:
+        config_dir.mkdir(parents=True, exist_ok=True)
+        gen_dir.mkdir(parents=True, exist_ok=True)
+        (core_dir / _README_FILENAME).write_text(_core_readme(), encoding="utf-8")
+        (gen_dir / _README_FILENAME).write_text(_gen_readme(), encoding="utf-8")
+        (config_dir / _README_FILENAME).write_text(_config_readme(), encoding="utf-8")
+    actions["readmes"] = "created"
+    return _InitLayout(
+        studio_dir=studio_dir,
+        config_dir=config_dir,
+        gen_dir=gen_dir,
+        core_dir=core_dir,
+        core_toml_path=(config_dir / "core.toml").resolve(),
+        config_agents_path=(config_dir / _AGENTS_FILENAME).resolve(),
+    )
+
+
+def _write_init_core_toml(
+    *,
+    layout: _InitLayout,
+    args: argparse.Namespace,
+    state: _InitState,
+    actions: Dict[str, str],
+) -> None:
+    desired_core = _default_core_toml()
+    core_toml_existed = layout.core_toml_path.is_file()
+    if core_toml_existed and not args.force:
+        actions["core_toml"] = "unchanged"
+        actions["core_toml_metadata"] = _persist_install_metadata(
+            layout.core_toml_path,
+            state.default_kit_tracking,
+            runtime_tracking=state.runtime_tracking,
+            agent_tracking=state.agent_tracking,
+            dry_run=args.dry_run,
+        )
+        return
+    desired_core["install"]["runtime_tracking"] = state.runtime_tracking
+    desired_core["install"]["agent_tracking"] = state.agent_tracking
+    desired_core["install"]["kit_tracking"] = state.default_kit_tracking
+    if not args.dry_run:
+        toml_utils.dump(desired_core, layout.core_toml_path, header_comment="Constructor Studio project configuration")
+    actions["core_toml"] = "updated" if core_toml_existed else "created"
+
+
+def _ensure_init_config_agents(
+    *,
+    layout: _InitLayout,
+    args: argparse.Namespace,
+    actions: Dict[str, str],
+) -> None:
+    config_agents_existed = layout.config_agents_path.is_file()
+    if config_agents_existed and not args.force:
+        actions["config_agents"] = "unchanged"
+    else:
+        if not config_agents_existed and not args.dry_run:
+            layout.config_agents_path.write_text(
+                "# Custom Agent Navigation Rules\n"
+                "\n"
+                "Add your project-specific WHEN rules here.\n"
+                "These rules are loaded alongside the generated rules in `{cf-studio-path}/.gen/" + _AGENTS_FILENAME + "`.\n",
+                encoding="utf-8",
+            )
+        actions["config_agents"] = "unchanged" if config_agents_existed else "created"
+    actions["config_agents_path"] = layout.config_agents_path.as_posix()
+
+
+def _emit_init_error(
+    *,
+    project_root: Path,
+    studio_dir: Path,
+    dry_run: bool,
+    errors: List[Dict[str, str]],
+    backups: List[str],
+) -> int:
+    err_result: Dict[str, object] = {
+        "status": "ERROR",
+        "message": "Init failed",
+        "project_root": project_root.as_posix(),
+        "studio_dir": studio_dir.as_posix(),
+        "dry_run": dry_run,
+        "errors": errors,
+    }
+    if backups:
+        err_result["backups"] = backups
+    ui.result(err_result, human_fn=_human_init_error)
+    return 1
+
+
+def _load_install_tracking_settings(
+    core_toml_path: Path,
+    default_kit_tracking: str,
+) -> _InstallTrackingSettings:
+    return _InstallTrackingSettings(
+        kit_tracking=_read_kit_tracking(core_toml_path, default=default_kit_tracking),
+        runtime_tracking=_read_install_tracking(
+            core_toml_path,
+            "runtime_tracking",
+            default="ignored",
+        ),
+        agent_tracking=_read_install_tracking(
+            core_toml_path,
+            "agent_tracking",
+            default="ignored",
+        ),
+    )
+
+
+def _maybe_install_default_kit_for_init(
+    *,
+    args: argparse.Namespace,
+    interactive: bool,
+    studio_dir: Path,
+    project_root: Path,
+    state: _InitState,
+    run_state: _InitRunState,
+) -> tuple[Dict[str, Any], Optional[int]]:
+    if args.dry_run:
+        return {}, None
+    install_kit_flag = _prompt_kit_install_flag(interactive)
+    if not install_kit_flag:
+        ui.info(f"Skipped kit installation. Install later: cfs kit install {_DEFAULT_KIT_SOURCE}")
+        return {}, None
+    state.kit_tracking_overrides["sdlc"] = _prompt_kit_tracking_policy(
+        "sdlc",
+        state.default_kit_tracking,
+        state.kit_tracking_overrides.get("sdlc"),
+        interactive,
+    )
+    kit_results = _install_default_kit(studio_dir, interactive, run_state.actions, run_state.errors)
+    if "sdlc" in kit_results:
+        kit_results["sdlc"]["tracking"] = state.kit_tracking_overrides["sdlc"]
+    if run_state.errors:
+        return kit_results, _emit_init_error(
+            project_root=project_root,
+            studio_dir=studio_dir,
+            dry_run=bool(args.dry_run),
+            errors=run_state.errors,
+            backups=run_state.backups,
+        )
+    return kit_results, None
+
+
+def _finalize_init_files(
+    *,
+    args: argparse.Namespace,
+    layout: _InitLayout,
+    state: _InitState,
+    kit_results: Dict[str, Any],
+    actions: Dict[str, str],
+) -> None:
+    from .kit import regenerate_gen_aggregates
+
+    installed_kit_slug = next(iter(kit_results), "") if kit_results else ""
+    desired_registry = generate_default_registry(state.project_name, kit_slug=installed_kit_slug)
+    registry_path = (layout.config_dir / "artifacts.toml").resolve()
+    registry_existed_before = registry_path.is_file()
+    if registry_existed_before and not args.force:
+        actions["artifacts_registry"] = "unchanged"
+    else:
+        if not args.dry_run:
+            toml_utils.dump(desired_registry, registry_path, header_comment="Constructor Studio artifacts registry")
+        actions["artifacts_registry"] = "updated" if registry_existed_before else "created"
+    if not args.dry_run:
+        actions.update(regenerate_gen_aggregates(layout.studio_dir))
+        config_skill_path = layout.config_dir / "SKILL.md"
+        if not config_skill_path.is_file():
+            config_skill_path.write_text(
+                "# Custom Skill Extensions\n"
+                "\n"
+                "Add your project-specific skill instructions here.\n"
+                "Agent-facing skills and workflows are generated into agent integration files.\n",
+                encoding="utf-8",
+            )
+            actions["config_skill"] = "created"
+        else:
+            actions["config_skill"] = "unchanged"
+    actions["kits"] = json.dumps(kit_results)
+    actions["core_toml_metadata"] = _persist_install_metadata(
+        layout.core_toml_path,
+        state.default_kit_tracking,
+        runtime_tracking=state.runtime_tracking,
+        agent_tracking=state.agent_tracking,
+        dry_run=args.dry_run,
+        kit_tracking_overrides=state.kit_tracking_overrides,
+        apply_default_to_missing_kits=True,
+    )
+    actions["root_agents"] = _inject_root_agents(
+        state.project_root,
+        state.install_rel,
+        dry_run=args.dry_run,
+    )
+    actions["root_claude"] = _inject_root_claude(
+        state.project_root,
+        state.install_rel,
+        dry_run=args.dry_run,
+    )
+    actions["gitignore"] = _write_gitignore_block(
+        state.project_root,
+        state.install_rel,
+        layout.core_toml_path,
+        state.default_kit_tracking,
+        dry_run=args.dry_run,
+    )
+
+
+def _build_init_result(
+    *,
+    args: argparse.Namespace,
+    project_root: Path,
+    studio_dir: Path,
+    layout: _InitLayout,
+    state: _InitState,
+    actions: Dict[str, str],
+    backups: List[str],
+) -> Dict[str, object]:
+    result: Dict[str, object] = {
+        "status": "PASS",
+        "project_root": project_root.as_posix(),
+        "studio_dir": studio_dir.as_posix(),
+        "core_toml": layout.core_toml_path.as_posix(),
+        "dry_run": bool(args.dry_run),
+        "actions": actions,
+        "root_system": state.root_system,
+        "runtime_tracking": state.runtime_tracking,
+        "agent_tracking": state.agent_tracking,
+        "kit_tracking": {
+            "default": state.default_kit_tracking,
+            "kits": _read_kit_tracking_state(layout.core_toml_path, default=state.default_kit_tracking)[1],
+        },
+    }
+    if backups:
+        result["backups"] = backups
+    return result
+
+
 def _repair_existing_install(
     project_root: Path,
     install_rel: str,
@@ -944,22 +1806,7 @@ def _repair_existing_install(
 ) -> int:
     """Restore generated runtime files for an already initialized project."""
     if not CACHE_DIR.is_dir():
-        ui.result(
-            {
-                "status": "ERROR",
-                "message": f"Constructor Studio cache not found at {CACHE_DIR}. Run 'cfs update' first.",
-                "project_root": project_root.as_posix(),
-                "studio_dir": (project_root / install_rel).as_posix(),
-            },
-            human_fn=lambda d: (
-                ui.error("Constructor Studio cache not found."),
-                ui.detail("Expected at", str(CACHE_DIR)),
-                ui.blank(),
-                ui.hint("Install Constructor Studio first:  pipx install git+https://github.com/constructorfabric/studio.git && cfs update"),
-                ui.blank(),
-            ),
-        )
-        return 1
+        return _emit_missing_cache_error(project_root, studio_dir=(project_root / install_rel).resolve())
 
     studio_dir = (project_root / install_rel).resolve()
     config_dir = studio_dir / "config"
@@ -968,17 +1815,7 @@ def _repair_existing_install(
     actions: Dict[str, object] = {}
     errors: List[Dict[str, str]] = []
     core_toml_path = (config_dir / "core.toml").resolve()
-    effective_kit_tracking = _read_kit_tracking(core_toml_path, default=kit_tracking)
-    effective_runtime_tracking = _read_install_tracking(
-        core_toml_path,
-        "runtime_tracking",
-        default="ignored",
-    )
-    effective_agent_tracking = _read_install_tracking(
-        core_toml_path,
-        "agent_tracking",
-        default="ignored",
-    )
+    tracking = _load_install_tracking_settings(core_toml_path, kit_tracking)
 
     try:
         from .kit import regenerate_gen_aggregates
@@ -997,34 +1834,15 @@ def _repair_existing_install(
         actions["readmes"] = "updated" if not dry_run else "dry_run"
         actions["core_toml"] = _persist_install_metadata(
             core_toml_path,
-            effective_kit_tracking,
-            runtime_tracking=effective_runtime_tracking,
-            agent_tracking=effective_agent_tracking,
+            tracking.kit_tracking,
+            runtime_tracking=tracking.runtime_tracking,
+            agent_tracking=tracking.agent_tracking,
             dry_run=dry_run,
         )
 
         if not dry_run:
             actions.update(regenerate_gen_aggregates(studio_dir))
-            config_agents_path = config_dir / _AGENTS_FILENAME
-            if not config_agents_path.is_file():
-                config_agents_path.write_text(
-                    "# Custom Agent Navigation Rules\n\n"
-                    "Add your project-specific WHEN rules here.\n"
-                    "These rules are loaded alongside the generated rules in `{cf-studio-path}/.gen/"
-                    + _AGENTS_FILENAME
-                    + "`.\n",
-                    encoding="utf-8",
-                )
-                actions["config_agents"] = "created"
-            config_skill_path = config_dir / "SKILL.md"
-            if not config_skill_path.is_file():
-                config_skill_path.write_text(
-                    "# Custom Skill Extensions\n\n"
-                    "Add your project-specific skill instructions here.\n"
-                    "Agent-facing skills and workflows are generated into agent integration files.\n",
-                    encoding="utf-8",
-                )
-                actions["config_skill"] = "created"
+            _ensure_repair_config_files(config_dir=config_dir, actions=actions)
 
         actions["root_agents"] = _inject_root_agents(project_root, install_rel, dry_run=dry_run)
         actions["root_claude"] = _inject_root_claude(project_root, install_rel, dry_run=dry_run)
@@ -1033,7 +1851,7 @@ def _repair_existing_install(
             project_root,
             install_rel,
             core_toml_path,
-            effective_kit_tracking,
+            tracking.kit_tracking,
             dry_run=dry_run,
         )
         # @cpt-end:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-gitignore
@@ -1065,11 +1883,11 @@ def _repair_existing_install(
             "dry_run": bool(dry_run),
             "version_changed": False,
             "version_source": "project_config",
-            "runtime_tracking": effective_runtime_tracking,
-            "agent_tracking": effective_agent_tracking,
+            "runtime_tracking": tracking.runtime_tracking,
+            "agent_tracking": tracking.agent_tracking,
             "kit_tracking": {
-                "default": effective_kit_tracking,
-                "kits": _read_kit_tracking_state(core_toml_path, default=effective_kit_tracking)[1],
+                "default": tracking.kit_tracking,
+                "kits": _read_kit_tracking_state(core_toml_path, default=tracking.kit_tracking)[1],
             },
             "actions": actions,
         },
@@ -1078,248 +1896,84 @@ def _repair_existing_install(
             ui.detail("Directory", str(studio_dir)),
             ui.detail("Runtime tracking", str(d.get("runtime_tracking", "ignored"))),
             ui.detail("Agent tracking", str(d.get("agent_tracking", "ignored"))),
-            ui.detail("Kit tracking", effective_kit_tracking),
+            ui.detail("Kit tracking", tracking.kit_tracking),
             ui.blank(),
         ),
     )
     return 0
 
+
+def _prepare_init_state(
+    *,
+    args: argparse.Namespace,
+    tracking: _InitTrackingOptions,
+) -> tuple[Optional[int], Path, bool, _InitState]:
+    cwd = Path.cwd().resolve()
+    interactive = not args.yes
+    _show_init_welcome(interactive)
+    project_root = _resolve_init_project_root(args, cwd, interactive)
+    existing_install_rel = _read_existing_install(project_root)
+    if existing_install_rel is not None and not args.force:
+        return (
+            _repair_existing_install(
+                project_root,
+                existing_install_rel,
+                tracking.default_kit_tracking,
+                dry_run=args.dry_run,
+            ),
+            project_root,
+            interactive,
+            _build_init_state(
+                args=args,
+                project_root=project_root,
+                existing_install_rel=existing_install_rel,
+                default_kit_tracking=tracking.default_kit_tracking,
+                kit_tracking_overrides=tracking.kit_tracking_overrides,
+                runtime_tracking=tracking.runtime_tracking,
+                agent_tracking=tracking.agent_tracking,
+            ),
+        )
+
+    state = _build_init_state(
+        args=args,
+        project_root=project_root,
+        existing_install_rel=existing_install_rel,
+        default_kit_tracking=tracking.default_kit_tracking,
+        kit_tracking_overrides=tracking.kit_tracking_overrides,
+        runtime_tracking=tracking.runtime_tracking,
+        agent_tracking=tracking.agent_tracking,
+    )
+    legacy_migration_rc = _maybe_run_init_legacy_migration(
+        args=args,
+        interactive=interactive,
+        existing_install_rel=existing_install_rel,
+        state=state,
+    )
+    if legacy_migration_rc is not None:
+        return legacy_migration_rc, project_root, interactive, state
+    _prompt_remaining_init_options(interactive, state)
+    return None, project_root, interactive, state
+
+
 def cmd_init(argv: List[str]) -> int:
     """Run the init command."""
     # @cpt-dod:cpt-studio-dod-core-infra-init-config:p1
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
-    p = argparse.ArgumentParser(prog="init", description="Initialize Constructor Studio in a project")
-    p.add_argument("--project-root", default=None, help="Project root directory")
-    p.add_argument("--install-dir", default=None, help="Constructor Studio directory relative to project root (default: .cf-studio)")
-    p.add_argument("--from-dir", default=None, help="Constructor Studio directory relative to project root when migrating")
-    p.add_argument("--project-name", default=None, help="Project name (default: project root folder name)")
-    p.add_argument(
-        "--runtime-tracking",
-        default="ignored",
-        metavar="tracked|ignored",
-        help="Git tracking policy for .core/.gen runtime files (default: ignored; alias: untracked)",
-    )
-    p.add_argument(
-        "--agent-tracking",
-        default="ignored",
-        metavar="tracked|ignored",
-        help="Git tracking policy for generated agent integration files (default: ignored; alias: untracked)",
-    )
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
-    p.add_argument(
-        "--kit-tracking",
-        action="append",
-        default=None,
-        metavar="tracked|ignored|KIT=tracked|ignored",
-        help=(
-            "Kit git tracking policy. Use tracked/ignored as the default, or "
-            "KIT=tracked|ignored for a specific kit. May be repeated. "
-            "Alias: untracked=ignored."
-        ),
-    )
-    p.add_argument("--yes", action="store_true", help="Do not prompt; accept defaults")
-    p.add_argument("--dry-run", action="store_true", help="Compute changes without writing files")
-    p.add_argument("--force", action="store_true", help="Overwrite existing files")
-    p.add_argument(
-        "--migrate-from-cypilot",
-        choices=("ask", "yes", "no"),
-        default="ask",
-        metavar="{ask,yes,no}",
-        help="Migrate an existing Cyber Pilot (cypilot) project. Use --migrate-from-cypilot={ask,yes,no} (default: ask)",
-    )
-    p.add_argument(
-        "--update-legacy-studio",
-        choices=("ask", "yes", "no"),
-        default="ask",
-        metavar="{ask,yes,no}",
-        help="Update unsupported Constructor Studio installs to the migration baseline first. Use --update-legacy-studio={ask,yes,no} (default: ask)",
-    )
-    args = p.parse_args(argv)
-    try:
-        default_kit_tracking, kit_tracking_overrides = _parse_kit_tracking_args(args.kit_tracking)
-        runtime_tracking = _normalize_kit_tracking(args.runtime_tracking)
-        agent_tracking = _normalize_kit_tracking(args.agent_tracking)
-        if runtime_tracking is None:
-            raise ValueError("--runtime-tracking must be tracked, ignored, or untracked")
-        if agent_tracking is None:
-            raise ValueError("--agent-tracking must be tracked, ignored, or untracked")
-    except ValueError as exc:
-        p.error(str(exc))
+    args, tracking = _parse_init_args(argv)
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
 
-    cwd = Path.cwd().resolve()
-    interactive = not args.yes
+    early_rc, project_root, interactive, state = _prepare_init_state(
+        args=args,
+        tracking=tracking,
+    )
+    if early_rc is not None:
+        return early_rc
 
-    if interactive:
-        sys.stderr.write("\n")
-        sys.stderr.write("  \033[1mWelcome to Constructor Studio\033[0m\n")
-        sys.stderr.write("  Set up AI-powered architecture traceability for your project.\n")
-        sys.stderr.write("  Constructor Studio will create a configuration directory with design artifacts,\n")
-        sys.stderr.write("  validation rules, and agent integration files.\n")
-        sys.stderr.write("\n")
-
-    # Resolve project root
-    default_project_root = cwd
-    if args.project_root is None and interactive:
-        sys.stderr.write("  \033[2mThe project root is the top-level directory of your repository.\033[0m\n")
-        sys.stderr.write("  \033[2mPress Enter to use the current directory.\033[0m\n")
-        raw_root = _prompt_path("Project root directory?", default_project_root.as_posix())
-        project_root = _resolve_user_path(raw_root, cwd)
-    else:
-        raw_root = args.project_root or default_project_root.as_posix()
-        project_root = _resolve_user_path(raw_root, cwd)
-
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
-    existing_install_rel = _read_existing_install(project_root)
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
-
-    if existing_install_rel is not None and not args.force:
-        return _repair_existing_install(
-            project_root,
-            existing_install_rel,
-            default_kit_tracking,
-            dry_run=args.dry_run,
-        )
-
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-interactive
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-dir
-    default_install_dir = existing_install_rel or DEFAULT_INSTALL_DIR
-    install_rel = args.install_dir or default_install_dir
-    install_rel = install_rel.strip() or default_install_dir
-
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
-    root_system = _define_root_system(project_root)
-    project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
-
-    install_options_prompted = False
-    legacy_migration_declined = False
-    legacy_install_rel: Optional[str] = None
-    if existing_install_rel is None:
-        from .migrate_from_cypilot import (
-            detect_legacy_cypilot_install,
-            ensure_supported_legacy_version,
-            migrate_from_cypilot,
-            merge_legacy_preflight_result,
-            should_migrate_from_cypilot,
-            _human_migrate_ok,
-        )
-
-        legacy_rel = args.from_dir or detect_legacy_cypilot_install(project_root)
-        if legacy_rel:
-            legacy_install_rel = legacy_rel
-            migrate = should_migrate_from_cypilot(
-                args.migrate_from_cypilot,
-                interactive=interactive,
-                project_root=project_root,
-                legacy_rel=legacy_rel,
-                decline_hint="Press N to initialize Constructor Studio side-by-side and keep Cyber Pilot unchanged.",
-            )
-            if migrate:
-                supported, preflight = ensure_supported_legacy_version(
-                    project_root=project_root,
-                    legacy_rel=legacy_rel,
-                    update_choice=args.update_legacy_studio,
-                    interactive=interactive,
-                    dry_run=args.dry_run,
-                )
-                if not supported:
-                    ui.result(preflight)
-                    return 1
-
-                migration_was_interactive = (
-                    args.migrate_from_cypilot == "ask"
-                    and interactive
-                    and sys.stdin.isatty()
-                )
-                if args.install_dir is None and migration_was_interactive:
-                    install_rel = legacy_rel.strip() or install_rel
-                if migration_was_interactive:
-                    (
-                        install_rel,
-                        project_name,
-                        runtime_tracking,
-                        agent_tracking,
-                        default_kit_tracking,
-                        kit_tracking_overrides,
-                    ) = _prompt_install_options(
-                        project_root,
-                        install_rel,
-                        project_name,
-                        runtime_tracking,
-                        agent_tracking,
-                        default_kit_tracking,
-                        kit_tracking_overrides,
-                        interactive,
-                    )
-                    install_options_prompted = True
-
-                rc, result = migrate_from_cypilot(
-                    project_root=project_root,
-                    from_dir=legacy_rel,
-                    to_dir=install_rel,
-                    dry_run=args.dry_run,
-                    force=False,
-                    yes=args.yes or args.migrate_from_cypilot == "yes",
-                    skip_update=False,
-                )
-                merge_legacy_preflight_result(result, preflight)
-                ui.result(result, human_fn=_human_migrate_ok)
-                return rc
-            legacy_migration_declined = True
-
-    if interactive and not install_options_prompted:
-        (
-            install_rel,
-            project_name,
-            runtime_tracking,
-            agent_tracking,
-            default_kit_tracking,
-            kit_tracking_overrides,
-        ) = _prompt_install_options(
-            project_root,
-            install_rel,
-            project_name,
-            runtime_tracking,
-            agent_tracking,
-            default_kit_tracking,
-            kit_tracking_overrides,
-            interactive,
-        )
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-dir
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-if-interactive
-
-    studio_dir = (project_root / install_rel).resolve()
-    if legacy_migration_declined and legacy_install_rel:
-        legacy_dir = (project_root / legacy_install_rel).resolve()
-        if studio_dir == legacy_dir:
-            ui.result(
-                {
-                    "status": "ERROR",
-                    "message": (
-                        "Migration was declined, but --install-dir resolves to the existing Constructor Studio "
-                        "directory. Choose a different --install-dir or approve migration."
-                    ),
-                    "project_root": project_root.as_posix(),
-                    "install_dir": install_rel,
-                    "legacy_studio_dir": legacy_dir.as_posix(),
-                    "actions": {
-                        "legacy_studio": "detected",
-                        "migration": "declined",
-                        "migration_decline_action": "rejected_legacy_install_dir",
-                    },
-                },
-                human_fn=lambda d: (
-                    ui.error(str(d["message"])),
-                    ui.detail("Legacy Constructor Studio directory", str(d["legacy_studio_dir"])),
-                    ui.blank(),
-                    ui.hint("Choose a side-by-side directory:  cfs init --install-dir .cf-studio --migrate-from-cypilot=no"),
-                    ui.hint("Or approve migration:             cfs init --install-dir .cf-studio --migrate-from-cypilot=yes"),
-                    ui.blank(),
-                ),
-            )
-            return 1
+    studio_dir = (project_root / state.install_rel).resolve()
+    declined_target_error = _validate_declined_legacy_target(state, studio_dir)
+    if declined_target_error is not None:
+        return declined_target_error
 
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-agents
     # Stub: agent selection not yet needed (single kit); will prompt when multi-kit support lands
@@ -1327,112 +1981,39 @@ def cmd_init(argv: List[str]) -> int:
 
     # Verify cache exists
     if not CACHE_DIR.is_dir():
-        ui.result(
-            {
-                "status": "ERROR",
-                "message": f"Constructor Studio cache not found at {CACHE_DIR}. Run 'cfs update' first.",
-                "project_root": project_root.as_posix(),
-            },
-            human_fn=lambda d: (
-                ui.error("Constructor Studio cache not found."),
-                ui.detail("Expected at", str(CACHE_DIR)),
-                ui.blank(),
-                ui.hint("Install Constructor Studio first:  pipx install git+https://github.com/constructorfabric/studio.git && cfs update"),
-                ui.blank(),
-            ),
-        )
-        return 1
+        return _emit_missing_cache_error(project_root)
 
-    actions: Dict[str, str] = {}
-    if legacy_migration_declined:
-        actions["legacy_studio"] = "detected"
-        actions["migration"] = "declined"
-        actions["migration_decline_action"] = "side_by_side_init"
-    errors: List[Dict[str, str]] = []
-    backups: List[str] = []
+    run_state = _InitRunState()
+    if state.legacy_migration_declined:
+        run_state.actions["legacy_studio"] = "detected"
+        run_state.actions["migration"] = "declined"
+        run_state.actions["migration_decline_action"] = "side_by_side_init"
 
     # Create backup before --force overwrites
     if args.force and studio_dir.exists() and not args.dry_run:
         backup_path = create_backup(studio_dir)
         if backup_path:
-            backups.append(backup_path.as_posix())
+            run_state.backups.append(backup_path.as_posix())
 
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
-    if not args.dry_run:
-        studio_dir.mkdir(parents=True, exist_ok=True)
-        copy_results = _copy_from_cache(CACHE_DIR, studio_dir, force=args.force)
-    else:
-        copy_results = _dry_run_copy_results(CACHE_DIR, studio_dir, force=args.force)
-    actions["copy"] = json.dumps(copy_results)
+    layout = _prepare_init_layout(studio_dir, args, run_state.actions)
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
 
-    # Create the three subdirectories: .core/ (already created by _copy_from_cache), .gen/, config/
-    config_dir = studio_dir / "config"
-    gen_dir = studio_dir / GEN_SUBDIR
-    core_dir = studio_dir / CORE_SUBDIR
-    if not args.dry_run:
-        config_dir.mkdir(parents=True, exist_ok=True)
-        gen_dir.mkdir(parents=True, exist_ok=True)
-
-    # Write README.md into each directory (always overwrite)
-    if not args.dry_run:
-        (core_dir / _README_FILENAME).write_text(_core_readme(), encoding="utf-8")
-        (gen_dir / _README_FILENAME).write_text(_gen_readme(), encoding="utf-8")
-        (config_dir / _README_FILENAME).write_text(_config_readme(), encoding="utf-8")
-    actions["readmes"] = "created"
-
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
-    # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-config
-    # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-write-core-toml
-    desired_core = _default_core_toml()
-    # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-write-core-toml
-    # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-config
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
-
-    # Write config files into config/ subdirectory
-    core_toml_path = (config_dir / "core.toml").resolve()
-    core_toml_existed = core_toml_path.is_file()
-    if core_toml_existed and not args.force:
-        actions["core_toml"] = "unchanged"
-    else:
-        desired_core["install"]["runtime_tracking"] = runtime_tracking
-        desired_core["install"]["agent_tracking"] = agent_tracking
-        desired_core["install"]["kit_tracking"] = default_kit_tracking
-        if not args.dry_run:
-            toml_utils.dump(desired_core, core_toml_path, header_comment="Constructor Studio project configuration")
-        actions["core_toml"] = "updated" if core_toml_existed else "created"
-    if core_toml_existed and not args.force:
-        actions["core_toml_metadata"] = _persist_install_metadata(
-            core_toml_path,
-            default_kit_tracking,
-            runtime_tracking=runtime_tracking,
-            agent_tracking=agent_tracking,
-            dry_run=args.dry_run,
-        )
+    _write_init_core_toml(
+        layout=layout,
+        args=args,
+        state=state,
+        actions=run_state.actions,
+    )
 
     # Write user-editable AGENTS.md to config/ (preserve existing)
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
     # @cpt-begin:cpt-studio-algo-core-infra-create-config-agents:p1:inst-gen-when-rules
-    config_agents_path = (config_dir / _AGENTS_FILENAME).resolve()
-    config_agents_existed = config_agents_path.is_file()
-    if config_agents_existed and not args.force:
-        actions["config_agents"] = "unchanged"
-    else:
-        if not config_agents_existed and not args.dry_run:
-            config_agents_path.write_text(
-                "# Custom Agent Navigation Rules\n"
-                "\n"
-                "Add your project-specific WHEN rules here.\n"
-                "These rules are loaded alongside the generated rules in `{cf-studio-path}/.gen/" + _AGENTS_FILENAME + "`.\n",
-                encoding="utf-8",
-            )
-            # If force + existed: leave user content untouched
-        # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-gen-when-rules
-        # @cpt-begin:cpt-studio-algo-core-infra-create-config-agents:p1:inst-write-config-agents
-        actions["config_agents"] = "unchanged" if config_agents_existed else "created"
-    # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-write-config-agents
-    # @cpt-begin:cpt-studio-algo-core-infra-create-config-agents:p1:inst-return-config-agents-path
-    actions["config_agents_path"] = config_agents_path.as_posix()
+    _ensure_init_config_agents(
+        layout=layout,
+        args=args,
+        actions=run_state.actions,
+    )
     # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-return-config-agents-path
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
 
@@ -1446,88 +2027,22 @@ def cmd_init(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-kits
     # Kit installation via GitHub prompt (ADR-0013)
-    from .kit import regenerate_gen_aggregates
-
-    kit_results: Dict[str, Any] = {}
-
-    if not args.dry_run:
-        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-kit
-        install_kit_flag = _prompt_kit_install_flag(interactive)
-        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-kit
-
-        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
-        if install_kit_flag:
-            kit_tracking_overrides["sdlc"] = _prompt_kit_tracking_policy(
-                "sdlc",
-                default_kit_tracking,
-                kit_tracking_overrides.get("sdlc"),
-                interactive,
-            )
-            kit_results = _install_default_kit(studio_dir, interactive, actions, errors)
-            if "sdlc" in kit_results:
-                kit_results["sdlc"]["tracking"] = kit_tracking_overrides["sdlc"]
-            if errors:
-                err_result: Dict[str, object] = {
-                    "status": "ERROR",
-                    "message": "Init failed",
-                    "project_root": project_root.as_posix(),
-                    "studio_dir": studio_dir.as_posix(),
-                    "dry_run": bool(args.dry_run),
-                    "errors": errors,
-                }
-                if backups:
-                    err_result["backups"] = backups
-                ui.result(err_result, human_fn=_human_init_error)
-                return 1
-        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
-        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-skip-kit-declined
-        else:
-            ui.info(f"Skipped kit installation. Install later: cfs kit install {_DEFAULT_KIT_SOURCE}")
-        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-skip-kit-declined
-
-    # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-write-artifacts-toml
-    # Write artifacts.toml after kit install decision so kit slug is known
-    installed_kit_slug = next(iter(kit_results), "") if kit_results else ""
-    desired_registry = generate_default_registry(project_name, kit_slug=installed_kit_slug)
-    registry_path = (config_dir / "artifacts.toml").resolve()
-    registry_existed_before = registry_path.is_file()
-    if registry_existed_before and not args.force:
-        actions["artifacts_registry"] = "unchanged"
-    else:
-        if not args.dry_run:
-            toml_utils.dump(desired_registry, registry_path, header_comment="Constructor Studio artifacts registry")
-        actions["artifacts_registry"] = "updated" if registry_existed_before else "created"
-    # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-write-artifacts-toml
-
-    # Regenerate .gen/ aggregates (AGENTS.md, SKILL.md, README.md)
-    if not args.dry_run:
-        gen_result = regenerate_gen_aggregates(studio_dir)
-        actions.update(gen_result)
-
-    # Write config/SKILL.md — empty, for user extensions (preserve existing)
-    if not args.dry_run:
-        config_skill_path = config_dir / "SKILL.md"
-        if not config_skill_path.is_file():
-            config_skill_path.write_text(
-                "# Custom Skill Extensions\n"
-                "\n"
-                "Add your project-specific skill instructions here.\n"
-                "Agent-facing skills and workflows are generated into agent integration files.\n",
-                encoding="utf-8",
-            )
-            actions["config_skill"] = "created"
-        else:
-            actions["config_skill"] = "unchanged"
-
-    actions["kits"] = json.dumps(kit_results)
-    actions["core_toml_metadata"] = _persist_install_metadata(
-        core_toml_path,
-        default_kit_tracking,
-        runtime_tracking=runtime_tracking,
-        agent_tracking=agent_tracking,
-        dry_run=args.dry_run,
-        kit_tracking_overrides=kit_tracking_overrides,
-        apply_default_to_missing_kits=True,
+    kit_results, kit_rc = _maybe_install_default_kit_for_init(
+        args=args,
+        interactive=interactive,
+        studio_dir=studio_dir,
+        project_root=project_root,
+        state=state,
+        run_state=run_state,
+    )
+    if kit_rc is not None:
+        return kit_rc
+    _finalize_init_files(
+        args=args,
+        layout=layout,
+        state=state,
+        kit_results=kit_results,
+        actions=run_state.actions,
     )
     # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-kits
 
@@ -1535,56 +2050,37 @@ def cmd_init(argv: List[str]) -> int:
     # Stub: Agent Generator (Feature 5 boundary) — agent entry points generated separately
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-delegate-agents
 
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-inject-agents
-    root_agents_action = _inject_root_agents(project_root, install_rel, dry_run=args.dry_run)
-    actions["root_agents"] = root_agents_action
-    root_claude_action = _inject_root_claude(project_root, install_rel, dry_run=args.dry_run)
-    actions["root_claude"] = root_claude_action
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-write-gitignore-footprint
-    actions["gitignore"] = _write_gitignore_block(
-        project_root,
-        install_rel,
-        core_toml_path,
-        default_kit_tracking,
-        dry_run=args.dry_run,
-    )
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-write-gitignore-footprint
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-inject-agents
-
-    if errors:
-        err_result: Dict[str, object] = {
-            "status": "ERROR",
-            "message": "Init failed",
-            "project_root": project_root.as_posix(),
-            "studio_dir": studio_dir.as_posix(),
-            "dry_run": bool(args.dry_run),
-            "errors": errors,
-        }
-        if backups:
-            err_result["backups"] = backups
-        ui.result(err_result, human_fn=_human_init_error)
-        return 1
+    if run_state.errors:
+        return _emit_init_error(
+            project_root=project_root,
+            studio_dir=studio_dir,
+            dry_run=bool(args.dry_run),
+            errors=run_state.errors,
+            backups=run_state.backups,
+        )
 
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-return-init-ok
     # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-init-complete
-    init_result: Dict[str, object] = {
-        "status": "PASS",
-        "project_root": project_root.as_posix(),
-        "studio_dir": studio_dir.as_posix(),
-        "core_toml": core_toml_path.as_posix(),
-        "dry_run": bool(args.dry_run),
-        "actions": actions,
-        "root_system": root_system,
-        "runtime_tracking": runtime_tracking,
-        "agent_tracking": agent_tracking,
-        "kit_tracking": {
-            "default": default_kit_tracking,
-            "kits": _read_kit_tracking_state(core_toml_path, default=default_kit_tracking)[1],
-        },
-    }
-    if backups:
-        init_result["backups"] = backups
-    ui.result(init_result, human_fn=lambda d: _human_init_ok(d, project_root, studio_dir, install_rel, project_name, kit_results))
+    init_result = _build_init_result(
+        args=args,
+        project_root=project_root,
+        studio_dir=studio_dir,
+        layout=layout,
+        state=state,
+        actions=run_state.actions,
+        backups=run_state.backups,
+    )
+    ui.result(
+        init_result,
+        human_fn=lambda d: _human_init_ok(
+            d,
+            project_root,
+            studio_dir,
+            state.install_rel,
+            state.project_name,
+            kit_results,
+        ),
+    )
     return 0
     # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-init-complete
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-return-init-ok
@@ -1646,11 +2142,6 @@ def _human_init_ok(
 
 def _human_init_error(data: Dict[str, object]) -> None:
     ui.error("Initialization failed")
-    errors = data.get("errors", [])
-    for err in errors:
-        if isinstance(err, dict):
-            ui.substep(f"• {err.get('path', '?')}: {err.get('error', '?')}")
-        else:
-            ui.substep(f"• {err}")
+    _render_error_entries(data.get("errors", []))
     ui.blank()
 # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-format-output

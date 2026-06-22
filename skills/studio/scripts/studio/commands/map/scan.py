@@ -337,6 +337,15 @@ def _resolve_registry_path_for_root(root: Path) -> Optional[Path]:
     return flat if flat.is_file() else None  # pragma: no cover
 
 
+def _adapter_dir_for_scan_root(root: Path) -> Path:
+    from studio.utils.files import find_project_root, find_studio_directory
+
+    detected_root = find_project_root(root)
+    if detected_root is not None and detected_root.resolve() == root.resolve():  # pragma: no cover
+        return find_studio_directory(root) or root
+    return root
+
+
 def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Node]:
     """Scan source files driven by [[systems.codebase]] entries in artifacts.toml.
 
@@ -363,13 +372,7 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     # Guard: only use adapter resolution when root == project_root to avoid
     # picking up the parent project's adapter when scanning a fixture sub-dir.
     try:
-        from studio.utils.files import find_studio_directory, find_project_root
-        detected_root = find_project_root(root)
-        if detected_root is not None and detected_root.resolve() == root.resolve():  # pragma: no cover
-            adapter_dir = find_studio_directory(root) or root
-        else:
-            adapter_dir = root
-        meta.expand_autodetect(adapter_dir=adapter_dir, project_root=root)
+        meta.expand_autodetect(adapter_dir=_adapter_dir_for_scan_root(root), project_root=root)
     except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
         pass
 
@@ -427,6 +430,59 @@ def _walk_source_dir(cb_dir: Path, ext_set: Set[str], skip_dirs: Set[str]) -> Li
     # @cpt-end:cpt-studio-algo-map-scan:p1:inst-walk-source-dir
 
 
+def _source_lines(path: Path) -> List[str]:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:  # pragma: no cover
+        return []
+
+
+def _code_snippet(src_lines: List[str], lo: int, hi: int) -> str:
+    if not src_lines:  # pragma: no cover
+        return ""
+    lo = max(1, lo)
+    hi = min(len(src_lines), hi)
+    if lo > hi:
+        return ""
+    return "\n".join(src_lines[lo - 1:hi])
+
+
+def _scope_marker_uses(scope_markers, src_lines: List[str]) -> List[CptUse]:
+    return [
+        CptUse(
+            cpt_id=f"{scope_marker.id}:p{scope_marker.phase}",
+            line=scope_marker.line,
+            snippet=_code_snippet(src_lines, scope_marker.line, scope_marker.line + 4) or scope_marker.raw.rstrip(),
+            marker_kind="scope",
+        )
+        for scope_marker in scope_markers
+    ]
+
+
+def _block_marker_uses(block_markers, src_lines: List[str]) -> List[CptUse]:
+    cpt_uses: List[CptUse] = []
+    for block_marker in block_markers:
+        cpt_id = f"{block_marker.id}:p{block_marker.phase}"
+        inner_hi = min(block_marker.start_line + _MAX_SNIPPET_LINES, block_marker.end_line)
+        cpt_uses.extend([
+            CptUse(
+                cpt_id=cpt_id,
+                line=block_marker.start_line,
+                snippet=_code_snippet(src_lines, block_marker.start_line, inner_hi)
+                        or f"@cpt-begin:{block_marker.id}:p{block_marker.phase}:inst-{block_marker.inst}",
+                marker_kind="block-begin",
+            ),
+            CptUse(
+                cpt_id=cpt_id,
+                line=block_marker.end_line,
+                snippet=_code_snippet(src_lines, max(block_marker.start_line, block_marker.end_line - 4), block_marker.end_line)
+                        or f"@cpt-end:{block_marker.id}:p{block_marker.phase}:inst-{block_marker.inst}",
+                marker_kind="block-end",
+            ),
+        ])
+    return cpt_uses
+
+
 def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node]:
     """Parse a source file with CodeFile.from_path and build a Node."""
     # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-make-source-node
@@ -439,55 +495,18 @@ def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node
 
     cf, _errors = CodeFile.from_path(path)
 
+    src_lines = _source_lines(path)
     cpt_uses: List[CptUse] = []
-    # Read raw lines once for snippet extraction.
-    try:
-        src_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:  # pragma: no cover
-        src_lines = []
-
-    def _code_snippet(lo: int, hi: int) -> str:
-        if not src_lines:  # pragma: no cover
-            return ""
-        lo = max(1, lo)
-        hi = min(len(src_lines), hi)
-        if lo > hi:
-            return ""
-        return "\n".join(src_lines[lo - 1:hi])
 
     if cf is not None:
         # Scope markers → marker_kind="scope"; embed 3 lines after the marker
         # so the surrounding code is visible.
         # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
-        for sm in cf.scope_markers:
-            cpt_id = f"{sm.id}:p{sm.phase}"
-            cpt_uses.append(CptUse(
-                cpt_id=cpt_id,
-                line=sm.line,
-                snippet=_code_snippet(sm.line, sm.line + 4) or sm.raw.rstrip(),
-                marker_kind="scope",
-            ))
+        cpt_uses.extend(_scope_marker_uses(cf.scope_markers, src_lines))
         # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
         # Block markers → begin + end with the inner body included for begin.
         # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
-        for bm in cf.block_markers:
-            cpt_id = f"{bm.id}:p{bm.phase}"
-            inner_hi = min(bm.start_line + _MAX_SNIPPET_LINES, bm.end_line)
-            cpt_uses.append(CptUse(
-                cpt_id=cpt_id,
-                line=bm.start_line,
-                snippet=_code_snippet(bm.start_line, inner_hi)
-                        or f"@cpt-begin:{bm.id}:p{bm.phase}:inst-{bm.inst}",
-                marker_kind="block-begin",
-            ))
-            # end entry — show last few lines of the block leading up to the @cpt-end
-            cpt_uses.append(CptUse(
-                cpt_id=cpt_id,
-                line=bm.end_line,
-                snippet=_code_snippet(max(bm.start_line, bm.end_line - 4), bm.end_line)
-                        or f"@cpt-end:{bm.id}:p{bm.phase}:inst-{bm.inst}",
-                marker_kind="block-end",
-            ))
+        cpt_uses.extend(_block_marker_uses(cf.block_markers, src_lines))
         # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
 
     return Node(

@@ -29,6 +29,7 @@ Pipeline:
 import argparse
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -38,6 +39,8 @@ from .init import (
     COPY_ROOT_FILES,
     CORE_SUBDIR,
     DEFAULT_INSTALL_DIR,
+    _CONFIG_README_PREAMBLE,
+    _add_legacy_migration_args,
     _copy_from_cache,
     _core_readme,
     _cache_allows_root_metadata,
@@ -46,6 +49,8 @@ from .init import (
     _read_install_tracking,
     _read_kit_tracking,
     _read_kit_tracking_state,
+    _render_error_entries,
+    _run_default_legacy_migration,
     _inject_root_agents,
     _inject_root_claude,
     _write_gitignore_block,
@@ -54,14 +59,18 @@ from ..utils.ui import ui
 from ..utils.whatsnew import read_whatsnew, show_core_whatsnew, show_kit_whatsnew
 # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-imports
 
-def cmd_update(argv: List[str]) -> int:
-    """Update an existing Constructor Studio installation.
 
-    Refreshes .core/ and install-root metadata from cache, updates kit files,
-    regenerates .gen/ aggregates.
-    Never overwrites user config files.
-    """
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-user-update
+@dataclass(frozen=True)
+class _KitSourceResolution:
+    """Resolved source inputs for one kit update attempt."""
+
+    kit_src: Optional[Path]
+    tmp_to_clean: Optional[Path]
+    authority_metadata: Optional[Dict[str, Any]]
+    dry_run_result: Optional[Dict[str, Any]]
+
+def _parse_update_args(argv: List[str]) -> argparse.Namespace:
+    """Build and parse the update CLI arguments."""
     p = argparse.ArgumentParser(
         prog="update",
         description="Update Constructor Studio installation (refresh .core, regenerate .gen)",
@@ -80,214 +89,354 @@ def cmd_update(argv: List[str]) -> int:
         metavar="{yes,true,no,false}",
         help="Update project kit files too. Defaults to no; bare --with-kits is invalid.",
     )
-    p.add_argument(
-        "--migrate-from-cypilot",
-        choices=("ask", "yes", "no"),
-        default="ask",
-        metavar="{ask,yes,no}",
-        help="Migrate an existing Cyber Pilot (cypilot) project. Use --migrate-from-cypilot={ask,yes,no} (default: ask)",
-    )
-    p.add_argument(
-        "--update-legacy-studio",
-        choices=("ask", "yes", "no"),
-        default="ask",
-        metavar="{ask,yes,no}",
-        help="Update unsupported Constructor Studio installs to the migration baseline first. Use --update-legacy-studio={ask,yes,no} (default: ask)",
-    )
-    args = p.parse_args(argv)
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-user-update
+    _add_legacy_migration_args(p)
+    return p.parse_args(argv)
 
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-project
-    from ..utils.files import find_project_root, _read_studio_var
+
+def _no_project_root_result() -> Dict[str, Any]:
+    return {"status": "ERROR", "message": "No project root found. Run 'cfs init' first."}
+
+
+def _render_no_project_root(_data: Dict[str, Any]) -> tuple[None, None, None]:
+    return (
+        ui.error("No project root found."),
+        ui.hint("Initialize Constructor Studio first:  cfs init"),
+        ui.blank(),
+    )
+
+
+def _not_initialized_result(project_root: Path) -> Dict[str, Any]:
+    return {
+        "status": "ERROR",
+        "message": "Constructor Studio not initialized in this project. Run 'cfs init' first.",
+        "project_root": project_root.as_posix(),
+    }
+
+
+def _render_not_initialized(project_root: Path) -> tuple[None, None, None, None]:
+    return (
+        ui.error("Constructor Studio is not initialized in this project."),
+        ui.detail("Project root", project_root.as_posix()),
+        ui.hint("Initialize first:  cfs init"),
+        ui.blank(),
+    )
+
+
+def _missing_studio_dir_result(project_root: Path, studio_dir: Path) -> Dict[str, Any]:
+    return {
+        "status": "ERROR",
+        "message": f"Constructor Studio directory not found: {studio_dir}",
+        "project_root": project_root.as_posix(),
+    }
+
+
+def _render_missing_studio_dir(studio_dir: Path) -> tuple[None, None, None]:
+    return (
+        ui.error(f"Constructor Studio directory not found: {studio_dir}"),
+        ui.hint("Reinitialize:  cfs init --force"),
+        ui.blank(),
+    )
+
+
+def _missing_cache_result() -> Dict[str, Any]:
+    return {
+        "status": "ERROR",
+        "message": f"Cache not found at {CACHE_DIR}. Run 'cfs update' (proxy downloads first).",
+    }
+
+
+def _render_missing_cache(_data: Dict[str, Any]) -> tuple[None, None, None, None]:
+    return (
+        ui.error("Constructor Studio cache not found."),
+        ui.detail("Expected at", str(CACHE_DIR)),
+        ui.hint("The proxy layer downloads the cache before forwarding to this command."),
+        ui.hint("If running directly, ensure cache exists at the path above."),
+    )
+
+
+@dataclass
+class _UpdateProjectResolution:
+    rc: int
+    result: Optional[Dict[str, Any]] = None
+    project_root: Optional[Path] = None
+    studio_dir: Optional[Path] = None
+    install_rel: Optional[str] = None
+    legacy_migration_declined: bool = False
+
+
+@dataclass
+class _PostCoreUpdateContext:
+    project_root: Path
+    studio_dir: Path
+    install_rel: str
+    config_dir: Path
+    core_toml_path: Path
+    kit_tracking: str
+
+
+@dataclass
+class _UpdateRunContext:
+    project_root: Path
+    studio_dir: Path
+    install_rel: str
+    core_dir: Path
+    installed_whatsnew_path: Path
+    config_dir: Path
+    core_toml_path: Path
+    kit_tracking: str
+
+
+def _failed_update_resolution(result: Optional[Dict[str, Any]] = None) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
+    resolution = _UpdateProjectResolution(rc=1, result=result)
+    return (
+        resolution.rc,
+        resolution.result,
+        resolution.project_root,
+        resolution.studio_dir,
+        resolution.install_rel,
+        resolution.legacy_migration_declined,
+    )
+
+
+def _successful_update_resolution(
+    *,
+    project_root: Path,
+    studio_dir: Path,
+    install_rel: str,
+    legacy_migration_declined: bool,
+) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
+    resolution = _UpdateProjectResolution(
+        rc=0,
+        project_root=project_root,
+        studio_dir=studio_dir,
+        install_rel=install_rel,
+        legacy_migration_declined=legacy_migration_declined,
+    )
+    return (
+        resolution.rc,
+        resolution.result,
+        resolution.project_root,
+        resolution.studio_dir,
+        resolution.install_rel,
+        resolution.legacy_migration_declined,
+    )
+
+
+def _resolve_existing_project_root(args: argparse.Namespace) -> Optional[Path]:
+    from ..utils.files import find_project_root
+    from .migrate_from_cypilot import resolve_cypilot_project_root
 
     cwd = Path.cwd().resolve()
     project_root = Path(args.project_root).resolve() if args.project_root else find_project_root(cwd)
-    if project_root is None:
-        from .migrate_from_cypilot import resolve_cypilot_project_root
+    return project_root or resolve_cypilot_project_root(args.project_root)
 
-        project_root = resolve_cypilot_project_root(args.project_root)
 
+def _missing_install_update_result(
+    args: argparse.Namespace,
+    project_root: Path,
+    legacy_rel: Optional[str],
+) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
+    if legacy_rel:
+        return _handle_missing_install_update(args, project_root, legacy_rel)
+    ui.result(
+        _not_initialized_result(project_root),
+        human_fn=lambda _data: _render_not_initialized(project_root),
+    )
+    return _failed_update_resolution()
+
+
+def _resolve_update_project(args: argparse.Namespace) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
+    """Resolve update context or return an early result."""
+    from ..utils.files import _read_studio_var
+    from .migrate_from_cypilot import detect_legacy_cypilot_install
+
+    project_root = _resolve_existing_project_root(args)
     if project_root is None:
-        ui.result(
-            {"status": "ERROR", "message": "No project root found. Run 'cfs init' first."},
-            human_fn=lambda d: (
-                ui.error("No project root found."),
-                ui.hint("Initialize Constructor Studio first:  cfs init"),
-                ui.blank(),
-            ),
-        )
-        return 1
+        ui.result(_no_project_root_result(), human_fn=_render_no_project_root)
+        return _failed_update_resolution()
 
     install_rel = _read_studio_var(project_root)
     if not install_rel:
-        from .migrate_from_cypilot import (
-            detect_legacy_cypilot_install,
-            ensure_supported_legacy_version,
-            migrate_from_cypilot,
-            merge_legacy_preflight_result,
-            migration_declined_result,
-            should_migrate_from_cypilot,
-            _human_migrate_ok,
+        return _missing_install_update_result(
+            args,
+            project_root,
+            args.from_dir or detect_legacy_cypilot_install(project_root),
         )
 
-        legacy_rel = args.from_dir or detect_legacy_cypilot_install(project_root)
-        if legacy_rel:
-            migrate = should_migrate_from_cypilot(
-                args.migrate_from_cypilot,
-                interactive=not args.no_interactive and not args.yes,
-                project_root=project_root,
-                legacy_rel=legacy_rel,
-                decline_hint="Press N to abort update.",
-            )
-            if not migrate:
-                ui.result(migration_declined_result(project_root, legacy_rel, dry_run=args.dry_run))
-                return 1
+    legacy_result = _handle_existing_install_legacy_migration(args, project_root, install_rel)
+    if legacy_result is not None:
+        return legacy_result
 
-            supported, preflight = ensure_supported_legacy_version(
-                project_root=project_root,
-                legacy_rel=legacy_rel,
-                update_choice=args.update_legacy_studio,
-                interactive=not args.no_interactive and not args.yes,
-                dry_run=args.dry_run,
-            )
-            if not supported:
-                ui.result(preflight)
-                return 1
-
-            rc, result = migrate_from_cypilot(
-                project_root=project_root,
-                from_dir=legacy_rel,
-                to_dir=DEFAULT_INSTALL_DIR,
-                dry_run=args.dry_run,
-                force=False,
-                yes=args.yes or args.migrate_from_cypilot == "yes",
-                skip_update=False,
-            )
-            merge_legacy_preflight_result(result, preflight)
-            ui.result(result, human_fn=_human_migrate_ok)
-            return rc
-
+    legacy_rel = args.from_dir or detect_legacy_cypilot_install(project_root)
+    legacy_migration_declined = bool(legacy_rel)
+    studio_dir = (project_root / install_rel).resolve()
+    if not studio_dir.is_dir():
         ui.result(
-            {"status": "ERROR", "message": "Constructor Studio not initialized in this project. Run 'cfs init' first.", "project_root": project_root.as_posix()},
-            human_fn=lambda d: (
-                ui.error("Constructor Studio is not initialized in this project."),
-                ui.detail("Project root", project_root.as_posix()),
-                ui.hint("Initialize first:  cfs init"),
-                ui.blank(),
-            ),
+            _missing_studio_dir_result(project_root, studio_dir),
+            human_fn=lambda _data: _render_missing_studio_dir(studio_dir),
         )
-        return 1
+        return _failed_update_resolution()
+    if not CACHE_DIR.is_dir():
+        ui.result(_missing_cache_result(), human_fn=_render_missing_cache)
+        ui.blank()
+        return _failed_update_resolution()
+    return _successful_update_resolution(
+        project_root=project_root,
+        studio_dir=studio_dir,
+        install_rel=install_rel,
+        legacy_migration_declined=legacy_migration_declined,
+    )
 
+
+def _build_update_run_context(
+    *,
+    project_root: Path,
+    studio_dir: Path,
+    install_rel: str,
+) -> _UpdateRunContext:
+    config_dir = studio_dir / "config"
+    core_toml_path = config_dir / "core.toml"
+    return _UpdateRunContext(
+        project_root=project_root,
+        studio_dir=studio_dir,
+        install_rel=install_rel,
+        core_dir=studio_dir / CORE_SUBDIR,
+        installed_whatsnew_path=studio_dir / "whatsnew.toml",
+        config_dir=config_dir,
+        core_toml_path=core_toml_path,
+        kit_tracking=_read_kit_tracking(core_toml_path, default="tracked"),
+    )
+
+
+def _handle_missing_install_update(
+    args: argparse.Namespace,
+    project_root: Path,
+    legacy_rel: str,
+) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
+    from .migrate_from_cypilot import (
+        ensure_supported_legacy_version,
+        migration_declined_result,
+        should_migrate_from_cypilot,
+        _human_migrate_ok,
+    )
+
+    migrate = should_migrate_from_cypilot(
+        args.migrate_from_cypilot,
+        interactive=not args.no_interactive and not args.yes,
+        project_root=project_root,
+        legacy_rel=legacy_rel,
+        decline_hint="Press N to abort update.",
+    )
+    if not migrate:
+        result = migration_declined_result(project_root, legacy_rel, dry_run=args.dry_run)
+        ui.result(result)
+        return 1, result, None, None, None, False
+
+    supported, preflight = ensure_supported_legacy_version(
+        project_root=project_root,
+        legacy_rel=legacy_rel,
+        update_choice=args.update_legacy_studio,
+        interactive=not args.no_interactive and not args.yes,
+        dry_run=args.dry_run,
+    )
+    if not supported:
+        ui.result(preflight)
+        return 1, preflight, None, None, None, False
+
+    rc = _run_default_legacy_migration(
+        args=args,
+        project_root=project_root,
+        from_dir=legacy_rel,
+        to_dir=DEFAULT_INSTALL_DIR,
+        preflight=preflight,
+        human_fn=_human_migrate_ok,
+    )
+    result = None
+    return rc, result, None, None, None, False
+
+
+def _handle_existing_install_legacy_migration(
+    args: argparse.Namespace,
+    project_root: Path,
+    install_rel: str,
+) -> Optional[tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]]:
     from .migrate_from_cypilot import (
         detect_legacy_cypilot_install,
         ensure_supported_legacy_version,
-        migrate_from_cypilot,
-        merge_legacy_preflight_result,
         should_migrate_from_cypilot,
         _human_migrate_ok,
     )
 
     legacy_rel = args.from_dir or detect_legacy_cypilot_install(project_root)
-    legacy_migration_declined = False
-    if legacy_rel:
-        migrate = should_migrate_from_cypilot(
-            args.migrate_from_cypilot,
-            interactive=not args.no_interactive and not args.yes,
-            project_root=project_root,
-            legacy_rel=legacy_rel,
-            heading="Cyber Pilot (cypilot) detected alongside Constructor Studio.",
-            prompt="Migrate it into the current Constructor Studio install now? [y/N] ",
-            decline_hint="Press N to continue regular Constructor Studio update.",
-        )
-        if migrate:
-            supported, preflight = ensure_supported_legacy_version(
-                project_root=project_root,
-                legacy_rel=legacy_rel,
-                update_choice=args.update_legacy_studio,
-                interactive=not args.no_interactive and not args.yes,
-                dry_run=args.dry_run,
-            )
-            if not supported:
-                ui.result(preflight)
-                return 1
+    if not legacy_rel:
+        return None
+    migrate = should_migrate_from_cypilot(
+        args.migrate_from_cypilot,
+        interactive=not args.no_interactive and not args.yes,
+        project_root=project_root,
+        legacy_rel=legacy_rel,
+        heading="Cyber Pilot (cypilot) detected alongside Constructor Studio.",
+        prompt="Migrate it into the current Constructor Studio install now? [y/N] ",
+        decline_hint="Press N to continue regular Constructor Studio update.",
+    )
+    if not migrate:
+        return None
 
-            rc, result = migrate_from_cypilot(
-                project_root=project_root,
-                from_dir=legacy_rel,
-                to_dir=install_rel,
-                dry_run=args.dry_run,
-                force=True,
-                yes=args.yes,
-                skip_update=False,
-            )
-            merge_legacy_preflight_result(result, preflight)
-            ui.result(result, human_fn=_human_migrate_ok)
-            return rc
-        legacy_migration_declined = True
+    supported, preflight = ensure_supported_legacy_version(
+        project_root=project_root,
+        legacy_rel=legacy_rel,
+        update_choice=args.update_legacy_studio,
+        interactive=not args.no_interactive and not args.yes,
+        dry_run=args.dry_run,
+    )
+    if not supported:
+        ui.result(preflight)
+        return 1, preflight, None, None, None, False
 
-    studio_dir = (project_root / install_rel).resolve()
-    if not studio_dir.is_dir():
-        ui.result(
-            {"status": "ERROR", "message": f"Constructor Studio directory not found: {studio_dir}", "project_root": project_root.as_posix()},
-            human_fn=lambda d: (
-                ui.error(f"Constructor Studio directory not found: {studio_dir}"),
-                ui.hint("Reinitialize:  cfs init --force"),
-                ui.blank(),
-            ),
-        )
-        return 1
+    rc = _run_default_legacy_migration(
+        args=args,
+        project_root=project_root,
+        from_dir=legacy_rel,
+        to_dir=install_rel,
+        preflight=preflight,
+        human_fn=_human_migrate_ok,
+        force=True,
+    )
+    result = None
+    return rc, result, None, None, None, False
 
-    if not CACHE_DIR.is_dir():
-        ui.result(
-            {"status": "ERROR", "message": f"Cache not found at {CACHE_DIR}. Run 'cfs update' (proxy downloads first)."},
-            human_fn=lambda d: (
-                ui.error("Constructor Studio cache not found."),
-                ui.detail("Expected at", str(CACHE_DIR)),
-                ui.hint("The proxy layer downloads the cache before forwarding to this command."),
-                ui.hint("If running directly, ensure cache exists at the path above."),
-                ui.blank(),
-            ),
-        )
-        return 1
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-project
 
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-whatsnew
-    actions: Dict[str, Any] = {}
-    if legacy_migration_declined:
-        actions["legacy_studio"] = "detected"
-        actions["migration"] = "declined"
-        actions["migration_decline_action"] = "regular_update"
-    errors: List[Dict[str, str]] = []
-    warnings: List[str] = []
+def _show_update_whatsnew(
+    *,
+    args: argparse.Namespace,
+    core_dir: Path,
+    installed_whatsnew_path: Path,
+) -> bool:
+    """Show core whatsnew and report whether update should continue."""
+    if args.dry_run or not _cache_allows_root_metadata(CACHE_DIR):
+        return True
+    cache_whatsnew = read_whatsnew(CACHE_DIR / "whatsnew.toml")
+    core_whatsnew = read_whatsnew(installed_whatsnew_path) or read_whatsnew(core_dir / "whatsnew.toml")
+    if not cache_whatsnew:
+        return True
+    ack = show_core_whatsnew(
+        cache_whatsnew,
+        core_whatsnew,
+        interactive=not args.no_interactive and not args.yes and sys.stdin.isatty(),
+    )
+    if ack:
+        return True
+    ui.result({"status": "ABORTED", "message": "Update aborted by user."})
+    return False
 
-    core_dir = studio_dir / CORE_SUBDIR
-    installed_whatsnew_path = studio_dir / "whatsnew.toml"
-    config_dir = studio_dir / "config"
-    core_toml_path = config_dir / "core.toml"
-    kit_tracking = _read_kit_tracking(core_toml_path, default="tracked")
-    with_kits = str(args.with_kits).lower() in ("yes", "true")
 
-    cache_allows_root_metadata = _cache_allows_root_metadata(CACHE_DIR)
-
-    # ── Show core whatsnew (before .core/ is replaced) ────────────────────
-    if not args.dry_run and cache_allows_root_metadata:
-        cache_whatsnew = read_whatsnew(CACHE_DIR / "whatsnew.toml")
-        core_whatsnew = read_whatsnew(installed_whatsnew_path)
-        if not core_whatsnew:
-            core_whatsnew = read_whatsnew(core_dir / "whatsnew.toml")
-        if cache_whatsnew:
-            ack = show_core_whatsnew(
-                cache_whatsnew, core_whatsnew,
-                interactive=not args.no_interactive and not args.yes and sys.stdin.isatty(),
-            )
-            if not ack:
-                ui.result({"status": "ABORTED", "message": "Update aborted by user."})
-                return 0
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-whatsnew
-
-    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-replace-core-algo
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-replace-core
-    # ── Step 1: Replace .core/ and install metadata from cache (always force) ──
+def _copy_core_from_cache(
+    *,
+    args: argparse.Namespace,
+    actions: Dict[str, Any],
+    studio_dir: Path,
+    core_dir: Path,
+) -> Dict[str, str]:
     ui.step("Updating core files and install metadata from cache...")
     if not args.dry_run:
         studio_dir.mkdir(parents=True, exist_ok=True)
@@ -306,400 +455,563 @@ def cmd_update(argv: List[str]) -> int:
         actions["install_provenance"] = "dry_run"
     actions["core_update"] = copy_results
     for name, action in copy_results.items():
-        if name in COPY_ROOT_FILES:
-            ui.file_action(name, action)
-        else:
-            ui.file_action(f".core/{name}/", action)
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-replace-core
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-replace-core-algo
+        ui.file_action(name if name in COPY_ROOT_FILES else f".core/{name}/", action)
+    return copy_results
 
-    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-detect-layout-algo
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-detect-layout
-    # ── Step 1b: Detect and migrate old layout ───────────────────────────
-    if not args.dry_run:
-        from .kit import _detect_and_migrate_layout
-        layout_migrated = _detect_and_migrate_layout(studio_dir, dry_run=False)
-        if layout_migrated:
-            ui.step("Migrating directory layout...")
-            for slug, status in layout_migrated.items():
-                ui.substep(f"{slug}: {status}")
-            actions["layout_migration"] = layout_migrated
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-detect-layout
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-detect-layout-algo
 
-    # ── Step 1b1: Remove leftover blueprints/ from config kits (ADR-0001) ──
-    if not args.dry_run:
-        _cleanup_legacy_blueprint_dirs(config_dir)
-        runtime_tracking = _read_install_tracking(
-            core_toml_path,
-            "runtime_tracking",
-            default="ignored",
-        )
-        agent_tracking = _read_install_tracking(
-            core_toml_path,
-            "agent_tracking",
-            default="ignored",
-        )
-        actions["core_toml_metadata"] = _persist_install_metadata(
-            core_toml_path,
-            kit_tracking,
-            runtime_tracking=runtime_tracking,
-            agent_tracking=agent_tracking,
-            dry_run=False,
-        )
-        # @cpt-begin:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
-        try:
-            actions["gitignore"] = _write_gitignore_block(
-                project_root,
-                install_rel,
-                core_toml_path,
-                kit_tracking,
-                dry_run=False,
-            )
-        except (OSError, ValueError) as exc:
-            errors.append({"path": ".gitignore", "error": str(exc)})
-            update_result = {
-                "status": "ERROR",
-                "project_root": project_root.as_posix(),
-                "studio_dir": studio_dir.as_posix(),
-                "dry_run": bool(args.dry_run),
-                "actions": actions,
-                "errors": errors,
-            }
-            ui.result(update_result, human_fn=_human_update_ok)
-            return 1
-        # @cpt-end:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
-    else:
+def _record_layout_migration(actions: Dict[str, Any], studio_dir: Path) -> None:
+    from .kit import _detect_and_migrate_layout
+
+    layout_migrated = _detect_and_migrate_layout(studio_dir, dry_run=False)
+    if not layout_migrated:
+        return
+    ui.step("Migrating directory layout...")
+    for slug, status in layout_migrated.items():
+        ui.substep(f"{slug}: {status}")
+    actions["layout_migration"] = layout_migrated
+
+
+def _persist_post_update_metadata(
+    *,
+    context: _PostCoreUpdateContext,
+    actions: Dict[str, Any],
+) -> None:
+    runtime_tracking = _read_install_tracking(
+        context.core_toml_path,
+        "runtime_tracking",
+        default="ignored",
+    )
+    agent_tracking = _read_install_tracking(
+        context.core_toml_path,
+        "agent_tracking",
+        default="ignored",
+    )
+    actions["core_toml_metadata"] = _persist_install_metadata(
+        context.core_toml_path,
+        context.kit_tracking,
+        runtime_tracking=runtime_tracking,
+        agent_tracking=agent_tracking,
+        dry_run=False,
+    )
+
+
+def _record_core_toml_migrations(actions: Dict[str, Any], config_dir: Path) -> None:
+    removed_system = _remove_system_from_core_toml(config_dir)
+    if removed_system:
+        ui.step("Removed [system] section from core.toml (ADR-0014: system identity lives in artifacts.toml)")
+        actions["core_toml_system_removed"] = True
+    deduped = _deduplicate_legacy_kits(config_dir)
+    if deduped:
+        ui.step("Deduplicating legacy kit slugs...")
+        for legacy, canonical in deduped.items():
+            ui.substep(f"{legacy} -> {canonical}")
+        actions["kit_dedup"] = deduped
+    migrated_kits = _migrate_kit_sources(config_dir)
+    if not migrated_kits:
+        return
+    ui.step("Migrating kit sources to GitHub...")
+    for slug, src in migrated_kits.items():
+        ui.substep(f"{slug}: source -> {src}")
+    actions["kit_source_migration"] = migrated_kits
+
+
+def _run_post_core_update_steps(
+    *,
+    args: argparse.Namespace,
+    actions: Dict[str, Any],
+    errors: List[Dict[str, str]],
+    context: _PostCoreUpdateContext,
+) -> bool:
+    """Run layout, metadata, and migration phases after core copy."""
+    if args.dry_run:
         actions["core_toml_metadata"] = "dry_run"
         actions["gitignore"] = "dry_run"
+        return True
+    _record_layout_migration(actions, context.studio_dir)
+    _cleanup_legacy_blueprint_dirs(context.config_dir)
+    _persist_post_update_metadata(context=context, actions=actions)
+    try:
+        actions["gitignore"] = _write_gitignore_block(
+            context.project_root,
+            context.install_rel,
+            context.core_toml_path,
+            context.kit_tracking,
+            dry_run=False,
+        )
+    except (OSError, ValueError) as exc:
+        errors.append({"path": ".gitignore", "error": str(exc)})
+        return False
+    _record_core_toml_migrations(actions, context.config_dir)
+    return True
 
-    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
-    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-migrate-config
-    # ── Step 1b2: Migrate core.toml — remove [system] section (ADR-0014) ──
-    if not args.dry_run:
-        removed_system = _remove_system_from_core_toml(config_dir)
-        if removed_system:
-            ui.step("Removed [system] section from core.toml (ADR-0014: system identity lives in artifacts.toml)")
-            actions["core_toml_system_removed"] = True
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-config
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
 
-    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-migrate-kit-sources
-    # ── Step 1c: Deduplicate legacy kit slugs + migrate sources ──────────
-    if not args.dry_run:
-        deduped = _deduplicate_legacy_kits(config_dir)
-        if deduped:
-            ui.step("Deduplicating legacy kit slugs...")
-            for legacy, canonical in deduped.items():
-                ui.substep(f"{legacy} → {canonical}")
-            actions["kit_dedup"] = deduped
+def _gitignore_failure_result(
+    *,
+    args: argparse.Namespace,
+    actions: Dict[str, Any],
+    errors: List[Dict[str, str]],
+    project_root: Path,
+    studio_dir: Path,
+) -> Dict[str, Any]:
+    return {
+        "status": "ERROR",
+        "project_root": project_root.as_posix(),
+        "studio_dir": studio_dir.as_posix(),
+        "dry_run": bool(args.dry_run),
+        "actions": actions,
+        "errors": errors,
+    }
 
-        migrated_kits = _migrate_kit_sources(config_dir)
-        if migrated_kits:
-            ui.step("Migrating kit sources to GitHub...")
-            for slug, src in migrated_kits.items():
-                ui.substep(f"{slug}: source → {src}")
-            actions["kit_source_migration"] = migrated_kits
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-kit-sources
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
 
-    from .kit import regenerate_gen_aggregates
+def _dry_run_github_kit_result(kit_slug: str) -> Dict[str, Any]:
+    return {
+        "kit": kit_slug,
+        "version": {"status": "dry_run"},
+        "gen": {"files_written": 0},
+        "gen_rejected": [],
+    }
+
+
+def _cached_github_authority_metadata(  # pylint: disable=too-many-locals
+    *,
+    previous_provenance: Dict[str, Any],
+    source_str: str,
+    owner: str,
+    repo: str,
+    version: str,
+    kit_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    resolved_ref = str(
+        previous_provenance.get("resolved_ref")
+        or kit_data.get("version")
+        or ""
+    )
+    return {
+        "source_type": "github",
+        "requested_ref": previous_provenance.get("requested_ref", version or "latest"),
+        "resolved_ref": resolved_ref,
+        "installed_version": resolved_ref,
+        "commit_sha": previous_provenance.get("commit_sha", ""),
+        "canonical_source": previous_provenance.get(
+            "canonical_source",
+            f"github:{owner}/{repo}" if owner and repo else source_str,
+        ),
+        "effective_source": previous_provenance.get("effective_source", source_str),
+        "resolver_mode": "offline_last_known",
+        "resolution_basis": "last_known_core_toml",
+        "verified": "stale",
+        "freshness": "last_known",
+    }
+
+
+def _resolve_github_update_source(
+    *,
+    errors: List[Dict[str, str]],
+    kit_slug: str,
+    kit_data: Dict[str, Any],
+    source_str: str,
+) -> _KitSourceResolution:
+    from .kit import _download_kit_from_github_with_authority, _parse_github_source
+
+    owner = repo = version = ""
+    try:
+        owner, repo, version = _parse_github_source(source_str.removeprefix("github:"))
+        kit_src, _resolved_version, authority_metadata = _download_kit_from_github_with_authority(
+            owner,
+            repo,
+            version,
+            previous_entry=kit_data,
+        )
+        return _KitSourceResolution(kit_src, kit_src.parent, authority_metadata, None)
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
+        cache_kit = CACHE_DIR / "kits" / kit_slug
+        if not cache_kit.is_dir():
+            errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})
+            ui.warn(f"{kit_slug}: download failed: {exc}")
+            return _KitSourceResolution(None, None, None, None)
+        authority_metadata = None
+        previous_provenance = kit_data.get("source_provenance", {})
+        if isinstance(previous_provenance, dict):
+            authority_metadata = _cached_github_authority_metadata(
+                previous_provenance=previous_provenance,
+                source_str=source_str,
+                owner=owner,
+                repo=repo,
+                version=version,
+                kit_data=kit_data,
+            )
+        ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
+        return _KitSourceResolution(cache_kit, None, authority_metadata, None)
+
+
+def _resolve_update_kit_source(
+    *,
+    args: argparse.Namespace,
+    errors: List[Dict[str, str]],
+    kit_slug: str,
+    kit_data: Dict[str, Any],
+) -> _KitSourceResolution:
+    source_str = kit_data.get("source", "")
+    if source_str.startswith("github:"):
+        if args.dry_run:
+            return _KitSourceResolution(None, None, None, _dry_run_github_kit_result(kit_slug))
+        return _resolve_github_update_source(
+            errors=errors,
+            kit_slug=kit_slug,
+            kit_data=kit_data,
+            source_str=source_str,
+        )
+    if not source_str:
+        cache_kit = CACHE_DIR / "kits" / kit_slug
+        if cache_kit.is_dir():
+            return _KitSourceResolution(cache_kit, None, None, None)
+    return _KitSourceResolution(None, None, None, None)
+
+
+def _record_manifest_migration_result(
+    *,
+    args: argparse.Namespace,
+    errors: List[Dict[str, str]],
+    kit_slug: str,
+    kit_src: Optional[Path],
+    studio_dir: Path,
+    config_dir: Path,
+    interactive: bool,
+    kit_result: Dict[str, Any],
+) -> None:
+    if args.dry_run or kit_src is None:
+        return
+    try:
+        migration = _maybe_migrate_legacy_to_manifest(
+            kit_slug, kit_src, studio_dir, config_dir, interactive,
+        )
+        if migration is None:
+            return
+        kit_result["manifest_migration"] = migration
+        migration_status = migration.get("status", "")
+        if migration_status == "PASS":
+            migrated_count = migration.get("migrated_count", 0)
+            new_count = migration.get("new_count", 0)
+            ui.substep(
+                f"{kit_slug}: manifest migration - "
+                f"{migrated_count} existing + {new_count} new resource(s)"
+            )
+        elif migration_status == "FAIL":
+            ui.warn(
+                f"{kit_slug}: manifest migration failed: "
+                f"{migration.get('errors', [])}"
+            )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        mig_error = (
+            "manifest migration raised unexpected exception "
+            f"(kit update was not aborted): {exc}"
+        )
+        errors.append({"path": kit_slug, "error": mig_error})
+        sys.stderr.write(f"update: warning: {kit_slug}: {mig_error}\n")
+
+
+def _report_updated_kit_progress(kit_slug: str, kit_result: Dict[str, Any]) -> None:  # pylint: disable=too-many-locals
+    ver = kit_result.get("version", {})
+    ver_status = ver.get("status", "") if isinstance(ver, dict) else ver
+    gen = kit_result.get("gen", {})
+    files_written = gen.get("files_written", 0) if isinstance(gen, dict) else 0
+
+    if ver_status == "created":
+        ui.substep(f"{kit_slug}: first install, {files_written} files written")
+        return
+    if ver_status == "updated":
+        ui.substep(f"{kit_slug}: updated, {files_written} file(s) accepted")
+        for fp in gen.get("accepted_files", []):
+            ui.substep(f"      ~ {fp}")
+        for fp in kit_result.get("gen_rejected", []):
+            ui.substep(f"      x {fp} (declined)")
+        return
+    if ver_status == "partial":
+        rejected = kit_result.get("gen_rejected", [])
+        ui.substep(f"{kit_slug}: partial, {files_written} accepted, {len(rejected)} declined")
+        for fp in gen.get("accepted_files", []):
+            ui.substep(f"      ~ {fp}")
+        for fp in rejected:
+            ui.substep(f"      x {fp} (declined)")
+        return
+    if ver_status == "aborted":
+        ui.substep(f"{kit_slug}: skipped by user")
+        return
+    if ver_status == "current":
+        ui.substep(f"{kit_slug}: up to date")
+
+
+def _aborted_kit_update_result(kit_slug: str) -> Dict[str, Any]:
+    return {
+        "kit": kit_slug,
+        "version": {"status": "aborted"},
+        "gen": {"files_written": 0},
+        "gen_rejected": [],
+    }
+
+
+def _confirm_kit_update(
+    *,
+    args: argparse.Namespace,
+    config_dir: Path,
+    interactive: bool,
+    kit_slug: str,
+    kit_src: Path,
+    read_kit_version_from_core,
+) -> bool:
+    """Return whether the current kit update should proceed."""
+    if args.dry_run:
+        return True
+    installed_version = read_kit_version_from_core(config_dir, kit_slug)
+    return show_kit_whatsnew(
+        kit_src,
+        installed_version,
+        kit_slug,
+        interactive=interactive and not args.yes,
+    )
+
+
+def _perform_registered_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
+    *,
+    args: argparse.Namespace,
+    authority_metadata: Optional[Dict[str, Any]],
+    config_dir: Path,
+    errors: List[Dict[str, str]],
+    interactive: bool,
+    kit_data: Dict[str, Any],
+    kit_slug: str,
+    kit_src: Path,
+    studio_dir: Path,
+    update_kit,
+) -> Dict[str, Any]:
+    """Run one registered kit update and attach manifest-migration details."""
+    kit_result = update_kit(
+        kit_slug, kit_src, studio_dir,
+        dry_run=args.dry_run,
+        interactive=interactive,
+        auto_approve=args.yes,
+        source=kit_data.get("source", ""),
+        authority_metadata=authority_metadata,
+    )
+    _record_manifest_migration_result(
+        args=args,
+        errors=errors,
+        kit_slug=kit_slug,
+        kit_src=kit_src,
+        studio_dir=studio_dir,
+        config_dir=config_dir,
+        interactive=interactive,
+        kit_result=kit_result,
+    )
+    return kit_result
+
+
+def _update_single_registered_kit(
+    *,
+    args: argparse.Namespace,
+    errors: List[Dict[str, str]],
+    kit_slug: str,
+    kit_data: Dict[str, Any],
+    studio_dir: Path,
+    config_dir: Path,
+    interactive: bool,
+    update_kit,
+    _read_kit_version_from_core,
+) -> Optional[Dict[str, Any]]:
+    resolution = _resolve_update_kit_source(
+        args=args,
+        errors=errors,
+        kit_slug=kit_slug,
+        kit_data=kit_data,
+    )
+    if resolution.dry_run_result is not None:
+        return resolution.dry_run_result
+    if resolution.kit_src is None:
+        return None
+    if not _confirm_kit_update(
+        args=args,
+        config_dir=config_dir,
+        interactive=interactive,
+        kit_slug=kit_slug,
+        kit_src=resolution.kit_src,
+        read_kit_version_from_core=_read_kit_version_from_core,
+    ):
+        return _aborted_kit_update_result(kit_slug)
+    try:
+        return _perform_registered_kit_update(
+            args=args,
+            authority_metadata=resolution.authority_metadata,
+            config_dir=config_dir,
+            errors=errors,
+            interactive=interactive,
+            kit_data=kit_data,
+            kit_slug=kit_slug,
+            kit_src=resolution.kit_src,
+            studio_dir=studio_dir,
+            update_kit=update_kit,
+        )
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
+        errors.append({"path": kit_slug, "error": str(exc)})
+        return {
+            "kit": kit_slug,
+            "status": "ERROR",
+            "error": str(exc),
+        }
+    finally:
+        if resolution.tmp_to_clean:
+            shutil.rmtree(resolution.tmp_to_clean, ignore_errors=True)
+
+
+def _update_registered_kits(  # pylint: disable=too-many-locals
+    *,
+    args: argparse.Namespace,
+    actions: Dict[str, Any],
+    errors: List[Dict[str, str]],
+    studio_dir: Path,
+    config_dir: Path,
+    core_toml_path: Path,
+    kit_tracking: str,
+) -> Dict[str, Any]:
+    from .kit import (
+        _read_kits_from_core_toml,
+        _read_kit_version_from_core,
+        update_kit,
+    )
 
     kit_results: Dict[str, Any] = {}
     interactive = not args.no_interactive and sys.stdin.isatty()
-
+    with_kits = str(args.with_kits).lower() in ("yes", "true")
     if not with_kits:
         ui.step("Skipping kit updates (pass --with-kits yes to update project kit files).")
-        actions["kits"] = {
-            "status": "skipped",
-            "reason": "--with-kits not enabled",
-            "kit_tracking": {
-                "default": kit_tracking,
-                "kits": _read_kit_tracking_state(core_toml_path, default=kit_tracking)[1],
-            },
-        }
-    else:
-        # ── Step 2: Update kits from registered sources ─────────────────────────────
-        ui.step("Updating kits...")
-        from .kit import (
-            update_kit,
-            _read_kits_from_core_toml, _parse_github_source,
-            _download_kit_from_github_with_authority,
-            _read_kit_version_from_core,
+        actions["kits"] = _skipped_kit_updates_action(core_toml_path, kit_tracking)
+        return {}
+
+    ui.step("Updating kits...")
+    installed_kits = _read_kits_from_core_toml(config_dir)
+    for kit_slug, kit_data in installed_kits.items():
+        _record_single_kit_update(
+            args=args,
+            errors=errors,
+            kit_results=kit_results,
+            kit_slug=kit_slug,
+            kit_result=_update_single_registered_kit(
+                args=args,
+                errors=errors,
+                kit_slug=kit_slug,
+                kit_data=kit_data,
+                studio_dir=studio_dir,
+                config_dir=config_dir,
+                interactive=interactive,
+                update_kit=update_kit,
+                _read_kit_version_from_core=_read_kit_version_from_core,
+            ),
         )
+    actions["kits"] = kit_results
+    return kit_results
 
-        installed_kits = _read_kits_from_core_toml(config_dir)
-        for kit_slug, kit_data in installed_kits.items():
-            source_str = kit_data.get("source", "")
-            kit_src: Optional[Path] = None
-            tmp_to_clean: Optional[Path] = None
-            authority_metadata: Optional[Dict[str, Any]] = None
 
-            if source_str.startswith("github:"):
-                if args.dry_run:
-                    # In dry-run mode, skip the network download; record the kit
-                    # as a planned update and move on without touching any files.
-                    kit_results[kit_slug] = {
-                        "kit": kit_slug,
-                        "version": {"status": "dry_run"},
-                        "gen": {"files_written": 0},
-                        "gen_rejected": [],
-                    }
-                    continue
-                owner_repo = source_str.removeprefix("github:")
-                owner = repo = version = ""
-                try:
-                    owner, repo, version = _parse_github_source(owner_repo)
-                    kit_src, _resolved_version, authority_metadata = _download_kit_from_github_with_authority(
-                        owner,
-                        repo,
-                        version,
-                        previous_entry=kit_data,
-                    )
-                    tmp_to_clean = kit_src.parent
-                except (OSError, ValueError, KeyError, RuntimeError) as exc:
-                    cache_kit = CACHE_DIR / "kits" / kit_slug
-                    if cache_kit.is_dir():
-                        kit_src = cache_kit
-                        previous_provenance = kit_data.get("source_provenance", {})
-                        if isinstance(previous_provenance, dict):
-                            resolved_ref = str(
-                                previous_provenance.get("resolved_ref")
-                                or kit_data.get("version")
-                                or ""
-                            )
-                            authority_metadata = {
-                                "source_type": "github",
-                                "requested_ref": previous_provenance.get(
-                                    "requested_ref",
-                                    version or "latest",
-                                ),
-                                "resolved_ref": resolved_ref,
-                                "installed_version": resolved_ref,
-                                "commit_sha": previous_provenance.get("commit_sha", ""),
-                                "canonical_source": previous_provenance.get(
-                                    "canonical_source",
-                                    f"github:{owner}/{repo}" if owner and repo else source_str,
-                                ),
-                                "effective_source": previous_provenance.get(
-                                    "effective_source",
-                                    source_str,
-                                ),
-                                "resolver_mode": "offline_last_known",
-                                "resolution_basis": "last_known_core_toml",
-                                "verified": "stale",
-                                "freshness": "last_known",
-                            }
-                        ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
-                    else:
-                        errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})
-                        ui.warn(f"{kit_slug}: download failed: {exc}")
-                        continue
-            elif not source_str:
-                # No source — check cache fallback
-                cache_kit = CACHE_DIR / "kits" / kit_slug
-                if cache_kit.is_dir():
-                    kit_src = cache_kit
-                else:
-                    continue  # No source, no cache — skip
+def _skipped_kit_updates_action(core_toml_path: Path, kit_tracking: str) -> Dict[str, Any]:
+    """Build the action payload for a run that skips kit updates."""
+    return {
+        "status": "skipped",
+        "reason": "--with-kits not enabled",
+        "kit_tracking": {
+            "default": kit_tracking,
+            "kits": _read_kit_tracking_state(core_toml_path, default=kit_tracking)[1],
+        },
+    }
 
-            if kit_src is None:
-                continue
 
-            if not args.dry_run:
-                installed_version = _read_kit_version_from_core(config_dir, kit_slug)
-                ack = show_kit_whatsnew(
-                    kit_src,
-                    installed_version,
-                    kit_slug,
-                    interactive=interactive and not args.yes,
-                )
-                if not ack:
-                    kit_r = {
-                        "kit": kit_slug,
-                        "version": {"status": "aborted"},
-                        "gen": {"files_written": 0},
-                        "gen_rejected": [],
-                    }
-                    kit_results[kit_slug] = kit_r
-                    continue
+def _record_single_kit_update(  # pylint: disable=too-many-locals
+    *,
+    args: argparse.Namespace,
+    errors: List[Dict[str, str]],
+    kit_results: Dict[str, Any],
+    kit_slug: str,
+    kit_result: Optional[Dict[str, Any]],
+) -> None:
+    """Store and report one completed kit update result."""
+    if kit_result is None:
+        return
+    kit_results[kit_slug] = kit_result
+    if args.dry_run:
+        return
+    if kit_result.get("gen_errors"):
+        errors.extend({"path": kit_slug, "error": error} for error in kit_result["gen_errors"])
+    _report_updated_kit_progress(kit_slug, kit_result)
 
-            kit_r: Dict[str, Any] = {}
-            try:
-                kit_r = update_kit(
-                    kit_slug, kit_src, studio_dir,
-                    dry_run=args.dry_run,
-                    interactive=interactive,
-                    auto_approve=args.yes,
-                    source=source_str,
-                    authority_metadata=authority_metadata,
-                )
 
-                # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
-                # WP7: Auto-migrate legacy kits to manifest-driven resource bindings.
-                if not args.dry_run and kit_src is not None:
-                    try:
-                        _mig = _maybe_migrate_legacy_to_manifest(
-                            kit_slug, kit_src, studio_dir, config_dir, interactive,
-                        )
-                        if _mig is not None:
-                            kit_r["manifest_migration"] = _mig
-                            _mig_status = _mig.get("status", "")
-                            if _mig_status == "PASS":
-                                _m_count = _mig.get("migrated_count", 0)
-                                _n_count = _mig.get("new_count", 0)
-                                ui.substep(
-                                    f"{kit_slug}: manifest migration — "
-                                    f"{_m_count} existing + {_n_count} new resource(s)"
-                                )
-                            elif _mig_status == "FAIL":
-                                ui.warn(
-                                    f"{kit_slug}: manifest migration failed: "
-                                    f"{_mig.get('errors', [])}"
-                                )
-                    # Intentionally broad: migration helpers may raise any exception type, and a
-                    # migration failure must not abort the surrounding kit-update loop.
-                    except Exception as e:  # pylint: disable=broad-exception-caught
-                        mig_error = (
-                            "manifest migration raised unexpected exception "
-                            f"(kit update was not aborted): {e}"
-                        )
-                        errors.append({"path": kit_slug, "error": mig_error})
-                        sys.stderr.write(
-                            f"update: warning: {kit_slug}: {mig_error}\n"
-                        )
-                # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
-
-            except (OSError, ValueError, KeyError, RuntimeError) as exc:
-                kit_r = {
-                    "kit": kit_slug,
-                    "status": "ERROR",
-                    "error": str(exc),
-                }
-                errors.append({"path": kit_slug, "error": str(exc)})
-            finally:
-                if tmp_to_clean:
-                    shutil.rmtree(tmp_to_clean, ignore_errors=True)
-
-            kit_results[kit_slug] = kit_r
-
-            if args.dry_run:
-                continue
-
-            # Collect gen errors
-            if kit_r.get("gen_errors"):
-                errors.extend(
-                    {"path": kit_slug, "error": e} for e in kit_r["gen_errors"]
-                )
-
-            # Report progress
-            ver = kit_r.get("version", {})
-            ver_status = ver.get("status", "") if isinstance(ver, dict) else ver
-            gen = kit_r.get("gen", {})
-            files_written = gen.get("files_written", 0) if isinstance(gen, dict) else 0
-
-            if ver_status == "created":
-                ui.substep(f"{kit_slug}: first install, {files_written} files written")
-            elif ver_status == "updated":
-                ui.substep(f"{kit_slug}: updated, {files_written} file(s) accepted")
-                for fp in gen.get("accepted_files", []):
-                    ui.substep(f"      ~ {fp}")
-                for fp in kit_r.get("gen_rejected", []):
-                    ui.substep(f"      ✗ {fp} (declined)")
-            elif ver_status == "partial":
-                rejected = kit_r.get("gen_rejected", [])
-                ui.substep(f"{kit_slug}: partial, {files_written} accepted, {len(rejected)} declined")
-                for fp in gen.get("accepted_files", []):
-                    ui.substep(f"      ~ {fp}")
-                for fp in rejected:
-                    ui.substep(f"      ✗ {fp} (declined)")
-            elif ver_status == "aborted":
-                ui.substep(f"{kit_slug}: skipped by user")
-            elif ver_status == "current":
-                ui.substep(f"{kit_slug}: up to date")
-
-        actions["kits"] = kit_results
-
-    # ── Step 3: Regenerate .gen/ aggregates ────────────────────────────
-    if not args.dry_run:
-        gen_result = regenerate_gen_aggregates(studio_dir)
-        actions.update(gen_result)
-    # (end kit updates)
-
-    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-regen-algo
-    # Removed — no separate regen step; kit files are updated directly by update_kit.
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-regen-algo
-
-    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-scaffold-algo
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-ensure-scaffold
-    # ── Step 5: Ensure config/ scaffold (create only if missing) ─────────
+def _ensure_update_scaffold(
+    *,
+    args: argparse.Namespace,
+    actions: Dict[str, Any],
+    config_dir: Path,
+    project_root: Path,
+    install_rel: str,
+) -> None:
     ui.step("Ensuring config/ scaffold...")
-    if not args.dry_run:
-        config_dir.mkdir(parents=True, exist_ok=True)
-        _ensure_file(config_dir / "README.md", _config_readme_content(), actions, "config_readme")
-        _ensure_file(
-            config_dir / "AGENTS.md",
-            "# Custom Agent Navigation Rules\n\n"
-            "Add your project-specific WHEN rules here.\n"
-            "These rules are loaded alongside the generated rules in `{cf-studio-path}/.gen/AGENTS.md`.\n",
-            actions, "config_agents",
+    if args.dry_run:
+        return
+    config_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_file(config_dir / "README.md", _config_readme_content(), actions, "config_readme")
+    _ensure_file(
+        config_dir / "AGENTS.md",
+        "# Custom Agent Navigation Rules\n\n"
+        "Add your project-specific WHEN rules here.\n"
+        "These rules are loaded alongside the generated rules in `{cf-studio-path}/.gen/AGENTS.md`.\n",
+        actions, "config_agents",
+    )
+    _ensure_file(
+        config_dir / "SKILL.md",
+        "# Custom Skill Extensions\n\n"
+        "Add your project-specific skill instructions here.\n"
+        "Agent-facing skills and workflows are generated into agent integration files.\n",
+        actions, "config_skill",
+    )
+    actions["root_agents"] = _inject_root_agents(project_root, install_rel)
+    actions["root_claude"] = _inject_root_claude(project_root, install_rel)
+
+
+def _run_update_validation(
+    *,
+    args: argparse.Namespace,
+    errors: List[Dict[str, str]],
+    warnings: List[str],
+    project_root: Path,
+    studio_dir: Path,
+) -> Optional[Dict[str, Any]]:
+    if args.dry_run:
+        return None
+    try:
+        from .validate_kits import run_validate_kits
+
+        vk_rc, vk_report = run_validate_kits(
+            project_root=project_root,
+            adapter_dir=studio_dir,
         )
-        _ensure_file(
-            config_dir / "SKILL.md",
-            "# Custom Skill Extensions\n\n"
-            "Add your project-specific skill instructions here.\n"
-            "Agent-facing skills and workflows are generated into agent integration files.\n",
-            actions, "config_skill",
-        )
+        vk_status = str(vk_report.get("status", ""))
+        if vk_rc or vk_status != "PASS":
+            warnings.append(f"validate-kits: {vk_status}")
+            ui.warn(f"Validate kits: {vk_status}")
+            _show_validate_kits_failures(vk_report)
+        else:
+            ui.step("Validate kits: PASS")
+        return vk_report
+    except (OSError, ValueError, KeyError) as exc:
+        errors.append({"path": "validate-kits", "error": f"validate-kits failed to run: {exc}"})
+        return None
 
-    # Re-inject root AGENTS.md and CLAUDE.md
-    if not args.dry_run:
-        root_agents_action = _inject_root_agents(project_root, install_rel)
-        actions["root_agents"] = root_agents_action
-        root_claude_action = _inject_root_claude(project_root, install_rel)
-        actions["root_claude"] = root_claude_action
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-ensure-scaffold
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-scaffold-algo
 
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
-    # ── Auto-regenerate agent integrations if real changes happened ────
-    if not args.dry_run:
-        agents_regen = _maybe_regenerate_agents(
-            copy_results, kit_results, project_root, studio_dir,
-        )
-        if agents_regen:
-            actions["agents_regenerated"] = agents_regen
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
-
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-self-check
-    # ── Run validate-kits to verify kit integrity after update ───────────
-    validate_kits_result: Optional[Dict[str, Any]] = None
-    if not args.dry_run:
-        try:
-            from .validate_kits import run_validate_kits
-
-            vk_rc, vk_report = run_validate_kits(
-                project_root=project_root,
-                adapter_dir=studio_dir,
-            )
-            validate_kits_result = vk_report
-            vk_status = str(vk_report.get("status", ""))
-            if vk_rc or vk_status != "PASS":
-                warnings.append(f"validate-kits: {vk_status}")
-                ui.warn(f"Validate kits: {vk_status}")
-                # Show top errors inline so the user doesn't have to re-run
-                _show_validate_kits_failures(vk_report)
-            else:
-                ui.step("Validate kits: PASS")
-        except (OSError, ValueError, KeyError) as exc:
-            errors.append({"path": "validate-kits", "error": f"validate-kits failed to run: {exc}"})
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-self-check
-
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-return-report
-    # ── Report ───────────────────────────────────────────────────────────
+def _build_update_result(
+    *,
+    args: argparse.Namespace,
+    actions: Dict[str, Any],
+    errors: List[Dict[str, str]],
+    warnings: List[str],
+    project_root: Path,
+    studio_dir: Path,
+    validate_kits_result: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
     status = "PASS" if not errors and not warnings else "WARN"
     update_result: Dict[str, Any] = {
         "status": status,
@@ -714,10 +1026,200 @@ def cmd_update(argv: List[str]) -> int:
         update_result["warnings"] = warnings
     if validate_kits_result is not None:
         update_result["validate_kits"] = validate_kits_result
+    return update_result
 
+
+def _initialize_update_outcome(
+    legacy_migration_declined: bool,
+) -> tuple[Dict[str, Any], List[Dict[str, str]], List[str]]:
+    """Create mutable result collections for one update run."""
+    actions: Dict[str, Any] = {}
+    if legacy_migration_declined:
+        actions["legacy_studio"] = "detected"
+        actions["migration"] = "declined"
+        actions["migration_decline_action"] = "regular_update"
+    return actions, [], []
+
+
+def _update_agent_regeneration_action(
+    *,
+    args: argparse.Namespace,
+    actions: Dict[str, Any],
+    copy_results: Dict[str, Any],
+    context: _UpdateRunContext,
+    kit_results: Dict[str, Any],
+) -> None:
+    """Record agent regeneration metadata when the update changed live files."""
+    if args.dry_run:
+        return
+    agents_regen = _maybe_regenerate_agents(
+        copy_results, kit_results, context.project_root, context.studio_dir,
+    )
+    if agents_regen:
+        actions["agents_regenerated"] = agents_regen
+
+
+def _render_update_result(
+    *,
+    args: argparse.Namespace,
+    actions: Dict[str, Any],
+    errors: List[Dict[str, str]],
+    warnings: List[str],
+    context: _UpdateRunContext,
+    validate_kits_result: Optional[Dict[str, Any]],
+) -> int:
+    """Emit the final update report and return the command exit code."""
+    update_result = _build_update_result(
+        args=args,
+        actions=actions,
+        errors=errors,
+        warnings=warnings,
+        project_root=context.project_root,
+        studio_dir=context.studio_dir,
+        validate_kits_result=validate_kits_result,
+    )
     ui.result(update_result, human_fn=_human_update_ok)
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-return-report
     return 1 if errors else 0
+
+
+def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
+    """Update an existing Constructor Studio installation.
+
+    Refreshes .core/ and install-root metadata from cache, updates kit files,
+    regenerates .gen/ aggregates.
+    Never overwrites user config files.
+    """
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-user-update
+    args = _parse_update_args(argv)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-user-update
+
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-project
+    rc, _early_result, project_root, studio_dir, install_rel, legacy_migration_declined = _resolve_update_project(args)
+    if rc or project_root is None or studio_dir is None or install_rel is None:
+        return rc
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-project
+
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-whatsnew
+    actions, errors, warnings = _initialize_update_outcome(legacy_migration_declined)
+    context = _build_update_run_context(
+        project_root=project_root,
+        studio_dir=studio_dir,
+        install_rel=install_rel,
+    )
+    if not _show_update_whatsnew(
+        args=args,
+        core_dir=context.core_dir,
+        installed_whatsnew_path=context.installed_whatsnew_path,
+    ):
+        return 0
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-whatsnew
+
+    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-replace-core-algo
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-replace-core
+    # ── Step 1: Replace .core/ and install metadata from cache (always force) ──
+    copy_results = _copy_core_from_cache(
+        args=args,
+        actions=actions,
+        studio_dir=context.studio_dir,
+        core_dir=context.core_dir,
+    )
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-replace-core
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-replace-core-algo
+
+    post_core_context = _PostCoreUpdateContext(
+        project_root=context.project_root,
+        studio_dir=context.studio_dir,
+        install_rel=context.install_rel,
+        config_dir=context.config_dir,
+        core_toml_path=context.core_toml_path,
+        kit_tracking=context.kit_tracking,
+    )
+    if not _run_post_core_update_steps(
+        args=args,
+        actions=actions,
+        errors=errors,
+        context=post_core_context,
+    ):
+        ui.result(
+            _gitignore_failure_result(
+                args=args,
+                actions=actions,
+                errors=errors,
+                project_root=context.project_root,
+                studio_dir=context.studio_dir,
+            ),
+            human_fn=_human_update_ok,
+        )
+        return 1
+
+    from .kit import regenerate_gen_aggregates
+
+    kit_results = _update_registered_kits(
+        args=args,
+        actions=actions,
+        errors=errors,
+        studio_dir=context.studio_dir,
+        config_dir=context.config_dir,
+        core_toml_path=context.core_toml_path,
+        kit_tracking=context.kit_tracking,
+    )
+
+    # ── Step 3: Regenerate .gen/ aggregates ────────────────────────────
+    if not args.dry_run:
+        gen_result = regenerate_gen_aggregates(context.studio_dir)
+        actions.update(gen_result)
+    # (end kit updates)
+
+    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-regen-algo
+    # Removed — no separate regen step; kit files are updated directly by update_kit.
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-regen-algo
+
+    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-scaffold-algo
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-ensure-scaffold
+    # ── Step 5: Ensure config/ scaffold (create only if missing) ─────────
+    _ensure_update_scaffold(
+        args=args,
+        actions=actions,
+        config_dir=context.config_dir,
+        project_root=context.project_root,
+        install_rel=context.install_rel,
+    )
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-ensure-scaffold
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-scaffold-algo
+
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
+    # ── Auto-regenerate agent integrations if real changes happened ────
+    _update_agent_regeneration_action(
+        args=args,
+        actions=actions,
+        copy_results=copy_results,
+        context=context,
+        kit_results=kit_results,
+    )
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
+
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-self-check
+    # ── Run validate-kits to verify kit integrity after update ───────────
+    validate_kits_result = _run_update_validation(
+        args=args,
+        errors=errors,
+        warnings=warnings,
+        project_root=context.project_root,
+        studio_dir=context.studio_dir,
+    )
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-self-check
+
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-return-report
+    # ── Report ───────────────────────────────────────────────────────────
+    return _render_update_result(
+        args=args,
+        actions=actions,
+        errors=errors,
+        warnings=warnings,
+        context=context,
+        validate_kits_result=validate_kits_result,
+    )
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-return-report
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -734,12 +1236,7 @@ def _ensure_file(path: Path, content: str, actions: Dict, key: str) -> None:
 def _config_readme_content() -> str:
     """README.md content for config/ directory."""
     return (
-        "# config — User Configuration\n"
-        "\n"
-        "This directory contains **user-editable** configuration files.\n"
-        "\n"
-        "## Files\n"
-        "\n"
+        _CONFIG_README_PREAMBLE +
         "- `core.toml` — project settings (kit references, version)\n"
         "- `artifacts.toml` — artifacts registry (systems, artifacts, ignore patterns)\n"
         "- `AGENTS.md` — custom agent navigation rules (add your own WHEN rules here)\n"
@@ -839,17 +1336,7 @@ def _maybe_regenerate_agents(
         result = _process_single_agent(
             agent, project_root, studio_dir, cfg, None, dry_run=False,
         )
-        wf = result.get("workflows", {})
-        sk = result.get("skills", {})
-        sa = result.get("subagents", {})
-        n_changed = (
-            len(wf.get("updated", []))
-            + len(wf.get("created", []))
-            + len(sk.get("updated", []))
-            + len(sk.get("created", []))
-            + len(sa.get("updated", []))
-            + len(sa.get("created", []))
-        )
+        n_changed = _count_agent_output_changes(result)
         if n_changed:
             regenerated.append(agent)
 
@@ -859,6 +1346,15 @@ def _maybe_regenerate_agents(
             ui.substep(f"{agent}: updated")
 
     return regenerated
+
+
+def _count_agent_output_changes(result: Dict[str, Any]) -> int:
+    total = 0
+    for section_name in ("workflows", "skills", "subagents"):
+        section = result.get(section_name, {})
+        total += len(section.get("updated", []))
+        total += len(section.get("created", []))
+    return total
 
 # ---------------------------------------------------------------------------
 # core.toml [system] removal migration (ADR-0014)
@@ -928,6 +1424,53 @@ _LEGACY_SLUG_RENAMES: Dict[str, str] = {
 }
 
 
+def _merge_duplicate_legacy_kit(
+    kits: Dict[str, Any],
+    renamed: Dict[str, str],
+    legacy: str,
+    canonical: str,
+) -> None:
+    legacy_data = kits.get(legacy, {})
+    canonical_data = kits.get(canonical, {})
+    if not isinstance(legacy_data, dict) or not isinstance(canonical_data, dict):
+        return
+    if legacy_data.get("path") != canonical_data.get("path"):
+        return
+    for key, value in legacy_data.items():
+        if key not in canonical_data or not canonical_data[key]:
+            canonical_data[key] = value
+    del kits[legacy]
+    renamed[legacy] = canonical
+
+
+def _rewrite_artifacts_legacy_kit_refs(
+    *,
+    artifacts_toml: Path,
+    renamed: Dict[str, str],
+    toml_utils,
+) -> None:
+    if not artifacts_toml.is_file():
+        return
+    try:
+        with open(artifacts_toml, "rb") as f:
+            reg = tomllib.load(f)
+        changed = False
+        for sys_entry in reg.get("systems", []):
+            if not isinstance(sys_entry, dict):
+                continue
+            kit_ref = sys_entry.get("kit", "")
+            canonical = _LEGACY_SLUG_RENAMES.get(kit_ref)
+            if not canonical:
+                continue
+            sys_entry["kit"] = canonical
+            renamed.setdefault(kit_ref, canonical)
+            changed = True
+        if changed:
+            toml_utils.dump(reg, artifacts_toml, header_comment="Constructor Studio artifacts registry")
+    except (OSError, ValueError, TypeError) as exc:
+        sys.stderr.write(f"warning: legacy kit dedup {artifacts_toml} write failed: {exc}\n")
+
+
 def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
     """Deduplicate legacy kit slugs in core.toml and artifacts.toml.
 
@@ -961,20 +1504,7 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
             for legacy, canonical in _LEGACY_SLUG_RENAMES.items():
                 if legacy not in kits or canonical not in kits:
                     continue
-                legacy_data = kits.get(legacy, {})
-                canonical_data = kits.get(canonical, {})
-                if not isinstance(legacy_data, dict) or not isinstance(canonical_data, dict):
-                    continue
-                if legacy_data.get("path") != canonical_data.get("path"):
-                    continue  # Different paths — leave both
-
-                # Same path — merge legacy into canonical, delete legacy
-                for k, v in legacy_data.items():
-                    if k not in canonical_data or not canonical_data[k]:
-                        canonical_data[k] = v
-                del kits[legacy]
-
-                renamed[legacy] = canonical
+                _merge_duplicate_legacy_kit(kits, renamed, legacy, canonical)
 
             if renamed:
                 toml_utils.dump(data, core_toml, header_comment="Constructor Studio project configuration")
@@ -984,26 +1514,11 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
             # same core.toml advisory lock.  Even if core.toml dedup didn't fire
             # (e.g. legacy slug already removed from core.toml), artifacts.toml
             # may still reference the old slug.
-            artifacts_toml = config_dir / "artifacts.toml"
-            if artifacts_toml.is_file():
-                try:
-                    with open(artifacts_toml, "rb") as f:
-                        reg = tomllib.load(f)
-
-                    changed = False
-                    for sys_entry in reg.get("systems", []):
-                        if isinstance(sys_entry, dict):
-                            kit_ref = sys_entry.get("kit", "")
-                            canonical = _LEGACY_SLUG_RENAMES.get(kit_ref)
-                            if canonical:
-                                sys_entry["kit"] = canonical
-                                renamed.setdefault(kit_ref, canonical)
-                                changed = True
-
-                    if changed:
-                        toml_utils.dump(reg, artifacts_toml, header_comment="Constructor Studio artifacts registry")
-                except (OSError, ValueError, TypeError) as exc:
-                    sys.stderr.write(f"warning: legacy kit dedup {artifacts_toml} write failed: {exc}\n")
+            _rewrite_artifacts_legacy_kit_refs(
+                artifacts_toml=config_dir / "artifacts.toml",
+                renamed=renamed,
+                toml_utils=toml_utils,
+            )
 
     except (OSError, ValueError, TypeError) as exc:
         sys.stderr.write(f"warning: legacy kit dedup core.toml write failed: {exc}\n")
@@ -1233,11 +1748,7 @@ def _human_update_ok(data: Dict[str, Any]) -> None:
     if errors:
         ui.blank()
         ui.warn(f"Errors ({len(errors)}):")
-        for err in errors:
-            if isinstance(err, dict):
-                ui.substep(f"• {err.get('path', '?')}: {err.get('error', '?')}")
-            else:
-                ui.substep(f"• {err}")
+        _render_error_entries(errors)
     if warnings:
         ui.blank()
         for w in warnings:

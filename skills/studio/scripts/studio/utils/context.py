@@ -20,9 +20,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
-from ._tomllib_compat import tomllib
 from .artifacts_meta import Artifact, ArtifactsMeta, CodebaseEntry, Kit, load_artifacts_meta
 from .constraints import KitConstraints, error, load_constraints_files, load_constraints_toml
+from .manifest import load_toml_file
 
 if TYPE_CHECKING:
     from .workspace import SourceEntry, WorkspaceConfig
@@ -252,49 +252,76 @@ def load_resource_bindings(adapter_dir: Path, kit_id: str) -> Tuple[Optional[Dic
 
 def _load_core_resource_entries(adapter_dir: Path, kit_id: str) -> Dict[str, object]:
     core_toml = _resolve_core_config_path(adapter_dir)
-    if not core_toml.is_file():
-        return {}
-    try:
-        with open(core_toml, "rb") as f:
-            data = tomllib.load(f)
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
-    kits = data.get("kits")
-    if not isinstance(kits, dict):
-        return {}
-    kit_entry = kits.get(kit_id)
+    kit_entry = _load_core_kit_entry(core_toml, kit_id)
     if not isinstance(kit_entry, dict):
         return {}
+
     resources = kit_entry.get("resources")
     if isinstance(resources, dict):
         return dict(resources)
 
-    install_mode = str(kit_entry.get("install_mode", "") or "").strip()
-    if install_mode != "register":
+    manifest = _load_registered_kit_manifest(adapter_dir, kit_entry, kit_id)
+    if manifest is None:
         return {}
+    return _manifest_resource_entries(manifest)
 
+
+def _load_core_kit_entry(core_toml: Path, kit_id: str) -> Optional[Dict[str, object]]:
+    """Load the core.toml kit entry for a given kit identifier."""
+    data = load_toml_file(core_toml)
+    if data is None:
+        return None
+    kits = data.get("kits")
+    if not isinstance(kits, dict):
+        return None
+    kit_entry = kits.get(kit_id)
+    return kit_entry if isinstance(kit_entry, dict) else None
+
+
+def collect_known_id_kinds(ctx: object) -> Set[str]:
+    """Collect known ID kinds from a context and its loaded kit constraints."""
+    known_kinds = set((ctx.get_known_id_kinds() if ctx else set()) or set())
+    for loaded_kit in (getattr(ctx, "kits", None) or {}).values():
+        kit_constraints = getattr(loaded_kit, "constraints", None)
+        if not kit_constraints:
+            continue
+        for kind_constraints in kit_constraints.by_kind.values():
+            for defined_id in (kind_constraints.defined_id or []):
+                if defined_id and getattr(defined_id, "kind", None):
+                    known_kinds.add(str(defined_id.kind).strip().lower())
+    return known_kinds
+
+
+def _load_registered_kit_manifest(
+    adapter_dir: Path,
+    kit_entry: Dict[str, object],
+    kit_id: str,
+):
+    """Load manifest data for a registered kit when core resources are absent."""
     registered_path = str(kit_entry.get("path", "") or "").strip()
-    if not registered_path:
-        return {}
+    install_mode = str(kit_entry.get("install_mode", "") or "").strip()
+    if install_mode != "register" or not registered_path:
+        return None
 
     try:
         from ..commands.kit import _resolve_registered_kit_root_dir
         from .manifest import load_manifest
     except (ImportError, OSError):
-        return {}
+        return None
 
     kit_root = _resolve_registered_kit_root_dir(adapter_dir, registered_path)
     if kit_root is None or not kit_root.is_dir():
-        return {}
+        return None
 
     try:
-        manifest = load_manifest(kit_root, kit_slug=kit_id)
+        return load_manifest(kit_root, kit_slug=kit_id)
     except (OSError, ValueError, KeyError):
-        return {}
-    if manifest is None:
-        return {}
+        return None
 
-    manifest_entries: Dict[str, object] = {}
+
+def _manifest_resource_entries(manifest) -> Dict[str, object]:
+    """Convert manifest resources into the core-resource entry shape."""
+    entries: Dict[str, object] = {}
     for resource in getattr(manifest, "resources", []) or []:
         resource_id = str(getattr(resource, "id", "") or "").strip()
         if not resource_id:
@@ -305,8 +332,8 @@ def _load_core_resource_entries(adapter_dir: Path, kit_id: str) -> Dict[str, obj
         artifact_bindings = getattr(resource, "artifact_bindings", None)
         if isinstance(artifact_bindings, dict) and artifact_bindings:
             entry["artifacts"] = artifact_bindings
-        manifest_entries[resource_id] = entry
-    return manifest_entries
+        entries[resource_id] = entry
+    return entries
 
 
 def _constraints_resource_paths(
@@ -336,27 +363,98 @@ def resolve_constraints_from_bindings(
     _constraints_root: Optional[Path] = kit_root if isinstance(kit_root, Path) else None
     selected_constraints = _constraints_resource_paths(resolved_bindings, resource_entries)
     if selected_constraints:
-        constraint_paths = [path for _resource_id, path in selected_constraints]
-        errors = [
-            f"Bound constraints resource '{resource_id}' path does not exist or is not a file: {path}"
-            for resource_id, path in selected_constraints
-            if not path.is_file()
-        ]
-        first_path = constraint_paths[0] if constraint_paths else None
-        first_root = first_path.parent if first_path is not None else _constraints_root
-        if errors:
-            return None, errors, first_path, first_root, constraint_paths
-        kit_constraints, constraints_errs = load_constraints_files(constraint_paths)
-        return kit_constraints, constraints_errs, first_path, first_root, constraint_paths
+        return _load_bound_constraints(selected_constraints, _constraints_root)
 
-    kit_constraints: Optional[KitConstraints] = None
-    constraints_errs: List[str] = []
-    resolved_constraints_path: Optional[Path] = None
-    if _constraints_root is not None and _constraints_root.is_dir():
-        kit_constraints, constraints_errs = load_constraints_toml(_constraints_root)
-    if resolved_constraints_path is None and _constraints_root is not None and _constraints_root.is_dir():
-        resolved_constraints_path = (_constraints_root / _CONSTRAINTS_FILE).resolve()
-    return kit_constraints, constraints_errs, resolved_constraints_path, _constraints_root, [resolved_constraints_path] if resolved_constraints_path else []
+    return _load_root_constraints(_constraints_root)
+
+
+def _load_bound_constraints(
+    selected_constraints: List[Tuple[str, Path]],
+    constraints_root: Optional[Path],
+) -> Tuple[Optional[KitConstraints], List[str], Optional[Path], Optional[Path], List[Path]]:
+    """Load constraints from explicitly bound resource paths."""
+    constraint_paths = [path for _resource_id, path in selected_constraints]
+    errors = [
+        f"Bound constraints resource '{resource_id}' path does not exist or is not a file: {path}"
+        for resource_id, path in selected_constraints
+        if not path.is_file()
+    ]
+    first_path = constraint_paths[0] if constraint_paths else None
+    first_root = first_path.parent if first_path is not None else constraints_root
+    if errors:
+        return None, errors, first_path, first_root, constraint_paths
+    kit_constraints, constraints_errs = load_constraints_files(constraint_paths)
+    return kit_constraints, constraints_errs, first_path, first_root, constraint_paths
+
+
+def _load_root_constraints(
+    constraints_root: Optional[Path],
+) -> Tuple[Optional[KitConstraints], List[str], Optional[Path], Optional[Path], List[Path]]:
+    """Load constraints from the kit root fallback."""
+    if constraints_root is None or not constraints_root.is_dir():
+        return None, [], None, constraints_root, []
+
+    kit_constraints, constraints_errs = load_constraints_toml(constraints_root)
+    resolved_constraints_path = (constraints_root / _CONSTRAINTS_FILE).resolve()
+    return (
+        kit_constraints,
+        constraints_errs,
+        resolved_constraints_path,
+        constraints_root,
+        [resolved_constraints_path],
+    )
+
+
+def _build_constraints_error(
+    constraints_errs: List[str],
+    resolved_constraints_path: Optional[Path],
+    constraints_root: Optional[Path],
+    kit_id,
+) -> Optional[Dict[str, object]]:
+    """Build a normalized constraints error payload when loading fails."""
+    if not constraints_errs:
+        return None
+    constraints_path = resolved_constraints_path
+    if constraints_path is None and constraints_root is not None:
+        constraints_path = (constraints_root / _CONSTRAINTS_FILE).resolve()
+    return error(
+        "constraints",
+        "Invalid constraints",
+        path=constraints_path,
+        line=1,
+        errors=list(constraints_errs),
+        kit=kit_id,
+    )
+
+
+def _load_kit_dependencies(adapter_dir: Path, kit_id, kit_root: Optional[Path]):
+    """Load resource bindings and constraint metadata for a kit."""
+    resource_bindings, resolved_bindings, resource_binding_errors = load_resource_bindings(
+        adapter_dir,
+        kit_id,
+    )
+    resource_entries = _load_core_resource_entries(adapter_dir, str(kit_id))
+    (
+        kit_constraints,
+        constraints_errs,
+        resolved_constraints_path,
+        constraints_root,
+        resolved_constraints_paths,
+    ) = resolve_constraints_from_bindings(
+        resolved_bindings,
+        kit_root,
+        resource_entries,
+    )
+    return {
+        "resource_bindings": resource_bindings,
+        "resource_binding_errors": resource_binding_errors,
+        "resource_entries": resource_entries,
+        "kit_constraints": kit_constraints,
+        "constraints_errs": constraints_errs,
+        "resolved_constraints_path": resolved_constraints_path,
+        "constraints_root": constraints_root,
+        "resolved_constraints_paths": resolved_constraints_paths,
+    }
 
 
 def _load_single_kit(kit_id, kit, adapter_dir, project_root):
@@ -369,42 +467,27 @@ def _load_single_kit(kit_id, kit, adapter_dir, project_root):
         errors.append(
             _build_inaccessible_kit_path_error(adapter_dir, str(kit_id), str(kit.path or ""))
         )
-    # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
-    rb, _resolved_bindings, resource_binding_errors = load_resource_bindings(adapter_dir, kit_id)
-    errors.extend(resource_binding_errors)
-    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
+    dependency_info = _load_kit_dependencies(adapter_dir, kit_id, kit_root)
+    errors.extend(dependency_info["resource_binding_errors"])
 
-    # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
-    resource_entries = _load_core_resource_entries(adapter_dir, str(kit_id))
-    kit_constraints, constraints_errs, resolved_constraints_path, _constraints_root, resolved_constraints_paths = resolve_constraints_from_bindings(
-        _resolved_bindings,
-        kit_root,
-        resource_entries,
+    constraints_error = _build_constraints_error(
+        dependency_info["constraints_errs"],
+        dependency_info["resolved_constraints_path"],
+        dependency_info["constraints_root"],
+        kit_id,
     )
-    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
-
-    if constraints_errs:
-        constraints_path = resolved_constraints_path
-        if constraints_path is None and _constraints_root is not None:
-            constraints_path = (_constraints_root / _CONSTRAINTS_FILE).resolve()
-        errors.append(error(
-            "constraints",
-            "Invalid constraints",
-            path=constraints_path,
-            line=1,
-            errors=list(constraints_errs),
-            kit=kit_id,
-        ))
+    if constraints_error is not None:
+        errors.append(constraints_error)
 
     loaded = LoadedKit(
         kit=kit,
         templates=templates,
-        constraints=kit_constraints,
-        resource_bindings=rb,
+        constraints=dependency_info["kit_constraints"],
+        resource_bindings=dependency_info["resource_bindings"],
         kit_root=kit_root,
-        constraints_path=resolved_constraints_path,
-        constraints_paths=resolved_constraints_paths,
-        resource_entries=resource_entries,
+        constraints_path=dependency_info["resolved_constraints_path"],
+        constraints_paths=dependency_info["resolved_constraints_paths"],
+        resource_entries=dependency_info["resource_entries"],
     )
     return loaded, errors
 
@@ -725,40 +808,56 @@ def resolve_adapter_context(
         return sc.adapter_context
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-cache
     # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-no-dir
+    resolved: Optional["StudioContext"] = None
     if sc.adapter_dir is None:
-        sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
-        return None
+        return _finalize_adapter_context(sc, resolved)
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-no-dir
     # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-compute-path
     # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-missing
     if not sc.adapter_dir.is_dir():
-        if emit_warnings:
-            print(f"Warning: adapter directory not found for source '{sc.name}': {sc.adapter_dir}", file=sys.stderr)
-        sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
-        return None
+        _warn_adapter_context(
+            emit_warnings,
+            f"Warning: adapter directory not found for source '{sc.name}': {sc.adapter_dir}",
+        )
+        return _finalize_adapter_context(sc, resolved)
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-missing
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-compute-path
     # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-load-context
     # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-load-fail
     try:
-        loaded = StudioContext.load_from_dir(sc.adapter_dir)
+        resolved = StudioContext.load_from_dir(sc.adapter_dir)
     except (OSError, ValueError) as e:
-        if emit_warnings:
-            print(f"Warning: failed to load adapter context for source '{sc.name}': {e}", file=sys.stderr)
-        sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
-        return None
-    if loaded is None:
-        if emit_warnings:
-            print(f"Warning: adapter context could not be loaded for source '{sc.name}'", file=sys.stderr)
-        sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
-        return None
+        _warn_adapter_context(
+            emit_warnings,
+            f"Warning: failed to load adapter context for source '{sc.name}': {e}",
+        )
+        return _finalize_adapter_context(sc, None)
+    if resolved is None:
+        _warn_adapter_context(
+            emit_warnings,
+            f"Warning: adapter context could not be loaded for source '{sc.name}'",
+        )
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-load-fail
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-load-context
     # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-return
+    return _finalize_adapter_context(sc, resolved)
+    # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-return
+
+
+def _warn_adapter_context(emit_warnings: bool, message: str) -> None:
+    """Emit adapter context warnings only when requested."""
+    if emit_warnings:
+        print(message, file=sys.stderr)
+
+
+def _finalize_adapter_context(
+    sc: "SourceContext",
+    loaded: Optional["StudioContext"],
+) -> Optional["StudioContext"]:
+    """Persist adapter resolution state and return the resolved context."""
     sc.adapter_context = loaded
     sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
     return loaded
-    # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-return
 
 
 # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-expand-meta
@@ -870,12 +969,7 @@ def _load_source(name: str, src_entry: "SourceEntry", ws_cfg: "WorkspaceConfig")
         from .git_utils import peek_git_source_path
         from .workspace import ResolveConfig
 
-        if ws_cfg.resolution_base is not None:
-            base = ws_cfg.resolution_base
-        elif ws_cfg.workspace_file is not None:
-            base = ws_cfg.workspace_file.parent
-        else:
-            base = None
+        base = ws_cfg.get_resolution_base()
         resolved_path = (
             peek_git_source_path(src_entry, ws_cfg.resolve or ResolveConfig(), base)
             if base is not None

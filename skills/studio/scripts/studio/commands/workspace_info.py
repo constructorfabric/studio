@@ -51,12 +51,7 @@ def _build_source_info(ws_cfg: WorkspaceConfig, name: str) -> dict:
     """Build status dict for a single workspace source."""
     src = ws_cfg.sources[name]
     if src.url:
-        if ws_cfg.resolution_base is not None:
-            base = ws_cfg.resolution_base
-        elif ws_cfg.workspace_file is not None:
-            base = ws_cfg.workspace_file.parent
-        else:
-            base = None
+        base = ws_cfg.get_resolution_base()
         resolved = (
             peek_git_source_path(src, ws_cfg.resolve or ResolveConfig(), base)
             if base is not None
@@ -114,6 +109,76 @@ def _enrich_with_artifact_counts(info: dict, adapter_dir: Path) -> None:
             info["system_count"] = len(meta.systems)
     except (OSError, ValueError, RuntimeError) as exc:
         info["metadata_error"] = str(exc)
+
+
+def _load_workspace_info_context():
+    from ..utils.workspace import find_workspace_config, require_project_root
+
+    project_root = require_project_root()
+    if project_root is None:
+        return None, None
+    ws_cfg, ws_err = find_workspace_config(project_root)
+    if ws_cfg is not None:
+        return project_root, ws_cfg
+    if ws_err:
+        ui.result({
+            "status": "ERROR",
+            "message": ws_err,
+            "project_root": str(project_root),
+        })
+    else:
+        ui.result({
+            "status": "ERROR",
+            "message": "No workspace configuration found",
+            "project_root": str(project_root),
+            "hint": "Run 'workspace-init' to scan and create a workspace, add [workspace] to config/core.toml, set workspace = \"<path>\" in core.toml, or place .cf-workspace.toml at project root",
+        })
+    return project_root, None
+
+
+def _build_workspace_info_result(project_root: Path, ws_cfg: WorkspaceConfig, sources_info: List[dict]) -> tuple[dict, list[str]]:
+    config_warnings = ws_cfg.validate()
+    warnings = _collect_workspace_warnings(sources_info, config_warnings)
+    result: dict = {
+        "status": "OK",
+        "version": ws_cfg.version,
+        "config_path": str(ws_cfg.workspace_file) if ws_cfg.workspace_file else None,
+        "is_inline": ws_cfg.is_inline,
+        "project_root": str(project_root),
+        "sources_count": len(ws_cfg.sources),
+        "sources": sources_info,
+        "traceability": {
+            "cross_repo": ws_cfg.traceability.cross_repo,
+            "resolve_remote_ids": ws_cfg.traceability.resolve_remote_ids,
+        },
+        "degraded": bool(warnings),
+        "warning_count": len(warnings),
+    }
+    if config_warnings:
+        result["config_warnings"] = config_warnings
+    if warnings:
+        result["warnings"] = warnings
+    return result, warnings
+
+
+def _augment_workspace_context(result: dict, warnings: list[str]) -> None:
+    from ..utils.context import WorkspaceContext, get_context, get_workspace_upgrade_error
+
+    ctx = get_context()
+    workspace_upgrade_error = get_workspace_upgrade_error()
+    if workspace_upgrade_error:
+        warnings.append(f"context: {workspace_upgrade_error}")
+        result["workspace_context_error"] = workspace_upgrade_error
+        result["degraded"] = True
+        result["warning_count"] = len(warnings)
+        result["warnings"] = warnings
+    if isinstance(ctx, WorkspaceContext):
+        reachable_count = sum(1 for sc in ctx.sources.values() if sc.reachable)
+        result["context_loaded"] = True
+        result["reachable_sources"] = reachable_count
+        result["total_registered_systems"] = len(ctx.get_all_registered_systems())
+        return
+    result["context_loaded"] = False
 # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-helpers
 
 
@@ -128,90 +193,26 @@ def cmd_workspace_info(argv: List[str]) -> int:
     p.parse_args(argv)
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-user-workspace-info
 
-    from ..utils.context import WorkspaceContext, get_context, get_workspace_upgrade_error
-    from ..utils.workspace import find_workspace_config, require_project_root
-
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-find-root
-    project_root = require_project_root()
+    project_root, ws_cfg = _load_workspace_info_context()
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-find-root
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-no-root
     if project_root is None:
         return 1
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-no-root
-
-    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-find-ws
-    ws_cfg, ws_err = find_workspace_config(project_root)
-    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-find-ws
     if ws_cfg is None:
-        # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-error
-        if ws_err:
-            ui.result({
-                "status": "ERROR",
-                "message": ws_err,
-                "project_root": str(project_root),
-            })
-            return 1
-        # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-error
-        # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-no-ws
-        ui.result({
-            "status": "ERROR",
-            "message": "No workspace configuration found",
-            "project_root": str(project_root),
-            "hint": "Run 'workspace-init' to scan and create a workspace, add [workspace] to config/core.toml, set workspace = \"<path>\" in core.toml, or place .cf-workspace.toml at project root",
-        })
         return 1
-        # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-no-ws
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-foreach-source
     sources_info = [_build_source_info(ws_cfg, name) for name in ws_cfg.sources]
-    config_path = str(ws_cfg.workspace_file) if ws_cfg.workspace_file else None
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-foreach-source
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-build-result
-    result: dict = {
-        "status": "OK",
-        "version": ws_cfg.version,
-        "config_path": config_path,
-        "is_inline": ws_cfg.is_inline,
-        "project_root": str(project_root),
-        "sources_count": len(ws_cfg.sources),
-        "sources": sources_info,
-        "traceability": {
-            "cross_repo": ws_cfg.traceability.cross_repo,
-            "resolve_remote_ids": ws_cfg.traceability.resolve_remote_ids,
-        },
-    }
-
-    config_warnings = ws_cfg.validate()
-    if config_warnings:
-        result["config_warnings"] = config_warnings
-
-    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-load-context
-    warnings = _collect_workspace_warnings(sources_info, config_warnings)
-    result["degraded"] = bool(warnings)
-    result["warning_count"] = len(warnings)
-    if warnings:
-        result["warnings"] = warnings
-    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-load-context
-
+    result, warnings = _build_workspace_info_result(project_root, ws_cfg, sources_info)
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-build-result
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-load-context
-    ctx = get_context()
-    workspace_upgrade_error = get_workspace_upgrade_error()
-    if workspace_upgrade_error:
-        warnings.append(f"context: {workspace_upgrade_error}")
-        result["workspace_context_error"] = workspace_upgrade_error
-        result["degraded"] = True
-        result["warning_count"] = len(warnings)
-        result["warnings"] = warnings
-    if isinstance(ctx, WorkspaceContext):
-        reachable_count = sum(1 for sc in ctx.sources.values() if sc.reachable)
-        result["context_loaded"] = True
-        result["reachable_sources"] = reachable_count
-        result["total_registered_systems"] = len(ctx.get_all_registered_systems())
-    else:
-        result["context_loaded"] = False
+    _augment_workspace_context(result, warnings)
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-load-context
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-return-ok

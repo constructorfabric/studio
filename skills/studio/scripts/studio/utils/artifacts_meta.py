@@ -79,21 +79,7 @@ class Kit:
         raw_path = (data or {}).get("path", "")
         path = str(raw_path).strip() if isinstance(raw_path, str) else ""
 
-        raw_artifacts = (data or {}).get("artifacts", {})
-        artifacts: Dict[str, Dict[str, str]] = {}
-        if isinstance(raw_artifacts, dict):
-            for kind, spec in raw_artifacts.items():
-                if not isinstance(kind, str) or not kind.strip():
-                    continue
-                if not isinstance(spec, dict):
-                    continue
-                item: Dict[str, str] = {}
-                for key in ("template", "examples", "rules", "checklist"):
-                    value = spec.get(key)
-                    if isinstance(value, str) and value.strip():
-                        item[key] = value.strip()
-                if item:
-                    artifacts[kind.strip().upper()] = item
+        artifacts = _parse_kit_artifacts((data or {}).get("artifacts", {}))
 
         raw_source = (data or {}).get("source", None)
         source = str(raw_source).strip() if isinstance(raw_source, str) and str(raw_source).strip() else None
@@ -111,36 +97,47 @@ class Kit:
 
     @staticmethod
     def _substitute_registry_tokens(path_template: str) -> str:
-        """Expand registry tokens in a path template.
-
-        Currently supported:
-        - {project_root}: expands to '.' (caller resolves relative to actual project root Path)
-        """
+        """Expand registry tokens in a path template."""
         out = str(path_template or "")
-        out = out.replace(_TOKEN_PROJECT_ROOT, ".")
-        return out
+        return out.replace(_TOKEN_PROJECT_ROOT, ".")
 
     def get_template_path(self, kind: str) -> Optional[str]:
-        """Get template file path for a given artifact kind."""
+        """Get the template file path for a given artifact kind."""
         k = str(kind or "").strip().upper()
         if self.artifacts and k in self.artifacts:
             tpl = (self.artifacts.get(k) or {}).get("template")
             if isinstance(tpl, str) and tpl.strip():
                 return self._substitute_registry_tokens(tpl.strip())
             return None
-        # Backward compatible default: {path}/artifacts/{KIND}/template.md
         return f"{self.path.rstrip('/')}/artifacts/{kind}/template.md"
 
     def get_examples_path(self, kind: str) -> Optional[str]:
-        """Get examples directory path for a given artifact kind."""
+        """Get the examples directory path for a given artifact kind."""
         k = str(kind or "").strip().upper()
         if self.artifacts and k in self.artifacts:
             ex = (self.artifacts.get(k) or {}).get("examples")
             if isinstance(ex, str) and ex.strip():
                 return self._substitute_registry_tokens(ex.strip())
             return None
-        # Backward compatible default: {path}/artifacts/{KIND}/examples
         return f"{self.path.rstrip('/')}/artifacts/{kind}/examples"
+
+
+def _parse_kit_artifacts(raw_artifacts: object) -> Dict[str, Dict[str, str]]:
+    """Normalize a kit's artifact-path mapping from registry data."""
+    artifacts: Dict[str, Dict[str, str]] = {}
+    if not isinstance(raw_artifacts, dict):
+        return artifacts
+    for kind, spec in raw_artifacts.items():
+        if not isinstance(kind, str) or not kind.strip() or not isinstance(spec, dict):
+            continue
+        item: Dict[str, str] = {}
+        for key in ("template", "examples", "rules", "checklist"):
+            value = spec.get(key)
+            if isinstance(value, str) and value.strip():
+                item[key] = value.strip()
+        if item:
+            artifacts[kind.strip().upper()] = item
+    return artifacts
 
 @dataclass
 class Artifact:
@@ -618,7 +615,7 @@ class ArtifactsMeta:
     # @cpt-end:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-dataclasses
 
     # @cpt-begin:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-expand-autodetect
-    def expand_autodetect(
+    def expand_autodetect(  # pylint: disable=too-many-locals,too-many-statements
         self,
         *,
         adapter_dir: Path,
@@ -753,7 +750,7 @@ class ArtifactsMeta:
 
             return out
 
-        def _apply_rule(
+        def _apply_rule(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
             node: SystemNode,
             rule: AutodetectRule,
             *,
@@ -871,7 +868,10 @@ class ArtifactsMeta:
                 existing_child_codebase_by_path[np] = dc
                 child_node.codebase.append(dc)
 
-        def _expand_node(node: SystemNode, inherited_rules: List[Tuple[AutodetectRule, str]]) -> List[Tuple[AutodetectRule, str]]:
+        def _expand_node(  # pylint: disable=too-many-locals,too-many-branches
+            node: SystemNode,
+            inherited_rules: List[Tuple[AutodetectRule, str]],
+        ) -> List[Tuple[AutodetectRule, str]]:
             effective: List[Tuple[AutodetectRule, str]] = list(inherited_rules)
             default_parent_root = inherited_rules[0][1] if inherited_rules else str(self.project_root)
             for r in (node.autodetect or []):
@@ -1052,7 +1052,7 @@ class ArtifactsMeta:
     # @cpt-end:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-query-methods
 
 # @cpt-begin:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-locate
-def load_artifacts_meta(adapter_dir: Path) -> Tuple[Optional[ArtifactsMeta], Optional[str]]:
+def load_artifacts_meta(adapter_dir: Path) -> Tuple[Optional[ArtifactsMeta], Optional[str]]:  # pylint: disable=too-many-branches
     """
     Load ArtifactsMeta from studio directory.
 

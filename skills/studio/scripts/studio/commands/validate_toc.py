@@ -14,7 +14,7 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from ..utils.toc import validate_toc
+from ..utils.toc import add_toc_max_level_argument, validate_toc
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-imports
 
@@ -30,12 +30,7 @@ def cmd_validate_toc(argv: List[str]) -> int:
         nargs="+",
         help="Markdown file path(s) to validate",
     )
-    p.add_argument(
-        "--max-level",
-        type=int,
-        default=3,
-        help="Maximum heading level to include (default: 3)",
-    )
+    add_toc_max_level_argument(p)
     p.add_argument(
         "--verbose",
         action="store_true",

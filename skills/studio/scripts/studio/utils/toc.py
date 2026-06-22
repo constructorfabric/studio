@@ -21,6 +21,7 @@ Features:
 from __future__ import annotations
 
 import re
+import argparse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -258,6 +259,116 @@ def _next_heading_or_separator(
     return None
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 
+
+def _find_marker_bounds(lines: List[str]) -> Tuple[Optional[int], Optional[int]]:
+    """Find TOC marker start/end indices."""
+    start_idx = None
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == TOC_MARKER_START and start_idx is None:
+            start_idx = idx
+        elif stripped == TOC_MARKER_END and start_idx is not None:
+            return start_idx, idx
+    return start_idx, None
+
+
+def _find_first_h1_insert_pos(lines: List[str]) -> int:
+    """Find the insertion point after the first H1 heading."""
+    insert_pos = 0
+    fence: Optional[Tuple[str, int]] = None
+    for idx, line in enumerate(lines):
+        new_fence = _fence_update(line, fence)
+        if new_fence != fence:
+            fence = new_fence
+            continue
+        if fence is not None:
+            continue
+        heading_match = _HEADING_RE.match(line)
+        if heading_match and len(heading_match.group(1)) == 1:
+            insert_pos = idx + 1
+            while insert_pos < len(lines) and not lines[insert_pos].strip():
+                insert_pos += 1
+            break
+    return insert_pos
+
+
+def _find_existing_toc_heading(lines: List[str]) -> Tuple[Optional[int], Optional[int]]:
+    """Locate an existing heading-based TOC section."""
+    fence: Optional[Tuple[str, int]] = None
+    for idx, line in enumerate(lines):
+        new_fence = _fence_update(line, fence)
+        if new_fence != fence:
+            fence = new_fence
+            continue
+        if fence is not None:
+            continue
+        if re.match(r"^##\s+Table of Contents\s*$", line):
+            toc_end = _next_heading_or_separator(lines, idx + 1)
+            return idx, toc_end if toc_end is not None else len(lines)
+    return None, None
+
+
+def _expand_blank_line_region(lines: List[str], start: int, end: int) -> Tuple[int, int]:
+    """Expand a replacement region to consume surrounding blank lines."""
+    while start > 0 and not lines[start - 1].strip():
+        start -= 1
+    while end < len(lines) and not lines[end].strip():
+        end += 1
+    return start, end
+
+
+def add_toc_max_level_argument(parser: argparse.ArgumentParser) -> None:
+    """Register the shared TOC max-level CLI argument."""
+    parser.add_argument(
+        "--max-level",
+        type=int,
+        default=3,
+        help="Maximum heading level to include (default: 3)",
+    )
+
+
+def _find_frontmatter_end(lines: List[str]) -> int:
+    """Return the index after YAML frontmatter when present."""
+    if not lines or lines[0].strip() != "---":
+        return 0
+    idx = 1
+    while idx < len(lines) and lines[idx].strip() != "---":
+        idx += 1
+    if idx < len(lines):
+        idx += 1
+    return idx
+
+
+def _find_section_break_insert(lines: List[str], start: int) -> Optional[int]:
+    """Find the first section-break separator after the starting index."""
+    for idx in range(start, len(lines)):
+        if lines[idx].strip() == "---":
+            return idx
+    return None
+
+
+def _find_metadata_block_insert(lines: List[str], start: int) -> Optional[int]:
+    """Find an insertion point after the first heading and its metadata block."""
+    fence: Optional[Tuple[str, int]] = None
+    for idx in range(start, len(lines)):
+        new_fence = _fence_update(lines[idx], fence)
+        if new_fence != fence:
+            fence = new_fence
+            continue
+        if fence is not None:
+            continue
+        if not re.match(r"^#{1,6}\s", lines[idx]):
+            continue
+        end = idx + 1
+        while end < len(lines):
+            stripped = lines[end].strip()
+            if stripped.startswith("**") or stripped.startswith("- ") or not stripped:
+                end += 1
+                continue
+            break
+        return end
+    return None
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-unique-slug
 def _unique_slug(text: str, slug_counts: Dict[str, int]) -> str:
     """Return a unique GitHub-compatible slug, tracking duplicates."""
@@ -295,40 +406,14 @@ def insert_toc_markers(
 
     toc_text = build_toc(headings, indent_size=indent_size)
 
-    # Find existing markers
-    start_idx = None
-    end_idx = None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == TOC_MARKER_START and start_idx is None:
-            start_idx = i
-        elif stripped == TOC_MARKER_END and start_idx is not None:
-            end_idx = i
-            break
+    start_idx, end_idx = _find_marker_bounds(lines)
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-markers-replace
     if start_idx is not None and end_idx is not None:
         # Replace content between markers
         new_lines = lines[: start_idx + 1] + ["", toc_text, ""] + lines[end_idx:]
     else:
-        # Insert after first H1, or at position 0
-        insert_pos = 0
-        fence: Optional[Tuple[str, int]] = None
-        for i, line in enumerate(lines):
-            new_fence = _fence_update(line, fence)
-            if new_fence != fence:
-                fence = new_fence
-                continue
-            if fence is not None:
-                continue
-            m = _HEADING_RE.match(line)
-            if m and len(m.group(1)) == 1:
-                insert_pos = i + 1
-                # Skip blank lines immediately after H1
-                while insert_pos < len(lines) and not lines[insert_pos].strip():
-                    insert_pos += 1
-                break
-
+        insert_pos = _find_first_h1_insert_pos(lines)
         toc_block = ["", TOC_MARKER_START, "", toc_text, "", TOC_MARKER_END, ""]
         new_lines = lines[:insert_pos] + toc_block + lines[insert_pos:]
     # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-markers-replace
@@ -373,29 +458,11 @@ def insert_toc_heading(
     toc_section = f"## Table of Contents\n\n{toc_body}"
 
     # --- Try replacing an existing ToC section ---
-    toc_start = toc_end = None
-    fence: Optional[Tuple[str, int]] = None
-    for i, line in enumerate(lines):
-        new_fence = _fence_update(line, fence)
-        if new_fence != fence:
-            fence = new_fence
-            continue
-        if fence is not None:
-            continue
-        if re.match(r"^##\s+Table of Contents\s*$", line):
-            toc_start = i
-            # End = next heading or --- separator (fence-aware)
-            end = _next_heading_or_separator(lines, i + 1)
-            toc_end = end if end is not None else len(lines)
-            break
+    toc_start, toc_end = _find_existing_toc_heading(lines)
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-heading-replace
     if toc_start is not None and toc_end is not None:
-        # Strip blank lines around the replacement region
-        while toc_start > 0 and not lines[toc_start - 1].strip():
-            toc_start -= 1
-        while toc_end < len(lines) and not lines[toc_end].strip():
-            toc_end += 1
+        toc_start, toc_end = _expand_blank_line_region(lines, toc_start, toc_end)
         before = "\n".join(lines[:toc_start])
         after = "\n".join(lines[toc_end:])
         return f"{before}\n\n{toc_section}\n\n{after}"
@@ -403,42 +470,18 @@ def insert_toc_heading(
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-heading-new
     # --- No existing ToC: insert before first non-frontmatter --- ---
-    i = 0
-    # Skip YAML frontmatter (starts and ends with ---)
-    if lines and lines[0].strip() == "---":
-        i = 1
-        while i < len(lines) and lines[i].strip() != "---":
-            i += 1
-        if i < len(lines):
-            i += 1  # skip closing ---
+    start_idx = _find_frontmatter_end(lines)
+    separator_idx = _find_section_break_insert(lines, start_idx)
+    if separator_idx is not None:
+        before = "\n".join(lines[:separator_idx]).rstrip("\n")
+        after = "\n".join(lines[separator_idx:])
+        return f"{before}\n\n{toc_section}\n\n{after}"
 
-    # Find the first --- separator (section break)
-    for j in range(i, len(lines)):
-        if lines[j].strip() == "---":
-            before = "\n".join(lines[:j]).rstrip("\n")
-            after = "\n".join(lines[j:])
-            return f"{before}\n\n{toc_section}\n\n{after}"
-
-    # No --- found: insert after first heading + metadata block
-    fence_fb: Optional[Tuple[str, int]] = None
-    for j in range(i, len(lines)):
-        new_fence = _fence_update(lines[j], fence_fb)
-        if new_fence != fence_fb:
-            fence_fb = new_fence
-            continue
-        if fence_fb is not None:
-            continue
-        if re.match(r"^#{1,6}\s", lines[j]):
-            k = j + 1
-            while k < len(lines):
-                s = lines[k].strip()
-                if s.startswith("**") or s.startswith("- ") or not s:
-                    k += 1
-                else:
-                    break
-            before = "\n".join(lines[:k]).rstrip("\n")
-            after = "\n".join(lines[k:])
-            return f"{before}\n\n{toc_section}\n\n{after}"
+    metadata_idx = _find_metadata_block_insert(lines, start_idx)
+    if metadata_idx is not None:
+        before = "\n".join(lines[:metadata_idx]).rstrip("\n")
+        after = "\n".join(lines[metadata_idx:])
+        return f"{before}\n\n{toc_section}\n\n{after}"
 
     # Fallback: prepend
     return f"{toc_section}\n\n{content}"
@@ -460,45 +503,12 @@ def _strip_manual_toc(content: str) -> Tuple[str, bool]:
 
     # Check if markers already exist — only strip manual TOC if markers present
     # or will be inserted (i.e., always strip manual TOC for marker-based flow).
-    toc_heading_start = None
-    toc_heading_end = None
-    fence: Optional[Tuple[str, int]] = None
-
-    for i, line in enumerate(lines):
-        new_fence = _fence_update(line, fence)
-        if new_fence != fence:
-            fence = new_fence
-            continue
-        if fence is not None:
-            continue
-
-        # Skip lines inside <!-- toc --> markers — those are ours
-        stripped = line.strip()
-        if stripped == TOC_MARKER_START:
-            # Fast-forward past marker block
-            for j in range(i + 1, len(lines)):
-                if lines[j].strip() == TOC_MARKER_END:
-                    break
-            continue
-
-        if re.match(r"^##\s+Table of Contents\s*$", line):
-            toc_heading_start = i
-            # Find end: next heading or --- separator (fence-aware)
-            end = _next_heading_or_separator(lines, i + 1)
-            toc_heading_end = end if end is not None else len(lines)
-            break
+    toc_heading_start, toc_heading_end = _find_existing_toc_heading(lines)
 
     if toc_heading_start is None:
         return content, False
 
-    # Strip blank lines around the section
-    start = toc_heading_start
-    end = toc_heading_end
-    while start > 0 and not lines[start - 1].strip():
-        start -= 1
-    while end < len(lines) and not lines[end].strip():
-        end += 1
-
+    start, end = _expand_blank_line_region(lines, toc_heading_start, toc_heading_end)
     new_lines = lines[:start] + lines[end:]
     return "\n".join(new_lines), True
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-strip-manual
@@ -630,6 +640,121 @@ def _build_expected_anchors(
     return result
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-anchors
 
+
+def _collect_toc_validation_inputs(
+    content: str,
+    artifact_path: Optional[Path],
+    max_heading_level: int,
+) -> Tuple[Path, List[str], Optional[Tuple[int, int, str]], List[Tuple[int, str]]]:
+    """Prepare the parsed content state used by TOC validation."""
+    path = artifact_path or Path("<unknown>")
+    lines = content.split("\n")
+    toc_info = _find_toc_section(lines)
+    heading_kwargs: Dict[str, Any] = {
+        "skip_toc_heading": True,
+        "max_level": max_heading_level,
+    }
+    if toc_info is not None and toc_info[2] == "heading":
+        heading_kwargs["skip_first"] = True
+    else:
+        heading_kwargs["min_level"] = 2
+    headings = parse_headings(lines, **heading_kwargs)
+    return path, lines, toc_info, headings
+
+
+def _record_missing_toc_error(
+    errors: List[Dict[str, Any]],
+    path: Path,
+    heading_count: int,
+) -> None:
+    """Record the standard missing-TOC validation error."""
+    from . import error_codes as EC
+    from .constraints import error
+
+    errors.append(error(
+        "toc",
+        "Document has headings but no Table of Contents section",
+        code=EC.TOC_MISSING,
+        path=path,
+        line=1,
+        heading_count=heading_count,
+    ))
+
+
+def _validate_toc_entries(
+    toc_entries: List[Tuple[str, str, int]],
+    expected_anchors: Dict[str, str],
+    lines: List[str],
+    path: Path,
+    errors: List[Dict[str, Any]],
+) -> None:
+    """Validate TOC links against the document headings."""
+    from . import error_codes as EC
+    from .constraints import error
+
+    toc_anchors = {anchor: line_num for _display, anchor, line_num in toc_entries}
+    for display, anchor, line_num in toc_entries:
+        if anchor not in expected_anchors:
+            errors.append(error(
+                "toc",
+                f"TOC entry `[{display}](#{anchor})` points to non-existent heading",
+                code=EC.TOC_ANCHOR_BROKEN,
+                path=path,
+                line=line_num,
+                toc_display=display,
+                toc_anchor=anchor,
+            ))
+    for anchor, heading_text in expected_anchors.items():
+        if anchor not in toc_anchors:
+            errors.append(error(
+                "toc",
+                f"Heading `{heading_text}` is not listed in the Table of Contents",
+                code=EC.TOC_HEADING_NOT_IN_TOC,
+                path=path,
+                line=_find_heading_line(lines, heading_text),
+                heading_text=heading_text,
+                expected_anchor=anchor,
+            ))
+
+
+def _build_fresh_toc(content: str, toc_mode: str, max_heading_level: int) -> str:
+    """Regenerate TOC content in the same mode as the source document."""
+    if toc_mode == "heading":
+        return insert_toc_heading(content, max_heading_level=max_heading_level)
+    return insert_toc_markers(content, max_level=max_heading_level)
+
+
+def _first_diff_line(original_lines: List[str], fresh_content: str) -> int:
+    """Return the first differing line between original and regenerated TOC content."""
+    fresh_lines = fresh_content.split("\n")
+    for index, line in enumerate(original_lines):
+        if index >= len(fresh_lines) or line != fresh_lines[index]:
+            return index + 1
+    return min(len(original_lines), len(fresh_lines)) + 1
+
+
+def _append_stale_toc_warning(
+    content: str,
+    toc_mode: str,
+    max_heading_level: int,
+    path: Path,
+    lines: List[str],
+    warnings: List[Dict[str, Any]],
+) -> None:
+    """Append the standard stale-TOC warning when regeneration would change content."""
+    from . import error_codes as EC
+    from .constraints import error
+
+    fresh = _build_fresh_toc(content, toc_mode, max_heading_level)
+    if fresh != content:
+        warnings.append(error(
+            "toc",
+            "Table of Contents is outdated — regenerate with `cfs toc`",
+            code=EC.TOC_STALE,
+            path=path,
+            line=_first_diff_line(lines, fresh),
+        ))
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate
 def validate_toc(
     content: str,
@@ -654,29 +779,13 @@ def validate_toc(
     as ``validate_artifact_file``.
     """
     # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate-init
-    from . import error_codes as EC
-    from .constraints import error
-
     errors: List[Dict[str, Any]] = []
     warnings: List[Dict[str, Any]] = []
-    path = artifact_path or Path("<unknown>")
-    lines = content.split("\n")
-
-    toc_info = _find_toc_section(lines)
-    if toc_info is not None and toc_info[2] == "heading":
-        headings = parse_headings(
-            lines,
-            skip_first=True,
-            skip_toc_heading=True,
-            max_level=max_heading_level,
-        )
-    else:
-        headings = parse_headings(
-            lines,
-            min_level=2,
-            skip_toc_heading=True,
-            max_level=max_heading_level,
-        )
+    path, lines, toc_info, headings = _collect_toc_validation_inputs(
+        content,
+        artifact_path,
+        max_heading_level,
+    )
 
     if not headings:
         # No headings → nothing to validate
@@ -686,14 +795,7 @@ def validate_toc(
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-existing
     # 1. TOC exists?
     if toc_info is None:
-        errors.append(error(
-            "toc",
-            "Document has headings but no Table of Contents section",
-            code=EC.TOC_MISSING,
-            path=path,
-            line=1,
-            heading_count=len(headings),
-        ))
+        _record_missing_toc_error(errors, path, len(headings))
         return {"errors": errors, "warnings": warnings}
 
     toc_start, toc_end, toc_mode = toc_info
@@ -705,67 +807,15 @@ def validate_toc(
     expected_anchors = _build_expected_anchors(headings)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-generate-expected
 
-    # Set of anchors found in TOC
-    toc_anchors: Dict[str, int] = {}  # anchor → line (1-based)
-    for _display, anchor, line_num in toc_entries:
-        toc_anchors[anchor] = line_num
-
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-compare
     # 3. Every TOC anchor must point to a real heading
-    for display, anchor, line_num in toc_entries:
-        if anchor not in expected_anchors:
-            errors.append(error(
-                "toc",
-                f"TOC entry `[{display}](#{anchor})` points to non-existent heading",
-                code=EC.TOC_ANCHOR_BROKEN,
-                path=path,
-                line=line_num,
-                toc_display=display,
-                toc_anchor=anchor,
-            ))
-
-    # 4. Every heading must be in the TOC
-    for anchor, heading_text in expected_anchors.items():
-        if anchor not in toc_anchors:
-            # Find the heading's line number
-            heading_line = _find_heading_line(lines, heading_text)
-            errors.append(error(
-                "toc",
-                f"Heading `{heading_text}` is not listed in the Table of Contents",
-                code=EC.TOC_HEADING_NOT_IN_TOC,
-                path=path,
-                line=heading_line,
-                heading_text=heading_text,
-                expected_anchor=anchor,
-            ))
+    _validate_toc_entries(toc_entries, expected_anchors, lines, path, errors)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-compare
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-if-mismatch
     # 5. Staleness check — regenerate TOC and compare
     if not errors:
-        if toc_mode == "heading":
-            fresh = insert_toc_heading(content, max_heading_level=max_heading_level)
-        else:
-            fresh = insert_toc_markers(content, max_level=max_heading_level)
-
-        if fresh != content:
-            # Find the first differing line for a useful line number
-            fresh_lines = fresh.split("\n")
-            diff_line = 1
-            for i in range(min(len(lines), len(fresh_lines))):
-                if lines[i] != fresh_lines[i]:
-                    diff_line = i + 1
-                    break
-            else:
-                diff_line = min(len(lines), len(fresh_lines)) + 1
-
-            warnings.append(error(
-                "toc",
-                "Table of Contents is outdated — regenerate with `cfs toc`",
-                code=EC.TOC_STALE,
-                path=path,
-                line=diff_line,
-            ))
+        _append_stale_toc_warning(content, toc_mode, max_heading_level, path, lines, warnings)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-if-mismatch
 
     return {"errors": errors, "warnings": warnings}

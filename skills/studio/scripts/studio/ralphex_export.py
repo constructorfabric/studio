@@ -18,8 +18,9 @@ import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from .utils._tomllib_compat import tomllib
 from .utils.files import _read_studio_var, core_subpath
@@ -29,6 +30,20 @@ logger = logging.getLogger(__name__)
 # Rules subsections to include as bounded guidance
 _GUIDANCE_SUBSECTIONS = {"Engineering", "Quality"}
 _RALPHEX_ALLOWED_FLAGS = {"--review", "--tasks-only", "--worktree", "--serve"}
+
+
+@dataclass(frozen=True)
+class DelegationOptions:
+    """Runtime options for ralphex delegation execution."""
+
+    mode: str = "execute"
+    worktree: bool = False
+    serve: bool = True
+    default_branch: str = "main"
+    config_path: Optional[Path] = None
+    dry_run: bool = False
+    plans_dir_override: Optional[str] = None
+    stream_output: bool = False
 
 
 def compile_delegation_plan(plan_dir: str) -> str:
@@ -45,60 +60,12 @@ def compile_delegation_plan(plan_dir: str) -> str:
     Returns:
         The compiled ralphex Markdown plan content as a string.
     """
-    # @cpt-begin:inst-read-manifest
-    plan_path = Path(plan_dir) / "plan.toml"
-    with open(plan_path, "rb") as f:
-        manifest = tomllib.load(f)
-
-    plan_meta = manifest.get("plan", {})
-    if not plan_meta:
-        raise ValueError(f"plan.toml missing required [plan] section: {plan_path}")
-    phases = manifest.get("phases", [])
-    logger.info("Read plan manifest with %d phases: %s", len(phases), plan_meta.get("task"))
-    # @cpt-end:inst-read-manifest
-
-    # @cpt-begin:inst-gen-title
-    task_name = plan_meta.get("task")
-    if not task_name:
-        raise ValueError(f"plan.toml [plan] section missing required 'task' key: {plan_path}")
-    title = f"# {task_name}"
-    # @cpt-end:inst-gen-title
-
-    # @cpt-begin:inst-gen-validation
+    plan_path, manifest, plan_meta, phases = _load_plan_manifest(plan_dir)
+    title = _build_plan_title(plan_meta, plan_path)
     overview = _generate_overview(plan_meta, phases)
     validation = _generate_validation_section(manifest)
-    # @cpt-end:inst-gen-validation
-
-    # @cpt-begin:inst-loop-phases
-    task_blocks: list[str] = []
-    for phase in phases:
-        phase_file = Path(plan_dir) / phase["file"]
-        if not phase_file.exists():
-            raise FileNotFoundError(
-                f"Phase file not found: {phase_file} "
-                f"(declared in plan.toml but missing from {plan_dir})"
-            )
-        phase_content = phase_file.read_text(encoding="utf-8")
-        task_block = map_phase_to_task(
-            phase_content,
-            phase["number"],
-            _format_phase_reference_path(phase_file, plan_dir),
-        )
-        task_blocks.append(task_block)
-    actual_phase_numbers = [int(phase.get("number", 0) or 0) for phase in phases]
-    next_task_num = max(actual_phase_numbers, default=0) + 1
-    lifecycle_block = _generate_lifecycle_task(manifest, plan_dir, next_task_num, actual_phase_numbers)
-    if lifecycle_block:
-        task_blocks.append(lifecycle_block)
-    # @cpt-end:inst-loop-phases
-
-    # @cpt-begin:inst-assemble
-    sections = [title, "", overview, "", validation, ""]
-    for block in task_blocks:
-        sections.append(block)
-        sections.append("")
-    plan_content = "\n".join(sections).rstrip() + "\n"
-    # @cpt-end:inst-assemble
+    task_blocks = _compile_task_blocks(plan_dir, manifest, phases)
+    plan_content = _assemble_compiled_plan(title, overview, validation, task_blocks)
 
     # @cpt-begin:inst-resolve-paths
     plan_content = _resolve_paths(plan_content, plan_dir)
@@ -108,6 +75,73 @@ def compile_delegation_plan(plan_dir: str) -> str:
     logger.info("Compiled plan: %d chars, %d task blocks", len(plan_content), len(task_blocks))
     return plan_content
     # @cpt-end:inst-return-plan
+
+
+def _load_plan_manifest(plan_dir: str) -> tuple[Path, dict, dict, list[dict]]:
+    """Load and validate the plan manifest metadata."""
+    plan_path = Path(plan_dir) / "plan.toml"
+    with open(plan_path, "rb") as handle:
+        manifest = tomllib.load(handle)
+    plan_meta = manifest.get("plan", {})
+    if not plan_meta:
+        raise ValueError(f"plan.toml missing required [plan] section: {plan_path}")
+    phases = manifest.get("phases", [])
+    logger.info("Read plan manifest with %d phases: %s", len(phases), plan_meta.get("task"))
+    return plan_path, manifest, plan_meta, phases
+
+
+def _build_plan_title(plan_meta: dict, plan_path: Path) -> str:
+    """Build the compiled plan title from plan metadata."""
+    task_name = plan_meta.get("task")
+    if not task_name:
+        raise ValueError(f"plan.toml [plan] section missing required 'task' key: {plan_path}")
+    return f"# {task_name}"
+
+
+def _compile_task_blocks(plan_dir: str, manifest: dict, phases: list[dict]) -> list[str]:
+    """Compile phase files plus any synthesized lifecycle task into task blocks."""
+    task_blocks = [
+        _compile_phase_task_block(plan_dir, phase)
+        for phase in phases
+    ]
+    phase_numbers = [int(phase.get("number", 0) or 0) for phase in phases]
+    lifecycle_block = _generate_lifecycle_task(
+        manifest,
+        plan_dir,
+        max(phase_numbers, default=0) + 1,
+        phase_numbers,
+    )
+    if lifecycle_block:
+        task_blocks.append(lifecycle_block)
+    return task_blocks
+
+
+def _compile_phase_task_block(plan_dir: str, phase: dict) -> str:
+    """Compile a single phase file into a ralphex task block."""
+    phase_file = Path(plan_dir) / phase["file"]
+    if not phase_file.exists():
+        raise FileNotFoundError(
+            f"Phase file not found: {phase_file} "
+            f"(declared in plan.toml but missing from {plan_dir})"
+        )
+    return map_phase_to_task(
+        phase_file.read_text(encoding="utf-8"),
+        phase["number"],
+        _format_phase_reference_path(phase_file, plan_dir),
+    )
+
+
+def _assemble_compiled_plan(
+    title: str,
+    overview: str,
+    validation: str,
+    task_blocks: list[str],
+) -> str:
+    """Assemble the final compiled plan document."""
+    sections = [title, "", overview, "", validation, ""]
+    for block in task_blocks:
+        sections.extend((block, ""))
+    return "\n".join(sections).rstrip() + "\n"
 
 
 def map_phase_to_task(
@@ -148,32 +182,13 @@ def map_phase_to_task(
     lines.append("- [ ] Treat `Preamble` as boilerplate and use `Prior Context` only as supporting background, not as new requirements.")
     lines.append("")
 
-    what_text = _extract_section_body(phase_content, "What")
-    if what_text:
-        lines.append("**Phase Focus:**")
-        lines.append(f"- {what_text}")
-
-    task_steps = _extract_section_items(phase_content, "Task")
-    if task_steps:
-        if not what_text:
-            lines.append("**Phase Focus:**")
-        for step in task_steps:
-            lines.append(f"- {step}")
-        lines.append("")
-
-    criteria = _extract_section_items(phase_content, "Acceptance Criteria")
-    if criteria:
-        lines.append("**Success Checks:**")
-        for criterion in criteria:
-            lines.append(f"- {criterion}")
-        lines.append("")
-
-    guidance = _distill_guidance(phase_content)
-    if guidance:
-        lines.append("**Guidance:**")
-        for item in guidance:
-            lines.append(f"- {item}")
-        lines.append("")
+    _append_phase_focus(lines, phase_content)
+    _append_bulleted_section(
+        lines,
+        "**Success Checks:**",
+        _extract_section_items(phase_content, "Acceptance Criteria"),
+    )
+    _append_bulleted_section(lines, "**Guidance:**", _distill_guidance(phase_content))
 
     lines.append("**Ignore:**")
     lines.append("- Other phases unless they are required by `depends_on` or explicitly referenced by the original phase file.")
@@ -181,36 +196,79 @@ def map_phase_to_task(
     lines.append("- Any compiled-plan summary text if it conflicts with the original phase file.")
     lines.append("")
 
-    depends_on = phase_meta.get("depends_on", [])
-    inputs = phase_meta.get("inputs", [])
-    output_files = phase_meta.get("output_files", [])
-    input_files = phase_meta.get("input_files", [])
-    outputs = phase_meta.get("outputs", [])
-    if depends_on or inputs:
-        lines.append("**Dependencies:**")
-        if depends_on:
-            lines.append(f"- Depends on phase(s): {', '.join(str(dep) for dep in depends_on)}")
-        for item in inputs:
-            lines.append(f"- Required prior artifact: `{item}`")
-        lines.append("")
-
-    if input_files or output_files:
-        lines.append("**Declared Scope:**")
-        for fp in input_files:
-            lines.append(f"- Input file: `{fp}`")
-        for fp in output_files:
-            lines.append(f"- Output file: `{fp}`")
-        lines.append("")
-
-    if outputs:
-        lines.append("**Expected Deliverables:**")
-        for item in outputs:
-            lines.append(f"- `{item}`")
-        lines.append("")
+    _append_dependencies(lines, phase_meta)
+    _append_declared_scope(lines, phase_meta)
+    _append_expected_deliverables(lines, phase_meta)
 
     # @cpt-begin:inst-return-task
     return "\n".join(lines).rstrip()
     # @cpt-end:inst-return-task
+
+
+def _append_phase_focus(lines: list[str], phase_content: str) -> None:
+    """Append the What/Task-derived phase focus block."""
+    what_text = _extract_section_body(phase_content, "What")
+    task_steps = _extract_section_items(phase_content, "Task")
+    if not (what_text or task_steps):
+        return
+    lines.append("**Phase Focus:**")
+    if what_text:
+        lines.append(f"- {what_text}")
+    for step in task_steps:
+        lines.append(f"- {step}")
+    lines.append("")
+
+
+def _append_bulleted_section(
+    lines: list[str],
+    heading: str,
+    items: list[str],
+) -> None:
+    """Append a simple bulleted section when items are present."""
+    if items:
+        lines.append(heading)
+        for item in items:
+            lines.append(f"- {item}")
+        lines.append("")
+
+
+def _append_dependencies(lines: list[str], phase_meta: dict) -> None:
+    """Append phase dependencies and required inputs."""
+    depends_on = phase_meta.get("depends_on", [])
+    inputs = phase_meta.get("inputs", [])
+    if not (depends_on or inputs):
+        return
+    lines.append("**Dependencies:**")
+    if depends_on:
+        lines.append(f"- Depends on phase(s): {', '.join(str(dep) for dep in depends_on)}")
+    for item in inputs:
+        lines.append(f"- Required prior artifact: `{item}`")
+    lines.append("")
+
+
+def _append_declared_scope(lines: list[str], phase_meta: dict) -> None:
+    """Append declared input/output file scope."""
+    input_files = phase_meta.get("input_files", [])
+    output_files = phase_meta.get("output_files", [])
+    if not (input_files or output_files):
+        return
+    lines.append("**Declared Scope:**")
+    for file_path in input_files:
+        lines.append(f"- Input file: `{file_path}`")
+    for file_path in output_files:
+        lines.append(f"- Output file: `{file_path}`")
+    lines.append("")
+
+
+def _append_expected_deliverables(lines: list[str], phase_meta: dict) -> None:
+    """Append expected deliverables listed in frontmatter."""
+    outputs = phase_meta.get("outputs", [])
+    if not outputs:
+        return
+    lines.append("**Expected Deliverables:**")
+    for item in outputs:
+        lines.append(f"- `{item}`")
+    lines.append("")
 
 
 def _find_project_root(start_path: Path) -> Path:
@@ -328,66 +386,96 @@ def _generate_lifecycle_task(
     active_plan_ref = _format_phase_reference_path(active_plan_dir, plan_dir)
     _phase_numbers = sorted(phase_numbers) if phase_numbers else []
 
+    lifecycle_details = _build_lifecycle_details(
+        lifecycle_action,
+        active_plan_ref,
+        plan_dir,
+        active_plan_dir,
+    )
+    return _render_lifecycle_task(
+        task_num=task_num,
+        plan_manifest_ref=plan_manifest_ref,
+        phase_numbers=_phase_numbers,
+        details=lifecycle_details,
+    )
+
+
+def _build_lifecycle_details(
+    lifecycle_action: str,
+    active_plan_ref: str,
+    plan_dir: str,
+    active_plan_dir: Path,
+) -> dict:
+    """Build action-specific lifecycle task content."""
     if lifecycle_action == "archive":
         archive_dir = active_plan_dir.parent / ".archive" / active_plan_dir.name
         archive_ref = _format_phase_reference_path(archive_dir, plan_dir)
-        lines = [
-            f"### Task {task_num}: Plan lifecycle — archive plan files",
-            "",
-            "**Original Plan Manifest:**",
-            f"- `{plan_manifest_ref}`",
-            "",
-            "**Execution Prompt:**",
+        return {
+            "title": "Plan lifecycle — archive plan files",
+            "execution": [
+                "- [ ] Run this task only after all prior delegated tasks complete successfully.",
+                "- [ ] Re-read `plan.toml` and treat `plan.lifecycle`, `plan.lifecycle_status`, `plan_dir`, and `active_plan_dir` as authoritative.",
+                "- [ ] Set `lifecycle_status = \"ready\"` before moving the completed plan directory.",
+                f"- [ ] Move the active plan directory from `{active_plan_ref}` to `{archive_ref}`.",
+                "- [ ] Update the moved `plan.toml` so `active_plan_dir` points at the archived location and `lifecycle_status = \"done\"`.",
+                "- [ ] If archiving fails, report the lifecycle task as failed and leave delivery outputs untouched.",
+            ],
+            "phase_focus": "- Finalize plan-file lifecycle handling by archiving the completed plan directory.",
+            "success_checks": [
+                f"- `{archive_ref}` exists.",
+                "- The archived `plan.toml` records the archived `active_plan_dir`.",
+                "- `lifecycle_status` is `done`.",
+            ],
+            "ignore": [
+                "- Do not modify delivery outputs produced by earlier tasks.",
+                "- Do not archive the plan if any earlier delegated task failed or remains incomplete.",
+            ],
+        }
+
+    return {
+        "title": "Plan lifecycle — delete plan files",
+        "execution": [
             "- [ ] Run this task only after all prior delegated tasks complete successfully.",
             "- [ ] Re-read `plan.toml` and treat `plan.lifecycle`, `plan.lifecycle_status`, `plan_dir`, and `active_plan_dir` as authoritative.",
-            "- [ ] Set `lifecycle_status = \"ready\"` before moving the completed plan directory.",
-            f"- [ ] Move the active plan directory from `{active_plan_ref}` to `{archive_ref}`.",
-            "- [ ] Update the moved `plan.toml` so `active_plan_dir` points at the archived location and `lifecycle_status = \"done\"`.",
-            "- [ ] If archiving fails, report the lifecycle task as failed and leave delivery outputs untouched.",
-            "",
-            "**Phase Focus:**",
-            "- Finalize plan-file lifecycle handling by archiving the completed plan directory.",
-            "",
-        ]
-        if _phase_numbers:
-            dep_label = _format_task_dependency_label(_phase_numbers)
-            lines.extend([
-                "**Dependencies:**",
-                f"- Run after {dep_label} complete successfully.",
-                "",
-            ])
-        lines.extend([
-            "**Success Checks:**",
-            f"- `{archive_ref}` exists.",
-            "- The archived `plan.toml` records the archived `active_plan_dir`.",
-            "- `lifecycle_status` is `done`.",
-            "",
-            "**Ignore:**",
-            "- Do not modify delivery outputs produced by earlier tasks.",
-            "- Do not archive the plan if any earlier delegated task failed or remains incomplete.",
-            "",
-        ])
-        return "\n".join(lines).rstrip()
+            f"- [ ] Delete the active plan directory at `{active_plan_ref}` after confirming the delivery work is complete.",
+            "- [ ] Remove only plan-tracking files; leave delivery outputs in the project intact.",
+            "- [ ] Because the plan directory is deleted, do not attempt a follow-up manifest update on disk.",
+        ],
+        "phase_focus": "- Finalize plan-file lifecycle handling by deleting the completed plan directory.",
+        "success_checks": [
+            f"- `{active_plan_ref}` no longer exists.",
+            "- Delivery outputs from earlier tasks remain intact.",
+        ],
+        "ignore": [
+            "- Do not delete project files outside the plan directory.",
+            "- Do not delete the plan if any earlier delegated task failed or remains incomplete.",
+        ],
+    }
 
+
+def _render_lifecycle_task(
+    *,
+    task_num: int,
+    plan_manifest_ref: str,
+    phase_numbers: list[int],
+    details: dict,
+) -> str:
+    """Render the lifecycle task markdown from shared and action-specific parts."""
     lines = [
-        f"### Task {task_num}: Plan lifecycle — delete plan files",
+        f"### Task {task_num}: {details['title']}",
         "",
         "**Original Plan Manifest:**",
         f"- `{plan_manifest_ref}`",
         "",
         "**Execution Prompt:**",
-        "- [ ] Run this task only after all prior delegated tasks complete successfully.",
-        "- [ ] Re-read `plan.toml` and treat `plan.lifecycle`, `plan.lifecycle_status`, `plan_dir`, and `active_plan_dir` as authoritative.",
-        f"- [ ] Delete the active plan directory at `{active_plan_ref}` after confirming the delivery work is complete.",
-        "- [ ] Remove only plan-tracking files; leave delivery outputs in the project intact.",
-        "- [ ] Because the plan directory is deleted, do not attempt a follow-up manifest update on disk.",
+        *details["execution"],
         "",
         "**Phase Focus:**",
-        "- Finalize plan-file lifecycle handling by deleting the completed plan directory.",
+        details["phase_focus"],
         "",
     ]
-    if _phase_numbers:
-        dep_label = _format_task_dependency_label(_phase_numbers)
+    if phase_numbers:
+        dep_label = _format_task_dependency_label(phase_numbers)
         lines.extend([
             "**Dependencies:**",
             f"- Run after {dep_label} complete successfully.",
@@ -395,12 +483,10 @@ def _generate_lifecycle_task(
         ])
     lines.extend([
         "**Success Checks:**",
-        f"- `{active_plan_ref}` no longer exists.",
-        "- Delivery outputs from earlier tasks remain intact.",
+        *details["success_checks"],
         "",
         "**Ignore:**",
-        "- Do not delete project files outside the plan directory.",
-        "- Do not delete the plan if any earlier delegated task failed or remains incomplete.",
+        *details["ignore"],
         "",
     ])
     return "\n".join(lines).rstrip()
@@ -508,27 +594,45 @@ def _validate_delegation_command(command: list[str]) -> Optional[str]:
     if not executable.is_absolute():
         return f"Invalid delegation command: executable path must be absolute: {command[0]}"
 
-    seen_plan_file = False
-    for arg in command[1:]:
-        if not isinstance(arg, str) or not arg.strip():
-            return "Invalid delegation command: empty argument"
-        if arg.startswith("--"):
-            if arg not in _RALPHEX_ALLOWED_FLAGS:
-                return f"Invalid delegation command: unsupported flag {arg}"
-            continue
-        if seen_plan_file:
-            return f"Invalid delegation command: unexpected positional argument {arg}"
-        plan_file = Path(arg)
-        if not plan_file.is_absolute():
-            return f"Invalid delegation command: plan file path must be absolute: {arg}"
-        try:
-            plan_file = plan_file.resolve(strict=True)
-        except OSError as exc:
-            return f"Invalid delegation command: plan file is not accessible: {arg} ({exc})"
-        if not plan_file.is_file():
-            return f"Invalid delegation command: plan file is not a regular file: {plan_file}"
-        seen_plan_file = True
+    return _validate_delegation_arguments(command[1:])
 
+
+def _validate_delegation_arguments(args: list[str]) -> Optional[str]:
+    """Validate delegation flags and the single required plan-file argument."""
+    seen_plan_file = False
+    for arg in args:
+        arg_error = _validate_delegation_argument(arg, seen_plan_file)
+        if arg_error is not None:
+            return arg_error
+        if not arg.startswith("--"):
+            seen_plan_file = True
+    return None
+
+
+def _validate_delegation_argument(arg: str, seen_plan_file: bool) -> Optional[str]:
+    """Validate a single delegation command argument."""
+    if not isinstance(arg, str) or not arg.strip():
+        return "Invalid delegation command: empty argument"
+    if arg.startswith("--"):
+        if arg not in _RALPHEX_ALLOWED_FLAGS:
+            return f"Invalid delegation command: unsupported flag {arg}"
+        return None
+    if seen_plan_file:
+        return f"Invalid delegation command: unexpected positional argument {arg}"
+    return _validate_delegation_plan_file(arg)
+
+
+def _validate_delegation_plan_file(arg: str) -> Optional[str]:
+    """Validate the plan-file positional argument."""
+    plan_file = Path(arg)
+    if not plan_file.is_absolute():
+        return f"Invalid delegation command: plan file path must be absolute: {arg}"
+    try:
+        plan_file = plan_file.resolve(strict=True)
+    except OSError as exc:
+        return f"Invalid delegation command: plan file is not accessible: {arg} ({exc})"
+    if not plan_file.is_file():
+        return f"Invalid delegation command: plan file is not a regular file: {plan_file}"
     return None
 
 
@@ -690,44 +794,46 @@ def run_validation_commands(commands: list[str], cwd: Optional[str] = None) -> d
     all_passed = True
 
     for cmd in commands:
-        if not isinstance(cmd, str) or not cmd.strip():
-            results.append({
-                "command": cmd,
-                "returncode": -1,
-                "stdout": "",
-                "stderr": "",
-                "error": "Skipped: empty or non-string command",
-            })
+        entry = _run_validation_command(cmd, cwd)
+        if entry["returncode"] or entry["error"]:
             all_passed = False
-            continue
-        logger.info("Running validation command: %s", cmd)
-        entry: dict = {"command": cmd, "returncode": -1, "stdout": "", "stderr": "", "error": ""}
-        try:
-            proc = subprocess.run(
-                cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                cwd=cwd,
-                check=False,
-            )
-            entry["returncode"] = proc.returncode
-            entry["stdout"] = proc.stdout
-            entry["stderr"] = proc.stderr
-            if proc.returncode:
-                all_passed = False
-        except subprocess.TimeoutExpired:
-            entry["error"] = f"Timeout after 120s: {cmd}"
-            all_passed = False
-        except OSError as exc:
-            entry["error"] = f"OS error running {cmd}: {exc}"
-            all_passed = False
-
         results.append(entry)
 
     return {"passed": all_passed, "results": results}
 # @cpt-end:inst-run-validation
+
+
+def _run_validation_command(cmd: str, cwd: Optional[str]) -> dict:
+    """Execute one validation command and normalize the result payload."""
+    if not isinstance(cmd, str) or not cmd.strip():
+        return {
+            "command": cmd,
+            "returncode": -1,
+            "stdout": "",
+            "stderr": "",
+            "error": "Skipped: empty or non-string command",
+        }
+
+    logger.info("Running validation command: %s", cmd)
+    entry: dict = {"command": cmd, "returncode": -1, "stdout": "", "stderr": "", "error": ""}
+    try:
+        proc = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=cwd,
+            check=False,
+        )
+        entry["returncode"] = proc.returncode
+        entry["stdout"] = proc.stdout
+        entry["stderr"] = proc.stderr
+    except subprocess.TimeoutExpired:
+        entry["error"] = f"Timeout after 120s: {cmd}"
+    except OSError as exc:
+        entry["error"] = f"OS error running {cmd}: {exc}"
+    return entry
 
 
 # @cpt-begin:inst-report-handoff
@@ -884,14 +990,8 @@ def run_delegation(
     config: dict,
     plan_dir: str,
     repo_root: str,
-    mode: str = "execute",
-    worktree: bool = False,
-    serve: bool = True,
-    default_branch: str = "main",
-    config_path: Optional[Path] = None,
-    dry_run: bool = False,
-    plans_dir_override: Optional[str] = None,
-    stream_output: bool = False,
+    options: Optional[DelegationOptions] = None,
+    **overrides: Any,
 ) -> dict:
     """Canonical runtime entrypoint for ralphex delegation.
 
@@ -941,9 +1041,53 @@ def run_delegation(
         - ``lifecycle_state``: final lifecycle state
         - ``error``: error message if status is ``"error"``
     """
-    from .ralphex_discover import discover, validate, persist_path as _persist_path
+    opts = _build_delegation_options(options, overrides)
+    result = _init_delegation_result(opts.mode)
+    lifecycle = DelegationLifecycle()
+    prep = _prepare_delegation_run(config, repo_root, opts, result)
+    if prep["error"] is not None:
+        return result
 
-    result: dict = {
+    plan_file = _materialize_delegation_artifacts(plan_dir, repo_root, opts, result, lifecycle)
+    if result["error"] is not None:
+        return result
+
+    command = build_delegation_command(
+        prep["ralphex_path"],
+        plan_file,
+        opts.mode,
+        worktree=opts.worktree,
+        serve=opts.serve,
+    )
+    result["command"] = command
+    command_error = _validate_delegation_command(command)
+    if command_error:
+        result["error"] = command_error
+        return result
+    if opts.serve and opts.mode != "review":
+        port = os.environ.get("RALPHEX_PORT", "8080").strip() or "8080"
+        result["dashboard_url"] = f"http://localhost:{port}"
+    if opts.dry_run:
+        result["status"] = "ready"
+        return result
+    _execute_delegation_command(command, opts.stream_output, lifecycle, result)
+    return result
+
+
+def _build_delegation_options(
+    options: Optional[DelegationOptions],
+    overrides: dict[str, Any],
+) -> DelegationOptions:
+    """Merge legacy keyword arguments into a DelegationOptions instance."""
+    resolved = options or DelegationOptions()
+    if not overrides:
+        return resolved
+    return replace(resolved, **overrides)
+
+
+def _init_delegation_result(mode: str) -> dict:
+    """Create the standard result payload for delegation runs."""
+    return {
         "status": "error",
         "ralphex_path": None,
         "validation": None,
@@ -956,229 +1100,146 @@ def run_delegation(
         "error": None,
     }
 
-    lifecycle = DelegationLifecycle()
 
-    # 1. Discover
+def _prepare_delegation_run(
+    config: dict,
+    repo_root: str,
+    options: DelegationOptions,
+    result: dict,
+) -> dict:
+    """Run discovery, bootstrap, and review prechecks."""
+    from .ralphex_discover import discover, persist_path as _persist_path, validate
+
     ralphex_path = discover(config)
     result["ralphex_path"] = ralphex_path
-
-    # 2. Validate
     validation = validate(ralphex_path)
     result["validation"] = validation
-
     if validation["status"] != "available":
         result["error"] = validation["message"]
-        return result
+        return {"ralphex_path": ralphex_path, "error": result["error"]}
 
-    # 3. Bootstrap gate (blocking — fail if not initialized)
     bootstrap = check_bootstrap_needed(repo_root)
     result["bootstrap"] = bootstrap
     if bootstrap["needed"]:
         result["error"] = bootstrap["message"]
-        return result
+        return {"ralphex_path": ralphex_path, "error": result["error"]}
 
-    # 4. Persist discovered path (after bootstrap gate to avoid dirtying
-    #    the worktree with a machine-specific path on uninitialized repos)
-    if config_path is not None and ralphex_path is not None:
-        _persist_path(config_path, ralphex_path)
-
-    # 5. Review precondition
-    if mode == "review":
-        precondition = check_review_precondition(default_branch, repo_root=repo_root)
+    if options.config_path is not None and ralphex_path is not None:
+        _persist_path(options.config_path, ralphex_path)
+    if options.mode == "review":
+        precondition = check_review_precondition(options.default_branch, repo_root=repo_root)
         if not precondition["ok"]:
             result["error"] = precondition["message"]
-            return result
+    return {"ralphex_path": ralphex_path, "error": result["error"]}
 
-    # 6. Compile plan (skip for review-only — no compilable plan needed)
-    plan_content: Optional[str] = None
-    plan_file: Optional[str] = None
-    if mode != "review":
-        try:
-            plan_content = compile_delegation_plan(plan_dir)
-        except (FileNotFoundError, KeyError, ValueError, tomllib.TOMLDecodeError) as exc:
-            result["error"] = str(exc)
-            return result
 
-    # 7. Resolve plans dir and write (only when a plan was compiled)
-    if plan_content is not None:
-        plans_dir = resolve_plans_dir(
-            repo_root,
-            override=plans_dir_override,
+def _materialize_delegation_artifacts(
+    plan_dir: str,
+    repo_root: str,
+    options: DelegationOptions,
+    result: dict,
+    lifecycle: "DelegationLifecycle",
+) -> Optional[str]:
+    """Compile/write plan files or generate review artifacts as needed."""
+    plan_file = None
+    if options.mode != "review":
+        plan_file = _write_compiled_plan(plan_dir, repo_root, options.plans_dir_override, result, lifecycle)
+        if result["error"] is not None:
+            return None
+    if options.mode == "review":
+        _generate_review_artifacts_or_fail(plan_dir, repo_root, plan_file, result, lifecycle)
+        if result["error"] is not None:
+            return None
+    return plan_file
+
+
+def _write_compiled_plan(
+    plan_dir: str,
+    repo_root: str,
+    plans_dir_override: Optional[str],
+    result: dict,
+    lifecycle: "DelegationLifecycle",
+) -> Optional[str]:
+    """Compile the plan and write the exported markdown file."""
+    try:
+        plan_content = compile_delegation_plan(plan_dir)
+    except (FileNotFoundError, KeyError, ValueError, tomllib.TOMLDecodeError) as exc:
+        result["error"] = str(exc)
+        return None
+
+    plans_dir = resolve_plans_dir(repo_root, override=plans_dir_override)
+    plan_path = Path(plans_dir)
+    try:
+        plan_path.mkdir(parents=True, exist_ok=True)
+        plan_file = str(plan_path / f"{_plan_slug_from_content(plan_content)}.md")
+        Path(plan_file).write_text(plan_content, encoding="utf-8")
+    except OSError as exc:
+        result["error"] = f"Failed to write plan to {plans_dir}: {exc}"
+        result["plan_file"] = None
+        return None
+
+    result["plan_file"] = plan_file
+    lifecycle.export()
+    result["lifecycle_state"] = lifecycle.state
+    logger.info("Exported plan to %s", plan_file)
+    return plan_file
+
+
+def _plan_slug_from_content(plan_content: str) -> str:
+    """Derive a stable output filename slug from compiled plan content."""
+    first_line = plan_content.split("\n", 1)[0]
+    task = first_line.removeprefix("# ").strip() or "delegation"
+    task_slug = re.sub(r"[^a-z0-9]+", "-", task.lower()).strip("-")
+    return task_slug or "delegation"
+
+
+def _generate_review_artifacts_or_fail(
+    plan_dir: str,
+    repo_root: str,
+    plan_file: Optional[str],
+    result: dict,
+    lifecycle: "DelegationLifecycle",
+) -> None:
+    """Generate review artifacts or update the result with a failure."""
+    try:
+        review_result = generate_review_artifacts(plan_dir, repo_root)
+        result["review_artifacts"] = review_result
+        logger.info(
+            "Generated %d review artifact(s) for review mode",
+            len(review_result["artifacts"]),
         )
-        plan_path = Path(plans_dir)
-
-        try:
-            plan_path.mkdir(parents=True, exist_ok=True)
-
-            # Extract task name from compiled plan title (avoids re-reading plan.toml)
-            first_line = plan_content.split("\n", 1)[0]
-            task = first_line.removeprefix("# ").strip() or "delegation"
-            task_slug = re.sub(r"[^a-z0-9]+", "-", task.lower()).strip("-")
-            if not task_slug:
-                task_slug = "delegation"
-
-            plan_file = str(plan_path / f"{task_slug}.md")
-            Path(plan_file).write_text(plan_content, encoding="utf-8")
-        except OSError as exc:
-            result["status"] = "error"
-            result["error"] = f"Failed to write plan to {plans_dir}: {exc}"
-            result["plan_file"] = None
-            return result
-
-        result["plan_file"] = plan_file
-
-        lifecycle.export()
+    except OSError as exc:
+        lifecycle.fail()
+        _cleanup_plan_file(plan_file)
+        result["plan_file"] = None
+        result["status"] = "error"
         result["lifecycle_state"] = lifecycle.state
-        logger.info("Exported plan to %s", plan_file)
+        result["error"] = f"Failed to generate review artifacts: {exc}"
 
-    # 7b. Generate review artifacts when in review mode
-    if mode == "review":
-        try:
-            review_result = generate_review_artifacts(plan_dir, repo_root)
-            result["review_artifacts"] = review_result
-            logger.info(
-                "Generated %d review artifact(s) for %s mode",
-                len(review_result["artifacts"]),
-                mode,
-            )
-        except OSError as exc:
-            lifecycle.fail()
-            if plan_file is not None:
-                try:
-                    Path(plan_file).unlink(missing_ok=True)
-                except OSError:
-                    pass
-            result["plan_file"] = None
-            result["status"] = "error"
-            result["lifecycle_state"] = lifecycle.state
-            result["error"] = f"Failed to generate review artifacts: {exc}"
-            return result
 
-    # 8. Build command
-    command = build_delegation_command(
-        ralphex_path, plan_file, mode, worktree=worktree, serve=serve,
-    )
-    result["command"] = command
-    command_error = _validate_delegation_command(command)
-    if command_error:
-        result["error"] = command_error
-        return result
-    if serve and mode != "review":
-        port = os.environ.get("RALPHEX_PORT", "8080").strip() or "8080"
-        result["dashboard_url"] = f"http://localhost:{port}"
+def _cleanup_plan_file(plan_file: Optional[str]) -> None:
+    """Best-effort cleanup for a generated plan file after downstream failures."""
+    if plan_file is None:
+        return
+    try:
+        Path(plan_file).unlink(missing_ok=True)
+    except OSError:
+        return
 
-    # 9. Execute or return ready
-    if dry_run:
-        result["status"] = "ready"
-        return result
 
-    # 10. Invoke ralphex subprocess
+def _execute_delegation_command(
+    command: list[str],
+    stream_output: bool,
+    lifecycle: "DelegationLifecycle",
+    result: dict,
+) -> None:
+    """Run the assembled ralphex subprocess and update the result payload."""
     lifecycle.delegate()
     result["lifecycle_state"] = lifecycle.state
     logger.info("Delegation command: %s", " ".join(command))
-
-    max_non_interactive_retries = 2  # cap total wait at ~3 hours in CI
-    non_interactive_retries = 0
-
-    def _should_continue_after_timeout(timeout_seconds: int) -> bool:
-        nonlocal non_interactive_retries
-        if not sys.stdin.isatty():
-            non_interactive_retries += 1
-            if non_interactive_retries > max_non_interactive_retries:
-                logger.warning(
-                    "ralphex still running after %d seconds in non-interactive mode; "
-                    "giving up after %d retries",
-                    timeout_seconds * (max_non_interactive_retries + 1),
-                    max_non_interactive_retries,
-                )
-                return False
-            return True
-        sys.stderr.write(
-            "\n"
-            f"ralphex is still running after {timeout_seconds} seconds. "
-            "Continue waiting? [y] [n] [Enter=continue]: "
-        )
-        sys.stderr.flush()
-        try:
-            tty = open(  # pylint: disable=consider-using-with
-                "/dev/tty",
-                "r",
-                encoding="utf-8",
-            )
-            try:
-                answer = tty.readline().strip().lower()
-            finally:
-                tty.close()
-        except OSError:
-            # /dev/tty unavailable (e.g. Windows) — fall back to stdin
-            try:
-                answer = input().strip().lower()
-            except EOFError:
-                return True
-            except KeyboardInterrupt:
-                return False
-        except KeyboardInterrupt:
-            return False
-        return answer not in ("n", "no")
-
     try:
-        if stream_output:
-            proc = subprocess.Popen(  # pylint: disable=consider-using-with
-                command,
-            )
-        else:
-            proc = subprocess.Popen(  # pylint: disable=consider-using-with
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-
-        timeout_seconds = 3600
-        with proc:
-            while True:
-                try:
-                    stdout, stderr = proc.communicate(timeout=timeout_seconds)
-                    break
-                except subprocess.TimeoutExpired:
-                    if _should_continue_after_timeout(timeout_seconds):
-                        continue
-                    proc.terminate()
-                    try:
-                        stdout, stderr = proc.communicate(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                        stdout, stderr = proc.communicate()
-                    lifecycle.fail()
-                    result["status"] = "error"
-                    result["lifecycle_state"] = lifecycle.state
-                    result["returncode"] = proc.returncode
-                    result["stdout"] = None if stream_output else stdout
-                    result["stderr"] = None if stream_output else stderr
-                    result["error"] = (
-                        f"ralphex timed out after {timeout_seconds} seconds and was stopped"
-                    )
-                    return result
-
-            result["stdout"] = None if stream_output else stdout
-            result["stderr"] = None if stream_output else stderr
-            result["returncode"] = proc.returncode
-            if not proc.returncode:
-                lifecycle.complete()
-                result["status"] = "delegated"
-                result["lifecycle_state"] = lifecycle.state
-            else:
-                lifecycle.fail()
-                result["status"] = "error"
-                result["lifecycle_state"] = lifecycle.state
-                if stream_output:
-                    result["error"] = f"ralphex exited with code {proc.returncode}"
-                else:
-                    result["error"] = (
-                        f"ralphex exited with code {proc.returncode}: "
-                        f"{(stderr or '').strip() or (stdout or '').strip()}"
-                    )
+        proc = _spawn_delegation_process(command, stream_output)
+        _wait_for_delegation_process(proc, stream_output, lifecycle, result)
     except FileNotFoundError:
         lifecycle.fail()
         result["status"] = "error"
@@ -1190,7 +1251,129 @@ def run_delegation(
         result["lifecycle_state"] = lifecycle.state
         result["error"] = f"Failed to invoke ralphex: {exc}"
 
-    return result
+
+def _spawn_delegation_process(command: list[str], stream_output: bool) -> subprocess.Popen:
+    """Launch the ralphex subprocess in streaming or captured mode."""
+    if stream_output:
+        return subprocess.Popen(command)  # pylint: disable=consider-using-with
+    return subprocess.Popen(  # pylint: disable=consider-using-with
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _wait_for_delegation_process(
+    proc: subprocess.Popen,
+    stream_output: bool,
+    lifecycle: "DelegationLifecycle",
+    result: dict,
+) -> None:
+    """Wait for process completion, including long-running timeout prompts."""
+    timeout_seconds = 3600
+    max_non_interactive_retries = 2
+    non_interactive_retries = 0
+
+    def should_continue() -> bool:
+        nonlocal non_interactive_retries
+        if not sys.stdin.isatty():
+            non_interactive_retries += 1
+            if non_interactive_retries > max_non_interactive_retries:
+                logger.warning(
+                    "ralphex still running after %d seconds in non-interactive mode; giving up after %d retries",
+                    timeout_seconds * (max_non_interactive_retries + 1),
+                    max_non_interactive_retries,
+                )
+                return False
+            return True
+        return _prompt_to_continue_waiting(timeout_seconds)
+
+    with proc:
+        while True:
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                _finalize_delegation_process(proc.returncode, stdout, stderr, stream_output, lifecycle, result)
+                return
+            except subprocess.TimeoutExpired:
+                if should_continue():
+                    continue
+                stdout, stderr = _stop_timed_out_process(proc)
+                lifecycle.fail()
+                result["status"] = "error"
+                result["lifecycle_state"] = lifecycle.state
+                result["returncode"] = proc.returncode
+                result["stdout"] = None if stream_output else stdout
+                result["stderr"] = None if stream_output else stderr
+                result["error"] = f"ralphex timed out after {timeout_seconds} seconds and was stopped"
+                return
+
+
+def _prompt_to_continue_waiting(timeout_seconds: int) -> bool:
+    """Ask an interactive caller whether to continue waiting for ralphex."""
+    sys.stderr.write(
+        "\n"
+        f"ralphex is still running after {timeout_seconds} seconds. "
+        "Continue waiting? [y] [n] [Enter=continue]: "
+    )
+    sys.stderr.flush()
+    try:
+        tty = open("/dev/tty", "r", encoding="utf-8")  # pylint: disable=consider-using-with
+        try:
+            answer = tty.readline().strip().lower()
+        finally:
+            tty.close()
+    except OSError:
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            return True
+        except KeyboardInterrupt:
+            return False
+    except KeyboardInterrupt:
+        return False
+    return answer not in ("n", "no")
+
+
+def _stop_timed_out_process(proc: subprocess.Popen) -> tuple[Optional[str], Optional[str]]:
+    """Terminate a timed-out process and collect any remaining output."""
+    proc.terminate()
+    try:
+        return proc.communicate(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return proc.communicate()
+
+
+def _finalize_delegation_process(
+    returncode: Optional[int],
+    stdout: Optional[str],
+    stderr: Optional[str],
+    stream_output: bool,
+    lifecycle: "DelegationLifecycle",
+    result: dict,
+) -> None:
+    """Store process output and update lifecycle/result state."""
+    result["stdout"] = None if stream_output else stdout
+    result["stderr"] = None if stream_output else stderr
+    result["returncode"] = returncode
+    if not returncode:
+        lifecycle.complete()
+        result["status"] = "delegated"
+        result["lifecycle_state"] = lifecycle.state
+        return
+
+    lifecycle.fail()
+    result["status"] = "error"
+    result["lifecycle_state"] = lifecycle.state
+    if stream_output:
+        result["error"] = f"ralphex exited with code {returncode}"
+    else:
+        result["error"] = (
+            f"ralphex exited with code {returncode}: "
+            f"{(stderr or '').strip() or (stdout or '').strip()}"
+        )
 
 
 # ---------------------------------------------------------------------------

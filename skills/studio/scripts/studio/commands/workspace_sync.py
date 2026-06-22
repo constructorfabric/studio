@@ -12,6 +12,20 @@ from ..utils.git_utils import _redact_url
 from ..utils.ui import ui
 
 
+def _build_sync_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="workspace-sync",
+        description="Fetch and update worktrees for Git URL workspace sources",
+    )
+    parser.add_argument(
+        "--source", default=None,
+        help="Sync only the named source (default: all Git URL sources)",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Show which sources would be synced without network operations")
+    parser.add_argument("--force", action="store_true", help="Skip dirty worktree check — WARNING: uncommitted changes will be discarded via git reset --hard")
+    return parser
+
+
 def _resolve_sync_base(ws_cfg, project_root: Path) -> Path:
     """Determine the resolution base directory for workspace sync."""
     if ws_cfg.resolution_base is not None:
@@ -62,41 +76,47 @@ def _sync_sources(git_sources, resolve_cfg, base, *, force=False):
     return results, synced, failed
 
 
+def _load_workspace_config():
+    from ..utils.workspace import find_workspace_config, require_project_root
+
+    project_root = require_project_root()
+    if project_root is None:
+        return None, None
+    ws_cfg, ws_err = find_workspace_config(project_root)
+    if ws_cfg is None:
+        msg = ws_err or "No workspace configuration found. Run 'workspace-init' first."
+        ui.result({"status": "ERROR", "message": msg})
+        return project_root, None
+    return project_root, ws_cfg
+
+
+def _emit_sync_result(status: str, synced: int, failed: int, results: list[dict]) -> int:
+    ui.result({
+        "status": status,
+        "synced": synced,
+        "failed": failed,
+        "results": results,
+    }, human_fn=_human_workspace_sync)
+    return 0 if synced > 0 or not failed else 2
+
+
 def cmd_workspace_sync(argv: List[str]) -> int:
     """Sync Git URL workspace sources: fetch + update worktrees."""
     # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-user-workspace-sync
-    p = argparse.ArgumentParser(
-        prog="workspace-sync",
-        description="Fetch and update worktrees for Git URL workspace sources",
-    )
-    p.add_argument(
-        "--source", default=None,
-        help="Sync only the named source (default: all Git URL sources)",
-    )
-    p.add_argument("--dry-run", action="store_true", help="Show which sources would be synced without network operations")
-    p.add_argument("--force", action="store_true", help="Skip dirty worktree check — WARNING: uncommitted changes will be discarded via git reset --hard")
-    args = p.parse_args(argv)
+    args = _build_sync_parser().parse_args(argv)
     # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-user-workspace-sync
 
-    from ..utils.workspace import find_workspace_config, ResolveConfig, require_project_root
+    from ..utils.workspace import ResolveConfig
 
     # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-find-root
-    project_root = require_project_root()
+    project_root, ws_cfg = _load_workspace_config()
     # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-find-root
     # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-if-no-root
     if project_root is None:
         return 1
     # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-if-no-root
-
-    # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-find-ws
-    ws_cfg, ws_err = find_workspace_config(project_root)
-    # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-find-ws
-    # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-if-no-ws
     if ws_cfg is None:
-        msg = ws_err or "No workspace configuration found. Run 'workspace-init' first."
-        ui.result({"status": "ERROR", "message": msg})
         return 1
-    # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-if-no-ws
 
     # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-collect-sources
     git_sources, src_err = _collect_git_sources(ws_cfg, args.source)
@@ -134,14 +154,7 @@ def cmd_workspace_sync(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-foreach-source
 
     # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-return-ok
-    status = "OK" if synced > 0 else "FAIL"
-    ui.result({
-        "status": status,
-        "synced": synced,
-        "failed": failed,
-        "results": results,
-    }, human_fn=_human_workspace_sync)
-    return 0 if synced > 0 or not failed else 2
+    return _emit_sync_result("OK" if synced > 0 else "FAIL", synced, failed, results)
     # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-return-ok
 
 

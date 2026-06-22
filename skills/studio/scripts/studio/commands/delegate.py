@@ -20,31 +20,27 @@ from ..utils.ui import ui, is_json_mode, set_json_mode
 logger = logging.getLogger(__name__)
 
 
-# @cpt-begin:cpt-studio-flow-ralphex-delegation-execute:p1:inst-invoke-execute
-def cmd_delegate(argv: List[str]) -> int:
-    """Run ralphex delegation from a Studio plan."""
-    json_was_enabled = is_json_mode()
-
-    p = argparse.ArgumentParser(
+def _build_delegate_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
         prog="delegate",
         description="Compile a Studio plan and delegate to ralphex",
     )
-    p.add_argument(
+    parser.add_argument(
         "plan_dir",
         help="Path to the Studio plan directory containing plan.toml",
     )
-    p.add_argument(
+    parser.add_argument(
         "--mode",
         choices=["execute", "tasks-only", "review"],
         default="execute",
         help="Delegation mode (default: execute)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--worktree",
         action="store_true",
         help="Request worktree isolation (execute and tasks-only only)",
     )
-    serve_group = p.add_mutually_exclusive_group()
+    serve_group = parser.add_mutually_exclusive_group()
     serve_group.add_argument(
         "--serve",
         dest="serve",
@@ -57,81 +53,88 @@ def cmd_delegate(argv: List[str]) -> int:
         action="store_false",
         help="Disable dashboard serving",
     )
-    p.set_defaults(serve=True)
-    p.add_argument(
+    parser.set_defaults(serve=True)
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Assemble the command without invoking ralphex",
     )
-    p.add_argument(
+    parser.add_argument(
         "--default-branch",
         default="main",
         help="Default branch for review precondition (default: main)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--plans-dir",
         default=None,
         help="Override plans directory (highest precedence)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--root",
         default=".",
         help="Project root (default: current directory)",
     )
+    return parser
+
+
+def _emit_delegate_error(message: str) -> int:
+    ui.result(
+        {"status": "error", "error": message},
+        human_fn=lambda data: ui.error(data["error"]),
+    )
+    return 1
+
+
+def _resolve_delegate_paths(args) -> tuple[Path, Path] | None:
+    project_root = Path(args.root).resolve()
+    if not project_root.is_dir():
+        _emit_delegate_error(f"Project root not found or not a directory: {project_root}")
+        return None
+    raw_plan_dir = Path(args.plan_dir)
+    plan_dir = raw_plan_dir.resolve() if raw_plan_dir.is_absolute() else (project_root / raw_plan_dir).resolve()
+    if not plan_dir.is_dir():
+        _emit_delegate_error(f"Plan directory not found: {plan_dir}")
+        return None
+    if not (plan_dir / "plan.toml").is_file():
+        _emit_delegate_error(f"plan.toml not found in {plan_dir}")
+        return None
+    return project_root, plan_dir
+
+
+def _run_delegate(args, project_root: Path, plan_dir: Path, json_was_enabled: bool) -> dict:
+    from ._core_config import find_core_toml, load_core_config
+    from ..ralphex_export import run_delegation
+
+    config = load_core_config(project_root)
+    config_path = find_core_toml(project_root)
+    if json_was_enabled:
+        set_json_mode(False)
+    return run_delegation(
+        config=config,
+        plan_dir=str(plan_dir),
+        repo_root=str(project_root),
+        mode=args.mode,
+        worktree=args.worktree,
+        serve=args.serve,
+        default_branch=args.default_branch,
+        config_path=config_path,
+        dry_run=args.dry_run,
+        plans_dir_override=args.plans_dir,
+        stream_output=not json_was_enabled,
+    )
+
+
+# @cpt-begin:cpt-studio-flow-ralphex-delegation-execute:p1:inst-invoke-execute
+def cmd_delegate(argv: List[str]) -> int:
+    """Run ralphex delegation from a Studio plan."""
+    json_was_enabled = is_json_mode()
     try:
-        args = p.parse_args(argv)
-
-        project_root = Path(args.root).resolve()
-
-        if not project_root.is_dir():
-            ui.result(
-                {"status": "error", "error": f"Project root not found or not a directory: {project_root}"},
-                human_fn=lambda d: ui.error(d["error"]),
-            )
+        args = _build_delegate_parser().parse_args(argv)
+        resolved = _resolve_delegate_paths(args)
+        if resolved is None:
             return 1
-
-        plan_path_arg = Path(args.plan_dir)
-        if plan_path_arg.is_absolute():
-            plan_dir = plan_path_arg.resolve()
-        else:
-            plan_dir = (project_root / plan_path_arg).resolve()
-
-        if not plan_dir.is_dir():
-            ui.result(
-                {"status": "error", "error": f"Plan directory not found: {plan_dir}"},
-                human_fn=lambda d: ui.error(d["error"]),
-            )
-            return 1
-
-        plan_toml = plan_dir / "plan.toml"
-        if not plan_toml.is_file():
-            ui.result(
-                {"status": "error", "error": f"plan.toml not found in {plan_dir}"},
-                human_fn=lambda d: ui.error(d["error"]),
-            )
-            return 1
-
-        from ._core_config import find_core_toml, load_core_config
-        config = load_core_config(project_root)
-        config_path = find_core_toml(project_root)
-
-        from ..ralphex_export import run_delegation
-
-        if json_was_enabled:
-            set_json_mode(False)
-        result = run_delegation(
-            config=config,
-            plan_dir=str(plan_dir),
-            repo_root=str(project_root),
-            mode=args.mode,
-            worktree=args.worktree,
-            serve=args.serve,
-            default_branch=args.default_branch,
-            config_path=config_path,
-            dry_run=args.dry_run,
-            plans_dir_override=args.plans_dir,
-            stream_output=not json_was_enabled,
-        )
+        project_root, plan_dir = resolved
+        result = _run_delegate(args, project_root, plan_dir, json_was_enabled)
 
         if json_was_enabled:
             set_json_mode(True)

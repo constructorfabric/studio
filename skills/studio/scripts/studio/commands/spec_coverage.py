@@ -17,6 +17,21 @@ from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-imports
 
 
+def _build_spec_coverage_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="spec-coverage",
+        description="Measure CDSL marker coverage in codebase files",
+    )
+    parser.add_argument("--min-coverage", type=float, default=None, help="Minimum coverage percentage (0-100). Exit 2 if below.")
+    parser.add_argument("--min-file-coverage", type=float, default=None, help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below.")
+    parser.add_argument("--min-granularity", type=float, default=None, help="Minimum granularity score (0-1). Exit 2 if below.")
+    parser.add_argument("--min-file-granularity", type=float, default=None, help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below.")
+    parser.add_argument("--system", action="append", default=None, dest="systems", help="Limit to system slug(s). Can be repeated. Default: all systems.")
+    parser.add_argument("--verbose", action="store_true", help="Include per-file marker details and covered ranges")
+    parser.add_argument("--output", default=None, help="Write report to file instead of stdout")
+    return parser
+
+
 def _collect_system_slugs(nodes: List[object]) -> set[str]:
     """Return all known system slugs, including nested children."""
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
@@ -38,195 +53,200 @@ def _collect_system_slugs(nodes: List[object]) -> set[str]:
     return slugs
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
 
-def cmd_spec_coverage(argv: List[str]) -> int:
-    """Run spec coverage analysis on registered codebase files."""
-    from ..utils.context import get_context
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
-    p = argparse.ArgumentParser(
-        prog="spec-coverage",
-        description="Measure CDSL marker coverage in codebase files",
-    )
-    p.add_argument("--min-coverage", type=float, default=None, help="Minimum coverage percentage (0-100). Exit 2 if below.")
-    p.add_argument("--min-file-coverage", type=float, default=None, help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below.")
-    p.add_argument("--min-granularity", type=float, default=None, help="Minimum granularity score (0-1). Exit 2 if below.")
-    p.add_argument("--min-file-granularity", type=float, default=None, help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below.")
-    p.add_argument("--system", action="append", default=None, dest="systems", help="Limit to system slug(s). Can be repeated. Default: all systems.")
-    p.add_argument("--verbose", action="store_true", help="Include per-file marker details and covered ranges")
-    p.add_argument("--output", default=None, help="Write report to file instead of stdout")
-    args = p.parse_args(argv)
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
+def _resolve_code_path(project_root: Path, path_str: str) -> Path:
+    return (project_root / path_str).resolve()
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
-    ctx = get_context()
-    if not ctx:
-        ui.result({"status": "ERROR", "message": "Constructor Studio not initialized. Run 'cfs init' first."})
-        return 1
 
-    meta = ctx.meta
-    project_root = ctx.project_root
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
+def _collect_codebase_files(system_node: object, project_root: Path, code_files_to_scan: List[Path]) -> None:
+    for cb_entry in getattr(system_node, "codebase", []):
+        path_str = getattr(cb_entry, "path", "") if not isinstance(cb_entry, dict) else cb_entry.get("path", "")
+        extensions = (getattr(cb_entry, "extensions", None) if not isinstance(cb_entry, dict) else cb_entry.get("extensions", None)) or [".py"]
+        code_path = _resolve_code_path(project_root, path_str)
+        if not code_path.exists():
+            continue
+        if code_path.is_file():
+            code_files_to_scan.append(code_path)
+            continue
+        for ext in extensions:
+            code_files_to_scan.extend(code_path.rglob(f"*{ext}"))
+    for child in getattr(system_node, "children", []):
+        _collect_codebase_files(child, project_root, code_files_to_scan)
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
+
+def _validate_selected_systems(args, meta) -> set[str] | None:
+    system_slugs = set(args.systems) if args.systems else None
+    if system_slugs is None:
+        return None
+    unknown_systems = sorted(system_slugs - _collect_system_slugs(list(meta.systems)))
+    if unknown_systems:
+        _output(
+            {
+                "status": "FAIL",
+                "message": "Unknown system selector(s)",
+                "unknown_systems": unknown_systems,
+            },
+            args,
+        )
+        return set()
+    return system_slugs
+
+
+def _collect_selected_system_files(meta, project_root: Path, system_slugs: set[str] | None) -> List[Path]:
     code_files_to_scan: List[Path] = []
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
-    def resolve_code_path(pth: str) -> Path:
-        return (project_root / pth).resolve()
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
-
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
-    def collect_codebase_files(system_node: object) -> None:
-        for cb_entry in getattr(system_node, "codebase", []):
-            path_str = getattr(cb_entry, "path", "") if not isinstance(cb_entry, dict) else cb_entry.get("path", "")
-            extensions = (getattr(cb_entry, "extensions", None) if not isinstance(cb_entry, dict) else cb_entry.get("extensions", None)) or [".py"]
-
-            code_path = resolve_code_path(path_str)
-            if not code_path.exists():
-                continue
-
-            if code_path.is_file():
-                code_files_to_scan.append(code_path)
-            else:
-                for ext in extensions:
-                    code_files_to_scan.extend(code_path.rglob(f"*{ext}"))
-
-        for child in getattr(system_node, "children", []):
-            collect_codebase_files(child)
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
-
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
-    system_slugs = set(args.systems) if args.systems else None
-    known_system_slugs = _collect_system_slugs(list(meta.systems))
-    if system_slugs is not None:
-        unknown_systems = sorted(system_slugs - known_system_slugs)
-        if unknown_systems:
-            _output(
-                {
-                    "status": "FAIL",
-                    "message": "Unknown system selector(s)",
-                    "unknown_systems": unknown_systems,
-                },
-                args,
-            )
-            return 2
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
-
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
-    def _collect_selected_system_files(node: object) -> None:
-        """Collect code files for the requested system slug(s), including children."""
+    def visit(node: object) -> None:
         if system_slugs is None:
-            collect_codebase_files(node)
+            _collect_codebase_files(node, project_root, code_files_to_scan)
             return
         slug = getattr(node, "slug", "")
         if slug in system_slugs:
-            collect_codebase_files(node)
+            _collect_codebase_files(node, project_root, code_files_to_scan)
             return
         for child in getattr(node, "children", []):
-            _collect_selected_system_files(child)
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
+            visit(child)
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
     for system_node in meta.systems:
-        _collect_selected_system_files(system_node)
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
+        visit(system_node)
+    return code_files_to_scan
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
+
+def _filter_ignored_files(code_files_to_scan: List[Path], project_root: Path, meta) -> List[Path]:
     filtered_files: List[Path] = []
-    for fp in code_files_to_scan:
+    for file_path in code_files_to_scan:
         try:
-            rel = fp.resolve().relative_to(project_root).as_posix()
+            rel = file_path.resolve().relative_to(project_root).as_posix()
         except ValueError:
             rel = None
         if rel and meta.is_ignored(rel):
             continue
-        filtered_files.append(fp)
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
+        filtered_files.append(file_path)
+    return filtered_files
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
-    if not filtered_files:
-        out = {
-            "status": "PASS",
-            "summary": {
-                "total_files": 0,
-                "covered_files": 0,
-                "coverage_pct": 0.0,
-                "granularity_score": 0.0,
-            },
-            "message": "No codebase files found in registry",
-        }
-        _output(out, args)
-        return 0
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
+def _empty_coverage_result() -> dict:
+    return {
+        "status": "PASS",
+        "summary": {
+            "total_files": 0,
+            "covered_files": 0,
+            "coverage_pct": 0.0,
+            "granularity_score": 0.0,
+        },
+        "message": "No codebase files found in registry",
+    }
+
+
+def _scan_file_coverages(filtered_files: List[Path]) -> List[FileCoverage]:
     file_coverages: List[FileCoverage] = []
-    for fp in sorted(set(filtered_files)):
-        fc = scan_file_coverage(fp)
-        if fc is not None:
-            file_coverages.append(fc)
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
+    for file_path in sorted(set(filtered_files)):
+        file_coverage = scan_file_coverage(file_path)
+        if file_coverage is not None:
+            file_coverages.append(file_coverage)
+    return file_coverages
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
-    report = calculate_metrics(file_coverages)
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
-    # Granularity is calculated inside calculate_metrics
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
+def _check_min_coverage(report, args, threshold_failures: List[str]) -> bool:
+    if args.min_coverage is None or report.coverage_pct >= args.min_coverage:
+        return False
+    threshold_failures.append(f"coverage {report.coverage_pct:.2f}% < {args.min_coverage:.2f}%")
+    return True
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
-    json_report = generate_report(report, verbose=args.verbose, project_root=project_root)
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
 
-    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
-    # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-covered
-    # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-partial
-    # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
-    status = "PASS"
+def _check_min_file_coverage(report, args, project_root: Path, threshold_failures: List[str]) -> bool:
+    failed = False
+    if args.min_file_coverage is None:
+        return failed
+    for file_coverage in report.per_file:
+        if not file_coverage.total_lines or file_coverage.coverage_pct >= args.min_file_coverage:
+            continue
+        failed = True
+        rel = _rel_path(file_coverage.path, project_root)
+        threshold_failures.append(f"file {rel} coverage {file_coverage.coverage_pct:.2f}% < {args.min_file_coverage:.2f}%")
+    return failed
+
+
+def _check_min_granularity(report, args, threshold_failures: List[str]) -> bool:
+    if args.min_granularity is None or report.granularity_score >= args.min_granularity:
+        return False
+    threshold_failures.append(f"granularity {report.granularity_score:.4f} < {args.min_granularity:.4f}")
+    return True
+
+
+def _check_min_file_granularity(report, args, project_root: Path, threshold_failures: List[str]) -> bool:
+    failed = False
+    if args.min_file_granularity is None:
+        return failed
+    for file_coverage in report.per_file:
+        if not file_coverage.effective_lines or not file_coverage.covered_lines:
+            continue
+        if file_coverage.granularity >= args.min_file_granularity:
+            continue
+        failed = True
+        rel = _rel_path(file_coverage.path, project_root)
+        threshold_failures.append(f"file {rel} granularity {file_coverage.granularity:.4f} < {args.min_file_granularity:.4f}")
+    return failed
+
+
+def _apply_thresholds(report, args, project_root: Path, json_report: dict) -> str:
     threshold_failures: List[str] = []
-
-    if args.min_coverage is not None and report.coverage_pct < args.min_coverage:
-        status = "FAIL"
-        threshold_failures.append(f"coverage {report.coverage_pct:.2f}% < {args.min_coverage:.2f}%")
-
-    if args.min_file_coverage is not None:
-        for fc in report.per_file:
-            if not fc.total_lines:
-                continue
-            if fc.coverage_pct < args.min_file_coverage:
-                status = "FAIL"
-                rel = _rel_path(fc.path, project_root)
-                threshold_failures.append(f"file {rel} coverage {fc.coverage_pct:.2f}% < {args.min_file_coverage:.2f}%")
-
-    if args.min_granularity is not None and report.granularity_score < args.min_granularity:
-        status = "FAIL"
-        threshold_failures.append(f"granularity {report.granularity_score:.4f} < {args.min_granularity:.4f}")
-
-    if args.min_file_granularity is not None:
-        for fc in report.per_file:
-            if not fc.effective_lines:
-                continue
-            if not fc.covered_lines:
-                continue
-            if fc.granularity < args.min_file_granularity:
-                status = "FAIL"
-                rel = _rel_path(fc.path, project_root)
-                threshold_failures.append(f"file {rel} granularity {fc.granularity:.4f} < {args.min_file_granularity:.4f}")
-
+    failed = any((
+        _check_min_coverage(report, args, threshold_failures),
+        _check_min_file_coverage(report, args, project_root, threshold_failures),
+        _check_min_granularity(report, args, threshold_failures),
+        _check_min_file_granularity(report, args, project_root, threshold_failures),
+    ))
+    status = "FAIL" if failed else "PASS"
     json_report["status"] = status
     if threshold_failures:
         json_report["threshold_failures"] = threshold_failures
-    # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
-    # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-partial
-    # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-covered
-    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
+    return status
+
+
+def _load_spec_coverage_context():
+    from ..utils.context import get_context
+
+    ctx = get_context()
+    if not ctx:
+        ui.result({"status": "ERROR", "message": "Constructor Studio not initialized. Run 'cfs init' first."})
+        return None
+    return ctx.meta, ctx.project_root
+
+
+def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict, int]:
+    system_slugs = _validate_selected_systems(args, meta)
+    if system_slugs == set():
+        return {}, 2
+    filtered_files = _filter_ignored_files(
+        _collect_selected_system_files(meta, project_root, system_slugs),
+        project_root,
+        meta,
+    )
+    if not filtered_files:
+        return _empty_coverage_result(), 0
+    file_coverages = _scan_file_coverages(filtered_files)
+    report = calculate_metrics(file_coverages)
+    json_report = generate_report(report, verbose=args.verbose, project_root=project_root)
+    status = _apply_thresholds(report, args, project_root, json_report)
+    return json_report, 0 if status == "PASS" else 2
+
+def cmd_spec_coverage(argv: List[str]) -> int:
+    """Run spec coverage analysis on registered codebase files."""
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
+    args = _build_spec_coverage_parser().parse_args(argv)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
+
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
+    context = _load_spec_coverage_context()
+    if context is None:
+        return 1
+    meta, project_root = context
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
+    json_report, exit_code = _generate_spec_coverage_report(args, meta, project_root)
 
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-return-report
     _output(json_report, args)
-
-    return 0 if status == "PASS" else 2
+    return exit_code
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-return-report
 
 # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
@@ -254,6 +274,39 @@ def _format_ranges(ranges: list) -> str:
             parts.append(str(s) if s == e else f"{s}-{e}")
     return ", ".join(parts)
 
+
+def _show_spec_coverage_files(files: dict) -> None:
+    covered = {path: entry for path, entry in files.items() if entry.get("covered_lines", 0) > 0}
+    uncovered = {path: entry for path, entry in files.items() if not entry.get("covered_lines", 0)}
+    if covered:
+        ui.step(f"Covered files ({len(covered)})")
+        for path, entry in covered.items():
+            lines = entry.get("total_lines", 0)
+            cov = entry.get("coverage_pct", 0)
+            gran = entry.get("granularity", 0)
+            ui.substep(f"  {path}  {cov:.0f}% g={gran:.2f} ({lines} lines)")
+            uncov_ranges = entry.get("uncovered_ranges", [])
+            if uncov_ranges:
+                ui.substep(f"    uncovered: {_format_ranges(uncov_ranges)}")
+    if uncovered:
+        ui.blank()
+        ui.step(f"Uncovered files ({len(uncovered)})")
+        for path, entry in uncovered.items():
+            ui.substep(f"  {path}  ({entry.get('total_lines', 0)} lines)")
+
+
+def _show_spec_coverage_status(status: str, failures: list) -> None:
+    if failures:
+        ui.blank()
+        for failure in failures:
+            ui.warn(failure)
+    if status == "PASS":
+        ui.success("All thresholds met.")
+    elif status == "FAIL":
+        ui.error("Threshold check failed.")
+    else:
+        ui.info(f"Status: {status}")
+
 def _human_spec_coverage(data: dict) -> None:
     status = data.get("status", "")
     unknown_systems = data.get("unknown_systems", [])
@@ -274,37 +327,9 @@ def _human_spec_coverage(data: dict) -> None:
     files = data.get("files", {})
     if files and isinstance(files, dict):
         ui.blank()
-        covered = {p: e for p, e in files.items() if e.get("covered_lines", 0) > 0}
-        uncovered = {p: e for p, e in files.items() if not e.get("covered_lines", 0)}
-
-        if covered:
-            ui.step(f"Covered files ({len(covered)})")
-            for path, e in covered.items():
-                lines = e.get("total_lines", 0)
-                cov = e.get("coverage_pct", 0)
-                gran = e.get("granularity", 0)
-                ui.substep(f"  {path}  {cov:.0f}% g={gran:.2f} ({lines} lines)")
-                uncov_ranges = e.get("uncovered_ranges", [])
-                if uncov_ranges:
-                    ui.substep(f"    uncovered: {_format_ranges(uncov_ranges)}")
-
-        if uncovered:
-            ui.blank()
-            ui.step(f"Uncovered files ({len(uncovered)})")
-            for path, e in uncovered.items():
-                lines = e.get("total_lines", 0)
-                ui.substep(f"  {path}  ({lines} lines)")
+        _show_spec_coverage_files(files)
 
     failures = data.get("threshold_failures", [])
-    if failures:
-        ui.blank()
-        for f in failures:
-            ui.warn(f)
-    if status == "PASS":
-        ui.success("All thresholds met.")
-    elif status == "FAIL":
-        ui.error("Threshold check failed.")
-    else:
-        ui.info(f"Status: {status}")
+    _show_spec_coverage_status(status, failures)
     ui.blank()
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers

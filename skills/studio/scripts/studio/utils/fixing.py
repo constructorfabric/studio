@@ -8,8 +8,9 @@ constraint context (SYSTEM, KIND, template).
 # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-datamodel
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from . import error_codes as EC
 # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-datamodel
@@ -366,376 +367,296 @@ def _rel_path_str(abs_path: str, project_root: Optional[Path]) -> str:
 # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-datamodel
 
 
+@dataclass(frozen=True)
+class _FixPromptContext:
+    """Precomputed values reused across prompt builders."""
+
+    issue: Dict[str, object]
+    project_root: Optional[Path]
+    code: str
+    loc: str
+    cpt_id: str
+    id_kind: str
+    target_kind: str
+    parent_id: str
+    tpl: str
+    ctx: str
+
+
+def _build_fix_prompt_context(
+    issue: Dict[str, object],
+    project_root: Optional[Path],
+) -> _FixPromptContext:
+    """Build shared prompt-generation context for one validation issue."""
+    return _FixPromptContext(
+        issue=issue,
+        project_root=project_root,
+        code=str(issue.get("code") or ""),
+        loc=_rel_loc(issue, project_root),
+        cpt_id=str(issue.get("id") or ""),
+        id_kind=str(issue.get("id_kind") or ""),
+        target_kind=str(issue.get("target_kind") or ""),
+        parent_id=str(issue.get("parent_id") or ""),
+        tpl=_tpl_hint(issue),
+        ctx=_kind_ctx(issue),
+    )
+
+
+def _prompt_for_structure_task_consistency(ctx: _FixPromptContext) -> Optional[str]:
+    if ctx.code == EC.CDSL_STEP_UNCHECKED:
+        return (
+            f"Open `{ctx.loc}` and mark the CDSL step as checked `[x]`, "
+            f"or uncheck parent ID `{ctx.cpt_id}` if the step is incomplete."
+        )
+    if ctx.code == EC.PARENT_UNCHECKED_ALL_DONE:
+        return (
+            f"Open `{ctx.loc}` and check parent ID `{ctx.cpt_id}` — "
+            f"all its nested task items are already done."
+        )
+    if ctx.code == EC.PARENT_CHECKED_NESTED_UNCHECKED:
+        pid = ctx.parent_id or ctx.cpt_id
+        return (
+            f"Open `{ctx.loc}` and either uncheck parent `{pid}`, "
+            f"or check all nested unchecked items under it."
+        )
+    return None
+
+
+def _prompt_for_structure_references(ctx: _FixPromptContext) -> Optional[str]:
+    if ctx.code == EC.REF_NO_DEFINITION:
+        return (
+            f"Open `{ctx.loc}`: add a definition for `{ctx.cpt_id}` in the appropriate artifact, "
+            f"or remove this dangling reference."
+        )
+    if ctx.code == EC.REF_DONE_DEF_NOT_DONE:
+        return (
+            f"Open `{ctx.loc}`: uncheck the reference to `{ctx.cpt_id}`, "
+            f"or check the source definition in its origin artifact."
+        )
+    if ctx.code == EC.DEF_DONE_REF_NOT_DONE:
+        def_kind = str(ctx.issue.get("def_artifact_kind") or "source")
+        return (
+            f"Open `{ctx.loc}`: check the reference to `{ctx.cpt_id}` as [x] to match the done definition in {def_kind}, "
+            f"or uncheck the definition if the work is not actually complete."
+        )
+    if ctx.code == EC.REF_TASK_DEF_NO_TASK:
+        return (
+            f"Open `{ctx.loc}`: remove the task checkbox from the reference to `{ctx.cpt_id}`, "
+            f"or add a task checkbox to its definition."
+        )
+    if ctx.code == EC.ID_NOT_REFERENCED:
+        other = ctx.issue.get("other_kinds") or []
+        other_s = ", ".join(f"`{k}`" for k in other) if other else "other artifact kinds"
+        return (
+            f"Open `{ctx.loc}`: add a reference to `{ctx.cpt_id}` in {other_s}, "
+            f"or verify this ID is intentionally unreferenced."
+        )
+    return None
+
+
+def _prompt_for_constraints(ctx: _FixPromptContext) -> Optional[str]:
+    prompt_map = {
+        EC.HEADING_NUMBER_NOT_CONSECUTIVE: (
+            f"Open `{ctx.loc}`: fix heading number — "
+            f"expected `{ctx.issue.get('expected_prefix')}` after `{ctx.issue.get('previous_prefix')}`."
+        ),
+        EC.MISSING_CONSTRAINTS: f"Add constraint definitions for kinds {ctx.issue.get('kinds')} in `constraints.toml`.",
+        EC.ID_KIND_NOT_ALLOWED: (
+            f"Open `{ctx.loc}`: ID `{ctx.cpt_id}` uses kind `{ctx.id_kind}` "
+            f"not in allowed set {ctx.issue.get('allowed')}. "
+            f"Change the ID or update `constraints.toml` to allow `{ctx.id_kind}`."
+        ),
+        EC.DEF_MISSING_TASK: f"Open `{ctx.loc}`: add `- [ ]` before `{ctx.cpt_id}`{ctx.ctx}.{ctx.tpl}",
+        EC.DEF_PROHIBITED_TASK: (
+            f"Open `{ctx.loc}`: remove the task checkbox from `{ctx.cpt_id}` — "
+            f"kind `{ctx.id_kind}` prohibits task tracking."
+        ),
+        EC.DEF_MISSING_PRIORITY: (
+            f"Open `{ctx.loc}`: add a priority marker "
+            f"(e.g. 🔴 HIGH / 🟡 MEDIUM / 🟢 LOW) to `{ctx.cpt_id}`{ctx.ctx}."
+        ),
+        EC.DEF_PROHIBITED_PRIORITY: (
+            f"Open `{ctx.loc}`: remove the priority marker from `{ctx.cpt_id}` — "
+            f"kind `{ctx.id_kind}` prohibits priority."
+        ),
+    }
+    if ctx.code in prompt_map:
+        return prompt_map[ctx.code]
+    if ctx.code == EC.REQUIRED_ID_KIND_MISSING:
+        path_s = ctx.loc.rsplit(':', 1)[0] if ':' in ctx.loc else ctx.loc
+        hdg = _headings_hint(ctx.issue)
+        return f"Add at least one `{ctx.id_kind}` ID definition in `{path_s}`{ctx.ctx}.{hdg}{ctx.tpl}"
+    if ctx.code == EC.DEF_WRONG_HEADINGS:
+        hdg = _headings_hint(ctx.issue, key="headings", info_key="headings_info")
+        return (
+            f"Open `{ctx.loc}`: move `{ctx.cpt_id}` to a required section.{hdg} "
+            f"Currently under: {ctx.issue.get('found_headings')}.{ctx.tpl}"
+        )
+    return None
+
+
+def _prompt_for_heading_contract(ctx: _FixPromptContext) -> Optional[str]:
+    if ctx.code == EC.HEADING_MISSING:
+        pat = ctx.issue.get("heading_pattern")
+        pat_s = f" matching `{pat}`" if pat else ""
+        path_s = ctx.loc.rsplit(':', 1)[0] if ':' in ctx.loc else ctx.loc
+        return f"Add a level-{ctx.issue.get('heading_level')} heading{pat_s} to `{path_s}`{ctx.ctx}."
+    if ctx.code == EC.HEADING_PROHIBITS_MULTIPLE:
+        return f"Open `{ctx.loc}`: remove this duplicate heading — only one occurrence is allowed."
+    if ctx.code == EC.HEADING_REQUIRES_MULTIPLE:
+        return (
+            f"Open `{ctx.loc}`: add more headings matching this pattern — "
+            f"at least 2 occurrences required."
+        )
+    if ctx.code == EC.HEADING_NUMBERING_MISMATCH:
+        numbered = ctx.issue.get("numbered")
+        verb = "is required but missing" if numbered is True else "is prohibited but present"
+        return f"Open `{ctx.loc}`: heading numbering {verb}."
+    return None
+
+
+def _prompt_for_cross_ref_coverage(ctx: _FixPromptContext) -> Optional[str]:
+    if ctx.code == EC.REF_TARGET_NOT_IN_SCOPE:
+        return (
+            f"At `{ctx.loc}`: `{ctx.cpt_id}` requires a reference in `{ctx.target_kind}` artifact, "
+            f"but no `{ctx.target_kind}` artifact exists in scope."
+        )
+    if ctx.code == EC.REF_MISSING_FROM_KIND:
+        hdg = _headings_hint(ctx.issue)
+        target_path = ctx.issue.get("target_artifact_path")
+        suggested_path = ctx.issue.get("target_artifact_suggested_path")
+        if target_path:
+            target_path_s = _rel_path_str(str(target_path), ctx.project_root)
+            return (
+                f"Open `{ctx.loc}`: add a reference to `{ctx.cpt_id}` "
+                f"in `{target_path_s}`{ctx.ctx}.{hdg}{ctx.tpl}"
+            )
+        if suggested_path:
+            return (
+                f"Open `{ctx.loc}`: `{ctx.target_kind}` artifact missing — "
+                f"create `{suggested_path}` and add a reference to `{ctx.cpt_id}`{ctx.ctx}.{hdg}{ctx.tpl}"
+            )
+        return (
+            f"Open `{ctx.loc}`: add a reference to `{ctx.cpt_id}` "
+            f"in a `{ctx.target_kind}` artifact (ask user for the artifact path){ctx.ctx}.{hdg}{ctx.tpl}"
+        )
+    if ctx.code == EC.REF_WRONG_HEADINGS:
+        hdg = _headings_hint(ctx.issue, key="headings", info_key="headings_info")
+        return (
+            f"Open `{ctx.loc}`: move reference to `{ctx.cpt_id}` to a required section.{hdg} "
+            f"Currently under: {ctx.issue.get('found_headings')}.{ctx.tpl}"
+        )
+    prompt_map = {
+        EC.REF_MISSING_TASK_FOR_TRACKED: (
+            f"Open `{ctx.loc}`: add `- [ ]` before the reference to `{ctx.cpt_id}` — "
+            f"the definition is task-tracked{ctx.ctx}."
+        ),
+        EC.REF_FROM_PROHIBITED_KIND: (
+            f"Open `{ctx.loc}`: remove reference to `{ctx.cpt_id}` — "
+            f"references from `{ctx.target_kind}` are prohibited{ctx.ctx}."
+        ),
+        EC.REF_MISSING_TASK: f"Open `{ctx.loc}`: add `- [ ]` before the reference to `{ctx.cpt_id}`{ctx.ctx}.",
+        EC.REF_PROHIBITED_TASK: f"Open `{ctx.loc}`: remove task checkbox from reference to `{ctx.cpt_id}`{ctx.ctx}.",
+        EC.REF_MISSING_PRIORITY: f"Open `{ctx.loc}`: add priority marker to reference of `{ctx.cpt_id}`{ctx.ctx}.",
+        EC.REF_PROHIBITED_PRIORITY: f"Open `{ctx.loc}`: remove priority marker from reference of `{ctx.cpt_id}`{ctx.ctx}.",
+    }
+    return prompt_map.get(ctx.code)
+
+
+def _prompt_for_code_traceability(ctx: _FixPromptContext) -> Optional[str]:
+    prompt_map = {
+        EC.MARKER_DUP_BEGIN: (
+            f"Open `{ctx.loc}`: close the previous `@cpt-begin` block for `{ctx.cpt_id}` "
+            f"with `@cpt-end` before opening a new one."
+        ),
+        EC.MARKER_END_NO_BEGIN: (
+            f"Open `{ctx.loc}`: add a matching `@cpt-begin` before this `@cpt-end`, "
+            f"or remove the orphan marker."
+        ),
+        EC.MARKER_EMPTY_BLOCK: (
+            f"Open `{ctx.loc}`: add implementation code between "
+            f"the @cpt-begin and @cpt-end markers for `{ctx.cpt_id}`."
+        ),
+        EC.MARKER_BEGIN_NO_END: f"Open `{ctx.loc}`: add `@cpt-end` to close the block for `{ctx.cpt_id}`.",
+        EC.MARKER_DUP_SCOPE: (
+            f"Open `{ctx.loc}`: remove duplicate scope marker for `{ctx.cpt_id}`. "
+            f"First occurrence at line {ctx.issue.get('first_occurrence')}."
+        ),
+        EC.CODE_DOCS_ONLY: f"Open `{ctx.loc}`: remove all @cpt markers — traceability mode is DOCS-ONLY.",
+        EC.CODE_ORPHAN_REF: (
+            f"Open `{ctx.loc}`: define `{ctx.cpt_id}` in an artifact, "
+            f"or remove the code marker."
+        ),
+        EC.CODE_TASK_UNCHECKED: (
+            f"Check the task checkbox `[x]` for `{ctx.cpt_id}` in the artifact "
+            f"before referencing it in code. Code ref at `{ctx.loc}`."
+        ),
+        EC.CODE_NO_MARKER: f"Add a code traceability marker `@cpt-*:{ctx.cpt_id}:p1` in the codebase.",
+    }
+    if ctx.code in prompt_map:
+        return prompt_map[ctx.code]
+    if ctx.code == EC.CODE_INST_MISSING:
+        inst = str(ctx.issue.get("inst") or "?")
+        return (
+            f"Add `@cpt-begin:{ctx.cpt_id}:p1:inst-{inst}` / `@cpt-end:...` block in the code, "
+            f"or fix the instruction slug `{inst}` in the artifact if it is a typo."
+        )
+    if ctx.code == EC.CODE_INST_ORPHAN:
+        inst = str(ctx.issue.get("inst") or "?")
+        return (
+            f"Open `{ctx.loc}`: the code block `inst-{inst}` of `{ctx.cpt_id}` has no matching CDSL step in the artifact. "
+            f"Add the CDSL step in the artifact, or rename/remove the code marker if the instruction was renamed."
+        )
+    return None
+
+
+def _prompt_for_toc_and_warnings(ctx: _FixPromptContext) -> Optional[str]:
+    path_s = ctx.loc.rsplit(':', 1)[0] if ':' in ctx.loc else ctx.loc
+    if ctx.code == EC.TOC_MISSING:
+        return f"Add a Table of Contents to `{path_s}`. Run `cfs toc {path_s}` to generate one automatically."
+    if ctx.code == EC.TOC_ANCHOR_BROKEN:
+        display = str(ctx.issue.get("toc_display") or "")
+        anchor = str(ctx.issue.get("toc_anchor") or "")
+        return (
+            f"Open `{ctx.loc}`: TOC entry `[{display}](#{anchor})` has a broken anchor. "
+            f"Regenerate with `cfs toc` or fix the anchor manually."
+        )
+    if ctx.code == EC.TOC_HEADING_NOT_IN_TOC:
+        heading = str(ctx.issue.get("heading_text") or "")
+        return (
+            f"Open `{ctx.loc}`: heading `{heading}` is missing from the Table of Contents. "
+            f"Run `cfs toc {path_s}` to regenerate."
+        )
+    if ctx.code == EC.TOC_STALE:
+        return f"Table of Contents in `{path_s}` is outdated. Run `cfs toc {path_s}` to regenerate."
+    if ctx.code == EC.ID_NOT_REFERENCED_NO_SCOPE:
+        return (
+            f"At `{ctx.loc}`: `{ctx.cpt_id}` has no references — "
+            f"consider adding other artifact kinds that reference it."
+        )
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Prompt registry — keyed by error ``code`` (see error_codes.py).
 # ---------------------------------------------------------------------------
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-build-prompt
 def _build_fixing_prompt(issue: Dict[str, object], project_root: Optional[Path] = None) -> Optional[str]:
-    code = str(issue.get("code") or "")
-    loc = _rel_loc(issue, project_root)
-    cpt_id = str(issue.get("id") or "")
-    id_kind = str(issue.get("id_kind") or "")
-    target_kind = str(issue.get("target_kind") or "")
-    parent_id = str(issue.get("parent_id") or "")
-    tpl = _tpl_hint(issue)
-    ctx = _kind_ctx(issue)
-
-    # ------------------------------------------------------------------
-    # Structure — task / checkbox consistency
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-task-consistency
-    if code == EC.CDSL_STEP_UNCHECKED:
-        return (
-            f"Open `{loc}` and mark the CDSL step as checked `[x]`, "
-            f"or uncheck parent ID `{cpt_id}` if the step is incomplete."
-        )
-
-    if code == EC.PARENT_UNCHECKED_ALL_DONE:
-        return (
-            f"Open `{loc}` and check parent ID `{cpt_id}` — "
-            f"all its nested task items are already done."
-        )
-
-    if code == EC.PARENT_CHECKED_NESTED_UNCHECKED:
-        pid = parent_id or cpt_id
-        return (
-            f"Open `{loc}` and either uncheck parent `{pid}`, "
-            f"or check all nested unchecked items under it."
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-task-consistency
-
-    # ------------------------------------------------------------------
-    # Structure — references
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-references
-    if code == EC.REF_NO_DEFINITION:
-        return (
-            f"Open `{loc}`: add a definition for `{cpt_id}` in the appropriate artifact, "
-            f"or remove this dangling reference."
-        )
-
-    if code == EC.REF_DONE_DEF_NOT_DONE:
-        return (
-            f"Open `{loc}`: uncheck the reference to `{cpt_id}`, "
-            f"or check the source definition in its origin artifact."
-        )
-
-    if code == EC.DEF_DONE_REF_NOT_DONE:
-        def_kind = str(issue.get("def_artifact_kind") or "source")
-        return (
-            f"Open `{loc}`: check the reference to `{cpt_id}` as [x] to match the done definition in {def_kind}, "
-            f"or uncheck the definition if the work is not actually complete."
-        )
-
-    if code == EC.REF_TASK_DEF_NO_TASK:
-        return (
-            f"Open `{loc}`: remove the task checkbox from the reference to `{cpt_id}`, "
-            f"or add a task checkbox to its definition."
-        )
-
-    if code == EC.ID_NOT_REFERENCED:
-        other = issue.get("other_kinds") or []
-        other_s = ", ".join(f"`{k}`" for k in other) if other else "other artifact kinds"
-        return (
-            f"Open `{loc}`: add a reference to `{cpt_id}` in {other_s}, "
-            f"or verify this ID is intentionally unreferenced."
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-references
-
-    # ------------------------------------------------------------------
-    # Structure — heading numbering
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-numbering
-    if code == EC.HEADING_NUMBER_NOT_CONSECUTIVE:
-        return (
-            f"Open `{loc}`: fix heading number — "
-            f"expected `{issue.get('expected_prefix')}` after `{issue.get('previous_prefix')}`."
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-numbering
-
-    # ------------------------------------------------------------------
-    # Constraints — ID kind presence
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-id-kind-presence
-    if code == EC.MISSING_CONSTRAINTS:
-        return (
-            f"Add constraint definitions for kinds {issue.get('kinds')} in `constraints.toml`."
-        )
-
-    if code == EC.ID_KIND_NOT_ALLOWED:
-        return (
-            f"Open `{loc}`: ID `{cpt_id}` uses kind `{id_kind}` "
-            f"not in allowed set {issue.get('allowed')}. "
-            f"Change the ID or update `constraints.toml` to allow `{id_kind}`."
-        )
-
-    if code == EC.REQUIRED_ID_KIND_MISSING:
-        path_s = loc.rsplit(':', 1)[0] if ':' in loc else loc
-        hdg = _headings_hint(issue)
-        return (
-            f"Add at least one `{id_kind}` ID definition in `{path_s}`{ctx}.{hdg}{tpl}"
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-id-kind-presence
-
-    # ------------------------------------------------------------------
-    # Constraints — task / priority on definitions
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-task-priority-defs
-    if code == EC.DEF_MISSING_TASK:
-        return (
-            f"Open `{loc}`: add `- [ ]` before `{cpt_id}`{ctx}.{tpl}"
-        )
-
-    if code == EC.DEF_PROHIBITED_TASK:
-        return (
-            f"Open `{loc}`: remove the task checkbox from `{cpt_id}` — "
-            f"kind `{id_kind}` prohibits task tracking."
-        )
-
-    if code == EC.DEF_MISSING_PRIORITY:
-        return (
-            f"Open `{loc}`: add a priority marker "
-            f"(e.g. 🔴 HIGH / 🟡 MEDIUM / 🟢 LOW) to `{cpt_id}`{ctx}."
-        )
-
-    if code == EC.DEF_PROHIBITED_PRIORITY:
-        return (
-            f"Open `{loc}`: remove the priority marker from `{cpt_id}` — "
-            f"kind `{id_kind}` prohibits priority."
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-task-priority-defs
-
-    # ------------------------------------------------------------------
-    # Constraints — heading placement for definitions
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-placement
-    if code == EC.DEF_WRONG_HEADINGS:
-        hdg = _headings_hint(issue, key="headings", info_key="headings_info")
-        return (
-            f"Open `{loc}`: move `{cpt_id}` to a required section.{hdg} "
-            f"Currently under: {issue.get('found_headings')}.{tpl}"
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-placement
-
-    # ------------------------------------------------------------------
-    # Constraints — heading contract
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-contract
-    if code == EC.HEADING_MISSING:
-        pat = issue.get("heading_pattern")
-        pat_s = f" matching `{pat}`" if pat else ""
-        path_s = loc.rsplit(':', 1)[0] if ':' in loc else loc
-        return (
-            f"Add a level-{issue.get('heading_level')} heading{pat_s} "
-            f"to `{path_s}`{ctx}."
-        )
-
-    if code == EC.HEADING_PROHIBITS_MULTIPLE:
-        return (
-            f"Open `{loc}`: remove this duplicate heading — only one occurrence is allowed."
-        )
-
-    if code == EC.HEADING_REQUIRES_MULTIPLE:
-        return (
-            f"Open `{loc}`: add more headings matching this pattern — "
-            f"at least 2 occurrences required."
-        )
-
-    if code == EC.HEADING_NUMBERING_MISMATCH:
-        numbered = issue.get("numbered")
-        verb = "is required but missing" if numbered is True else "is prohibited but present"
-        return f"Open `{loc}`: heading numbering {verb}."
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-contract
-
-    # ------------------------------------------------------------------
-    # Constraints — cross-reference coverage
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-cross-ref-coverage
-    if code == EC.REF_TARGET_NOT_IN_SCOPE:
-        return (
-            f"At `{loc}`: `{cpt_id}` requires a reference in `{target_kind}` artifact, "
-            f"but no `{target_kind}` artifact exists in scope."
-        )
-
-    if code == EC.REF_MISSING_FROM_KIND:
-        hdg = _headings_hint(issue)
-        target_path = issue.get("target_artifact_path")
-        suggested_path = issue.get("target_artifact_suggested_path")
-        if target_path:
-            tp = _rel_path_str(str(target_path), project_root)
-            return (
-                f"Open `{loc}`: add a reference to `{cpt_id}` "
-                f"in `{tp}`{ctx}.{hdg}{tpl}"
-            )
-        if suggested_path:
-            return (
-                f"Open `{loc}`: `{target_kind}` artifact missing — "
-                f"create `{suggested_path}` and add a reference to `{cpt_id}`{ctx}.{hdg}{tpl}"
-            )
-        return (
-            f"Open `{loc}`: add a reference to `{cpt_id}` "
-            f"in a `{target_kind}` artifact (ask user for the artifact path){ctx}.{hdg}{tpl}"
-        )
-
-    if code == EC.REF_WRONG_HEADINGS:
-        hdg = _headings_hint(issue, key="headings", info_key="headings_info")
-        return (
-            f"Open `{loc}`: move reference to `{cpt_id}` to a required section.{hdg} "
-            f"Currently under: {issue.get('found_headings')}.{tpl}"
-        )
-
-    if code == EC.REF_MISSING_TASK_FOR_TRACKED:
-        return (
-            f"Open `{loc}`: add `- [ ]` before the reference to `{cpt_id}` — "
-            f"the definition is task-tracked{ctx}."
-        )
-
-    if code == EC.REF_FROM_PROHIBITED_KIND:
-        return (
-            f"Open `{loc}`: remove reference to `{cpt_id}` — "
-            f"references from `{target_kind}` are prohibited{ctx}."
-        )
-
-    if code == EC.REF_MISSING_TASK:
-        return (
-            f"Open `{loc}`: add `- [ ]` before the reference to `{cpt_id}`{ctx}."
-        )
-
-    if code == EC.REF_PROHIBITED_TASK:
-        return (
-            f"Open `{loc}`: remove task checkbox from reference to `{cpt_id}`{ctx}."
-        )
-
-    if code == EC.REF_MISSING_PRIORITY:
-        return (
-            f"Open `{loc}`: add priority marker to reference of `{cpt_id}`{ctx}."
-        )
-
-    if code == EC.REF_PROHIBITED_PRIORITY:
-        return (
-            f"Open `{loc}`: remove priority marker from reference of `{cpt_id}`{ctx}."
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-cross-ref-coverage
-
-    # ------------------------------------------------------------------
-    # Code traceability — marker errors
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-marker-errors
-    if code == EC.MARKER_DUP_BEGIN:
-        return (
-            f"Open `{loc}`: close the previous `@cpt-begin` block for `{cpt_id}` "
-            f"with `@cpt-end` before opening a new one."
-        )
-
-    if code == EC.MARKER_END_NO_BEGIN:
-        return (
-            f"Open `{loc}`: add a matching `@cpt-begin` before this `@cpt-end`, "
-            f"or remove the orphan marker."
-        )
-
-    if code == EC.MARKER_EMPTY_BLOCK:
-        return (
-            f"Open `{loc}`: add implementation code between "
-            f"the @cpt-begin and @cpt-end markers for `{cpt_id}`."
-        )
-
-    if code == EC.MARKER_BEGIN_NO_END:
-        return (
-            f"Open `{loc}`: add `@cpt-end` to close the block for `{cpt_id}`."
-        )
-
-    if code == EC.MARKER_DUP_SCOPE:
-        return (
-            f"Open `{loc}`: remove duplicate scope marker for `{cpt_id}`. "
-            f"First occurrence at line {issue.get('first_occurrence')}."
-        )
-
-    # ------------------------------------------------------------------
-    # Code traceability — cross-validation
-    # ------------------------------------------------------------------
-    if code == EC.CODE_DOCS_ONLY:
-        return (
-            f"Open `{loc}`: remove all @cpt markers — traceability mode is DOCS-ONLY."
-        )
-
-    if code == EC.CODE_ORPHAN_REF:
-        return (
-            f"Open `{loc}`: define `{cpt_id}` in an artifact, "
-            f"or remove the code marker."
-        )
-
-    if code == EC.CODE_TASK_UNCHECKED:
-        return (
-            f"Check the task checkbox `[x]` for `{cpt_id}` in the artifact "
-            f"before referencing it in code. Code ref at `{loc}`."
-        )
-
-    if code == EC.CODE_NO_MARKER:
-        return (
-            f"Add a code traceability marker `@cpt-*:{cpt_id}:p1` in the codebase."
-        )
-
-    if code == EC.CODE_INST_MISSING:
-        inst = str(issue.get("inst") or "?")
-        return (
-            f"Add `@cpt-begin:{cpt_id}:p1:inst-{inst}` / `@cpt-end:...` block in the code, "
-            f"or fix the instruction slug `{inst}` in the artifact if it is a typo."
-        )
-
-    if code == EC.CODE_INST_ORPHAN:
-        inst = str(issue.get("inst") or "?")
-        return (
-            f"Open `{loc}`: the code block `inst-{inst}` of `{cpt_id}` has no matching CDSL step in the artifact. "
-            f"Add the CDSL step in the artifact, or rename/remove the code marker if the instruction was renamed."
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-marker-errors
-
-    # ------------------------------------------------------------------
-    # TOC (Table of Contents) validation
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-toc
-    if code == EC.TOC_MISSING:
-        path_s = loc.rsplit(':', 1)[0] if ':' in loc else loc
-        return (
-            f"Add a Table of Contents to `{path_s}`. "
-            f"Run `cfs toc {path_s}` to generate one automatically."
-        )
-
-    if code == EC.TOC_ANCHOR_BROKEN:
-        display = str(issue.get("toc_display") or "")
-        anchor = str(issue.get("toc_anchor") or "")
-        return (
-            f"Open `{loc}`: TOC entry `[{display}](#{anchor})` has a broken anchor. "
-            f"Regenerate with `cfs toc` or fix the anchor manually."
-        )
-
-    if code == EC.TOC_HEADING_NOT_IN_TOC:
-        heading = str(issue.get("heading_text") or "")
-        path_s = loc.rsplit(':', 1)[0] if ':' in loc else loc
-        return (
-            f"Open `{loc}`: heading `{heading}` is missing from the Table of Contents. "
-            f"Run `cfs toc {path_s}` to regenerate."
-        )
-
-    if code == EC.TOC_STALE:
-        path_s = loc.rsplit(':', 1)[0] if ':' in loc else loc
-        return (
-            f"Table of Contents in `{path_s}` is outdated. "
-            f"Run `cfs toc {path_s}` to regenerate."
-        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-toc
-
-    # ------------------------------------------------------------------
-    # Warnings
-    # ------------------------------------------------------------------
-    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-warnings
-    if code == EC.ID_NOT_REFERENCED_NO_SCOPE:
-        return (
-            f"At `{loc}`: `{cpt_id}` has no references — "
-            f"consider adding other artifact kinds that reference it."
-        )
-
+    ctx = _build_fix_prompt_context(issue, project_root)
+    builders: List[Callable[[_FixPromptContext], Optional[str]]] = [
+        _prompt_for_structure_task_consistency,
+        _prompt_for_structure_references,
+        _prompt_for_constraints,
+        _prompt_for_heading_contract,
+        _prompt_for_cross_ref_coverage,
+        _prompt_for_code_traceability,
+        _prompt_for_toc_and_warnings,
+    ]
+    for builder in builders:
+        prompt = builder(ctx)
+        if prompt is not None:
+            return prompt
     return None
     # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-warnings
 # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-build-prompt

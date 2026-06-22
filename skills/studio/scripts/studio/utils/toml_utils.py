@@ -181,6 +181,28 @@ def _format_kv(key: str, value: Any) -> str:
     return f"{_quote_key(key)} = {_format_value(value)}"
 
 
+def _escape_toml_string(value: str) -> str:
+    """Return a TOML-safe double-quoted string literal."""
+    escaped: List[str] = []
+    replacements = {
+        "\\": "\\\\",
+        '"': '\\"',
+        "\b": "\\b",
+        "\t": "\\t",
+        "\n": "\\n",
+        "\f": "\\f",
+        "\r": "\\r",
+    }
+    for ch in value:
+        replacement = replacements.get(ch)
+        if replacement is not None:
+            escaped.append(replacement)
+            continue
+        codepoint = ord(ch)
+        escaped.append(f"\\u{codepoint:04X}" if codepoint < 0x20 or codepoint == 0x7F else ch)
+    return '"' + "".join(escaped) + '"'
+
+
 def _format_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -193,28 +215,7 @@ def _format_value(value: Any) -> str:
     if isinstance(value, (datetime.datetime, datetime.date)):
         return value.isoformat()
     if isinstance(value, str):
-        out_chars = []
-        for ch in value:
-            cp = ord(ch)
-            if ch == "\\":
-                out_chars.append("\\\\")
-            elif ch == '"':
-                out_chars.append('\\"')
-            elif ch == "\b":
-                out_chars.append("\\b")
-            elif ch == "\t":
-                out_chars.append("\\t")
-            elif ch == "\n":
-                out_chars.append("\\n")
-            elif ch == "\f":
-                out_chars.append("\\f")
-            elif ch == "\r":
-                out_chars.append("\\r")
-            elif cp < 0x20 or cp == 0x7F:
-                out_chars.append(f"\\u{cp:04X}")
-            else:
-                out_chars.append(ch)
-        return '"' + "".join(out_chars) + '"'
+        return _escape_toml_string(value)
     if isinstance(value, list):
         items = ", ".join(_format_value(v) for v in value)
         return f"[{items}]"
@@ -243,65 +244,72 @@ def _with_core_toml_lock(core_toml_path: Path) -> Generator[None, None, None]:
     """
     try:
         import fcntl  # type: ignore[import]
-        _use_fcntl = True
     except ImportError:  # pragma: no cover
-        _use_fcntl = False
+        fcntl = None
 
-    if _use_fcntl:
-        lock_file = core_toml_path.with_suffix(core_toml_path.suffix + ".lock")
-        fh = None
-        try:
-            lock_file.parent.mkdir(parents=True, exist_ok=True)
-            fh = open(lock_file, "a", encoding="utf-8")
-            fcntl.flock(fh, fcntl.LOCK_EX)
-            yield
-        finally:
-            if fh is not None:
-                try:
-                    fcntl.flock(fh, fcntl.LOCK_UN)
-                except OSError:  # pragma: no cover
-                    pass
-                fh.close()
-            # Intentionally leave the .lock sentinel on disk; advisory flock locking
-            # is independent of the file's existence between runs and unlinking it
-            # introduces a TOCTOU race with concurrent acquirers.
-    else:  # pragma: no cover
-        # Windows fallback: O_CREAT | O_EXCL sentinel with retry
-        lock_path = core_toml_path.with_suffix(core_toml_path.suffix + ".lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_fd: Optional[int] = None
-        deadline = time.monotonic() + 10.0  # wait up to 10 s
-        while True:
+    if fcntl is not None:
+        yield from _with_posix_core_toml_lock(core_toml_path, fcntl)
+        return
+    yield from _with_windows_core_toml_lock(core_toml_path)
+
+
+@contextlib.contextmanager
+def _with_posix_core_toml_lock(core_toml_path: Path, fcntl: Any) -> Generator[None, None, None]:
+    """Hold an advisory flock on the TOML sidecar lock file."""
+    lock_file = core_toml_path.with_suffix(core_toml_path.suffix + ".lock")
+    file_handle = None
+    try:
+        lock_file.parent.mkdir(parents=True, exist_ok=True)
+        file_handle = open(lock_file, "a", encoding="utf-8")
+        fcntl.flock(file_handle, fcntl.LOCK_EX)
+        yield
+    finally:
+        if file_handle is not None:
             try:
-                lock_fd = os.open(
-                    str(lock_path),
-                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                )
-                break
-            except FileExistsError:
-                if time.monotonic() > deadline:
-                    # Give up waiting — unlink stale lock if it predates our
-                    # wait window, then proceed without the lock.
-                    try:
-                        mtime = lock_path.stat().st_mtime
-                        if time.time() - mtime > 10.0:
-                            lock_path.unlink(missing_ok=True)
-                    except OSError:
-                        pass
-                    print(
-                        f"WARNING: cf could not acquire lock on "
-                        f"{lock_path} within 10 s — proceeding without lock",
-                        file=sys.stderr,
-                    )
-                    lock_fd = None
-                    break
-                time.sleep(0.05)
+                fcntl.flock(file_handle, fcntl.LOCK_UN)
+            except OSError:  # pragma: no cover
+                pass
+            file_handle.close()
+        # Intentionally leave the .lock sentinel on disk; advisory flock locking
+        # is independent of the file's existence between runs and unlinking it
+        # introduces a TOCTOU race with concurrent acquirers.
+
+
+def _wait_for_windows_lock(lock_path: Path) -> Optional[int]:
+    """Acquire a best-effort Windows lock sentinel."""
+    deadline = time.monotonic() + 10.0
+    while True:
         try:
-            yield
-        finally:
-            if lock_fd is not None:
-                os.close(lock_fd)
+            return os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if time.monotonic() > deadline:
                 try:
-                    os.unlink(str(lock_path))
+                    mtime = lock_path.stat().st_mtime
+                    if time.time() - mtime > 10.0:
+                        lock_path.unlink(missing_ok=True)
                 except OSError:
                     pass
+                print(
+                    f"WARNING: cf could not acquire lock on "
+                    f"{lock_path} within 10 s — proceeding without lock",
+                    file=sys.stderr,
+                )
+                return None
+            time.sleep(0.05)
+
+
+@contextlib.contextmanager
+def _with_windows_core_toml_lock(core_toml_path: Path) -> Generator[None, None, None]:
+    """Hold a Windows-compatible lock sentinel while writing core.toml."""
+    lock_path = core_toml_path.with_suffix(core_toml_path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = _wait_for_windows_lock(lock_path)
+    try:
+        yield
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+            try:
+                os.unlink(str(lock_path))
+            except OSError:
+                pass

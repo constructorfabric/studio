@@ -36,6 +36,23 @@ def _brand_home_path() -> Path:
     return Path.home() / ".constructor-studio" / "mirrors.toml"
 # @cpt-end:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-config-paths
 
+
+def _mirror_items(data: object) -> List[Tuple[str, str]]:
+    """Extract valid mirror override pairs from parsed TOML data."""
+    if not isinstance(data, dict):
+        return []
+
+    overrides: List[Tuple[str, str]] = []
+    for item in data.get("mirror", []):
+        if not isinstance(item, dict):
+            continue
+        from_url = str(item.get("from", "")).strip()
+        to_url = str(item.get("to", "")).strip()
+        if from_url and to_url:
+            overrides.append((from_url, to_url))
+    return overrides
+
+
 # @cpt-begin:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-load-file
 def _load_file(path: Path) -> List[Tuple[str, str]]:
     if not path.is_file():
@@ -44,13 +61,7 @@ def _load_file(path: Path) -> List[Tuple[str, str]]:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
         return []
-    out: List[Tuple[str, str]] = []
-    for item in data.get("mirror", []):
-        f = item.get("from", "")
-        t = item.get("to", "")
-        if f and t:
-            out.append((f, t))
-    return out
+    return _mirror_items(data)
 # @cpt-end:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-load-file
 
 # @cpt-begin:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-merge-overrides

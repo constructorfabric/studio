@@ -15,6 +15,7 @@ All actual logic lives in the skill engine — this proxy only routes.
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -71,6 +72,106 @@ def _peek_named_param(args: List[str], name: str) -> Optional[str]:
     return None
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
+
+@dataclass
+class _ProxyCommandOptions:
+    target_version: Optional[str] = None
+    force_update: bool = False
+    skip_cache: bool = False
+    source_dir: Optional[str] = None
+    custom_url: Optional[str] = None
+
+
+def _mirror_override(args: List[str], set_override: Any) -> int:
+    if len(args) < 3:
+        sys.stderr.write("Usage: cfs mirror override <old-url> <new-url>\n")
+        return 1
+    old_url, new_url = args[1], args[2]
+    path = set_override(old_url, new_url)
+    print(f"Registered: {old_url} -> {new_url}  (wrote: {path})")
+    return 0
+
+
+def _mirror_list(list_overrides: Any) -> int:
+    entries = list_overrides()
+    if not entries:
+        print("(no overrides)")
+        return 0
+    for from_url, to_url, source_path in entries:
+        print(f"{from_url}  ->  {to_url}      [{source_path}]")
+    return 0
+
+
+def _mirror_sources(mirror_sources: Any) -> int:
+    sources = mirror_sources()
+    any_changed = False
+    for name, original, effective in sources:
+        marker = "  " if original == effective else "* "
+        if original != effective:
+            any_changed = True
+            print(f"{marker}{name:32}  {original}")
+            print(f"  {'':32}  -> {effective}")
+        else:
+            print(f"{marker}{name:32}  {original}")
+    print("")
+    print("Substring overrides also affect any URL containing a registered `from` token.")
+    if any_changed:
+        print("Lines marked `*` are currently rewritten by active overrides.")
+    return 0
+
+
+def _mirror_remove(args: List[str], remove_override: Any) -> int:
+    if len(args) < 2:
+        sys.stderr.write("Usage: cfs mirror remove <old-url>\n")
+        return 1
+    old_url = args[1]
+    if remove_override(old_url):
+        print(f"Removed: {old_url}")
+        return 0
+    sys.stderr.write(f"Not found: {old_url}\n")
+    return 1
+
+
+def _confirm_mirror_clear(args: List[str]) -> bool:
+    if "--yes" in args or "-y" in args:
+        return True
+    if not sys.stdin.isatty():
+        sys.stderr.write("Pass --yes to confirm clearing all overrides in non-interactive mode.\n")
+        return False
+    try:
+        answer = input("Clear all mirror overrides? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = "n"
+    if answer in ("y", "yes"):
+        return True
+    sys.stderr.write("Aborted.\n")
+    return False
+
+
+def _mirror_clear(args: List[str], clear_overrides: Any) -> int:
+    if not _confirm_mirror_clear(args):
+        return 1
+    count = clear_overrides()
+    print(f"Cleared {count} override(s).")
+    return 0
+
+
+def _print_mirror_help() -> int:
+    print("Usage: cfs mirror <subcommand> [args]")
+    print("")
+    print("Subcommands:")
+    print("  override <from> <to>           Register or update a URL override (substring replacement)")
+    print("  list                           Print current overrides")
+    print("  sources                        List default URLs that can be mirrored (with current effective form)")
+    print("  remove <from>                  Delete an override")
+    print("  clear [--yes]                  Delete all overrides")
+    print("")
+    print("Match semantics: `from` is replaced wherever it occurs in any URL the proxy or")
+    print("skill engine resolves. Examples:")
+    print("  cfs mirror override github.com/constructorfabric/studio github.com/ainetx/studio")
+    print("  cfs mirror override constructorfabric ainetx   # rewrites all constructorfabric/* URLs")
+    return 0
+
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 def _handle_mirror(args: List[str]) -> int:
     """
@@ -88,88 +189,14 @@ def _handle_mirror(args: List[str]) -> int:
     )
 
     sub = args[0] if args else None
-
-    if sub == "override":
-        if len(args) < 3:
-            sys.stderr.write("Usage: cfs mirror override <old-url> <new-url>\n")
-            return 1
-        old_url, new_url = args[1], args[2]
-        path = set_override(old_url, new_url)
-        print(f"Registered: {old_url} -> {new_url}  (wrote: {path})")
-        return 0
-
-    if sub == "list":
-        entries = list_overrides()
-        if not entries:
-            print("(no overrides)")
-        else:
-            for from_url, to_url, source_path in entries:
-                print(f"{from_url}  ->  {to_url}      [{source_path}]")
-        return 0
-
-    if sub == "sources":
-        sources = mirror_sources()
-        any_changed = False
-        for name, original, effective in sources:
-            marker = "  " if original == effective else "* "
-            if original != effective:
-                any_changed = True
-                print(f"{marker}{name:32}  {original}")
-                print(f"  {'':32}  -> {effective}")
-            else:
-                print(f"{marker}{name:32}  {original}")
-        print("")
-        print("Substring overrides also affect any URL containing a registered `from` token.")
-        if any_changed:
-            print("Lines marked `*` are currently rewritten by active overrides.")
-        return 0
-
-    if sub == "remove":
-        if len(args) < 2:
-            sys.stderr.write("Usage: cfs mirror remove <old-url>\n")
-            return 1
-        old_url = args[1]
-        removed = remove_override(old_url)
-        if removed:
-            print(f"Removed: {old_url}")
-            return 0
-        sys.stderr.write(f"Not found: {old_url}\n")
-        return 1
-
-    if sub == "clear":
-        yes = "--yes" in args or "-y" in args
-        if not yes:
-            if sys.stdin.isatty():
-                try:
-                    answer = input("Clear all mirror overrides? [y/N] ").strip().lower()
-                except (EOFError, KeyboardInterrupt):
-                    answer = "n"
-                if answer not in ("y", "yes"):
-                    sys.stderr.write("Aborted.\n")
-                    return 1
-            else:
-                # Non-interactive: require explicit --yes
-                sys.stderr.write("Pass --yes to confirm clearing all overrides in non-interactive mode.\n")
-                return 1
-        count = clear_overrides()
-        print(f"Cleared {count} override(s).")
-        return 0
-
-    # Help / no-subcommand
-    print("Usage: cfs mirror <subcommand> [args]")
-    print("")
-    print("Subcommands:")
-    print("  override <from> <to>           Register or update a URL override (substring replacement)")
-    print("  list                           Print current overrides")
-    print("  sources                        List default URLs that can be mirrored (with current effective form)")
-    print("  remove <from>                  Delete an override")
-    print("  clear [--yes]                  Delete all overrides")
-    print("")
-    print("Match semantics: `from` is replaced wherever it occurs in any URL the proxy or")
-    print("skill engine resolves. Examples:")
-    print("  cfs mirror override github.com/constructorfabric/studio github.com/ainetx/studio")
-    print("  cfs mirror override constructorfabric ainetx   # rewrites all constructorfabric/* URLs")
-    return 0
+    handlers = {
+        "override": lambda: _mirror_override(args, set_override),
+        "list": lambda: _mirror_list(list_overrides),
+        "sources": lambda: _mirror_sources(mirror_sources),
+        "remove": lambda: _mirror_remove(args, remove_override),
+        "clear": lambda: _mirror_clear(args, clear_overrides),
+    }
+    return handlers.get(sub, _print_mirror_help)()
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
@@ -234,6 +261,209 @@ def _print_update_check_human(data: Dict[str, Any]) -> None:
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 
 
+def _print_version_provenance(provenance: Optional[Dict[str, Any]], default_unknown: bool = False) -> None:
+    if not provenance:
+        if default_unknown:
+            print("  verified: unknown")
+        return
+    source_type = provenance.get("source_type")
+    effective_source = provenance.get("effective_source")
+    resolved_ref = provenance.get("resolved_ref")
+    verified = provenance.get("verified")
+    if source_type:
+        print(f"  source: {source_type}")
+    if effective_source:
+        print(f"  effective source: {effective_source}")
+    if resolved_ref:
+        print(f"  resolved ref: {resolved_ref}")
+    if verified:
+        print(f"  verified: {verified}")
+
+
+def _handle_version_info(args: List[str]) -> Optional[int]:
+    if not (args and args[0] == "--version" and len(args) == 1):
+        return None
+    from studio_proxy import __version__
+
+    print(f"package: constructor-studio {__version__}")
+    cached = get_cached_version()
+    if cached:
+        print(f"skill cache: {cached}")
+        _print_version_provenance(get_cache_provenance())
+    project_skill = find_project_skill()
+    if project_skill:
+        project_version = get_project_version(project_skill)
+        if project_version:
+            print(f"skill project: {project_version}")
+            print(f"  path: {project_skill}")
+            _print_version_provenance(get_project_provenance(project_skill), default_unknown=True)
+    return 0
+
+
+def _extract_proxy_command_options(args: List[str]) -> _ProxyCommandOptions:
+    options = _ProxyCommandOptions()
+    if not (args and args[0] in ("init", "update")):
+        return options
+    options.target_version = _extract_version_param(args)
+    options.source_dir = _extract_named_param(args, "--source")
+    options.custom_url = _extract_named_param(args, "--url")
+    if (
+        args[0] == "init"
+        and options.target_version is None
+        and options.source_dir is None
+        and options.custom_url is None
+    ):
+        project_root = _peek_named_param(args, "--project-root")
+        pinned_request = get_project_pinned_cache_request(Path(project_root) if project_root else None)
+        if pinned_request is not None:
+            options.target_version, options.custom_url = pinned_request
+    if "--force" in args:
+        options.force_update = True
+        args.remove("--force")
+    if "--no-cache" in args:
+        options.skip_cache = True
+        args.remove("--no-cache")
+    return options
+
+
+def _run_cache_update(
+    source_dir: Optional[str],
+    target_version: Optional[str],
+    force_update: bool,
+    custom_url: Optional[str],
+    args: List[str],
+) -> tuple[bool, str]:
+    if source_dir is not None:
+        from studio_proxy.cache import copy_from_local
+
+        return copy_from_local(source_dir=source_dir, force=force_update)
+    from studio_proxy.cache import download_and_cache
+
+    explicit = target_version
+    if explicit is None and len(args) > 1 and not args[1].startswith("-"):
+        explicit = args[1]
+    return download_and_cache(version=explicit, force=force_update, url=custom_url)
+
+
+def _handle_update_command(args: List[str], options: _ProxyCommandOptions) -> Optional[int]:
+    if not (args and args[0] == "update"):
+        return None
+    if not options.skip_cache and "--help" not in args and "-h" not in args:
+        success, message = _run_cache_update(
+            options.source_dir,
+            options.target_version,
+            options.force_update,
+            options.custom_url,
+            args,
+        )
+        sys.stderr.write(f"{message}\n")
+        if not success:
+            return 1
+    skill_path = find_cached_skill()
+    if skill_path is None:
+        sys.stderr.write("Cache not found. Run 'cfs update' without --no-cache first.\n")
+        return 1
+    sys.stderr.write("Updating project...\n")
+    update_args = list(args)
+    if options.target_version is None and len(args) > 1 and not args[1].startswith("-"):
+        update_args = ["update"] + args[2:]
+    return _forward_to_skill(skill_path, update_args)
+
+
+def _maybe_prepare_init_cache(args: List[str], options: _ProxyCommandOptions) -> Optional[int]:
+    if options.force_update and args and args[0] == "init":
+        args.append("--force")
+    should_prepare = (
+        args and args[0] == "init"
+        and not options.skip_cache
+        and "--help" not in args and "-h" not in args
+    )
+    if not should_prepare:
+        return None
+    if options.source_dir is not None:
+        from studio_proxy.cache import copy_from_local
+
+        sys.stderr.write("Updating cache from local source...\n")
+        success, message = copy_from_local(source_dir=options.source_dir, force=options.force_update)
+    else:
+        from studio_proxy.cache import download_and_cache
+
+        if options.target_version:
+            sys.stderr.write(f"Updating cache to version {options.target_version}...\n")
+        else:
+            sys.stderr.write("Updating cache to latest version...\n")
+        success, message = download_and_cache(
+            version=options.target_version,
+            force=options.force_update,
+            url=options.custom_url,
+        )
+    sys.stderr.write(f"{message}\n")
+    return None if success else 1
+
+
+def _resolve_skill_for_command(args: List[str], skip_cache: bool) -> Optional[Path]:
+    use_cache_for_init = (
+        args and args[0] == "init"
+        and not skip_cache
+        and "--help" not in args and "-h" not in args
+    )
+    if use_cache_for_init:
+        return find_cached_skill()
+    skill_path, _source = resolve_skill()
+    return skill_path
+
+
+def _ensure_skill_available(skill_path: Optional[Path]) -> Optional[Path]:
+    if skill_path is not None:
+        return skill_path
+    from studio_proxy.cache import download_and_cache
+
+    sys.stderr.write("\n")
+    sys.stderr.write("  Constructor Studio skill engine not found.\n")
+    sys.stderr.write("\n")
+    sys.stderr.write("  Constructor Studio is a two-part tool:\n")
+    sys.stderr.write("    • This CLI proxy (already installed)\n")
+    sys.stderr.write("    • The skill engine (templates, validators, generators)\n")
+    sys.stderr.write("\n")
+    sys.stderr.write("  The skill engine needs to be downloaded once from GitHub\n")
+    sys.stderr.write("  and cached at ~/.cf-studio/cache/.\n")
+    sys.stderr.write("\n")
+
+    if sys.stdin.isatty():
+        try:
+            answer = input("  Download now? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "n"
+        if answer and answer not in ("y", "yes"):
+            sys.stderr.write("\n  To download later, run: cfs update\n\n")
+            return None
+    else:
+        sys.stderr.write("  Downloading automatically (non-interactive mode)...\n")
+
+    sys.stderr.write("\n")
+    success, message = download_and_cache()
+    if not success:
+        sys.stderr.write(f"  Error: {message}\n")
+        sys.stderr.write("  Retry: cfs update\n\n")
+        return None
+    sys.stderr.write(f"  {message}\n\n")
+    return find_cached_skill()
+
+
+def _handle_proxy_command(args: List[str]) -> tuple[Optional[int], _ProxyCommandOptions]:
+    version_result = _handle_version_info(args)
+    if version_result is not None:
+        return version_result, _ProxyCommandOptions()
+    options = _extract_proxy_command_options(args)
+    update_result = _handle_update_command(args, options)
+    if update_result is not None:
+        return update_result, options
+    init_result = _maybe_prepare_init_cache(args, options)
+    if init_result is not None:
+        return init_result, options
+    return None, options
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """
     Main entry point for the cfs / constructor-studio command.
@@ -254,141 +484,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args and args[0] == "check-updates":
         return _handle_check_updates(args[1:])
 
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
-    # Handle --version with no value: show version info
-    if args and args[0] == "--version" and len(args) == 1:
-        from studio_proxy import __version__
-        print(f"package: constructor-studio {__version__}")
-        cached = get_cached_version()
-        if cached:
-            print(f"skill cache: {cached}")
-            provenance = get_cache_provenance()
-            if provenance:
-                source_type = provenance.get("source_type")
-                effective_source = provenance.get("effective_source")
-                resolved_ref = provenance.get("resolved_ref")
-                verified = provenance.get("verified")
-                if source_type:
-                    print(f"  source: {source_type}")
-                if effective_source:
-                    print(f"  effective source: {effective_source}")
-                if resolved_ref:
-                    print(f"  resolved ref: {resolved_ref}")
-                if verified:
-                    print(f"  verified: {verified}")
-        project_skill = find_project_skill()
-        if project_skill:
-            pv = get_project_version(project_skill)
-            if pv:
-                print(f"skill project: {pv}")
-                print(f"  path: {project_skill}")
-                project_provenance = get_project_provenance(project_skill)
-                if project_provenance:
-                    source_type = project_provenance.get("source_type")
-                    effective_source = project_provenance.get("effective_source")
-                    resolved_ref = project_provenance.get("resolved_ref")
-                    verified = project_provenance.get("verified")
-                    if source_type:
-                        print(f"  source: {source_type}")
-                    if effective_source:
-                        print(f"  effective source: {effective_source}")
-                    if resolved_ref:
-                        print(f"  resolved ref: {resolved_ref}")
-                    if verified:
-                        print(f"  verified: {verified}")
-                else:
-                    print("  verified: unknown")
-        return 0
-
-    # Extract --version VERSION, --force, --source, --url, --no-cache only for init and update commands
-    target_version = None
-    force_update = False
-    skip_cache = False
-    source_dir = None
-    custom_url = None
-    if args and args[0] in ("init", "update"):
-        target_version = _extract_version_param(args)
-        source_dir = _extract_named_param(args, "--source")
-        custom_url = _extract_named_param(args, "--url")
-        if args[0] == "init" and target_version is None and source_dir is None and custom_url is None:
-            project_root = _peek_named_param(args, "--project-root")
-            pinned_request = get_project_pinned_cache_request(Path(project_root) if project_root else None)
-            if pinned_request is not None:
-                target_version, custom_url = pinned_request
-        if "--force" in args:
-            force_update = True
-            args.remove("--force")
-        if "--no-cache" in args:
-            skip_cache = True
-            args.remove("--no-cache")
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
-
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-update-cache
-    if args and args[0] == "update":
-        if not skip_cache and "--help" not in args and "-h" not in args:
-            # Step 1: Update cache
-            if source_dir is not None:
-                from studio_proxy.cache import copy_from_local
-
-                success, message = copy_from_local(source_dir=source_dir, force=force_update)
-            else:
-                from studio_proxy.cache import download_and_cache
-
-                # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-explicit-cache-update
-                explicit = target_version
-                if explicit is None and len(args) > 1 and not args[1].startswith("-"):
-                    explicit = args[1]
-                success, message = download_and_cache(version=explicit, force=force_update, url=custom_url)
-                # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-explicit-cache-update
-
-            sys.stderr.write(f"{message}\n")
-            if not success:
-                return 1
-
-        # Step 2: Forward to skill engine for .core/ + kits + .gen/ update
-        skill_path = find_cached_skill()
-        if skill_path is None:
-            sys.stderr.write("Cache not found. Run 'cfs update' without --no-cache first.\n")
-            # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-update-complete
-            return 1
-            # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-update-complete
-
-        sys.stderr.write("Updating project...\n")
-        # Forward the engine-owned update arguments after stripping only the
-        # optional cache-version positional. Proxy-owned flags (--version,
-        # --source, --url, --force, --no-cache) were already consumed above.
-        update_args = list(args)
-        if target_version is None and len(args) > 1 and not args[1].startswith("-"):
-            update_args = ["update"] + args[2:]
-        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-cache-update
-        return _forward_to_skill(skill_path, update_args)
-        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-cache-update
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-update-cache
-
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
-    # Re-add --force to args for init (skill needs it for config overwrite)
-    if force_update and args and args[0] == "init":
-        args.append("--force")
-
-    # For init: always update cache first, then forward to cached skill
-    if args and args[0] == "init" and not skip_cache and "--help" not in args and "-h" not in args:
-        if source_dir is not None:
-            from studio_proxy.cache import copy_from_local
-
-            sys.stderr.write("Updating cache from local source...\n")
-            success, message = copy_from_local(source_dir=source_dir, force=force_update)
-        else:
-            from studio_proxy.cache import download_and_cache
-
-            if target_version:
-                sys.stderr.write(f"Updating cache to version {target_version}...\n")
-            else:
-                sys.stderr.write("Updating cache to latest version...\n")
-            success, message = download_and_cache(version=target_version, force=force_update, url=custom_url)
-        sys.stderr.write(f"{message}\n")
-        if not success:
-            return 1
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
+    early_result, options = _handle_proxy_command(args)
+    if early_result is not None:
+        return early_result
 
     # @cpt-dod:cpt-studio-dod-core-infra-agents-integrity:p1
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
@@ -402,16 +500,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-cache
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-cache
-    # For init: always use cached skill (we just updated cache above)
-    use_cache_for_init = (
-        args and args[0] == "init"
-        and not skip_cache
-        and "--help" not in args and "-h" not in args
-    )
-    if use_cache_for_init:
-        skill_path = find_cached_skill()
-    else:
-        skill_path, _source = resolve_skill()
+    skill_path = _resolve_skill_for_command(args, options.skip_cache)
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-cache
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-cache
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
@@ -419,51 +508,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-project-skill
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-cache
+    skill_path = _ensure_skill_available(skill_path)
     if skill_path is None:
-        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
-        from studio_proxy.cache import download_and_cache
-
-        sys.stderr.write("\n")
-        sys.stderr.write("  Constructor Studio skill engine not found.\n")
-        sys.stderr.write("\n")
-        sys.stderr.write("  Constructor Studio is a two-part tool:\n")
-        sys.stderr.write("    • This CLI proxy (already installed)\n")
-        sys.stderr.write("    • The skill engine (templates, validators, generators)\n")
-        sys.stderr.write("\n")
-        sys.stderr.write("  The skill engine needs to be downloaded once from GitHub\n")
-        sys.stderr.write("  and cached at ~/.cf-studio/cache/.\n")
-        sys.stderr.write("\n")
-
-        if sys.stdin.isatty():
-            try:
-                answer = input("  Download now? [Y/n] ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                answer = "n"
-            if answer and answer not in ("y", "yes"):
-                sys.stderr.write("\n  To download later, run: cfs update\n\n")
-                return 1
-        else:
-            sys.stderr.write("  Downloading automatically (non-interactive mode)...\n")
-
-        sys.stderr.write("\n")
-        success, message = download_and_cache()
-        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
-        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
-        if not success:
-            # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
-            sys.stderr.write(f"  Error: {message}\n")
-            sys.stderr.write("  Retry: cfs update\n\n")
-            return 1
-            # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
-        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
-
-        sys.stderr.write(f"  {message}\n\n")
-        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
-        skill_path = find_cached_skill()
-        if skill_path is None:
-            sys.stderr.write("  Error: Cache populated but skill entry point not found.\n")
-            return 1
-        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
+        return 1
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-cache
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-engine-execute

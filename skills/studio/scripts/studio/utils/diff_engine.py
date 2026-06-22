@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .toc import _expand_blank_line_region
+
 @dataclass
 class DiffReport:
     """Result of comparing two directory states."""
@@ -193,7 +195,7 @@ def _prompt_unresolved(rel_path: str) -> str:
     # @cpt-end:cpt-studio-algo-kit-conflict-merge:p1:inst-prompt-unresolved
 
 
-def _open_editor_for_file(
+def _open_editor_for_file(  # pylint: disable=too-many-return-statements
     rel_path: str,
     old_content: bytes,
     new_content: bytes,
@@ -360,22 +362,30 @@ def _classify_kit_files(
     report = DiffReport()
     all_paths = sorted(set(source_files) | set(user_files))
     for p in all_paths:
-        in_source = p in source_files
-        in_user = p in user_files
-        if in_source and not in_user:
-            report.added.append(p)
-        elif in_user and not in_source:
-            report.removed.append(p)
-        elif source_files[p] == user_files[p]:
-            report.unchanged.append(p)
-        else:
-            report.modified.append(p)
+        getattr(report, _classify_kit_file_state(p, source_files, user_files)).append(p)
     return report
     # @cpt-end:cpt-studio-algo-kit-file-classify:p1:inst-classify
 
 
+def _classify_kit_file_state(
+    rel_path: str,
+    source_files: Dict[str, bytes],
+    user_files: Dict[str, bytes],
+) -> str:
+    """Return the DiffReport bucket name for a single relative path."""
+    in_source = rel_path in source_files
+    in_user = rel_path in user_files
+    if in_source and not in_user:
+        return "added"
+    if in_user and not in_source:
+        return "removed"
+    if source_files[rel_path] == user_files[rel_path]:
+        return "unchanged"
+    return "modified"
+
+
 # @cpt-algo:cpt-studio-algo-kit-interactive-review:p1
-def _prompt_kit_file(
+def _prompt_kit_file(  # pylint: disable=too-many-return-statements
     rel_path: str,
     state: Dict[str, bool],
 ) -> str:
@@ -483,47 +493,54 @@ def _strip_toc_for_diff(content: bytes) -> Tuple[bytes, str]:
         return content, ""
 
     lines = text.split("\n")
+    marker_range = _find_marker_toc_range(lines)
+    if marker_range is not None:
+        return _remove_toc_range(lines, marker_range, "markers")
 
-    # 1. Check for marker-based TOC
-    start_idx = end_idx = None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == _TOC_MARKER_START and start_idx is None:
-            start_idx = i
-        elif stripped == _TOC_MARKER_END and start_idx is not None:
-            end_idx = i
-            break
-
-    if start_idx is not None and end_idx is not None:
-        s, e = start_idx, end_idx + 1
-        while s > 0 and not lines[s - 1].strip():
-            s -= 1
-        while e < len(lines) and not lines[e].strip():
-            e += 1
-        new_lines = lines[:s] + lines[e:]
-        return "\n".join(new_lines).encode("utf-8"), "markers"
-
-    # 2. Check for heading-based TOC
-    for i, line in enumerate(lines):
-        if _TOC_HEADING_RE.match(line):
-            toc_end = None
-            for j in range(i + 1, len(lines)):
-                if _HEADING_RE_TOC.match(lines[j]) or lines[j].strip() == "---":
-                    toc_end = j
-                    break
-            if toc_end is None:
-                toc_end = len(lines)
-
-            s, e = i, toc_end
-            while s > 0 and not lines[s - 1].strip():
-                s -= 1
-            while e < len(lines) and not lines[e].strip():
-                e += 1
-            new_lines = lines[:s] + lines[e:]
-            return "\n".join(new_lines).encode("utf-8"), "heading"
+    heading_range = _find_heading_toc_range(lines)
+    if heading_range is not None:
+        return _remove_toc_range(lines, heading_range, "heading")
 
     return content, ""
     # @cpt-end:cpt-studio-algo-kit-toc-handling:p1:inst-strip-toc
+
+
+def _expand_toc_range(lines: List[str], start: int, end: int) -> Tuple[int, int]:
+    """Expand a TOC range to absorb surrounding blank lines."""
+    return _expand_blank_line_region(lines, start, end)
+
+
+def _remove_toc_range(lines: List[str], span: Tuple[int, int], toc_format: str) -> Tuple[bytes, str]:
+    """Remove a TOC span from text lines and return encoded content plus format."""
+    start, end = _expand_toc_range(lines, *span)
+    new_lines = lines[:start] + lines[end:]
+    return "\n".join(new_lines).encode("utf-8"), toc_format
+
+
+def _find_marker_toc_range(lines: List[str]) -> Optional[Tuple[int, int]]:
+    """Find a marker-based TOC span, returning [start, end) indexes."""
+    start_idx = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == _TOC_MARKER_START and start_idx is None:
+            start_idx = index
+        elif stripped == _TOC_MARKER_END and start_idx is not None:
+            return start_idx, index + 1
+    return None
+
+
+def _find_heading_toc_range(lines: List[str]) -> Optional[Tuple[int, int]]:
+    """Find a heading-based TOC span, returning [start, end) indexes."""
+    for index, line in enumerate(lines):
+        if not _TOC_HEADING_RE.match(line):
+            continue
+        toc_end = len(lines)
+        for next_index in range(index + 1, len(lines)):
+            if _HEADING_RE_TOC.match(lines[next_index]) or lines[next_index].strip() == "---":
+                toc_end = next_index
+                break
+        return index, toc_end
+    return None
 
 
 def _prompt_toc_regen(rel_path: str) -> str:
@@ -734,8 +751,251 @@ def _read_bound_resource_files(
 # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
 
 
+def _collect_enum_kwargs(
+    content_dirs: Optional[Tuple[str, ...]],
+    content_files: Optional[Tuple[str, ...]],
+) -> Dict[str, Any]:
+    """Build optional include filters for kit file enumeration."""
+    enum_kw: Dict[str, Any] = {}
+    if content_dirs is not None:
+        enum_kw["content_dirs"] = content_dirs
+    if content_files is not None:
+        enum_kw["content_files"] = content_files
+    return enum_kw
+
+
+def _filter_source_files_for_resources(
+    source_files: Dict[str, bytes],
+    strict_resource_files: bool,
+    resource_bindings: Optional[Dict[str, Path]],
+    source_to_resource_id: Optional[Dict[str, str]],
+    resource_info: Optional[Dict[str, Any]],
+) -> Dict[str, bytes]:
+    """Apply strict resource-file filtering when requested."""
+    if not strict_resource_files:
+        return source_files
+    if not resource_bindings or not source_to_resource_id or not resource_info:
+        return {}
+    return {
+        rel_path: content
+        for rel_path, content in source_files.items()
+        if rel_path in source_to_resource_id
+    }
+
+
+def _collect_user_files(
+    target_mapping: Dict[str, Path],
+    user_dir: Path,
+    enum_kw: Dict[str, Any],
+    resource_bindings: Optional[Dict[str, Path]],
+    resource_info: Optional[Dict[str, Any]],
+) -> Dict[str, bytes]:
+    """Enumerate current user files, including bound resources outside user_dir."""
+    user_files: Dict[str, bytes] = {}
+    for src_rel_path, target_path in target_mapping.items():
+        content = _read_file_if_available(target_path)
+        if content is not None:
+            user_files[src_rel_path] = content
+    if resource_bindings and resource_info:
+        _read_bound_resource_files(resource_bindings, resource_info, user_files, target_mapping)
+    mapped_target_paths = {target_path.resolve() for target_path in target_mapping.values()}
+    for rel_path, content in _enumerate_kit_files(user_dir, **enum_kw).items():
+        if rel_path in user_files:
+            continue
+        candidate_target = (user_dir / rel_path).resolve()
+        if candidate_target in mapped_target_paths:
+            continue
+        user_files[rel_path] = content
+        target_mapping.setdefault(rel_path, user_dir / rel_path)
+    return user_files
+
+
+def _strip_toc_maps(
+    source_files: Dict[str, bytes],
+    user_files: Dict[str, bytes],
+) -> Tuple[Dict[str, bytes], Dict[str, bytes], Dict[str, str]]:
+    """Build stripped-content views plus detected TOC formats."""
+    source_stripped: Dict[str, bytes] = {}
+    user_stripped: Dict[str, bytes] = {}
+    toc_formats: Dict[str, str] = {}
+
+    for key, value in source_files.items():
+        stripped, fmt = _strip_toc_for_diff(value)
+        source_stripped[key] = stripped
+        if fmt:
+            toc_formats[key] = fmt
+
+    for key, value in user_files.items():
+        stripped, fmt = _strip_toc_for_diff(value)
+        user_stripped[key] = stripped
+        if fmt and key not in toc_formats:
+            toc_formats[key] = fmt
+    return source_stripped, user_stripped, toc_formats
+
+
+def _resolve_resource_id(
+    rel_path: str,
+    source_to_resource_id: Optional[Dict[str, str]],
+    resource_info: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    """Resolve the owning resource id for a source-relative path."""
+    resource_id = source_to_resource_id.get(rel_path) if source_to_resource_id else None
+    if resource_id is not None or not resource_info:
+        return resource_id
+    for candidate_id, candidate_info in resource_info.items():
+        source_base = getattr(candidate_info, "source_base", "")
+        if rel_path == source_base or rel_path.startswith(f"{source_base}/"):
+            return candidate_id
+    return None
+
+
+def _approval_tokens_for_overwrite(res_id: Optional[str], rel_path: str, dest: Path, user_dir: Path) -> set[str]:
+    """Return all overwrite-approval tokens accepted for a bound file."""
+    approval_tokens = {str(res_id), rel_path, dest.as_posix()}
+    if len(user_dir.parents) >= 3:
+        try:
+            approval_tokens.add(dest.relative_to(user_dir.parents[2]).as_posix())
+        except ValueError:
+            pass
+    return approval_tokens
+
+
+def _decide_noninteractive_action(
+    *,
+    force: bool,
+    auto_approve: bool,
+    interactive: bool,
+    requires_prune_mode: bool,
+    prune_mode: bool,
+    has_prune_approval: bool,
+    requires_overwrite_approval: bool,
+    has_overwrite_approval: bool,
+) -> Optional[str]:
+    """Return a non-interactive action or None when prompting is still required."""
+    if force or auto_approve:
+        if requires_prune_mode:
+            return "accepted" if prune_mode and has_prune_approval else "declined"
+        return "accepted" if not requires_overwrite_approval or has_overwrite_approval else "declined"
+    if not interactive:
+        if requires_prune_mode and prune_mode and has_prune_approval:
+            return "accepted"
+        return "declined"
+    return None
+
+
+def _show_change_context(rel_path: str, change_type: str, old_content: bytes, new_content: bytes) -> None:
+    """Render the diff context shown before interactive review."""
+    if change_type == "added":
+        sys.stderr.write(
+            f"\n    \033[32m+ {rel_path}\033[0m  (new file, "
+            f"{len(new_content)} bytes)\n"
+        )
+        return
+    if change_type == "removed":
+        sys.stderr.write(
+            f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream, "
+            f"{len(old_content)} bytes in your copy)\n"
+        )
+        return
+    sys.stderr.write(f"\n    \033[33m~ {rel_path}\033[0m\n")
+    show_file_diff(rel_path, old_content, new_content, prefix="      ")
+
+
+def _decide_interactive_action(
+    rel_path: str,
+    change_type: str,
+    review_state: Dict[str, bool],
+    old_content: bytes,
+    new_content: bytes,
+    prune_mode: bool,
+    prune_fingerprint: str,
+) -> Tuple[str, bytes]:
+    """Prompt for and resolve an interactive action for a changed file."""
+    if change_type == "removed" and prune_fingerprint:
+        sys.stderr.write(
+            f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream; prune fingerprint {prune_fingerprint})\n"
+        )
+        if prune_mode:
+            decision = _prompt_kit_file(rel_path, review_state)
+            return ("accepted" if decision == "accept" else "declined"), new_content
+        return "declined", new_content
+
+    _show_change_context(rel_path, change_type, old_content, new_content)
+    decision = _prompt_kit_file(rel_path, review_state)
+    if decision == "accept":
+        return "accepted", new_content
+    if decision == "decline":
+        return "declined", new_content
+    if decision == "modify":
+        edited = _open_editor_for_file(rel_path, old_content, new_content)
+        if edited is not None:
+            return "modified", edited
+    return "declined", new_content
+
+
+def _record_decline_metadata(
+    entry: Dict[str, str],
+    *,
+    requires_overwrite_approval: bool,
+    interactive: bool,
+    has_overwrite_approval: bool,
+    res_id: Optional[str],
+    dest: Path,
+    requires_prune_mode: bool,
+    prune_fingerprint: str,
+) -> None:
+    """Attach decline metadata used by callers to explain skipped updates."""
+    if requires_overwrite_approval and entry["action"] == "declined" and not interactive and not has_overwrite_approval:
+        entry["reason"] = (
+            f"requires --approve-overwrite {res_id} or --approve-overwrite {dest.as_posix()}"
+        )
+    if requires_prune_mode and entry["action"] == "declined":
+        entry["reason"] = "resource removed upstream; explicit prune mode required"
+        entry["prune_fingerprint"] = prune_fingerprint
+    elif requires_prune_mode:
+        entry["prune_fingerprint"] = prune_fingerprint
+
+
+def _apply_file_change(
+    change_type: str,
+    action: str,
+    dest: Path,
+    dry_run: bool,
+    new_content: bytes,
+    raw_new_content: bytes,
+) -> Tuple[bool, bool]:
+    """Apply a file mutation and report whether content was written."""
+    wrote_file = False
+    wrote_raw = False
+    if change_type in {"added", "modified"} and action in {"accepted", "modified"} and not dry_run:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        write_data = new_content if action == "modified" else raw_new_content
+        dest.write_bytes(write_data)
+        wrote_file = True
+        wrote_raw = action == "accepted"
+    elif change_type == "removed" and action == "accepted" and not dry_run and dest.is_file():
+        dest.unlink()
+    return wrote_file, wrote_raw
+
+
+def _append_result_entry(
+    change_type: str,
+    entry: Dict[str, str],
+    result_added: List[Dict[str, str]],
+    result_removed: List[Dict[str, str]],
+    result_modified: List[Dict[str, str]],
+) -> None:
+    """Store a per-file result entry in the appropriate result bucket."""
+    if change_type == "added":
+        result_added.append(entry)
+    elif change_type == "removed":
+        result_removed.append(entry)
+    else:
+        result_modified.append(entry)
+
+
 # @cpt-algo:cpt-studio-algo-kit-file-update:p1
-def file_level_kit_update(
+def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     source_dir: Path,
     user_dir: Path,
     *,
@@ -785,22 +1045,14 @@ def file_level_kit_update(
         }
     """
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
-    enum_kw: Dict[str, Any] = {}
-    if content_dirs is not None:
-        enum_kw["content_dirs"] = content_dirs
-    if content_files is not None:
-        enum_kw["content_files"] = content_files
-
-    source_files = _enumerate_kit_files(source_dir, **enum_kw)
-    if strict_resource_files:
-        if not resource_bindings or not source_to_resource_id or not resource_info:
-            source_files = {}
-        else:
-            source_files = {
-                rel_path: content
-                for rel_path, content in source_files.items()
-                if rel_path in source_to_resource_id
-            }
+    enum_kw = _collect_enum_kwargs(content_dirs, content_files)
+    source_files = _filter_source_files_for_resources(
+        _enumerate_kit_files(source_dir, **enum_kw),
+        strict_resource_files,
+        resource_bindings,
+        source_to_resource_id,
+        resource_info,
+    )
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
@@ -815,48 +1067,19 @@ def file_level_kit_update(
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
     # Enumerate user files from target paths (may be outside user_dir)
-    user_files: Dict[str, bytes] = {}
-    # First, read files at bound target paths (for files that exist in source)
-    for src_rel_path, target_path in target_mapping.items():
-        content = _read_file_if_available(target_path)
-        if content is not None:
-            user_files[src_rel_path] = content
-    # For directory resources and file resources with directory bindings,
-    # enumerate existing files to detect files in user's bound path
-    if resource_bindings and resource_info:
-        _read_bound_resource_files(resource_bindings, resource_info, user_files, target_mapping)
-    mapped_target_paths = {target_path.resolve() for target_path in target_mapping.values()}
-    # Also enumerate user_dir to detect removed files (files in user but not in source)
-    user_dir_files = _enumerate_kit_files(user_dir, **enum_kw)
-    for rel_path, content in user_dir_files.items():
-        if rel_path not in user_files:
-            candidate_target = (user_dir / rel_path).resolve()
-            if candidate_target in mapped_target_paths:
-                continue
-            user_files[rel_path] = content
-            # Add to target_mapping for deletion
-            if rel_path not in target_mapping:
-                target_mapping[rel_path] = user_dir / rel_path
+    user_files = _collect_user_files(
+        target_mapping,
+        user_dir,
+        enum_kw,
+        resource_bindings,
+        resource_info,
+    )
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-strip-toc
     # Strip TOC from both sides so diffs only show content changes.
     # TOC is regenerated post-write if the user agrees.
-    source_stripped: Dict[str, bytes] = {}
-    user_stripped: Dict[str, bytes] = {}
-    toc_formats: Dict[str, str] = {}
-
-    for k, v in source_files.items():
-        stripped, fmt = _strip_toc_for_diff(v)
-        source_stripped[k] = stripped
-        if fmt:
-            toc_formats[k] = fmt
-
-    for k, v in user_files.items():
-        stripped, fmt = _strip_toc_for_diff(v)
-        user_stripped[k] = stripped
-        if fmt and k not in toc_formats:
-            toc_formats[k] = fmt
+    source_stripped, user_stripped, toc_formats = _strip_toc_maps(source_files, user_files)
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-strip-toc
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-classify-changes
@@ -910,13 +1133,7 @@ def file_level_kit_update(
         raw_new_content = source_files.get(rel_path, b"")
         toc_fmt = toc_formats.get(rel_path, "")
         dest = target_mapping.get(rel_path, user_dir / rel_path)
-        res_id = source_to_resource_id.get(rel_path) if source_to_resource_id else None
-        if res_id is None and resource_info:
-            for candidate_id, candidate_info in resource_info.items():
-                source_base = getattr(candidate_info, "source_base", "")
-                if rel_path == source_base or rel_path.startswith(f"{source_base}/"):
-                    res_id = candidate_id
-                    break
+        res_id = _resolve_resource_id(rel_path, source_to_resource_id, resource_info)
         res_info = resource_info.get(res_id) if res_id and resource_info else None
         requires_overwrite_approval = (
             change_type == "modified"
@@ -934,120 +1151,57 @@ def file_level_kit_update(
         has_prune_approval = prune_fingerprint in prune_approvals
         has_overwrite_approval = False
         if requires_overwrite_approval:
-            approval_tokens = {
-                str(res_id),
-                rel_path,
-                dest.as_posix(),
-            }
-            # Manifest copy-mode updates commonly surface binding paths relative
-            # to the studio root (for example `config/kits/<slug>/...`).
-            # Accept those aliases in addition to the absolute resolved path.
-            if len(user_dir.parents) >= 3:
-                try:
-                    approval_tokens.add(dest.relative_to(user_dir.parents[2]).as_posix())
-                except ValueError:
-                    pass
+            approval_tokens = _approval_tokens_for_overwrite(res_id, rel_path, dest, user_dir)
             has_overwrite_approval = bool(overwrite_approvals.intersection(approval_tokens))
 
-        if force or auto_approve:
-            if requires_prune_mode:
-                action = "accepted" if prune_mode and has_prune_approval else "declined"
-            else:
-                action = (
-                    "accepted"
-                    if not requires_overwrite_approval or has_overwrite_approval
-                    else "declined"
-                )
-        elif not interactive:
-            action = (
-                "accepted"
-                if requires_prune_mode and prune_mode and has_prune_approval
-                else "declined"
+        action = _decide_noninteractive_action(
+            force=force,
+            auto_approve=auto_approve,
+            interactive=interactive,
+            requires_prune_mode=requires_prune_mode,
+            prune_mode=prune_mode,
+            has_prune_approval=has_prune_approval,
+            requires_overwrite_approval=requires_overwrite_approval,
+            has_overwrite_approval=has_overwrite_approval,
+        )
+        if action is None:
+            action, new_content = _decide_interactive_action(
+                rel_path,
+                change_type,
+                review_state,
+                old_content,
+                new_content,
+                prune_mode if requires_prune_mode else False,
+                prune_fingerprint if requires_prune_mode else "",
             )
-        elif requires_prune_mode:
-            # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-prune-path-prompts
-            sys.stderr.write(
-                f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream; prune fingerprint {prune_fingerprint})\n"
-            )
-            if prune_mode:
-                decision = _prompt_kit_file(rel_path, review_state)
-                action = "accepted" if decision == "accept" else "declined"
-            else:
-                action = "declined"
-            # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-prune-path-prompts
-        else:
-            # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-show-change-context
-            if change_type == "added":
-                sys.stderr.write(
-                    f"\n    \033[32m+ {rel_path}\033[0m  (new file, "
-                    f"{len(new_content)} bytes)\n"
-                )
-            elif change_type == "removed":
-                sys.stderr.write(
-                    f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream, "
-                    f"{len(old_content)} bytes in your copy)\n"
-                )
-            else:
-                sys.stderr.write(f"\n    \033[33m~ {rel_path}\033[0m\n")
-                show_file_diff(rel_path, old_content, new_content, prefix="      ")
-            # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-show-change-context
-
-            # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-prompt-decision
-            decision = _prompt_kit_file(rel_path, review_state)
-
-            if decision == "accept":
-                action = "accepted"
-            elif decision == "decline":
-                action = "declined"
-            # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-editor-merge
-            elif decision == "modify":
-                edited = _open_editor_for_file(rel_path, old_content, new_content)
-                if edited is not None:
-                    new_content = edited
-                    action = "modified"
-                else:
-                    action = "declined"
-            # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-editor-merge
-            else:
-                action = "declined"
-            # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-prompt-decision
 
         # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-apply-changes
         entry = {"path": rel_path, "action": action}
-        wrote_file = False
-        wrote_raw = False
-        if requires_overwrite_approval and action == "declined" and not interactive and not has_overwrite_approval:
-            entry["reason"] = (
-                f"requires --approve-overwrite {res_id} or --approve-overwrite {dest.as_posix()}"
-            )
-        if requires_prune_mode and action == "declined":
-            entry["reason"] = "resource removed upstream; explicit prune mode required"
-            entry["prune_fingerprint"] = prune_fingerprint
-        elif requires_prune_mode:
-            entry["prune_fingerprint"] = prune_fingerprint
-
-        if change_type == "added":
-            if action in ("accepted", "modified") and not dry_run:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                write_data = new_content if action == "modified" else raw_new_content
-                dest.write_bytes(write_data)
-                wrote_file = True
-                wrote_raw = action == "accepted"
-            result_added.append(entry)
-
-        elif change_type == "removed":
-            if action in ("accepted",) and not dry_run and dest.is_file():
-                dest.unlink()
-            result_removed.append(entry)
-
-        elif change_type == "modified":
-            if action in ("accepted", "modified") and not dry_run:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                write_data = new_content if action == "modified" else raw_new_content
-                dest.write_bytes(write_data)
-                wrote_file = True
-                wrote_raw = action == "accepted"
-            result_modified.append(entry)
+        _record_decline_metadata(
+            entry,
+            requires_overwrite_approval=requires_overwrite_approval,
+            interactive=interactive,
+            has_overwrite_approval=has_overwrite_approval,
+            res_id=res_id,
+            dest=dest,
+            requires_prune_mode=requires_prune_mode,
+            prune_fingerprint=prune_fingerprint,
+        )
+        wrote_file, wrote_raw = _apply_file_change(
+            change_type,
+            action,
+            dest,
+            dry_run,
+            new_content,
+            raw_new_content,
+        )
+        _append_result_entry(
+            change_type,
+            entry,
+            result_added,
+            result_removed,
+            result_modified,
+        )
         # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-apply-changes
 
         # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-toc-regen

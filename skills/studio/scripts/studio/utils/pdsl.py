@@ -109,6 +109,15 @@ class PdslSource:
     text: str
 
 
+@dataclass
+class _BlockValidationState:
+    """Mutable validation state while scanning a PDSL block."""
+
+    section: Optional[str] = None
+    menu_expected: Optional[int] = None
+    in_menu: bool = False
+
+
 FENCE_RE = re.compile(r"^```(?P<lang>[A-Za-z0-9_-]+)?\s*$")
 UNIT_OR_MENU_RE = re.compile(r"^(UNIT|MENU)\s+(?P<name>[A-Za-z][A-Za-z0-9_-]*)\b")
 PATTERN_DEF_RE = re.compile(r"^\s{2}(?P<name>[A-Za-z][A-Za-z0-9_-]*)\s*:\s*/")
@@ -368,88 +377,164 @@ def _validate_block(block: PdslBlock) -> List[PdslFinding]:
     findings: List[PdslFinding] = []
     names: Dict[Tuple[str, str], int] = {}
     local_patterns: Dict[str, int] = {}
-    section: Optional[str] = None
-    menu_expected: Optional[int] = None
-    in_menu = False
+    state = _BlockValidationState()
 
     for offset, raw_line in enumerate(block.text.splitlines(), start=0):
         line_no = block.line + offset
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("//"):
             continue
-        indent_len = len(raw_line) - len(raw_line.lstrip(" "))
 
-        unit_menu = UNIT_OR_MENU_RE.match(stripped)
-        if unit_menu:
-            kind = unit_menu.group(1)
-            name = unit_menu.group("name")
-            key = (kind, name)
-            if key in names:
-                findings.append(_finding(
-                    block, "PDSL300", line_no, raw_line,
-                    f"Duplicate {kind} name `{name}` in source",
-                    hint=f"Rename this {kind} or remove the earlier duplicate at line {names[key]}.",
-                ))
-            else:
-                names[key] = line_no
-            section = None
-            menu_expected = None
-            in_menu = kind == "MENU"
+        if _handle_unit_or_menu_line(
+            block,
+            line_no,
+            raw_line,
+            stripped,
+            names,
+            findings,
+            state,
+        ):
             continue
 
-        section_head = SECTION_HEAD_RE.match(stripped)
-        if section_head:
-            section_name = section_head.group("section")
-            if section_name not in SECTION_HEADERS:
-                # Some prompt-adjacent DSLs and explanatory blocks use
-                # ALL-CAPS labels inside pdsl fences. They are not executable
-                # PDSL sections unless the keyword is known by the spec.
-                continue
-            if indent_len > 0 and not (in_menu and section_name in {"TITLE", "OPTIONS", "INVALID"}):
-                continue
-            section = section_name
-            menu_expected = 1 if in_menu and section == "OPTIONS" else None
+        if _handle_section_header_line(stripped, raw_line, state):
             continue
 
-        if section == "PATTERNS":
-            pattern_def = PATTERN_DEF_RE.match(raw_line)
-            if pattern_def:
-                pattern_name = pattern_def.group("name")
-                if pattern_name in local_patterns:
-                    findings.append(_finding(
-                        block, "PDSL300", line_no, raw_line,
-                        f"Duplicate PATTERNS name `{pattern_name}`",
-                        hint=f"Keep one definition for `{pattern_name}`.",
-                    ))
-                else:
-                    local_patterns[pattern_name] = line_no
+        if _handle_pattern_line(
+            block,
+            line_no,
+            raw_line,
+            local_patterns,
+            findings,
+            state.section,
+        ):
             continue
 
-        findings.extend(_validate_section_item(block, section, menu_expected, line_no, raw_line))
-        if section == "OPTIONS" and MENU_OPTION_RE.match(stripped) and menu_expected is not None:
-            number = int(MENU_OPTION_RE.match(stripped).group("number"))  # type: ignore[union-attr]
-            if number == menu_expected:
-                menu_expected += 1
+        findings.extend(_validate_section_item(block, state.section, state.menu_expected, line_no, raw_line))
+        _advance_menu_option_counter(stripped, state)
 
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-run-local-semantics
-        for match in MATCHES_RE.finditer(raw_line):
-            pattern_name = match.group("name")
-            if pattern_name not in local_patterns:
-                findings.append(PdslFinding(
-                    rule_id="PDSL500",
-                    severity="error",
-                    message=f"Undefined local matches() pattern `{pattern_name}`",
-                    source_path=block.source,
-                    block_index=block.block_index,
-                    line=line_no,
-                    column=match.start("name") + 1,
-                    end_line=line_no,
-                    end_column=match.end("name") + 1,
-                    hint=f"Declare `{pattern_name}` in a local PATTERNS block.",
-                    context=raw_line,
-                ))
+        _append_missing_match_pattern_findings(
+            block,
+            line_no,
+            raw_line,
+            local_patterns,
+            findings,
+        )
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-run-local-semantics
     return findings
+
+
+def _handle_unit_or_menu_line(
+    block: PdslBlock,
+    line_no: int,
+    raw_line: str,
+    stripped: str,
+    names: Dict[Tuple[str, str], int],
+    findings: List[PdslFinding],
+    state: _BlockValidationState,
+) -> bool:
+    """Process UNIT/MENU headers and update parser state."""
+    unit_menu = UNIT_OR_MENU_RE.match(stripped)
+    if not unit_menu:
+        return False
+    kind = unit_menu.group(1)
+    name = unit_menu.group("name")
+    key = (kind, name)
+    if key in names:
+        findings.append(_finding(
+            block, "PDSL300", line_no, raw_line,
+            f"Duplicate {kind} name `{name}` in source",
+            hint=f"Rename this {kind} or remove the earlier duplicate at line {names[key]}.",
+        ))
+    else:
+        names[key] = line_no
+    state.section = None
+    state.menu_expected = None
+    state.in_menu = kind == "MENU"
+    return True
+
+
+def _handle_section_header_line(
+    stripped: str,
+    raw_line: str,
+    state: _BlockValidationState,
+) -> bool:
+    """Process section headers and update parser state."""
+    section_head = SECTION_HEAD_RE.match(stripped)
+    if not section_head:
+        return False
+    section_name = section_head.group("section")
+    if section_name not in SECTION_HEADERS:
+        return True
+    indent_len = len(raw_line) - len(raw_line.lstrip(" "))
+    if indent_len > 0 and not (state.in_menu and section_name in {"TITLE", "OPTIONS", "INVALID"}):
+        return True
+    state.section = section_name
+    state.menu_expected = 1 if state.in_menu and section_name == "OPTIONS" else None
+    return True
+
+
+def _handle_pattern_line(
+    block: PdslBlock,
+    line_no: int,
+    raw_line: str,
+    local_patterns: Dict[str, int],
+    findings: List[PdslFinding],
+    section: Optional[str],
+) -> bool:
+    """Process PATTERNS entries and collect duplicate-definition findings."""
+    if section != "PATTERNS":
+        return False
+    pattern_def = PATTERN_DEF_RE.match(raw_line)
+    if pattern_def:
+        pattern_name = pattern_def.group("name")
+        if pattern_name in local_patterns:
+            findings.append(_finding(
+                block, "PDSL300", line_no, raw_line,
+                f"Duplicate PATTERNS name `{pattern_name}`",
+                hint=f"Keep one definition for `{pattern_name}`.",
+            ))
+        else:
+            local_patterns[pattern_name] = line_no
+    return True
+
+
+def _advance_menu_option_counter(
+    stripped: str,
+    state: _BlockValidationState,
+) -> None:
+    """Advance expected MENU option numbering when a valid option is seen."""
+    option = MENU_OPTION_RE.match(stripped)
+    if state.section == "OPTIONS" and option and state.menu_expected is not None:
+        number = int(option.group("number"))
+        if number == state.menu_expected:
+            state.menu_expected += 1
+
+
+def _append_missing_match_pattern_findings(
+    block: PdslBlock,
+    line_no: int,
+    raw_line: str,
+    local_patterns: Dict[str, int],
+    findings: List[PdslFinding],
+) -> None:
+    """Append findings for matches() references to undefined local patterns."""
+    for match in MATCHES_RE.finditer(raw_line):
+        pattern_name = match.group("name")
+        if pattern_name not in local_patterns:
+            findings.append(PdslFinding(
+                rule_id="PDSL500",
+                severity="error",
+                message=f"Undefined local matches() pattern `{pattern_name}`",
+                source_path=block.source,
+                block_index=block.block_index,
+                line=line_no,
+                column=match.start("name") + 1,
+                end_line=line_no,
+                end_column=match.end("name") + 1,
+                hint=f"Declare `{pattern_name}` in a local PATTERNS block.",
+                context=raw_line,
+            ))
 
 
 def _validate_section_item(
@@ -460,40 +545,62 @@ def _validate_section_item(
     raw_line: str,
 ) -> List[PdslFinding]:
     stripped = raw_line.strip()
-    if not stripped.startswith("- "):
-        if section == "OPTIONS" and menu_expected is not None and re.match(r"^\d+\b", stripped):
-            pass
-        else:
-            return []
+    if not _is_valid_section_item_start(stripped, section, menu_expected):
+        return []
     indent_len = len(raw_line) - len(raw_line.lstrip(" "))
     if indent_len > 2 and not (section == "OPTIONS" and menu_expected is not None):
         return []
-    if section == "STATE":
-        return _validate_starter(block, STATE_KEYWORDS, "STATE", line_no, raw_line)
-    if section == "WHEN":
-        return _validate_starter(block, WHEN_KEYWORDS, "WHEN", line_no, raw_line)
-    if section == "DO":
-        return _validate_starter(block, DO_KEYWORDS, "DO", line_no, raw_line)
-    if section in {"RULES", "INVARIANTS"}:
-        return _validate_starter(block, RULE_KEYWORDS, section, line_no, raw_line)
+    starter_rules = {
+        "STATE": (STATE_KEYWORDS, "STATE"),
+        "WHEN": (WHEN_KEYWORDS, "WHEN"),
+        "DO": (DO_KEYWORDS, "DO"),
+        "RULES": (RULE_KEYWORDS, "RULES"),
+        "INVARIANTS": (RULE_KEYWORDS, "INVARIANTS"),
+    }
+    if section in starter_rules:
+        allowed, section_name = starter_rules[section]
+        return _validate_starter(block, allowed, section_name, line_no, raw_line)
     if section == "OPTIONS":
-        if menu_expected is None:
-            return []
-        option = MENU_OPTION_RE.match(stripped)
-        if not option:
-            return [_finding(
-                block, "PDSL400", line_no, raw_line,
-                "MENU OPTIONS item must start with a decimal number and contain ->",
-                hint="Use `1 label -> ACTION ...` format.",
-            )]
-        number = int(option.group("number"))
-        if menu_expected is not None and number != menu_expected:
-            return [_finding(
-                block, "PDSL400", line_no, raw_line,
-                f"MENU option number must be {menu_expected}, got {number}",
-                hint="Number menu options consecutively from 1.",
-            )]
+        return _validate_menu_option_item(block, menu_expected, line_no, raw_line, stripped)
     return []
+
+
+def _validate_menu_option_item(
+    block: PdslBlock,
+    menu_expected: Optional[int],
+    line_no: int,
+    raw_line: str,
+    stripped: str,
+) -> List[PdslFinding]:
+    """Validate one MENU OPTIONS line."""
+    if menu_expected is None:
+        return []
+    option = MENU_OPTION_RE.match(stripped)
+    if not option:
+        return [_finding(
+            block, "PDSL400", line_no, raw_line,
+            "MENU OPTIONS item must start with a decimal number and contain ->",
+            hint="Use `1 label -> ACTION ...` format.",
+        )]
+    number = int(option.group("number"))
+    if number != menu_expected:
+        return [_finding(
+            block, "PDSL400", line_no, raw_line,
+            f"MENU option number must be {menu_expected}, got {number}",
+            hint="Number menu options consecutively from 1.",
+        )]
+    return []
+
+
+def _is_valid_section_item_start(
+    stripped: str,
+    section: Optional[str],
+    menu_expected: Optional[int],
+) -> bool:
+    """Return whether a line is eligible for section-item validation."""
+    if stripped.startswith("- "):
+        return True
+    return bool(section == "OPTIONS" and menu_expected is not None and re.match(r"^\d+\b", stripped))
 
 
 def _validate_starter(

@@ -20,6 +20,11 @@ from . import toml_utils
 _MARKER_START = "<!-- @cf:root-agents -->"
 _CORE_SUBDIR = ".core"
 _GEN_SUBDIR = ".gen"
+_ADAPTER_SEARCH_SKIP_DIRS = {
+    ".git", "node_modules", "venv", "__pycache__", ".pytest_cache",
+    "target", "build", "dist", ".idea", ".vscode", "vendor",
+    "coverage", ".tox", ".mypy_cache", ".eggs",
+}
 
 def core_subpath(studio_root: Path, *parts: str) -> Path:
     """Resolve a subpath within a studio root, checking .core/ first.
@@ -93,14 +98,8 @@ def find_project_root(start: Path) -> Optional[Path]:
 # @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-read-var
 def _read_studio_var(project_root: Path) -> Optional[str]:
     """Read ``cf-path`` variable from root AGENTS.md TOML block."""
-    agents_file = project_root / "AGENTS.md"
-    if not agents_file.is_file():
-        return None
-    try:
-        content = agents_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    if _MARKER_START not in content:
+    content = read_root_agents_marked_text(project_root)
+    if content is None:
         return None
     data = toml_utils.parse_toml_from_markdown(content)
     # Canonical key is `cf-studio-path`; `cf-path` is a legacy alias from
@@ -175,13 +174,6 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
             return adapter_dir
         return None
 
-    # PRIORITY 2: Recursive search (only if no TOML variable found)
-    skip_dirs = {
-        ".git", "node_modules", "venv", "__pycache__", ".pytest_cache",
-        "target", "build", "dist", ".idea", ".vscode", "vendor",
-        "coverage", ".tox", ".mypy_cache", ".eggs"
-    }
-
     def is_adapter_directory(path: Path) -> bool:
         """Check if directory looks like a studio config directory."""
         agents_file = path / "AGENTS.md"
@@ -194,19 +186,7 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
 
             # STRONGEST indicator: Extends Constructor Studio AGENTS.md
             # Example: **Extends**: `../.cf/AGENTS.md`
-            if "**Extends**:" in content and "AGENTS.md" in content:
-                # If agent provided studio_root, validate the Extends path
-                if studio_root is not None:
-                    # Extract Extends path from content
-                    extends_match = re.search(r'\*\*Extends\*\*:\s*`([^`]+)`', content)
-                    if extends_match:
-                        extends_path = extends_match.group(1)
-                        # Resolve relative to studio directory
-                        resolved = (path / extends_path).resolve()
-                        # Check if it points to studio_root
-                        if resolved.parent == studio_root or (studio_root / "AGENTS.md") == resolved:
-                            return True
-                # Even without studio_root validation, Extends is strong signal
+            if _has_valid_extends_marker(path, content, studio_root):
                 return True
 
             # Look for studio-specific markers in content
@@ -220,21 +200,13 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
             ]
             content_lower = content.lower()
             for marker in adapter_markers:
-                if marker.lower() in content_lower:
-                    # Double-check with rules/ or specs/ directory if possible
-                    if (path / "config" / "rules").is_dir() or (path / "rules").is_dir() or (path / "specs").is_dir():
-                        return True
-                    # Or check for rule/spec references in content
-                    if "rule" in content_lower or "spec" in content_lower:
-                        return True
+                if marker.lower() in content_lower and _has_adapter_markers(path, content_lower):
+                    return True
         except (OSError, UnicodeDecodeError):
             pass  # Expected: search continues if file read fails
 
         # Fallback: verify it has rules/ or specs/ directory (strong structural indicator)
-        if (path / "config" / "rules").is_dir() or (path / "rules").is_dir() or (path / "specs").is_dir():
-            return True
-
-        return False
+        return _has_adapter_structure(path)
 
     def search_recursive(root: Path, max_depth: int = 5, current_depth: int = 0) -> Optional[Path]:
         """Recursively search for studio directory."""
@@ -248,14 +220,14 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
 
         # First pass: check current level directories
         for entry in entries:
-            if not entry.is_dir() or entry.name in skip_dirs:
+            if not entry.is_dir() or entry.name in _ADAPTER_SEARCH_SKIP_DIRS:
                 continue
             if is_adapter_directory(entry):
                 return entry
 
         # Second pass: recurse into subdirectories (breadth-first preference)
         for entry in entries:
-            if not entry.is_dir() or entry.name in skip_dirs:
+            if not entry.is_dir() or entry.name in _ADAPTER_SEARCH_SKIP_DIRS:
                 continue
             result = search_recursive(entry, max_depth, current_depth + 1)
             if result is not None:
@@ -265,6 +237,36 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
 
     return search_recursive(project_root)
 # @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-find-dir
+
+
+def _has_adapter_structure(path: Path) -> bool:
+    """Return whether the directory has the expected adapter layout."""
+    return (
+        (path / "config" / "rules").is_dir()
+        or (path / "rules").is_dir()
+        or (path / "specs").is_dir()
+    )
+
+
+def _has_valid_extends_marker(path: Path, content: str, studio_root: Optional[Path]) -> bool:
+    """Return whether AGENTS.md contains a credible Constructor Studio extends marker."""
+    if "**Extends**:" not in content or "AGENTS.md" not in content:
+        return False
+    if studio_root is None:
+        return True
+    extends_match = re.search(r'\*\*Extends\*\*:\s*`([^`]+)`', content)
+    if extends_match is None:
+        return True
+    extends_path = extends_match.group(1)
+    resolved = (path / extends_path).resolve()
+    return resolved.parent == studio_root or (studio_root / "AGENTS.md") == resolved
+
+
+def _has_adapter_markers(path: Path, content_lower: str) -> bool:
+    """Return whether content and structure jointly suggest an adapter directory."""
+    if _has_adapter_structure(path):
+        return True
+    return "rule" in content_lower or "spec" in content_lower
 
 # @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-config
 def load_studio_config(adapter_dir: Path) -> Dict[str, object]:
@@ -396,4 +398,13 @@ def load_text(path: Path) -> Tuple[str, Optional[str]]:
         return path.read_text(encoding="utf-8"), None
     except (OSError, UnicodeDecodeError) as e:
         return "", f"Failed to read {path}: {e}"
+
+
+def read_root_agents_marked_text(project_root: Path) -> Optional[str]:
+    """Return root ``AGENTS.md`` text only when it includes the managed marker."""
+    agents_file = project_root / "AGENTS.md"
+    content, err = load_text(agents_file)
+    if err or _MARKER_START not in content:
+        return None
+    return content
 # @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-helpers

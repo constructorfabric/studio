@@ -11,6 +11,71 @@ from typing import Dict, List, Sequence, Tuple
 from .model import Edge, Node, Ref, phantom_id
 
 
+def _definition_maps(nodes: Sequence[Node]) -> Tuple[Dict[str, Node], Dict[str, Node]]:
+    def_map: Dict[str, Node] = {}
+    base_def_map: Dict[str, Node] = {}
+    for node in nodes:
+        if node.kind != "markdown":
+            continue
+        for definition in node.cpt_defs:
+            def_map.setdefault(definition, node)
+            base_def_map.setdefault(definition.split(":")[0], node)
+    return def_map, base_def_map
+
+
+def _resolve_cpt_target(src: Node, use, def_map: Dict[str, Node], base_def_map: Dict[str, Node], phantoms: Dict[str, Node]):
+    target = def_map.get(use.cpt_id) or base_def_map.get(use.cpt_id.split(":")[0])
+    if target is None:
+        phantom = phantoms.get(use.cpt_id)
+        if phantom is None:
+            phantom = Node(
+                id=phantom_id(use.cpt_id),
+                rel_path=None,
+                source=None,
+                kind="phantom-cpt",
+                language=None,
+                category="_undefined",
+                category_origin="phantom",
+                content=None,
+                loc=0,
+                cpt_defs=[],
+                cpt_uses=[],
+            )
+            phantoms[use.cpt_id] = phantom
+        return phantom.id, True, False
+    if target.id == src.id:
+        return None, False, False
+    return target.id, False, src.source != target.source
+
+
+def _append_cpt_edge(edges: List[Edge], by_key: Dict[Tuple[str, str, str], Edge], edge_id: int, src: Node, use, to_id: str, dangling: bool, cross_repo: bool) -> int:
+    edge_type = "cpt-doc" if src.kind == "markdown" else "cpt-impl"
+    key = (src.id, to_id, use.cpt_id)
+    ref = Ref(
+        cpt_id=use.cpt_id,
+        line=use.line,
+        snippet=use.snippet,
+        def_line=None,
+        def_snippet=None,
+    )
+    existing = by_key.get(key)
+    if existing is not None:
+        existing.refs.append(ref)
+        return edge_id
+    new_edge = Edge(
+        id=f"cpt-{edge_id}",
+        from_id=src.id,
+        to_id=to_id,
+        type=edge_type,
+        refs=[ref],
+        cross_repo=cross_repo,
+        dangling=dangling,
+    )
+    edges.append(new_edge)
+    by_key[key] = new_edge
+    return edge_id + 1
+
+
 def build_cpt_edges(nodes: Sequence[Node]) -> Tuple[List[Edge], List[Node]]:
     """Return (edges, phantom_nodes).
 
@@ -33,15 +98,7 @@ def build_cpt_edges(nodes: Sequence[Node]) -> Tuple[List[Edge], List[Node]]:
     # Phase-qualified takes priority; base-id serves as fallback for md-refs that
     # omit the phase annotation.
     # @cpt-begin:cpt-studio-algo-map-cpt-edges:p1:inst-build-cpt-edges
-    def_map: Dict[str, Node] = {}
-    base_def_map: Dict[str, Node] = {}
-    for n in nodes:
-        if n.kind != "markdown":
-            continue
-        for d in n.cpt_defs:
-            def_map.setdefault(d, n)
-            base = d.split(":")[0]
-            base_def_map.setdefault(base, n)
+    def_map, base_def_map = _definition_maps(nodes)
 
     phantoms: Dict[str, Node] = {}
     edges: List[Edge] = []
@@ -55,60 +112,13 @@ def build_cpt_edges(nodes: Sequence[Node]) -> Tuple[List[Edge], List[Node]]:
         for use in src.cpt_uses:
             if use.marker_kind == "md-def":
                 continue  # definitions are not uses
-            target = def_map.get(use.cpt_id) or base_def_map.get(use.cpt_id.split(":")[0])
-            if target is None:
-                # phantom
-                p = phantoms.get(use.cpt_id)
-                if p is None:
-                    p = Node(
-                        id=phantom_id(use.cpt_id),
-                        rel_path=None,
-                        source=None,
-                        kind="phantom-cpt",
-                        language=None,
-                        category="_undefined",
-                        category_origin="phantom",
-                        content=None,
-                        loc=0,
-                        cpt_defs=[],
-                        cpt_uses=[],
-                    )
-                    phantoms[use.cpt_id] = p
-                to_id = p.id
-                dangling = True
-                cross_repo = False
-            else:
-                if target.id == src.id:
-                    continue  # self
-                to_id = target.id
-                dangling = False
-                cross_repo = src.source != target.source
-
-            edge_type = "cpt-doc" if src.kind == "markdown" else "cpt-impl"
-            key = (src.id, to_id, use.cpt_id)
-            ref = Ref(
-                cpt_id=use.cpt_id,
-                line=use.line,
-                snippet=use.snippet,
-                def_line=None,  # enrich.py fills these in Task 9
-                def_snippet=None,
+            resolved = _resolve_cpt_target(src, use, def_map, base_def_map, phantoms)
+            if resolved[0] is None:
+                continue
+            to_id, dangling, cross_repo = resolved
+            edge_id = _append_cpt_edge(
+                edges, by_key, edge_id, src, use, to_id, dangling, cross_repo
             )
-            existing = by_key.get(key)
-            if existing is None:
-                new_edge = Edge(
-                    id=f"cpt-{edge_id}",
-                    from_id=src.id,
-                    to_id=to_id,
-                    type=edge_type,
-                    refs=[ref],
-                    cross_repo=cross_repo,
-                    dangling=dangling,
-                )
-                edges.append(new_edge)
-                by_key[key] = new_edge
-                edge_id += 1
-            else:
-                existing.refs.append(ref)
     # @cpt-end:cpt-studio-algo-map-cpt-edges:p1:inst-iterate-uses
     return edges, list(phantoms.values())
     # @cpt-end:cpt-studio-algo-map-cpt-edges:p1:inst-build-cpt-edges

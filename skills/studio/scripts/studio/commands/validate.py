@@ -3,6 +3,7 @@
 # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-imports
 import argparse
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -13,6 +14,36 @@ from ..utils.document import scan_cdsl_instructions, scan_cpt_ids
 from ..utils.fixing import enrich_issues
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-imports
+
+
+@dataclass
+class _ValidateSession:
+    """Mutable validation session state shared across helper phases."""
+
+    args: argparse.Namespace
+    ctx: object
+    ws_ctx: Optional[object]
+    meta: object
+    project_root: Path
+    registered_systems: Set[str]
+    known_kinds: Set[str]
+    ctx_errors: List[Dict[str, object]]
+    artifacts_to_validate: List[Tuple[Path, Path, str, str, str]] = field(default_factory=list)
+
+
+@dataclass
+class _ValidateResults:
+    """Aggregated validation outputs shared across phases."""
+
+    all_errors: List[Dict[str, object]] = field(default_factory=list)
+    all_warnings: List[Dict[str, object]] = field(default_factory=list)
+    artifact_reports: List[Dict[str, object]] = field(default_factory=list)
+    artifact_report_by_path: Dict[str, Dict[str, object]] = field(default_factory=dict)
+    artifact_records: List[ArtifactRecord] = field(default_factory=list)
+    code_files_scanned: List[Dict[str, object]] = field(default_factory=list)
+    parsed_code_files_full: List[CodeFile] = field(default_factory=list)
+    code_ids_found: Set[str] = field(default_factory=set)
+    to_code_ids: Set[str] = field(default_factory=set)
 
 # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-validate-source-flag
 def _resolve_source_context(source_name: str, ws_ctx: Optional["WorkspaceContext"]) -> Optional["StudioContext"]:
@@ -160,6 +191,728 @@ def _collect_full_artifact_instances(
 # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
 
 
+def _parse_validate_args(argv: List[str]) -> argparse.Namespace:
+    """Parse CLI args for the validate command."""
+    parser = argparse.ArgumentParser(
+        prog="validate",
+        description="Validate Constructor Studio artifacts and code traceability (structure + cross-references + traceability)",
+    )
+    parser.add_argument("--artifact", default=None, help="Path to specific Constructor Studio artifact (if omitted, validates all registered artifacts)")
+    parser.add_argument("--skip-code", action="store_true", help="Skip code traceability validation")
+    parser.add_argument("--verbose", action="store_true", help="Print full validation report")
+    parser.add_argument("--output", default=None, help="Write report to file instead of stdout")
+    parser.add_argument("--local-only", action="store_true", help="Skip cross-repo workspace validation (validate local repo only)")
+    parser.add_argument("--source", default=None, help="Target a specific workspace source for validation (uses that source's adapter context)")
+    return parser.parse_args(argv)
+
+
+def _extend_known_kinds(ctx: object, known_kinds: Set[str]) -> None:
+    """Merge kit-defined ID kinds into the known-kinds set."""
+    from ..utils.context import collect_known_id_kinds
+
+    known_kinds.update(collect_known_id_kinds(ctx))
+
+
+def _run_validate_kits_gate(project_root: Path, ctx: object, verbose: bool) -> Optional[int]:
+    """Run validate-kits fail-fast gate when kits are present."""
+    meta = getattr(ctx, "meta", None)
+    if not getattr(meta, "kits", None):
+        return None
+    try:
+        from .validate_kits import run_validate_kits
+
+        rc, report = run_validate_kits(
+            project_root=project_root,
+            adapter_dir=ctx.adapter_dir,
+            kit_filter=None,
+            verbose=bool(verbose),
+        )
+    except (OSError, ValueError, KeyError) as exc:
+        ui.result({
+            "status": "ERROR",
+            "message": "self-check failed to run",
+            "error": str(exc),
+        })
+        return 1
+    if not rc and str(report.get("status")) == "PASS":
+        return None
+    ui.result({
+        "status": "FAIL" if rc == 2 else "ERROR",
+        "message": "validate-kits failed (kit structure or templates are inconsistent)",
+        "validate_kits": report,
+    })
+    return 2 if rc == 2 else 1
+
+
+def _build_validate_session(args: argparse.Namespace) -> Tuple[Optional[_ValidateSession], Optional[int]]:
+    """Load context, workspace state, and static validation metadata."""
+    from ..utils.context import WorkspaceContext, get_context
+
+    ctx = get_context()
+    if not ctx:
+        ui.result({"status": "ERROR", "message": "Constructor Studio not initialized. Run 'cfs init' first."})
+        return None, 1
+
+    ws_ctx = ctx if isinstance(ctx, WorkspaceContext) else None
+    if args.source:
+        ctx = _resolve_source_context(args.source, ws_ctx)
+        if ctx is None:
+            return None, 1
+
+    ctx_errors = list(getattr(ctx, "_errors", []) or [])
+    if ws_ctx is not None:
+        from ..utils.workspace import find_workspace_config as _find_ws
+
+        workspace_config, _ = _find_ws(ws_ctx.project_root)
+        if workspace_config is not None:
+            for ws_err in workspace_config.validate():
+                ctx_errors.append(constraints_error("workspace", ws_err, path=str(workspace_config.workspace_file)))
+
+    project_root = ctx.project_root
+    gate_code = _run_validate_kits_gate(project_root, ctx, bool(args.verbose))
+    if gate_code is not None:
+        return None, gate_code
+
+    known_kinds = ctx.get_known_id_kinds()
+    _extend_known_kinds(ctx, known_kinds)
+    return _ValidateSession(
+        args=args,
+        ctx=ctx,
+        ws_ctx=ws_ctx,
+        meta=ctx.meta,
+        project_root=project_root,
+        registered_systems=ctx.registered_systems,
+        known_kinds=known_kinds,
+        ctx_errors=ctx_errors,
+    ), None
+
+
+def _emit_validate_output(data: Dict[str, object], *, output_path: Optional[str], human: bool, pretty: bool) -> None:
+    """Emit validate output to stdout or a JSON file."""
+    if output_path:
+        text = json.dumps(data, indent=2 if pretty else None, ensure_ascii=False)
+        if pretty:
+            text += "\n"
+        Path(output_path).write_text(text, encoding="utf-8")
+        return
+    ui.result(data, human_fn=_human_validate if human else None)
+
+
+def _emit_no_artifacts_result(session: _ValidateSession) -> int:
+    """Emit the empty-registry result, preserving context load errors."""
+    if session.ctx_errors:
+        enrich_issues(session.ctx_errors, project_root=session.project_root)
+        ui.result({
+            "status": "FAIL",
+            "project_root": session.project_root.as_posix(),
+            "artifacts_validated": 0,
+            "error_count": len(session.ctx_errors),
+            "warning_count": 0,
+            "errors": session.ctx_errors,
+        }, human_fn=_human_validate)
+        return 2
+    ui.result({
+        "status": "PASS",
+        "artifacts_validated": 0,
+        "error_count": 0,
+        "warning_count": 0,
+        "message": "No artifacts found in registry",
+    })
+    return 0
+
+
+def _append_registered_artifact(
+    session: _ValidateSession,
+    artifact_path: Path,
+    artifact_meta: object,
+    system_node: object,
+) -> None:
+    """Append one resolved registry artifact to the validation target list."""
+    pkg = session.meta.get_kit(system_node.kit)
+    if not pkg or not pkg.is_cfs_format():
+        return
+    template_path = (session.project_root / pkg.get_template_path(artifact_meta.kind)).resolve()
+    session.artifacts_to_validate.append((
+        artifact_path,
+        template_path,
+        artifact_meta.kind,
+        artifact_meta.traceability,
+        system_node.kit,
+    ))
+
+
+def _resolve_explicit_artifact(session: _ValidateSession, artifact_path: Path) -> Optional[int]:
+    """Resolve one explicit artifact path against the registry and active context."""
+    from ..utils.context import StudioContext, determine_target_source
+
+    if not artifact_path.exists():
+        ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
+        return 1
+
+    if session.ws_ctx is not None:
+        matched_sc, matched_ctx = determine_target_source(artifact_path, session.ws_ctx)
+        if matched_ctx is None:
+            ui.result({"status": "ERROR", "message": f"Cannot resolve context for artifact: {artifact_path}"})
+            return 1
+        if session.args.source and matched_sc is not None and matched_sc.name != session.args.source:
+            ui.result({"status": "ERROR", "message": (
+                f"Artifact '{session.args.artifact}' belongs to source '{matched_sc.name}', "
+                f"not '{session.args.source}'."
+            )})
+            return 1
+        session.ctx = matched_ctx
+    else:
+        session.ctx = StudioContext.load(artifact_path.parent)
+        if not session.ctx:
+            ui.result({"status": "ERROR", "message": "Constructor Studio not initialized"})
+            return 1
+
+    session.ctx_errors.extend(getattr(session.ctx, "_errors", []) or [])
+    session.meta = session.ctx.meta
+    session.project_root = session.ctx.project_root
+    session.registered_systems = session.ctx.registered_systems
+    session.known_kinds = session.ctx.get_known_id_kinds()
+    _extend_known_kinds(session.ctx, session.known_kinds)
+    try:
+        rel_path = artifact_path.relative_to(session.project_root).as_posix()
+    except ValueError:
+        rel_path = None
+    result = session.meta.get_artifact_by_path(rel_path) if rel_path else None
+    if result is None:
+        ui.result({"status": "ERROR", "message": f"Artifact not in registry: {session.args.artifact}"})
+        return 1
+    artifact_meta, system_node = result
+    _append_registered_artifact(session, artifact_path, artifact_meta, system_node)
+    return None
+
+
+def _collect_all_registered_artifacts(session: _ValidateSession) -> None:
+    """Resolve all registered artifacts for the active context."""
+    for artifact_meta, system_node in session.meta.iter_all_artifacts():
+        if session.ws_ctx is not None:
+            artifact_path = session.ws_ctx.resolve_artifact_path(artifact_meta, session.project_root)
+        else:
+            artifact_path = (session.project_root / artifact_meta.path).resolve()
+        if artifact_path is None or not artifact_path.exists():
+            continue
+        _append_registered_artifact(session, artifact_path, artifact_meta, system_node)
+
+
+def _resolve_artifacts_to_validate(session: _ValidateSession) -> Optional[int]:
+    """Populate the validation target list from args or registry state."""
+    if session.args.artifact:
+        exit_code = _resolve_explicit_artifact(session, Path(session.args.artifact).resolve())
+        if exit_code is not None:
+            return exit_code
+    else:
+        _collect_all_registered_artifacts(session)
+    if session.artifacts_to_validate:
+        return None
+    return _emit_no_artifacts_result(session)
+
+
+def _maybe_emit_registry_failure(session: _ValidateSession, results: _ValidateResults) -> Optional[int]:
+    """Stop early when registry-level errors make later checks unreliable."""
+    if session.ctx_errors:
+        results.all_errors.extend(session.ctx_errors)
+    if not any(str(issue.get("type", "")) == "registry" for issue in results.all_errors):
+        return None
+    enrich_issues(results.all_errors, project_root=session.project_root)
+    _emit_validate_output({
+        "status": "FAIL",
+        "project_root": session.project_root.as_posix(),
+        "artifact_count": len(session.artifacts_to_validate),
+        "error_count": len(results.all_errors),
+        "warning_count": 0,
+        "errors": results.all_errors,
+    }, output_path=session.args.output, human=True, pretty=True)
+    return 2
+
+
+def _resolve_constraints_for_artifact(session: _ValidateSession, artifact_type: str, kit_id: str) -> Tuple[object, Optional[Path]]:
+    """Resolve artifact-kind constraints and the originating constraints path."""
+    from ..utils.context import _resolve_loaded_kit_constraints_path
+
+    constraints_for_kind = None
+    loaded_kit = (session.ctx.kits or {}).get(str(kit_id))
+    if loaded_kit and loaded_kit.constraints and str(artifact_type) in loaded_kit.constraints.by_kind:
+        constraints_for_kind = loaded_kit.constraints.by_kind[str(artifact_type)]
+    if not loaded_kit:
+        return constraints_for_kind, None
+    try:
+        adapter_dir = getattr(session.ctx, "adapter_dir", None)
+        if not isinstance(adapter_dir, Path):
+            adapter_dir = session.project_root
+        constraints_path = _resolve_loaded_kit_constraints_path(adapter_dir, session.project_root, loaded_kit)
+    except (OSError, ValueError, KeyError):
+        constraints_path = None
+    return constraints_for_kind, constraints_path
+
+
+def _validate_one_artifact(
+    session: _ValidateSession,
+    results: _ValidateResults,
+    artifact_entry: Tuple[Path, Path, str, str, str],
+) -> None:
+    """Run structure validation for one artifact and record its report."""
+    artifact_path, _template_path, artifact_type, traceability, kit_id = artifact_entry
+    constraints_for_kind, constraints_path = _resolve_constraints_for_artifact(session, artifact_type, kit_id)
+    results.artifact_records.append(ArtifactRecord(
+        path=artifact_path,
+        artifact_kind=str(artifact_type),
+        constraints=constraints_for_kind,
+    ))
+    report = validate_artifact_file(
+        artifact_path=artifact_path,
+        artifact_kind=str(artifact_type),
+        constraints=constraints_for_kind,
+        registered_systems=session.registered_systems,
+        constraints_path=constraints_path,
+        kit_id=str(kit_id),
+    )
+    errors = report.get("errors", [])
+    warnings = report.get("warnings", [])
+    artifact_report: Dict[str, object] = {
+        "artifact": str(artifact_path),
+        "artifact_type": artifact_type,
+        "traceability": traceability,
+        "status": "PASS" if not errors else "FAIL",
+        "error_count": len(errors),
+        "warning_count": len(warnings),
+    }
+    if session.args.verbose or errors:
+        artifact_report["errors"] = errors
+    if session.args.verbose or warnings:
+        artifact_report["warnings"] = warnings
+        try:
+            hits = scan_cpt_ids(artifact_path)
+            artifact_report["id_definitions"] = len([hit for hit in hits if hit.get("type") == "definition"])
+            artifact_report["id_references"] = len([hit for hit in hits if hit.get("type") == "reference"])
+        except (OSError, ValueError):
+            artifact_report["id_definitions"] = 0
+            artifact_report["id_references"] = 0
+    results.artifact_reports.append(artifact_report)
+    results.artifact_report_by_path[str(artifact_path)] = artifact_report
+    results.all_errors.extend(errors)
+    results.all_warnings.extend(warnings)
+
+
+def _attach_issue_to_artifact_report(
+    issue: Dict[str, object],
+    *,
+    results: _ValidateResults,
+    verbose: bool,
+    is_error: bool,
+) -> None:
+    """Increment per-artifact counters for a later validation issue."""
+    report = results.artifact_report_by_path.get(str(issue.get("path", "") or ""))
+    if report is None:
+        return
+    if is_error:
+        report["status"] = "FAIL"
+        report["error_count"] = int(report.get("error_count", 0) or 0) + 1
+        if verbose and isinstance(report.get("errors"), list):
+            report["errors"].append(issue)
+        return
+    report["warning_count"] = int(report.get("warning_count", 0) or 0) + 1
+    if verbose and isinstance(report.get("warnings"), list):
+        report["warnings"].append(issue)
+
+
+def _run_initial_artifact_validation(session: _ValidateSession) -> Tuple[_ValidateResults, Optional[int]]:
+    """Run per-artifact structure checks and stop on early failures."""
+    results = _ValidateResults()
+    exit_code = _maybe_emit_registry_failure(session, results)
+    if exit_code is not None:
+        return results, exit_code
+    for artifact_entry in session.artifacts_to_validate:
+        _validate_one_artifact(session, results, artifact_entry)
+    if not results.all_errors:
+        for language_error in _run_content_language_check(session.artifacts_to_validate, session.project_root):
+            results.all_errors.append(language_error)
+            _attach_issue_to_artifact_report(
+                language_error,
+                results=results,
+                verbose=bool(session.args.verbose),
+                is_error=True,
+            )
+    if not results.all_errors:
+        return results, None
+    enrich_issues(results.all_errors, project_root=session.project_root)
+    enrich_issues(results.all_warnings, project_root=session.project_root)
+    out = {
+        "status": "FAIL",
+        "project_root": session.project_root.as_posix(),
+        "artifact_count": len(session.artifacts_to_validate),
+        "error_count": len(results.all_errors),
+        "warning_count": len(results.all_warnings),
+        "errors": results.all_errors,
+    }
+    if results.all_warnings:
+        out["warnings"] = results.all_warnings
+    _emit_validate_output(out, output_path=session.args.output, human=True, pretty=True)
+    return results, 2
+
+
+def _build_cross_validation_context(session: _ValidateSession, results: _ValidateResults) -> List[ArtifactRecord]:
+    """Load all artifacts needed for cross-reference and code validation context."""
+    all_artifacts = list(results.artifact_records)
+    validated_paths = {str(path) for path, _, _, _, _ in session.artifacts_to_validate}
+    for artifact_meta, system_node in session.meta.iter_all_artifacts():
+        if session.ws_ctx is not None:
+            artifact_path = session.ws_ctx.resolve_artifact_path(artifact_meta, session.project_root)
+        else:
+            artifact_path = (session.project_root / artifact_meta.path).resolve()
+        if artifact_path is None or not artifact_path.exists() or str(artifact_path) in validated_paths:
+            continue
+        constraints_for_kind, _ = _resolve_constraints_for_artifact(session, str(artifact_meta.kind), str(system_node.kit))
+        all_artifacts.append(ArtifactRecord(
+            path=artifact_path,
+            artifact_kind=str(artifact_meta.kind),
+            constraints=constraints_for_kind,
+        ))
+    if not session.args.local_only and session.ws_ctx is not None and session.ws_ctx.cross_repo and session.ws_ctx.resolve_remote_ids:
+        seen_paths = {str(record.path) for record in all_artifacts}
+        all_artifacts.extend(_collect_cross_repo_artifacts(session.ws_ctx, seen_paths))
+    return all_artifacts
+
+
+def _run_cross_validation(
+    session: _ValidateSession,
+    results: _ValidateResults,
+    all_artifacts_for_cross: List[ArtifactRecord],
+) -> None:
+    """Apply cross-artifact reference validation to the selected artifacts."""
+    if not all_artifacts_for_cross:
+        return
+    validated_paths = {str(path) for path, _, _, _, _ in session.artifacts_to_validate}
+    cross_result = cross_validate_artifacts(
+        all_artifacts_for_cross,
+        registered_systems=session.registered_systems,
+        known_kinds=session.known_kinds,
+    )
+    for issue in cross_result.get("errors", []):
+        if issue.get("path", "") not in validated_paths:
+            continue
+        results.all_errors.append(issue)
+        _attach_issue_to_artifact_report(issue, results=results, verbose=bool(session.args.verbose), is_error=True)
+    for issue in cross_result.get("warnings", []):
+        if issue.get("path", "") not in validated_paths:
+            continue
+        results.all_warnings.append(issue)
+        _attach_issue_to_artifact_report(issue, results=results, verbose=bool(session.args.verbose), is_error=False)
+
+
+def _scan_codebase_entry(
+    *,
+    entry: object,
+    traceability: str,
+    session: _ValidateSession,
+    results: _ValidateResults,
+    strict_code_validation: bool,
+) -> None:
+    """Scan one configured codebase entry and collect code traceability state."""
+    for file_path in _resolve_code_scan_targets(session, entry):
+        try:
+            rel_path = file_path.resolve().relative_to(session.project_root).as_posix()
+        except ValueError:
+            rel_path = None
+        if rel_path and session.meta.is_ignored(rel_path):
+            continue
+        code_file, errors = CodeFile.from_path(file_path)
+        if errors or code_file is None:
+            if strict_code_validation and errors:
+                results.all_errors.extend(errors)
+            continue
+        if traceability == "FULL":
+            results.parsed_code_files_full.append(code_file)
+        if strict_code_validation:
+            code_report = code_file.validate()
+            results.all_errors.extend(code_report.get("errors", []))
+            results.all_warnings.extend(code_report.get("warnings", []))
+        file_ids = code_file.list_ids()
+        results.code_ids_found.update(file_ids)
+        if file_ids or code_file.scope_markers or code_file.block_markers:
+            results.code_files_scanned.append({
+                "path": str(file_path),
+                "scope_markers": len(code_file.scope_markers),
+                "block_markers": len(code_file.block_markers),
+                "ids_referenced": len(file_ids),
+            })
+
+
+def _resolve_code_scan_targets(session: _ValidateSession, entry: object) -> List[Path]:
+    """Resolve concrete files for one codebase entry."""
+    src_name = getattr(entry, "source", None)
+    if src_name and session.ws_ctx is not None:
+        code_path = session.ws_ctx.resolve_artifact_path(entry, session.project_root)
+    else:
+        entry_path = getattr(entry, "path", "") if not isinstance(entry, dict) else entry.get("path", "")
+        code_path = (session.project_root / entry_path).resolve()
+    if code_path is None or not code_path.exists():
+        return []
+    if code_path.is_file():
+        return [code_path]
+    extensions = (getattr(entry, "extensions", None) if not isinstance(entry, dict) else entry.get("extensions", None)) or [".py"]
+    return [candidate for ext in extensions for candidate in code_path.rglob(f"*{ext}")]
+
+
+def _scan_system_codebase(
+    system_node: object,
+    *,
+    session: _ValidateSession,
+    results: _ValidateResults,
+    strict_code_validation: bool,
+) -> None:
+    """Recursively scan a system node's configured codebase entries."""
+    traceability = "FULL" if any(art.traceability == "FULL" for art in system_node.artifacts) else "DOCS-ONLY"
+    for codebase_entry in system_node.codebase:
+        _scan_codebase_entry(
+            entry=codebase_entry,
+            traceability=traceability,
+            session=session,
+            results=results,
+            strict_code_validation=strict_code_validation,
+        )
+    for child in system_node.children:
+        _scan_system_codebase(child, session=session, results=results, strict_code_validation=strict_code_validation)
+
+
+def _run_code_validation(
+    session: _ValidateSession,
+    results: _ValidateResults,
+    all_artifacts_for_cross: List[ArtifactRecord],
+) -> None:
+    """Run code traceability validation unless disabled by CLI flags."""
+    traceability_by_path = _build_traceability_by_path(session.artifacts_to_validate)
+    full_ids_to_check = _collect_full_traceability_ids(session.artifacts_to_validate)
+    strict_code_validation = not session.args.artifact
+    should_scan_code = (not session.args.skip_code) and (strict_code_validation or bool(full_ids_to_check))
+    to_code_ids_task_unchecked: Set[str] = set()
+    artifact_ids: Set[str] = set()
+    if strict_code_validation and all_artifacts_for_cross:
+        artifact_ids, results.to_code_ids, to_code_ids_task_unchecked = _collect_artifact_code_expectations(
+            all_artifacts_for_cross,
+            traceability_by_path,
+            session.registered_systems,
+        )
+    if not session.args.local_only and session.ws_ctx is not None:
+        artifact_ids.update(session.ws_ctx.get_all_artifact_ids())
+    if not should_scan_code:
+        return
+    for system_node in session.meta.systems:
+        _scan_system_codebase(system_node, session=session, results=results, strict_code_validation=strict_code_validation)
+    if not strict_code_validation or not results.parsed_code_files_full:
+        return
+    artifact_instances, artifact_instances_all = _collect_full_artifact_instances(all_artifacts_for_cross, traceability_by_path)
+    code_validation = cross_validate_code(
+        results.parsed_code_files_full,
+        artifact_ids,
+        results.to_code_ids,
+        forbidden_code_ids=to_code_ids_task_unchecked,
+        traceability="FULL",
+        artifact_instances=artifact_instances,
+        artifact_instances_all=artifact_instances_all,
+    )
+    results.all_errors.extend(code_validation.get("errors", []))
+    results.all_warnings.extend(code_validation.get("warnings", []))
+
+
+def _build_traceability_by_path(
+    artifacts_to_validate: List[Tuple[Path, Path, str, str, str]],
+) -> Dict[str, str]:
+    """Build a quick artifact-path to traceability lookup."""
+    return {
+        str(artifact_path): traceability
+        for artifact_path, _template_path, _artifact_type, traceability, _kit_id in artifacts_to_validate
+    }
+
+
+def _collect_full_traceability_ids(
+    artifacts_to_validate: List[Tuple[Path, Path, str, str, str]],
+) -> Set[str]:
+    """Collect definition IDs from FULL-traceability artifacts."""
+    full_ids_to_check: Set[str] = set()
+    for artifact_path, _template_path, _artifact_kind, traceability, _kit_id in artifacts_to_validate:
+        if traceability != "FULL":
+            continue
+        try:
+            for hit in scan_cpt_ids(artifact_path):
+                if hit.get("type") == "definition" and hit.get("id"):
+                    full_ids_to_check.add(str(hit["id"]))
+        except (OSError, ValueError):
+            continue
+    return full_ids_to_check
+
+
+def _run_reference_coverage(
+    session: _ValidateSession,
+    results: _ValidateResults,
+    all_artifacts_for_cross: List[ArtifactRecord],
+) -> None:
+    """Enforce fallback cross-reference coverage for unconstrained artifact kinds."""
+    if not all_artifacts_for_cross:
+        return
+    present_kinds, refs_by_id = _build_reference_index(all_artifacts_for_cross)
+    validated_paths = {str(path) for path, _, _, _, _ in session.artifacts_to_validate}
+    traceability_by_path = _build_traceability_by_path(session.artifacts_to_validate)
+    for artifact in all_artifacts_for_cross:
+        _apply_reference_coverage_for_artifact(
+            artifact,
+            present_kinds=present_kinds,
+            refs_by_id=refs_by_id,
+            validated_paths=validated_paths,
+            traceability_by_path=traceability_by_path,
+            code_ids_found=results.code_ids_found,
+            results=results,
+            verbose=bool(session.args.verbose),
+        )
+
+
+def _build_reference_index(
+    all_artifacts_for_cross: List[ArtifactRecord],
+) -> Tuple[Set[str], Dict[str, Set[str]]]:
+    """Build present-kind and reference indices across all artifacts."""
+    present_kinds: Set[str] = set()
+    refs_by_id: Dict[str, Set[str]] = {}
+    for artifact in all_artifacts_for_cross:
+        kind = str(getattr(artifact, "artifact_kind", "") or "")
+        present_kinds.add(kind)
+        try:
+            for hit in scan_cpt_ids(artifact.path):
+                if hit.get("type") != "reference":
+                    continue
+                ref_id = str(hit.get("id") or "").strip()
+                if ref_id:
+                    refs_by_id.setdefault(ref_id, set()).add(kind)
+        except (OSError, ValueError):
+            continue
+    return present_kinds, refs_by_id
+
+
+def _apply_reference_coverage_for_artifact(
+    artifact: ArtifactRecord,
+    *,
+    present_kinds: Set[str],
+    refs_by_id: Dict[str, Set[str]],
+    validated_paths: Set[str],
+    traceability_by_path: Dict[str, str],
+    code_ids_found: Set[str],
+    results: _ValidateResults,
+    verbose: bool,
+) -> None:
+    """Apply fallback coverage rules to one artifact without explicit constraints."""
+    artifact_path_str = str(artifact.path)
+    if artifact_path_str not in validated_paths or getattr(artifact, "constraints", None) is not None:
+        return
+    kind = str(getattr(artifact, "artifact_kind", "") or "")
+    other_kinds = sorted(candidate for candidate in present_kinds if candidate != kind)
+    art_traceability = traceability_by_path.get(artifact_path_str, "FULL")
+    try:
+        definitions = [hit for hit in scan_cpt_ids(artifact.path) if hit.get("type") == "definition" and hit.get("id")]
+    except (OSError, ValueError):
+        definitions = []
+    for definition in definitions:
+        _apply_reference_coverage_for_definition(
+            artifact=artifact,
+            definition=definition,
+            other_kinds=other_kinds,
+            refs_by_id=refs_by_id,
+            art_traceability=art_traceability,
+            code_ids_found=code_ids_found,
+            results=results,
+            verbose=verbose,
+        )
+
+
+def _apply_reference_coverage_for_definition(
+    *,
+    artifact: ArtifactRecord,
+    definition: Dict[str, object],
+    other_kinds: List[str],
+    refs_by_id: Dict[str, Set[str]],
+    art_traceability: str,
+    code_ids_found: Set[str],
+    results: _ValidateResults,
+    verbose: bool,
+) -> None:
+    """Apply fallback coverage rules to one definition hit."""
+    defined_id = str(definition.get("id") or "").strip()
+    if not defined_id:
+        return
+    line = int(definition.get("line", 1) or 1)
+    if not other_kinds:
+        warning = constraints_error(
+            "structure",
+            f"`{defined_id}` is not referenced — no other artifact kinds exist in scope for cross-referencing",
+            code=EC.ID_NOT_REFERENCED_NO_SCOPE,
+            path=artifact.path,
+            line=line,
+            id=defined_id,
+        )
+        results.all_warnings.append(warning)
+        _attach_issue_to_artifact_report(warning, results=results, verbose=verbose, is_error=False)
+        return
+    kind = str(getattr(artifact, "artifact_kind", "") or "")
+    referenced_kinds = sorted(candidate for candidate in refs_by_id.get(defined_id, set()) if candidate != kind)
+    if referenced_kinds or (art_traceability == "FULL" and defined_id in code_ids_found):
+        return
+    error = constraints_error(
+        "structure",
+        f"`{defined_id}` (defined in {kind}) is not referenced from any of {other_kinds}",
+        code=EC.ID_NOT_REFERENCED,
+        path=artifact.path,
+        line=line,
+        id=defined_id,
+        other_kinds=other_kinds,
+    )
+    results.all_errors.append(error)
+    _attach_issue_to_artifact_report(error, results=results, verbose=verbose, is_error=True)
+
+
+def _emit_final_validate_report(session: _ValidateSession, results: _ValidateResults) -> int:
+    """Enrich issues and emit the final validate report."""
+    _enrich_target_artifact_paths(results.all_errors, meta=session.meta, project_root=session.project_root)
+    enrich_issues(results.all_errors, project_root=session.project_root)
+    enrich_issues(results.all_warnings, project_root=session.project_root)
+    overall_status = "PASS" if not results.all_errors else "FAIL"
+    report: Dict[str, object] = {
+        "status": overall_status,
+        "artifacts_validated": len(results.artifact_reports),
+        "error_count": len(results.all_errors),
+        "warning_count": len(results.all_warnings),
+    }
+    if not session.args.skip_code and not session.args.artifact:
+        report["code_files_scanned"] = len(results.code_files_scanned)
+        report["to_code_ids_total"] = len(results.to_code_ids)
+        report["code_ids_found"] = len(results.code_ids_found)
+        if results.to_code_ids:
+            report["coverage"] = f"{len(results.code_ids_found & results.to_code_ids)}/{len(results.to_code_ids)}"
+    if overall_status == "PASS":
+        report["next_step"] = "Deterministic validation passed. Now perform semantic validation: review content quality against checklist.md criteria."
+    if session.args.verbose:
+        report["errors"] = results.all_errors
+        report["warnings"] = results.all_warnings
+    elif overall_status != "PASS":
+        report["errors"] = results.all_errors
+        if results.all_warnings:
+            report["warnings"] = results.all_warnings
+    else:
+        failed_artifacts = [item for item in results.artifact_reports if item.get("status") == "FAIL"]
+        if failed_artifacts:
+            report["failed_artifacts"] = [
+                {"artifact": item.get("artifact"), "error_count": item.get("error_count")}
+                for item in failed_artifacts
+            ]
+    _emit_validate_output(
+        report,
+        output_path=session.args.output,
+        human=True,
+        pretty=bool(session.args.verbose) or (overall_status != "PASS"),
+    )
+    return 0 if overall_status == "PASS" else 2
+
+
 # @cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
 # @cpt-dod:cpt-studio-dod-traceability-validation-cross-refs:p1
 # @cpt-dod:cpt-studio-dod-traceability-validation-cdsl:p1
@@ -169,677 +922,20 @@ def cmd_validate(argv: List[str]) -> int:
     Performs deterministic validation checks (structure, cross-references,
     task statuses, traceability markers) and produces a machine-readable report.
     """
-    from ..utils.context import get_context, _resolve_loaded_kit_constraints_path
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-user-validate
-    p = argparse.ArgumentParser(
-        prog="validate",
-        description="Validate Constructor Studio artifacts and code traceability (structure + cross-references + traceability)",
-    )
-    p.add_argument("--artifact", default=None, help="Path to specific Constructor Studio artifact (if omitted, validates all registered artifacts)")
-    p.add_argument("--skip-code", action="store_true", help="Skip code traceability validation")
-    p.add_argument("--verbose", action="store_true", help="Print full validation report")
-    p.add_argument("--output", default=None, help="Write report to file instead of stdout")
-    p.add_argument("--local-only", action="store_true", help="Skip cross-repo workspace validation (validate local repo only)")
-    p.add_argument("--source", default=None, help="Target a specific workspace source for validation (uses that source's adapter context)")
-    args = p.parse_args(argv)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-user-validate
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-load-context
-    # Use pre-loaded context (templates already loaded on startup)
-    ctx = get_context()
-    if not ctx:
-        # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-error
-        ui.result({"status": "ERROR", "message": "Constructor Studio not initialized. Run 'cfs init' first."})
-        return 1
-        # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-error
-
-    # Preserve workspace wrapper — ctx may be narrowed to a source-specific
-    # StudioContext by --source/--artifact, but workspace-level features
-    # (cross-repo ID resolution, path routing, config validation) need the
-    # original WorkspaceContext.
-    from ..utils.context import WorkspaceContext
-    ws_ctx = ctx if isinstance(ctx, WorkspaceContext) else None
-
-    # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-validate-source-flag
-    if args.source:
-        ctx = _resolve_source_context(args.source, ws_ctx)
-        if ctx is None:
-            return 1
-    # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-validate-source-flag
-
-    # Surface context-level load errors (e.g., invalid constraints.toml) as validation errors.
-    ctx_errors = list(getattr(ctx, "_errors", []) or [])
-
-    # Validate workspace config if present
-    if ws_ctx is not None:
-        from ..utils.workspace import find_workspace_config as _find_ws
-        _ws_cfg, _ = _find_ws(ws_ctx.project_root)
-        if _ws_cfg is not None:
-            for ws_err in _ws_cfg.validate():
-                ctx_errors.append(constraints_error(
-                    "workspace", ws_err, path=str(_ws_cfg.workspace_file),
-                ))
-
-    meta = ctx.meta
-    project_root = ctx.project_root
-    registered_systems = ctx.registered_systems
-    known_kinds = ctx.get_known_id_kinds()
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-self-check
-    if getattr(meta, "kits", None):
-        try:
-            from .validate_kits import run_validate_kits
-
-            rc, report = run_validate_kits(
-                project_root=project_root,
-                adapter_dir=ctx.adapter_dir,
-                kit_filter=None,
-                verbose=bool(args.verbose),
-            )
-            if rc or str(report.get("status")) != "PASS":
-                out = {
-                    "status": "FAIL" if rc == 2 else "ERROR",
-                    "message": "validate-kits failed (kit structure or templates are inconsistent)",
-                    "validate_kits": report,
-                }
-                ui.result(out)
-                return 2 if rc == 2 else 1
-        except (OSError, ValueError, KeyError) as e:
-            out = {
-                "status": "ERROR",
-                "message": "self-check failed to run",
-                "error": str(e),
-            }
-            ui.result(out)
-            return 1
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-self-check
-
-    for loaded_kit in (ctx.kits or {}).values():
-        kit_constraints = getattr(loaded_kit, "constraints", None)
-        if not kit_constraints:
-            continue
-        for kind_constraints in kit_constraints.by_kind.values():
-            for c in (kind_constraints.defined_id or []):
-                if c and getattr(c, "kind", None):
-                    known_kinds.add(str(c.kind).strip().lower())
-
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-load-context
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-resolve-artifacts
-    # Collect artifacts to validate: (artifact_path, template_path, artifact_type, traceability, kit_id)
-    artifacts_to_validate: List[Tuple[Path, Path, str, str, str]] = []
-
-    if args.artifact:
-        artifact_path = Path(args.artifact).resolve()
-        if not artifact_path.exists():
-            ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
-            return 1
-
-        # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-abs
-        # In workspace mode, auto-detect which source owns the artifact
-        from ..utils.context import StudioContext, determine_target_source
-
-        if ws_ctx is not None:
-            matched_sc, matched_ctx = determine_target_source(artifact_path, ws_ctx)
-            if matched_ctx is None:
-                ui.result({"status": "ERROR", "message": f"Cannot resolve context for artifact: {artifact_path}"})
-                return 1
-            if args.source and matched_sc is not None and matched_sc.name != args.source:
-                ui.result({"status": "ERROR", "message": (
-                    f"Artifact '{args.artifact}' belongs to source '{matched_sc.name}', "
-                    f"not '{args.source}'."
-                )})
-                return 1
-            ctx = matched_ctx
-        else:
-            # Non-workspace: load context from artifact's location
-            ctx = StudioContext.load(artifact_path.parent)
-            if not ctx:
-                ui.result({"status": "ERROR", "message": "Constructor Studio not initialized"})
-                return 1
-        # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-abs
-
-        # Merge context-level errors from matched source, preserving workspace errors.
-        ctx_errors.extend(getattr(ctx, "_errors", []) or [])
-
-        meta = ctx.meta
-        project_root = ctx.project_root
-        registered_systems = ctx.registered_systems
-        known_kinds = ctx.get_known_id_kinds()
-        for loaded_kit in (ctx.kits or {}).values():
-            kit_constraints = getattr(loaded_kit, "constraints", None)
-            if not kit_constraints:
-                continue
-            for kind_constraints in kit_constraints.by_kind.values():
-                for c in (kind_constraints.defined_id or []):
-                    if c and getattr(c, "kind", None):
-                        known_kinds.add(str(c.kind).strip().lower())
-        try:
-            rel_path = artifact_path.relative_to(project_root).as_posix()
-        except ValueError:
-            rel_path = None
-        if rel_path:
-            result = meta.get_artifact_by_path(rel_path)
-            if result:
-                artifact_meta, system_node = result
-                pkg = meta.get_kit(system_node.kit)
-                if pkg and pkg.is_cfs_format():
-                    template_path_str = pkg.get_template_path(artifact_meta.kind)
-                    template_path = (project_root / template_path_str).resolve()
-                    artifacts_to_validate.append((artifact_path, template_path, artifact_meta.kind, artifact_meta.traceability, system_node.kit))
-        if not artifacts_to_validate:
-            ui.result({"status": "ERROR", "message": f"Artifact not in registry: {args.artifact}"})
-            return 1
-    else:
-        # Validate all registered artifacts
-        for artifact_meta, system_node in meta.iter_all_artifacts():
-            pkg = meta.get_kit(system_node.kit)
-            if not pkg or not pkg.is_cfs_format():
-                continue
-            template_path_str = pkg.get_template_path(artifact_meta.kind)
-            if ws_ctx is not None:
-                artifact_path = ws_ctx.resolve_artifact_path(artifact_meta, project_root)
-            else:
-                artifact_path = (project_root / artifact_meta.path).resolve()
-            template_path = (project_root / template_path_str).resolve()
-            if artifact_path is not None and artifact_path.exists():
-                artifacts_to_validate.append((artifact_path, template_path, artifact_meta.kind, artifact_meta.traceability, system_node.kit))
-
-    # Surface context-level errors (e.g., invalid constraints.toml) even when
-    # no artifacts are registered — these must never be silently swallowed.
-    if not artifacts_to_validate:
-        if ctx_errors:
-            enrich_issues(ctx_errors, project_root=project_root)
-            ui.result({
-                "status": "FAIL",
-                "project_root": project_root.as_posix(),
-                "artifacts_validated": 0,
-                "error_count": len(ctx_errors),
-                "warning_count": 0,
-                "errors": ctx_errors,
-            }, human_fn=_human_validate)
-            return 2
-        ui.result({"status": "PASS", "artifacts_validated": 0, "error_count": 0, "warning_count": 0, "message": "No artifacts found in registry"})
-        return 0
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-resolve-artifacts
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-registry-fail
-    # Validate each artifact
-    all_errors: List[Dict[str, object]] = []
-    all_warnings: List[Dict[str, object]] = []
-    artifact_reports: List[Dict[str, object]] = []
-    artifact_report_by_path: Dict[str, Dict[str, object]] = {}
-    artifact_records: List[ArtifactRecord] = []
-
-    if ctx_errors:
-        all_errors.extend(ctx_errors)
-
-    # Registry-level errors make further checks unreliable — stop early.
-    has_registry_errors = any(str(e.get("type", "")) == "registry" for e in all_errors)
-    if has_registry_errors:
-        enrich_issues(all_errors, project_root=project_root)
-        out = {
-            "status": "FAIL",
-            "project_root": project_root.as_posix(),
-            "artifact_count": len(artifacts_to_validate),
-            "error_count": len(all_errors),
-            "warning_count": 0,
-            "errors": all_errors,
-        }
-        if args.output:
-            Path(args.output).write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
-        else:
-            ui.result(out, human_fn=_human_validate)
-        return 2
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-registry-fail
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
-    for artifact_path, _template_path, artifact_type, traceability, kit_id in artifacts_to_validate:
-        # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-load-constraints
-        constraints_for_kind = None
-        loaded_kit = (ctx.kits or {}).get(str(kit_id))
-        if loaded_kit and loaded_kit.constraints and str(artifact_type) in loaded_kit.constraints.by_kind:
-            constraints_for_kind = loaded_kit.constraints.by_kind[str(artifact_type)]
-
-        constraints_path = None
-        if loaded_kit:
-            try:
-                adapter_dir = getattr(ctx, "adapter_dir", None)
-                if not isinstance(adapter_dir, Path):
-                    adapter_dir = project_root
-                constraints_path = _resolve_loaded_kit_constraints_path(
-                    adapter_dir,
-                    project_root,
-                    loaded_kit,
-                )
-            except (OSError, ValueError, KeyError):
-                constraints_path = None
-
-        artifact_records.append(ArtifactRecord(path=artifact_path, artifact_kind=str(artifact_type), constraints=constraints_for_kind))
-        # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-load-constraints
-
-        # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-structure
-        result = validate_artifact_file(
-            artifact_path=artifact_path,
-            artifact_kind=str(artifact_type),
-            constraints=constraints_for_kind,
-            registered_systems=registered_systems,
-            constraints_path=constraints_path,
-            kit_id=str(kit_id),
-        )
-        errors = result.get("errors", [])
-        warnings = result.get("warnings", [])
-        # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-structure
-
-        artifact_report: Dict[str, object] = {
-            "artifact": str(artifact_path),
-            "artifact_type": artifact_type,
-            "traceability": traceability,
-            "status": "PASS" if not errors else "FAIL",
-            "error_count": len(errors),
-            "warning_count": len(warnings),
-        }
-
-        # On FAIL, include detailed error/warning lists by default so `validate` output is actionable
-        # without requiring `--verbose`.
-        if args.verbose or errors:
-            artifact_report["errors"] = errors
-        if args.verbose or warnings:
-            artifact_report["warnings"] = warnings
-            try:
-                _hits = scan_cpt_ids(artifact_path)
-                artifact_report["id_definitions"] = len([h for h in _hits if h.get("type") == "definition"])
-                artifact_report["id_references"] = len([h for h in _hits if h.get("type") == "reference"])
-            except (OSError, ValueError):
-                artifact_report["id_definitions"] = 0
-                artifact_report["id_references"] = 0
-
-        artifact_reports.append(artifact_report)
-        artifact_report_by_path[str(artifact_path)] = artifact_report
-        all_errors.extend(errors)
-        all_warnings.extend(warnings)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-helpers
-    def _attach_issue_to_artifact_report(issue: Dict[str, object], *, is_error: bool) -> None:
-        ipath = str(issue.get("path", "") or "")
-        rep = artifact_report_by_path.get(ipath)
-        if rep is None:
-            return
-
-        if is_error:
-            rep["status"] = "FAIL"
-            rep["error_count"] = int(rep.get("error_count", 0) or 0) + 1
-            if args.verbose and isinstance(rep.get("errors"), list):
-                rep["errors"].append(issue)
-        else:
-            rep["warning_count"] = int(rep.get("warning_count", 0) or 0) + 1
-            if args.verbose and isinstance(rep.get("warnings"), list):
-                rep["warnings"].append(issue)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-helpers
-
-    # Content language check — runs after per-artifact structure validation.
-    # Skipped if structure has already failed (all_errors non-empty) so language
-    # issues never obscure structural errors.
-    if not all_errors:
-        _lang_errs = _run_content_language_check(artifacts_to_validate, project_root)
-        for _le in _lang_errs:
-            all_errors.append(_le)
-            _attach_issue_to_artifact_report(_le, is_error=True)
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-structure-fail
-    # Stop early: cross-artifact reference checks and code traceability checks are run only
-    # after per-artifact structure/content checks pass.
-    if all_errors:
-        enrich_issues(all_errors, project_root=project_root)
-        enrich_issues(all_warnings, project_root=project_root)
-        out = {
-            "status": "FAIL",
-            "project_root": project_root.as_posix(),
-            "artifact_count": len(artifacts_to_validate),
-            "error_count": len(all_errors),
-            "warning_count": len(all_warnings),
-        }
-        out["errors"] = all_errors
-        if all_warnings:
-            out["warnings"] = all_warnings
-        if args.output:
-            Path(args.output).write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
-        else:
-            ui.result(out, human_fn=_human_validate)
-        return 2
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-structure-fail
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-cross-validate
-    # Cross-reference validation - load ALL registered artifacts for context
-    # When validating a single artifact, we still need all artifacts to check references
-    all_artifacts_for_cross: List[ArtifactRecord] = list(artifact_records)
-    validated_paths = {str(p) for p, _, _, _, _ in artifacts_to_validate}
-
-    # Load remaining artifacts that weren't validated (for cross-reference context)
-    for artifact_meta, system_node in meta.iter_all_artifacts():
-        pkg = meta.get_kit(system_node.kit)
-        if not pkg or not pkg.is_cfs_format():
-            continue
-        if ws_ctx is not None:
-            art_path = ws_ctx.resolve_artifact_path(artifact_meta, project_root)
-        else:
-            art_path = (project_root / artifact_meta.path).resolve()
-        if art_path is None or not art_path.exists():
-            continue
-        if str(art_path) in validated_paths:
-            continue  # Already parsed
-        constraints_for_kind = None
-        loaded_kit = (ctx.kits or {}).get(str(system_node.kit))
-        if loaded_kit and loaded_kit.constraints and str(artifact_meta.kind) in loaded_kit.constraints.by_kind:
-            constraints_for_kind = loaded_kit.constraints.by_kind[str(artifact_meta.kind)]
-        all_artifacts_for_cross.append(ArtifactRecord(path=art_path, artifact_kind=str(artifact_meta.kind), constraints=constraints_for_kind))
-
-    if not args.local_only and ws_ctx is not None and ws_ctx.cross_repo and ws_ctx.resolve_remote_ids:
-        _seen_cross = {str(r.path) for r in all_artifacts_for_cross}
-        all_artifacts_for_cross.extend(_collect_cross_repo_artifacts(ws_ctx, _seen_cross))
-
-    if len(all_artifacts_for_cross) > 0:
-        cross_result = cross_validate_artifacts(all_artifacts_for_cross, registered_systems=registered_systems, known_kinds=known_kinds)
-        cross_errors = cross_result.get("errors", [])
-        cross_warnings = cross_result.get("warnings", [])
-        # Only include cross-ref errors for artifacts we're validating
-        for err in cross_errors:
-            err_path = err.get("path", "")
-            if err_path in validated_paths:
-                all_errors.append(err)
-                _attach_issue_to_artifact_report(err, is_error=True)
-        for warn in cross_warnings:
-            warn_path = warn.get("path", "")
-            if warn_path in validated_paths:
-                all_warnings.append(warn)
-                _attach_issue_to_artifact_report(warn, is_error=False)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-cross-validate
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
-    # Code traceability validation (unless skipped)
-    code_files_scanned: List[Dict[str, object]] = []
-    parsed_code_files_full: List[CodeFile] = []
-    code_ids_found: Set[str] = set()
-    to_code_ids: Set[str] = set()
-    to_code_ids_task_unchecked: Set[str] = set()
-    artifact_ids: Set[str] = set()
-    full_ids_to_check: Set[str] = set()
-
-    # Build map of artifact path to traceability mode
-    traceability_by_path: Dict[str, str] = {}
-    for artifact_path, _template_path, _artifact_type, traceability, _kit_id in artifacts_to_validate:
-        traceability_by_path[str(artifact_path)] = traceability
-
-    # Determine which FULL-traceability IDs we might accept references from code for.
-    for artifact_path, _template_path, _artifact_kind, traceability, _kit_id in artifacts_to_validate:
-        if traceability != "FULL":
-            continue
-        try:
-            for h in scan_cpt_ids(artifact_path):
-                if h.get("type") != "definition" or not h.get("id"):
-                    continue
-                full_ids_to_check.add(str(h["id"]))
-        except (OSError, ValueError):
-            continue
-
-    strict_code_validation = not args.artifact
-    should_scan_code = (not args.skip_code) and (strict_code_validation or bool(full_ids_to_check))
-
-    if strict_code_validation and len(all_artifacts_for_cross) > 0:
-        # Build complete set of defined artifact IDs for orphan checks.
-        artifact_ids, to_code_ids, to_code_ids_task_unchecked = _collect_artifact_code_expectations(
-            all_artifacts_for_cross,
-            traceability_by_path,
-            registered_systems,
-        )
-
-    # Workspace: expand artifact_ids with IDs from all workspace sources (primary + remote)
-    if not args.local_only and ws_ctx is not None:
-        artifact_ids.update(ws_ctx.get_all_artifact_ids())
-
-    if should_scan_code:
-        # Scan code files from all systems
-        def resolve_code_path(entry: object) -> Optional[Path]:
-            src_name = getattr(entry, "source", None)
-            if src_name and ws_ctx is not None:
-                return ws_ctx.resolve_artifact_path(entry, project_root)
-            pth = getattr(entry, "path", "") if not isinstance(entry, dict) else entry.get("path", "")
-            return (project_root / pth).resolve()
-
-        def scan_codebase_entry(entry: object, traceability: str) -> None:
-            code_path = resolve_code_path(entry)
-            extensions = (getattr(entry, "extensions", None) if not isinstance(entry, dict) else entry.get("extensions", None)) or [".py"]
-
-            if code_path is None or not code_path.exists():
-                return
-
-            if code_path.is_file():
-                files_to_scan = [code_path]
-            else:
-                files_to_scan = []
-                for ext in extensions:
-                    files_to_scan.extend(code_path.rglob(f"*{ext}"))
-
-            for file_path in files_to_scan:
-                # Apply registry root ignore rules as a hard visibility filter.
-                try:
-                    rel = file_path.resolve().relative_to(project_root).as_posix()
-                except ValueError:
-                    rel = None
-                if rel and meta.is_ignored(rel):
-                    continue
-
-                cf, errs = CodeFile.from_path(file_path)
-                if errs or cf is None:
-                    if strict_code_validation and errs:
-                        all_errors.extend(errs)
-                    continue
-
-                if traceability == "FULL":
-                    parsed_code_files_full.append(cf)
-
-                if strict_code_validation:
-                    # Validate structure
-                    result = cf.validate()
-                    all_errors.extend(result.get("errors", []))
-                    all_warnings.extend(result.get("warnings", []))
-
-                # Track IDs found
-                file_ids = cf.list_ids()
-                code_ids_found.update(file_ids)
-
-                if file_ids or cf.scope_markers or cf.block_markers:
-                    code_files_scanned.append({
-                        "path": str(file_path),
-                        "scope_markers": len(cf.scope_markers),
-                        "block_markers": len(cf.block_markers),
-                        "ids_referenced": len(file_ids),
-                    })
-
-        def scan_system_codebase(system_node: "SystemNode") -> None:
-            for cb_entry in system_node.codebase:
-                # Determine traceability from system artifacts:
-                # scan as FULL if ANY artifact requires it (per-artifact
-                # DOCS-ONLY is handled during to_code_ids collection).
-                traceability = "DOCS-ONLY"
-                for art in system_node.artifacts:
-                    if art.traceability == "FULL":
-                        traceability = "FULL"
-                        break
-                scan_codebase_entry(cb_entry, traceability)
-            for child in system_node.children:
-                scan_system_codebase(child)
-
-        for system_node in meta.systems:
-            scan_system_codebase(system_node)
-
-        if strict_code_validation and parsed_code_files_full:
-            # Collect CDSL instructions per ID from FULL-traceability artifacts
-            artifact_instances, artifact_instances_all = _collect_full_artifact_instances(
-                all_artifacts_for_cross,
-                traceability_by_path,
-            )
-
-            cv = cross_validate_code(
-                parsed_code_files_full,
-                artifact_ids,
-                to_code_ids,
-                forbidden_code_ids=to_code_ids_task_unchecked,
-                traceability="FULL",
-                artifact_instances=artifact_instances,
-                artifact_instances_all=artifact_instances_all,
-            )
-            all_errors.extend(cv.get("errors", []))
-            all_warnings.extend(cv.get("warnings", []))
-
-    # Reference coverage (simplified): if an artifact kind has no constraints, each ID
-    # definition must be referenced from at least one other artifact kind.
-    # If traceability is FULL, a code reference also satisfies coverage.
-    if len(all_artifacts_for_cross) > 0:
-        present_kinds: Set[str] = set()
-        refs_by_id: Dict[str, Set[str]] = {}
-
-        # Build reference index across ALL artifacts.
-        for art in all_artifacts_for_cross:
-            kind = str(getattr(art, "artifact_kind", "") or "")
-            present_kinds.add(kind)
-
-            try:
-                for h in scan_cpt_ids(art.path):
-                    if h.get("type") != "reference":
-                        continue
-                    rid = str(h.get("id") or "").strip()
-                    if not rid:
-                        continue
-                    refs_by_id.setdefault(rid, set()).add(kind)
-            except (OSError, ValueError):
-                continue
-
-        # Enforce rule for validated artifacts with no constraints.
-        for art in all_artifacts_for_cross:
-            art_path_str = str(art.path)
-            if art_path_str not in validated_paths:
-                continue
-            if getattr(art, "constraints", None) is not None:
-                continue
-
-            kind = str(getattr(art, "artifact_kind", "") or "")
-            other_kinds = sorted(k for k in present_kinds if k != kind)
-            art_traceability = traceability_by_path.get(art_path_str, "FULL")
-
-            try:
-                defs = [h for h in scan_cpt_ids(art.path) if h.get("type") == "definition" and h.get("id")]
-            except (OSError, ValueError):
-                defs = []
-
-            for d in defs:
-                did = str(d.get("id") or "").strip()
-                if not did:
-                    continue
-                line = int(d.get("line", 1) or 1)
-
-                if not other_kinds:
-                    warn = constraints_error(
-                        "structure",
-                        f"`{did}` is not referenced — no other artifact kinds exist in scope for cross-referencing",
-                        code=EC.ID_NOT_REFERENCED_NO_SCOPE,
-                        path=art.path,
-                        line=line,
-                        id=did,
-                    )
-                    all_warnings.append(warn)
-                    _attach_issue_to_artifact_report(warn, is_error=False)
-                    continue
-
-                referenced_kinds = sorted(k for k in refs_by_id.get(did, set()) if k != kind)
-                if referenced_kinds:
-                    continue
-
-                # Allow code reference to satisfy coverage when FULL.
-                if art_traceability == "FULL" and did in code_ids_found:
-                    continue
-
-                err = constraints_error(
-                    "structure",
-                    f"`{did}` (defined in {kind}) is not referenced from any of {other_kinds}",
-                    code=EC.ID_NOT_REFERENCED,
-                    path=art.path,
-                    line=line,
-                    id=did,
-                    other_kinds=other_kinds,
-                )
-                all_errors.append(err)
-                _attach_issue_to_artifact_report(err, is_error=True)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-enrich-errors
-    # Resolve target artifact paths for cross-ref errors (before enrich_issues strips 'path')
-    _enrich_target_artifact_paths(all_errors, meta=meta, project_root=project_root)
-
-    # Enrich errors/warnings with fixing prompts for LLM agents
-    enrich_issues(all_errors, project_root=project_root)
-    enrich_issues(all_warnings, project_root=project_root)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-enrich-errors
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-return-report
-    # Build final report
-    overall_status = "PASS" if not all_errors else "FAIL"
-
-    report: Dict[str, object] = {
-        "status": overall_status,
-        "artifacts_validated": len(artifact_reports),
-        "error_count": len(all_errors),
-        "warning_count": len(all_warnings),
-    }
-
-    # Add code validation stats if code was validated
-    if not args.skip_code and not args.artifact:
-        report["code_files_scanned"] = len(code_files_scanned)
-        report["to_code_ids_total"] = len(to_code_ids)
-        report["code_ids_found"] = len(code_ids_found)
-        if to_code_ids:
-            report["coverage"] = f"{len(code_ids_found & to_code_ids)}/{len(to_code_ids)}"
-
-    # Add next step hint for agent
-    if overall_status == "PASS":
-        report["next_step"] = "Deterministic validation passed. Now perform semantic validation: review content quality against checklist.md criteria."
-
-    if args.verbose:
-        report["errors"] = all_errors
-        report["warnings"] = all_warnings
-    elif overall_status != "PASS":
-        # On failure, always print a detailed, pretty report.
-        report["errors"] = all_errors
-        if all_warnings:
-            report["warnings"] = all_warnings
-    else:
-        # Compact summary on PASS
-        failed_artifacts = [r for r in artifact_reports if r.get("status") == "FAIL"]
-        if failed_artifacts:
-            report["failed_artifacts"] = [
-                {"artifact": r.get("artifact"), "error_count": r.get("error_count")}
-                for r in failed_artifacts
-            ]
-
-    if args.output:
-        pretty = bool(args.verbose) or (overall_status != "PASS")
-        out_text = json.dumps(report, indent=2 if pretty else None, ensure_ascii=False)
-        if pretty:
-            out_text += "\n"
-        Path(args.output).write_text(out_text, encoding="utf-8")
-    else:
-        ui.result(report, human_fn=_human_validate)
-
-    if overall_status == "PASS":
-        # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-pass
-        return 0
-        # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-pass
-    # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-fail
-    return 2
-    # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-fail
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-return-report
+    session, exit_code = _build_validate_session(_parse_validate_args(argv))
+    if exit_code is not None or session is None:
+        return 1 if exit_code is None else exit_code
+    exit_code = _resolve_artifacts_to_validate(session)
+    if exit_code is not None:
+        return exit_code
+    results, exit_code = _run_initial_artifact_validation(session)
+    if exit_code is not None:
+        return exit_code
+    all_artifacts_for_cross = _build_cross_validation_context(session, results)
+    _run_cross_validation(session, results, all_artifacts_for_cross)
+    _run_code_validation(session, results, all_artifacts_for_cross)
+    _run_reference_coverage(session, results, all_artifacts_for_cross)
+    return _emit_final_validate_report(session, results)
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-helpers
 def _enrich_target_artifact_paths(
@@ -855,7 +951,7 @@ def _enrich_target_artifact_paths(
     - ``target_artifact_suggested_path`` set → artifact missing, autodetect knows where → "create `path`"
     - neither set → no autodetect rule → prompt asks LLM to request path from user
     """
-    from ..utils.artifacts_meta import ArtifactsMeta, SystemNode
+    from ..utils.artifacts_meta import ArtifactsMeta
 
     if not isinstance(meta, ArtifactsMeta):
         return
@@ -963,6 +1059,68 @@ def _suggest_path_from_autodetect(node: object, target_kind: str) -> Optional[st
 # Content language check helper
 # ---------------------------------------------------------------------------
 
+
+def _load_language_validation_settings(project_root: "Path") -> Tuple[Optional[List[str]], list]:
+    """Load configured allowed content languages and any config-load errors."""
+    from ..utils.constraints import error as _error
+    from ..utils import error_codes as _EC
+
+    try:
+        from ..utils.workspace import find_workspace_config as _find_ws
+        ws_cfg, ws_err = _find_ws(project_root)
+    except (ImportError, OSError, AttributeError) as exc:
+        return None, [_error(
+            "language",
+            f"Cannot load workspace config for language check: {exc}",
+            path=project_root,
+            line=1,
+            code=_EC.FILE_LOAD_ERROR,
+        )]
+
+    if ws_err:
+        return None, [_error(
+            "language",
+            f"Workspace config error, language validation skipped: {ws_err}",
+            path=project_root,
+            line=1,
+            code=_EC.FILE_LOAD_ERROR,
+        )]
+
+    validation = getattr(ws_cfg, "validation", None) if ws_cfg is not None else None
+    return getattr(validation, "allowed_content_languages", None), []
+
+
+def _scan_artifact_language_violations(
+    artifact_path: Path,
+    allowed_langs: List[str],
+    allowed_ranges: object,
+) -> list:
+    """Scan one artifact for language violations."""
+    from ..utils.constraints import error as _error
+    from ..utils import error_codes as _EC
+    from ..utils.content_language import LangScanError as _LangScanError, scan_file as _scan_file
+
+    results = []
+    try:
+        for violation in _scan_file(artifact_path, allowed_ranges):
+            results.append(_error(
+                "language",
+                f"Non-allowed characters [{violation.bad_chars_preview()}] -- {violation.line_preview()}",
+                path=artifact_path,
+                line=violation.lineno,
+                code=_EC.CONTENT_LANGUAGE_VIOLATION,
+                allowed_languages=allowed_langs,
+            ))
+    except _LangScanError as exc:
+        results.append(_error(
+            "language",
+            f"Cannot read file for language check: {exc.cause}",
+            path=artifact_path,
+            line=1,
+            code=_EC.FILE_READ_ERROR,
+        ))
+    return results
+
 def _run_content_language_check(
     artifacts_to_validate: list,
     project_root: "Path",
@@ -977,45 +1135,14 @@ def _run_content_language_check(
     FILE_LOAD_ERROR entries rather than silently disabling validation.
     """
     try:
-        from ..utils.constraints import error as _error
-        from ..utils import error_codes as _EC
+        from ..utils.content_language import build_allowed_ranges
     except ImportError:
         return []
 
-    try:
-        from ..utils.workspace import find_workspace_config as _find_ws
-        _ws_cfg, _ws_err = _find_ws(project_root)
-    except (ImportError, OSError, AttributeError) as exc:
-        return [_error(
-            "language",
-            f"Cannot load workspace config for language check: {exc}",
-            path=project_root,
-            line=1,
-            code=_EC.FILE_LOAD_ERROR,
-        )]
-
-    if _ws_err:
-        return [_error(
-            "language",
-            f"Workspace config error, language validation skipped: {_ws_err}",
-            path=project_root,
-            line=1,
-            code=_EC.FILE_LOAD_ERROR,
-        )]
-
-    if _ws_cfg is None or _ws_cfg.validation is None:
-        return []
-    allowed_langs = _ws_cfg.validation.allowed_content_languages
+    allowed_langs, config_errors = _load_language_validation_settings(project_root)
+    if config_errors:
+        return config_errors
     if not allowed_langs:
-        return []
-
-    try:
-        from ..utils.content_language import (
-            LangScanError as _LangScanError,
-            build_allowed_ranges,
-            scan_file as _scan_file,
-        )
-    except ImportError:
         return []
 
     allowed_ranges = build_allowed_ranges(allowed_langs)
@@ -1023,24 +1150,7 @@ def _run_content_language_check(
     for artifact_path, _template_path, _artifact_type, _traceability, _kit_id in artifacts_to_validate:
         if artifact_path.suffix.lower() != ".md":
             continue
-        try:
-            for v in _scan_file(artifact_path, allowed_ranges):
-                results.append(_error(
-                    "language",
-                    f"Non-allowed characters [{v.bad_chars_preview()}] — {v.line_preview()}",
-                    path=artifact_path,
-                    line=v.lineno,
-                    code=_EC.CONTENT_LANGUAGE_VIOLATION,
-                    allowed_languages=allowed_langs,
-                ))
-        except _LangScanError as exc:
-            results.append(_error(
-                "language",
-                f"Cannot read file for language check: {exc.cause}",
-                path=artifact_path,
-                line=1,
-                code=_EC.FILE_READ_ERROR,
-            ))
+        results.extend(_scan_artifact_language_violations(artifact_path, allowed_langs, allowed_ranges))
     return results
 
 
@@ -1108,6 +1218,60 @@ def _issue_location(issue: dict) -> str:
             return f"{ui.relpath(parts[0])}:{parts[1]}"
     return ui.relpath(loc)
 
+
+def _emit_issue_header(loc: str, code: str, msg: str, *, is_error: bool) -> None:
+    """Emit the main issue heading and message."""
+    header_parts = []
+    if loc:
+        header_parts.append(loc)
+    if code:
+        header_parts.append(f"[{code}]")
+
+    if header_parts:
+        header_text = " ".join(header_parts)
+        if is_error:
+            ui.warn(header_text)
+        else:
+            ui.substep(f"  > {header_text}")
+        if msg:
+            ui.substep(f"    {msg}")
+        return
+
+    if is_error:
+        ui.warn(msg)
+    else:
+        ui.substep(f"  > {msg}")
+
+
+def _emit_issue_extras(issue: dict) -> bool:
+    """Emit structured extra fields for an issue."""
+    has_extra = False
+    reasons = issue.get("reasons")
+    if isinstance(reasons, list) and reasons:
+        for reason in reasons:
+            ui.substep(f"    -> {reason}")
+        has_extra = True
+
+    fixing = issue.get("fixing_prompt")
+    if fixing:
+        ui.substep(f"    Fix: {fixing}")
+        has_extra = True
+
+    handled_keys = {
+        "type", "message", "code", "line", "path", "location",
+        "reasons", "fixing_prompt",
+    }
+    for key, value in issue.items():
+        if key in handled_keys or value is None or not value or value == []:
+            continue
+        if isinstance(value, list):
+            ui.substep(f"    {key}: {', '.join(str(item) for item in value)}")
+        else:
+            ui.substep(f"    {key}: {value}")
+        has_extra = True
+    return has_extra
+
+
 def _format_issue(issue: object, *, is_error: bool) -> None:
     """Format a single error/warning with all available fields.
 
@@ -1125,53 +1289,8 @@ def _format_issue(issue: object, *, is_error: bool) -> None:
     msg = issue.get("message", "")
     code = issue.get("code", "")
     loc = _issue_location(issue)
-
-    # Line 1: location [code]
-    header_parts = []
-    if loc:
-        header_parts.append(loc)
-    if code:
-        header_parts.append(f"[{code}]")
-
-    if header_parts:
-        if is_error:
-            ui.warn(f"{' '.join(header_parts)}")
-        else:
-            ui.substep(f"  \u25b8 {' '.join(header_parts)}")
-        if msg:
-            ui.substep(f"    {msg}")
-    else:
-        if is_error:
-            ui.warn(msg)
-        else:
-            ui.substep(f"  \u25b8 {msg}")
-
-    # Structured fields: reasons, fixing_prompt
-    has_extra = False
-    reasons = issue.get("reasons")
-    if isinstance(reasons, list) and reasons:
-        for r in reasons:
-            ui.substep(f"    \u2192 {r}")
-        has_extra = True
-
-    fixing = issue.get("fixing_prompt")
-    if fixing:
-        ui.substep(f"    Fix: {fixing}")
-        has_extra = True
-
-    # Auto-format ALL remaining keys so nothing is ever lost
-    handled_keys = {
-        "type", "message", "code", "line", "path", "location",
-        "reasons", "fixing_prompt",
-    }
-    for k, v in issue.items():
-        if k in handled_keys or v is None or not v or v == []:
-            continue
-        if isinstance(v, list):
-            ui.substep(f"    {k}: {', '.join(str(x) for x in v)}")
-        else:
-            ui.substep(f"    {k}: {v}")
-        has_extra = True
+    _emit_issue_header(loc, str(code), str(msg), is_error=is_error)
+    has_extra = _emit_issue_extras(issue)
 
     if has_extra:
         ui.blank()

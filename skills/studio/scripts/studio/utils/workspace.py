@@ -46,6 +46,49 @@ def _resolve_config_path(project_root: Path, studio_rel: str) -> Path:
     return config_path
 
 
+def _error_result(message: str) -> Tuple[None, str]:
+    """Return a standardized workspace-config failure tuple."""
+    return None, message
+
+
+def _parse_workspace_sources(data: dict) -> Dict[str, SourceEntry]:
+    """Parse and validate the ``sources`` section from workspace config."""
+    raw_sources = (data or {}).get("sources", {})
+    if not isinstance(raw_sources, dict):
+        raise ValueError("'sources' must be a mapping")
+    sources: Dict[str, SourceEntry] = {}
+    for name, src_data in raw_sources.items():
+        if not isinstance(src_data, dict):
+            raise ValueError(f"Source '{name}' must be a table, got {type(src_data).__name__}")
+        if isinstance(name, str) and name.strip():
+            normalized_name = name.strip()
+            sources[normalized_name] = SourceEntry.from_dict(normalized_name, src_data)
+    return sources
+
+
+def _parse_workspace_section(
+    data: dict,
+    key: str,
+    factory: object,
+) -> Optional[object]:
+    """Parse an optional workspace subsection when present as a dict."""
+    raw_value = (data or {}).get(key)
+    if not isinstance(raw_value, dict):
+        return None
+    return factory.from_dict(raw_value)
+
+
+def _validate_workspace_data(data: object, workspace_path: Path) -> Optional[str]:
+    """Return an error message when raw workspace TOML is structurally invalid."""
+    if not isinstance(data, dict):
+        return f"Invalid workspace file (expected TOML table): {workspace_path}"
+    if "version" not in data:
+        return f"Missing required field 'version' in {workspace_path}"
+    if "sources" not in data:
+        return f"Missing required field 'sources' in {workspace_path}"
+    return None
+
+
 @dataclass
 class SourceEntry:
     """A named source repo in the workspace."""
@@ -224,38 +267,13 @@ class WorkspaceConfig:
         resolution_base: Optional[Path] = None,
     ) -> "WorkspaceConfig":
         """Build an instance from a dictionary."""
-        version = str((data or {}).get("version", "1.0")).strip()
-        sources: Dict[str, SourceEntry] = {}
-        raw_sources = (data or {}).get("sources", {})
-        if not isinstance(raw_sources, dict):
-            raise ValueError("'sources' must be a mapping")
-        for name, src_data in raw_sources.items():
-            if not isinstance(src_data, dict):
-                raise ValueError(f"Source '{name}' must be a table, got {type(src_data).__name__}")
-            if isinstance(name, str) and name.strip():
-                sources[name.strip()] = SourceEntry.from_dict(name.strip(), src_data)
-
-        traceability = TraceabilityConfig()
-        raw_trace = (data or {}).get("traceability", None)
-        if isinstance(raw_trace, dict):
-            traceability = TraceabilityConfig.from_dict(raw_trace)
-
-        resolve_cfg: Optional[ResolveConfig] = None
-        raw_resolve = (data or {}).get("resolve", None)
-        if isinstance(raw_resolve, dict):
-            resolve_cfg = ResolveConfig.from_dict(raw_resolve)
-
-        validation_cfg: Optional[ValidationConfig] = None
-        raw_validation = (data or {}).get("validation", None)
-        if isinstance(raw_validation, dict):
-            validation_cfg = ValidationConfig.from_dict(raw_validation)
-
         return cls(
-            version=version,
-            sources=sources,
-            traceability=traceability,
-            resolve=resolve_cfg,
-            validation=validation_cfg,
+            version=str((data or {}).get("version", "1.0")).strip(),
+            sources=_parse_workspace_sources(data),
+            traceability=_parse_workspace_section(data, "traceability", TraceabilityConfig)
+            or TraceabilityConfig(),
+            resolve=_parse_workspace_section(data, "resolve", ResolveConfig),
+            validation=_parse_workspace_section(data, "validation", ValidationConfig),
             workspace_file=workspace_file,
             is_inline=is_inline,
             resolution_base=resolution_base,
@@ -287,24 +305,21 @@ class WorkspaceConfig:
             (WorkspaceConfig, None) on success or (None, error_message) on failure.
         """
         if not workspace_path.is_file():
-            return None, f"Workspace file not found: {workspace_path}"
+            return _error_result(f"Workspace file not found: {workspace_path}")
         try:
             data = toml_utils.load(workspace_path)
         except (OSError, ValueError) as e:
-            return None, f"Failed to read workspace file {workspace_path}: {e}"
-        if not isinstance(data, dict):
-            return None, f"Invalid workspace file (expected TOML table): {workspace_path}"
-        if "version" not in data:
-            return None, f"Missing required field 'version' in {workspace_path}"
-        if "sources" not in data:
-            return None, f"Missing required field 'sources' in {workspace_path}"
+            return _error_result(f"Failed to read workspace file {workspace_path}: {e}")
+        validation_error = _validate_workspace_data(data, workspace_path)
+        if validation_error is not None:
+            return _error_result(validation_error)
         try:
             cfg = cls.from_dict(data, workspace_file=workspace_path.resolve(), is_inline=False)
         except ValueError as e:
-            return None, f"Invalid workspace config in {workspace_path}: {e}"
+            return _error_result(f"Invalid workspace config in {workspace_path}: {e}")
         errs = cfg.validate()
         if errs:
-            return None, f"Invalid workspace config in {workspace_path}: {'; '.join(errs)}"
+            return _error_result(f"Invalid workspace config in {workspace_path}: {'; '.join(errs)}")
         return cfg, None
     # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-config-datamodel
 
@@ -325,11 +340,8 @@ class WorkspaceConfig:
             return None
         # @cpt-end:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-if-not-found
         # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-determine-base
-        if self.resolution_base is not None:
-            base = self.resolution_base
-        elif self.workspace_file is not None:
-            base = self.workspace_file.parent
-        else:
+        base = self.get_resolution_base()
+        if base is None:
             return None
         # @cpt-end:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-determine-base
         # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-return
@@ -346,6 +358,14 @@ class WorkspaceConfig:
         # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-fallback
         return None
         # @cpt-end:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-fallback
+
+    def get_resolution_base(self) -> Optional[Path]:
+        """Return the filesystem base used for relative workspace resolution."""
+        if self.resolution_base is not None:
+            return self.resolution_base
+        if self.workspace_file is not None:
+            return self.workspace_file.parent
+        return None
 
     # @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-methods
     def resolve_source_adapter(self, source_name: str) -> Optional[Path]:
