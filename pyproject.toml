@@ -28,12 +28,12 @@ local_scheme = "no-local-version"
 jobs = 0
 persistent = false
 py-version = "3.11"
-init-hook = "import sys; sys.path[:0] = ['src', 'skills/studio/scripts']"
+init-hook = "import sys; sys.path[:0] = ['src', 'skills/studio/scripts', 'scripts']"
 load-plugins = [
-    "studio.pylint_plugins.error_surfaces",
-    "studio.pylint_plugins.import_boundaries",
-    "studio.pylint_plugins.output_channels",
-    "studio.pylint_plugins.silent_exceptions",
+    "pylint_plugins.error_surfaces",
+    "pylint_plugins.import_boundaries",
+    "pylint_plugins.output_channels",
+    "pylint_plugins.silent_exceptions",
 ]
 ignore-paths = [
     "^\\.bootstrap/",

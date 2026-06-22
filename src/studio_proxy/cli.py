@@ -19,6 +19,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from studio_proxy.stderr import write_stderr, write_stderr_lines
 
 from studio_proxy.resolve import (
     find_cached_skill,
@@ -30,9 +31,6 @@ from studio_proxy.resolve import (
     get_project_version,
     resolve_skill,
 )
-
-
-LOGGER = logging.getLogger(__name__)
 
 
 def _configure_proxy_logging() -> None:
@@ -96,7 +94,7 @@ class _ProxyCommandOptions:
 
 def _mirror_override(args: List[str], set_override: Any) -> int:
     if len(args) < 3:
-        LOGGER.error("Usage: cfs mirror override <old-url> <new-url>")
+        write_stderr("Usage: cfs mirror override <old-url> <new-url>")
         return 1
     old_url, new_url = args[1], args[2]
     path = set_override(old_url, new_url)
@@ -134,13 +132,13 @@ def _mirror_sources(mirror_sources: Any) -> int:
 
 def _mirror_remove(args: List[str], remove_override: Any) -> int:
     if len(args) < 2:
-        LOGGER.error("Usage: cfs mirror remove <old-url>")
+        write_stderr("Usage: cfs mirror remove <old-url>")
         return 1
     old_url = args[1]
     if remove_override(old_url):
         print(f"Removed: {old_url}")
         return 0
-    LOGGER.error("Not found: %s", old_url)
+    write_stderr(f"Not found: {old_url}")
     return 1
 
 
@@ -148,7 +146,7 @@ def _confirm_mirror_clear(args: List[str]) -> bool:
     if "--yes" in args or "-y" in args:
         return True
     if not sys.stdin.isatty():
-        LOGGER.error("Pass --yes to confirm clearing all overrides in non-interactive mode.")
+        write_stderr("Pass --yes to confirm clearing all overrides in non-interactive mode.")
         return False
     try:
         answer = input("Clear all mirror overrides? [y/N] ").strip().lower()
@@ -156,7 +154,7 @@ def _confirm_mirror_clear(args: List[str]) -> bool:
         answer = "n"
     if answer in ("y", "yes"):
         return True
-    LOGGER.error("Aborted.")
+    write_stderr("Aborted.")
     return False
 
 
@@ -360,7 +358,9 @@ def _run_cache_update(
 def _handle_update_command(args: List[str], options: _ProxyCommandOptions) -> Optional[int]:
     if not (args and args[0] == "update"):
         return None
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-update-cache
     if not options.skip_cache and "--help" not in args and "-h" not in args:
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-explicit-cache-update
         success, message = _run_cache_update(
             options.source_dir,
             options.target_version,
@@ -368,18 +368,27 @@ def _handle_update_command(args: List[str], options: _ProxyCommandOptions) -> Op
             options.custom_url,
             args,
         )
-        LOGGER.info("%s", message)
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-explicit-cache-update
+        write_stderr(message)
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-cache-update
         if not success:
             return 1
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-cache-update
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-update-cache
     skill_path = find_cached_skill()
     if skill_path is None:
-        LOGGER.error("Cache not found. Run 'cfs update' without --no-cache first.")
+        write_stderr("Cache not found. Run 'cfs update' without --no-cache first.")
         return 1
-    LOGGER.info("Updating project...")
+    write_stderr("Updating project...")
     update_args = list(args)
     if options.target_version is None and len(args) > 1 and not args[1].startswith("-"):
         update_args = ["update"] + args[2:]
+    # @cpt-begin:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
+    # forwarded skill update owns project-footprint refresh such as gitignore updates
+    # @cpt-end:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
+    # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-update-complete
     return _forward_to_skill(skill_path, update_args)
+    # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-update-complete
 
 
 def _maybe_prepare_init_cache(args: List[str], options: _ProxyCommandOptions) -> Optional[int]:
@@ -392,25 +401,31 @@ def _maybe_prepare_init_cache(args: List[str], options: _ProxyCommandOptions) ->
     )
     if not should_prepare:
         return None
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
     if options.source_dir is not None:
         from studio_proxy.cache import copy_from_local
 
-        LOGGER.info("Updating cache from local source...")
+        write_stderr("Updating cache from local source...")
         success, message = copy_from_local(source_dir=options.source_dir, force=options.force_update)
     else:
         from studio_proxy.cache import download_and_cache
 
         if options.target_version:
-            LOGGER.info("Updating cache to version %s...", options.target_version)
+            write_stderr(f"Updating cache to version {options.target_version}...")
         else:
-            LOGGER.info("Updating cache to latest version...")
+            write_stderr("Updating cache to latest version...")
         success, message = download_and_cache(
             version=options.target_version,
             force=options.force_update,
             url=options.custom_url,
         )
-    LOGGER.info("%s", message)
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
+    write_stderr(message)
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
     return None if success else 1
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
 
 
 def _resolve_skill_for_command(args: List[str], skip_cache: bool) -> Optional[Path]:
@@ -430,16 +445,18 @@ def _ensure_skill_available(skill_path: Optional[Path]) -> Optional[Path]:
         return skill_path
     from studio_proxy.cache import download_and_cache
 
-    LOGGER.error("")
-    LOGGER.error("  Constructor Studio skill engine not found.")
-    LOGGER.error("")
-    LOGGER.error("  Constructor Studio is a two-part tool:")
-    LOGGER.error("    • This CLI proxy (already installed)")
-    LOGGER.error("    • The skill engine (templates, validators, generators)")
-    LOGGER.error("")
-    LOGGER.error("  The skill engine needs to be downloaded once from GitHub")
-    LOGGER.error("  and cached at ~/.cf-studio/cache/.")
-    LOGGER.error("")
+    write_stderr_lines(
+        "",
+        "  Constructor Studio skill engine not found.",
+        "",
+        "  Constructor Studio is a two-part tool:",
+        "    • This CLI proxy (already installed)",
+        "    • The skill engine (templates, validators, generators)",
+        "",
+        "  The skill engine needs to be downloaded once from GitHub",
+        "  and cached at ~/.cf-studio/cache/.",
+        "",
+    )
 
     if sys.stdin.isatty():
         try:
@@ -447,23 +464,26 @@ def _ensure_skill_available(skill_path: Optional[Path]) -> Optional[Path]:
         except (EOFError, KeyboardInterrupt):
             answer = "n"
         if answer and answer not in ("y", "yes"):
-            LOGGER.error("")
-            LOGGER.error("  To download later, run: cfs update")
-            LOGGER.error("")
+            write_stderr_lines("", "  To download later, run: cfs update", "")
             return None
     else:
-        LOGGER.error("  Downloading automatically (non-interactive mode)...")
+        write_stderr("  Downloading automatically (non-interactive mode)...")
 
-    LOGGER.error("")
+    write_stderr("")
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
     success, message = download_and_cache()
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
     if not success:
-        LOGGER.error("  Error: %s", message)
-        LOGGER.error("  Retry: cfs update")
-        LOGGER.error("")
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
+        write_stderr_lines(f"  Error: {message}", "  Retry: cfs update", "")
         return None
-    LOGGER.error("  %s", message)
-    LOGGER.error("")
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
+    write_stderr_lines(f"  {message}", "")
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
     return find_cached_skill()
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
 
 
 def _handle_proxy_command(args: List[str]) -> tuple[Optional[int], _ProxyCommandOptions]:
@@ -563,10 +583,10 @@ def _forward_to_skill(skill_path: Path, args: List[str]) -> int:
         )
         return proc.returncode
     except FileNotFoundError:
-        LOGGER.error("Error: Skill entry point not found: %s", skill_path)
+        write_stderr(f"Error: Skill entry point not found: {skill_path}")
         return 1
     except OSError as e:
-        LOGGER.error("Error: Failed to execute skill: %s", e)
+        write_stderr(f"Error: Failed to execute skill: {e}")
         return 1
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-cache
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-project
@@ -593,7 +613,7 @@ def _background_version_check(project_skill_path: Path, args: Optional[List[str]
         # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
     except (OSError, ValueError) as exc:
-        LOGGER.warning("Warning: background update check unavailable: %s", exc)
+        write_stderr(f"Warning: background update check unavailable: {exc}")
 
 
 def _print_cached_update_notices(cached: Optional[Dict[str, Any]]) -> None:
@@ -605,17 +625,17 @@ def _print_cached_update_notices(cached: Optional[Dict[str, Any]]) -> None:
         return
     proxy = checks.get("proxy", {})
     if isinstance(proxy, dict) and proxy.get("action") == "update_available":
-        LOGGER.warning(
-            "cfs: constructor-studio proxy update available (%s -> %s). Run: pipx upgrade constructor-studio",
-            proxy.get("current_version", "?"),
-            proxy.get("latest_version", "?"),
+        write_stderr(
+            "cfs: constructor-studio proxy update available "
+            f"({proxy.get('current_version', '?')} -> {proxy.get('latest_version', '?')}). "
+            "Run: pipx upgrade constructor-studio"
         )
     skill = checks.get("skill_engine", {})
     if isinstance(skill, dict) and skill.get("action") == "update_available":
-        LOGGER.warning(
-            "cfs: skill engine update available (%s -> %s). Run: cfs update",
-            skill.get("current_version", "?"),
-            skill.get("latest_version", "?"),
+        write_stderr(
+            "cfs: skill engine update available "
+            f"({skill.get('current_version', '?')} -> {skill.get('latest_version', '?')}). "
+            "Run: cfs update"
         )
     kits = checks.get("kits", {})
     if isinstance(kits, dict) and kits.get("updates_available"):
@@ -623,10 +643,8 @@ def _print_cached_update_notices(cached: Optional[Dict[str, Any]]) -> None:
         command_hint = ", ".join(str(command) for command in commands[:3])
         if not command_hint:
             command_hint = "cfs kit update"
-        LOGGER.warning(
-            "cfs: %s kit update(s) available. Run: %s",
-            kits.get("updates_available"),
-            command_hint,
+        write_stderr(
+            f"cfs: {kits.get('updates_available')} kit update(s) available. Run: {command_hint}"
         )
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 
@@ -653,7 +671,7 @@ def _spawn_update_check_worker(project_skill_path: Path, args: List[str]) -> Non
                 close_fds=True,
             )
     except OSError as exc:
-        LOGGER.warning("Warning: unable to start update-check worker: %s", exc)
+        write_stderr(f"Warning: unable to start update-check worker: {exc}")
 
 
 def _normalize_version_for_compare(version: str) -> str:

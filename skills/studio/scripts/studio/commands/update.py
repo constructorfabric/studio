@@ -507,7 +507,9 @@ def _persist_post_update_metadata(
 
 
 def _record_core_toml_migrations(actions: Dict[str, Any], config_dir: Path) -> None:
+    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     removed_system = _remove_system_from_core_toml(config_dir)
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     if removed_system:
         ui.step("Removed [system] section from core.toml (ADR-0014: system identity lives in artifacts.toml)")
         actions["core_toml_system_removed"] = True
@@ -517,7 +519,11 @@ def _record_core_toml_migrations(actions: Dict[str, Any], config_dir: Path) -> N
         for legacy, canonical in deduped.items():
             ui.substep(f"{legacy} -> {canonical}")
         actions["kit_dedup"] = deduped
+    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-migrate-kit-sources
     migrated_kits = _migrate_kit_sources(config_dir)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-kit-sources
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
     if not migrated_kits:
         return
     ui.step("Migrating kit sources to GitHub...")
@@ -535,12 +541,24 @@ def _run_post_core_update_steps(
 ) -> bool:
     """Run layout, metadata, and migration phases after core copy."""
     if args.dry_run:
+        # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
+        # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-migrate-config
         actions["core_toml_metadata"] = "dry_run"
+        # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-config
+        # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
         actions["gitignore"] = "dry_run"
         return True
+    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-detect-layout-algo
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-detect-layout
     _record_layout_migration(actions, context.studio_dir)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-detect-layout
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-detect-layout-algo
     _cleanup_legacy_blueprint_dirs(context.config_dir)
+    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-migrate-config
     _persist_post_update_metadata(context=context, actions=actions)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-config
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
     try:
         actions["gitignore"] = _write_gitignore_block(
             context.project_root,
@@ -695,9 +713,11 @@ def _record_manifest_migration_result(
     if args.dry_run or kit_src is None:
         return
     try:
+        # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
         migration = _maybe_migrate_legacy_to_manifest(
             kit_slug, kit_src, studio_dir, config_dir, interactive,
         )
+        # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
         if migration is None:
             return
         kit_result["manifest_migration"] = migration
@@ -1308,7 +1328,9 @@ def _maybe_migrate_legacy_to_manifest(
     from .kit import migrate_legacy_kit_to_manifest, _read_kits_from_core_toml
 
     try:
+        # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
         manifest = load_manifest(kit_src)
+        # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
     except FileNotFoundError:
         logger.info("No manifest.toml found for kit '%s' at %s; skipping manifest migration", kit_slug, kit_src)
         return None
@@ -1324,13 +1346,27 @@ def _maybe_migrate_legacy_to_manifest(
     if manifest is None:
         return None
 
+    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-root
     kit_data = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-root
     if kit_data.get("resources"):
         return None  # Already has resource bindings
 
+    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-foreach-resource
+    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-compute-path
+    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-register-existing
+    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-prompt-new
+    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
+    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-return
     return migrate_legacy_kit_to_manifest(
         kit_src, studio_dir, kit_slug, interactive=interactive,
     )
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-return
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-prompt-new
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-register-existing
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-compute-path
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-foreach-resource
 # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-helper
 
 

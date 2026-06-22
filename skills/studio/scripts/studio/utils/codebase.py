@@ -459,6 +459,7 @@ def _collect_code_reference_errors(
             if forbidden_code_ids and ref.id in forbidden_code_ids and ref.id not in first_forbidden:
                 first_forbidden[ref.id] = (cf.path, int(ref.line))
             if ref.id not in artifact_ids:
+                # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-emit-orphan
                 errors.append(
                     error(
                         "traceability",
@@ -470,6 +471,7 @@ def _collect_code_reference_errors(
                         id=ref.id,
                     )
                 )
+                # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-emit-orphan
     return first_forbidden
 
 
@@ -498,6 +500,7 @@ def _collect_forbidden_code_errors(
         path, line = first_forbidden[fid]
         if all_instances and fid in all_instances and all_instances[fid] - code_inst_lookup.get(fid, set()):
             continue
+        # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-emit-forbidden
         errors.append(
             error(
                 "structure",
@@ -509,6 +512,7 @@ def _collect_forbidden_code_errors(
                 id=fid,
             )
         )
+        # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-emit-forbidden
 
 
 def _collect_instruction_errors(
@@ -525,6 +529,7 @@ def _collect_instruction_errors(
     for cid, art_insts in sorted(artifact_instances.items()):
         code_insts = set(code_inst_by_id.get(cid, {}).keys())
         for inst in sorted(art_insts - code_insts):
+            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-missing
             errors.append(
                 error(
                     "coverage",
@@ -537,8 +542,10 @@ def _collect_instruction_errors(
                     inst=inst,
                 )
             )
+            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-missing
         for inst in sorted(code_insts - art_insts):
             loc_path, loc_line = code_inst_by_id[cid][inst]
+            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-orphan
             errors.append(
                 error(
                     "traceability",
@@ -551,6 +558,7 @@ def _collect_instruction_errors(
                     inst=inst,
                 )
             )
+            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-orphan
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
 def load_code_file(code_path: Path) -> Tuple[Optional[CodeFile], List[Dict[str, object]]]:

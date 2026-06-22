@@ -125,7 +125,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 ### Project Initialization
 
-- [ ] `p1` - **ID**: `cpt-studio-flow-core-infra-project-init`
+- [x] `p1` - **ID**: `cpt-studio-flow-core-infra-project-init`
 
 **Actors**:
 
@@ -145,8 +145,8 @@ Enables users to install Studio globally, initialize it in any project with sens
 **Steps**:
 1. [x] - `p1` - User invokes `cfs init [--project-root ROOT] [--install-dir DIR]` - `inst-user-init`
 2. [x] - `p1` - Check if `{cf-studio-path}/` (or specified dir) already exists - `inst-check-existing`
-3. [ ] - `p1` - **IF** already initialized and `--force` is absent: delegate to `cpt-studio-flow-core-infra-init-repair` - `inst-if-exists`
-   1. [ ] - `p1` - **RETURN** repair result instead of treating existing initialization as an error - `inst-return-repair`
+3. [x] - `p1` - **IF** already initialized and `--force` is absent: delegate to `cpt-studio-flow-core-infra-init-repair` - `inst-if-exists`
+   1. [x] - `p1` - **RETURN** repair result instead of treating existing initialization as an error - `inst-return-repair`
 4. [x] - `p1` - **IF** interactive terminal AND no --dir flag - `inst-if-interactive`
    1. [x] - `p1` - Prompt user for installation directory (default: `studio`) - `inst-prompt-dir`
    2. [x] - `p2` - Prompt user for agent selection (default: all) - `inst-prompt-agents`
@@ -167,7 +167,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 19. [x] - `p1` - Parse `--kit-tracking tracked|ignored` with default `tracked`, plus repeatable per-kit overrides as `--kit-tracking <kit>=tracked|ignored` (`untracked` alias maps to `ignored`) - `inst-kit-tracking-policy`
 20. [x] - `p1` - Persist default kit tracking policy and per-kit `kits.<slug>.tracking` so later repair and update commands know which kit files are user-owned source or generated/ephemeral content - `inst-persist-kit-tracking`
 21. [x] - `p1` - Write or replace the Constructor Studio managed `.gitignore` block via `cpt-studio-algo-core-infra-gitignore-footprint` - `inst-write-gitignore-footprint`
-22. [ ] - `p1` - **IF** existing initialization is detected and `--force` is absent: validate install-dir compatibility before repair - `inst-existing-repair-mode`
+22. [x] - `p1` - **IF** existing initialization is detected and `--force` is absent: validate install-dir compatibility before repair - `inst-existing-repair-mode`
 
 ### Project Init Repair
 

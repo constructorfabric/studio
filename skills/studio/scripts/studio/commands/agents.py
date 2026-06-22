@@ -154,21 +154,42 @@ def _is_safe_generated_id(value: str) -> bool:
 
 def _follow_protocol_lines(target_path: str) -> List[str]:
     """Return the generated follow-link protocol block for workflow/skill shims."""
+    # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-follow-protocol
     return [
         "CF_WORKFLOW_ACTIVE:",
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-clarify-full-route-family
         "- workflow = executable_control_flow",
         "- no_substantive_work_until = workflow_explicit_permission",
         "MANDATORY RULE: USER INTENT IS SKILL INPUT, NOT EXECUTION AUTHORITY",
         "- hard_stop = WAIT | STOP_TURN | menu | gate | opener | approval | dispatch_gate | terminal_shape",
         "- precedence = constructor_studio_workflow > generic_assistant",
         "- active_workflow_law = current_state_transition | visible_companion_handoff | explicit_free_mode_exit",
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-clarify-full-route-family
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-intent-clarify-after-menu
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multi-select
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multiselect
         "- pre_emit_check = response_shape in workflow_allowed_shapes",
         "- if_check_fails = emit_only(workflow_allowed_gate_menu_opener_refusal)",
         "- protocol_violation > incomplete_answer",
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multiselect
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multi-select
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-intent-clarify-after-menu
         "",
+        # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-collect-sysprompt
+        # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-inject-agents
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-load-skill
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-explore-save-offer
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-module-load-report
         ROOT_AGENTS_PIPELINE_INSTRUCTION,
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-module-load-report
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-explore-save-offer
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-load-skill
+        # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-inject-agents
+        # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-collect-sysprompt
         "",
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-resolve-workflow
         f"ALWAYS open and follow `{target_path}`",
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-resolve-workflow
         "",
         "```pdsl",
         "UNIT GeneratedFollowProtocol",
@@ -176,7 +197,9 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         "  - ALWAYS treat target as controlling protocol, not background context",
         "  - ALWAYS traverse declared steps/units in order",
         "  - ALWAYS load every required unconditional LOAD/CONTINUE before task work",
+        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-conditional-module-loading
         "  - ALWAYS evaluate conditional gates and load every active branch",
+        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-conditional-module-loading
         (
             "  - ALWAYS while the workflow is active, map each new user message to "
             "a current workflow state, a visible companion-skill handoff, or an "
@@ -187,6 +210,7 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         "  - ALWAYS stop if any required fragment or rule cannot be followed",
         "```",
     ]
+    # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-follow-protocol
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-extract-studio-follow-target
@@ -3441,7 +3465,10 @@ def _build_desired_workflow_outputs(
 ) -> Dict[str, Dict[str, str]]:
     desired: Dict[str, Dict[str, str]] = {}
     custom_content = workflows_cfg.get("custom_content", "")
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-discover-workflows
     studio_workflow_entries = _list_workflow_files(studio_root, project_root)
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-discover-workflows
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-generate-entry-points
     for workflow in studio_workflow_entries:
         spec = _build_desired_workflow_output(
             workflow,
@@ -3461,6 +3488,7 @@ def _build_desired_workflow_outputs(
             "target_workflow_path": spec.target_workflow_path,
             "content": spec.content,
         }
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-generate-entry-points
     return desired
 
 
@@ -3752,6 +3780,8 @@ def _skill_description_with_kit_context(
 ) -> str:
     """Append per-kit skill descriptions to the core skill description."""
     kit_descs: List[str] = []
+    # @cpt-begin:cpt-studio-algo-agent-integration-compose-skill:p1:inst-read-kit-skills
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-collect-skill
     for kit_name, kit_dir in sorted(_registered_kit_roots(studio_root, project_root).items()):
         if not (kit_dir / _MANIFEST_FILE).is_file() or (kit_dir / ".cf-studio-kit.toml").is_file():
             continue
@@ -3761,6 +3791,8 @@ def _skill_description_with_kit_context(
         kit_desc = _parse_frontmatter(kit_skill).get("description", "")
         if kit_desc:
             kit_descs.append(f"Kit {kit_name}: {kit_desc}")
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-collect-skill
+    # @cpt-end:cpt-studio-algo-agent-integration-compose-skill:p1:inst-read-kit-skills
     if not kit_descs:
         return description
     return description.rstrip(".") + ". " + ". ".join(kit_descs) + "."
@@ -3877,6 +3909,7 @@ def _render_skill_output(
 
     target_rel, out_name, out_description = _resolve_skill_output_target(out_cfg, ctx)
 
+    # @cpt-begin:cpt-studio-algo-agent-integration-compose-skill:p1:inst-assemble-sections
     content = _render_template(
         template,
         {
@@ -3889,6 +3922,7 @@ def _render_skill_output(
             "custom_content": ctx.custom_content,
         },
     )
+    # @cpt-end:cpt-studio-algo-agent-integration-compose-skill:p1:inst-assemble-sections
     return (ctx.project_root / rel_path).resolve(), rel_path, content
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-agent-cfg-extract
 
@@ -3900,7 +3934,11 @@ def _write_rendered_skill_output(
     dry_run: bool,
 ) -> None:
     out_path, _, content = rendered
+    # @cpt-begin:cpt-studio-algo-agent-integration-compose-skill:p1:inst-write-skill
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-write-files
     _write_or_skip(out_path, content, skills_result, project_root, dry_run)
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-write-files
+    # @cpt-end:cpt-studio-algo-agent-integration-compose-skill:p1:inst-write-skill
 
 
 def _process_skills(
@@ -3945,12 +3983,14 @@ def _process_skills(
         )
         return skills_result
 
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-compose-skill
     for idx, out_cfg in enumerate(outputs):
         rendered = _render_skill_output(render_ctx, out_cfg)
         if rendered is None:
             skills_result["errors"].append(_skill_output_error_message(out_cfg, idx))
             continue
         _write_rendered_skill_output(rendered, skills_result, project_root, dry_run)
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-compose-skill
 
     return skills_result
 
@@ -6562,7 +6602,9 @@ def _execute_legacy_generation(
 ) -> Tuple[Dict[str, Any], bool]:
     has_errors = False
     results: Dict[str, Any] = {}
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
     for agent in agents_to_process:
+        # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-generate-entry-points
         result = _process_single_agent(
             agent,
             project_root,
@@ -6572,9 +6614,11 @@ def _execute_legacy_generation(
             dry_run=False,
             remove_cypilot=remove_cypilot,
         )
+        # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-generate-entry-points
         results[agent] = result
         if result.get("status") != "PASS" and _result_has_fatal_errors(result):
             has_errors = True
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
     return results, has_errors
 
 
@@ -6778,7 +6822,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
         ),
         copy_report,
     )
-    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
+    # @cpt-end:cpt-studio-dod-project-extensibility-backward-compat:p1:inst-legacy-path
 
 
 # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
@@ -6928,6 +6972,7 @@ def _build_result(
     dry_run: bool,
     gitignore_action: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
     has_errors = any(r.get("status") != "PASS" for r in results.values())
     partial_reasons = _collect_partial_reasons(results) if has_errors else []
     result = {
@@ -6945,6 +6990,7 @@ def _build_result(
     if partial_reasons:
         result["partial_reasons"] = partial_reasons
     return result
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
 
 
@@ -8199,7 +8245,7 @@ def _legacy_claude_mcp_broadening_translation(agent: Any) -> Dict[str, Any]:
     }
 # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-assemble-agent-file
 
-
+# @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-read-agent-source
 def _read_manifest_agent_source(
     agent_id: str,
     agent: "_AgentEntry",
@@ -8219,6 +8265,7 @@ def _read_manifest_agent_source(
         studio_root=studio_root,
         trusted_roots=trusted_roots,
     )
+# @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-read-agent-source
 
 
 def _cleanup_skipped_claude_manifest_agent(
@@ -8354,7 +8401,7 @@ class _ManifestAgentWriteContext:
     trusted_roots: Optional[List[Path]]
     dry_run: bool
 
-
+# @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-write-agent
 def _write_manifest_agent_output(
     agent_id: str,
     agent: "_AgentEntry",
@@ -8402,6 +8449,7 @@ def _write_manifest_agent_output(
             expected_content=legacy_content,
             reason="migrated_openai_agent_output",
         )
+# @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-write-agent
 
 
 def _process_manifest_agent(
@@ -8415,11 +8463,14 @@ def _process_manifest_agent(
     if not _is_safe_generated_id(agent_id):
         return
     try:
+        # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-translate-schema
         translated = translate_agent_schema(agent, target)
+        # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-translate-schema
     except ValueError as exc:
         _warn_agents(f"agent '{agent_id}' schema translation failed for target '{target}': {exc}, skipping")
         ctx.result.setdefault("errors", []).append({"agent": agent_id, "error": str(exc)})
         return
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-check-skip
     if translated.get("skip"):
         _cleanup_skipped_manifest_agent(
             agent_id,
@@ -8437,6 +8488,7 @@ def _process_manifest_agent(
             ),
         )
         return
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-check-skip
     if not agent.description and target == "claude":
         _warn_agents(f"agent '{agent_id}' has no description — agent will not register with Claude CLI")
         return
@@ -8511,7 +8563,9 @@ def generate_manifest_agents(
             target,
             ctx,
         )
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-return-agents
     return _finalize_generated_result(result)
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-return-agents
 
 # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-generate-manifest-agents
 

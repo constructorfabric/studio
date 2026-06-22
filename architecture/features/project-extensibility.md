@@ -215,24 +215,28 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Resolve Manifest Includes
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-resolve-includes`
+- [x] `p1` - **ID**: `cpt-studio-algo-project-extensibility-resolve-includes`
 
 **Input**: `manifest` (parsed TOML dict), `manifest_dir` (Path), `include_chain` (set of absolute paths for circular detection)
 
 **Output**: augmented manifest with included components merged in
 
 **Steps**:
-1. [ ] - `p1` - Read `includes` array from manifest (default empty) - `inst-read-includes`
-2. [ ] - `p1` - **FOR EACH** include path in `includes` - `inst-iterate-includes`
-   1. [ ] - `p1` - Resolve path relative to `manifest_dir` - `inst-resolve-include-path`
-   2. [ ] - `p1` - **IF** resolved path is in `include_chain`, **RAISE** circular include error with chain - `inst-check-circular`
-   3. [ ] - `p1` - **IF** include chain depth > 3, **RAISE** max depth exceeded error - `inst-check-depth`
-   4. [ ] - `p1` - Parse included `manifest.toml` - `inst-parse-included`
-   5. [ ] - `p1` - Recursively resolve includes in the included manifest (add current path to chain) - `inst-recurse-includes`
-   6. [ ] - `p1` - Rewrite `prompt_file` and `source` paths in included components to be relative to the *included* manifest's directory (not the includer's) - `inst-rewrite-paths`
-   7. [ ] - `p1` - **FOR EACH** component in included manifest: **IF** component ID already exists in includer, **RAISE** collision error - `inst-check-collision`
-   8. [ ] - `p1` - Merge included components into the includer's component lists - `inst-merge-included`
-3. [ ] - `p1` - **RETURN** augmented manifest - `inst-return-augmented`
+1. [x] - `p1` - Read `includes` array from manifest (default empty) - `inst-read-includes`
+2. [x] - `p1` - **FOR EACH** include path in `includes` - `inst-iterate-includes`
+   1. [x] - `p1` - Resolve path relative to `manifest_dir` - `inst-resolve-include-path`
+   2. [x] - `p1` - **IF** resolved path is in `include_chain`, **RAISE** circular include error with chain - `inst-check-circular`
+   3. [x] - `p1` - **IF** include chain depth > 3, **RAISE** max depth exceeded error - `inst-check-depth`
+   4. [x] - `p1` - Parse included `manifest.toml` - `inst-parse-included`
+   5. [x] - `p1` - Recursively resolve includes in the included manifest (add current path to chain) - `inst-recurse-includes`
+   6. [x] - `p1` - Rewrite `prompt_file` and `source` paths in included components to be relative to the *included* manifest's directory (not the includer's) - `inst-rewrite-paths`
+   7. [x] - `p1` - **FOR EACH** component in included manifest: **IF** component ID already exists in includer, **RAISE** collision error - `inst-check-collision`
+   8. [x] - `p1` - Merge included components into the includer's component lists - `inst-merge-included`
+3. [x] - `p1` - **RETURN** augmented manifest - `inst-return-augmented`
+
+**Supporting**:
+- [x] - `p1` - Include resolution helpers: max depth constant and component path rewrite helper for included manifests - `inst-includes-helpers`
+- [x] - `p1` - Initialize include resolution collections: seed include chain/order/trusted root and mutable merge state - `inst-init-collections`
 
 ### Merge Components
 
@@ -260,17 +264,17 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Section Appending
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-section-appending`
+- [x] `p1` - **ID**: `cpt-studio-algo-project-extensibility-section-appending`
 
 **Input**: `base_content` (str), `append_sections` from layers (list of content strings)
 
 **Output**: `composed_content` (str)
 
 **Steps**:
-1. [ ] - `p1` - Start with base content from the winning component definition - `inst-start-base`
-2. [ ] - `p1` - **FOR EACH** layer in resolution order that declares `append` content for this component ID - `inst-iterate-appends`
-   1. [ ] - `p1` - Append the layer's content after the base content, separated by a newline - `inst-append-content`
-3. [ ] - `p1` - **RETURN** composed content - `inst-return-composed`
+1. [x] - `p1` - Start with base content from the winning component definition - `inst-start-base`
+2. [x] - `p1` - **FOR EACH** layer in resolution order that declares `append` content for this component ID - `inst-iterate-appends`
+   1. [x] - `p1` - Append the layer's content after the base content, separated by a newline - `inst-append-content`
+3. [x] - `p1` - **RETURN** composed content - `inst-return-composed`
 
 > **Note**: Full block-based template composition (replace, prepend, delete, insert_after, insert_before operations with `<!-- @block:NAME -->` markers) is deferred to a follow-up feature. MVP supports section appending only.
 

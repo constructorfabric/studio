@@ -133,6 +133,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
         return 1
     ctx, artifacts_to_scan = resolved
     if not artifacts_to_scan:
+        # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-if-no-artifacts
         ui.result(
             {
                 "kinds": [],
@@ -143,6 +144,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
             }
         )
         return 0
+        # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-if-no-artifacts
     # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-resolve-artifacts
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-build-known
@@ -151,11 +153,13 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-build-known
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-scan-ids
+    # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
     template_to_kinds, kind_to_templates, kind_counts = _collect_kind_maps(
         artifacts_to_scan,
         registered_systems,
         known_kinds,
     )
+    # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
     # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-scan-ids
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-return

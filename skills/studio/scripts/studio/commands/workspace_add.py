@@ -190,9 +190,14 @@ def _resolve_workspace_config(project_root: Path):
 
 def _route_workspace_add(args: argparse.Namespace, project_root: Path):
     """Route the add operation to inline or standalone config handling."""
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-find-ws
     ws_cfg = _resolve_workspace_config(project_root)
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-find-ws
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-if-no-ws
     if ws_cfg is None:
         return 1
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-if-no-ws
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-auto-detect-inline
     if ws_cfg.is_inline:
         if args.url:
             ui.result(
@@ -206,6 +211,7 @@ def _route_workspace_add(args: argparse.Namespace, project_root: Path):
             )
             return 1
         return _add_to_inline(args, project_root)
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-auto-detect-inline
     return _add_to_standalone(args, ws_cfg)
 
 

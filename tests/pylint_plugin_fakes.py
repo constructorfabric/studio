@@ -289,7 +289,7 @@ def load_plugin_module(module_basename: str):
     _install_fake_dependencies()
     repo_root = Path(__file__).resolve().parents[1]
     file_path = (
-        repo_root / "skills" / "studio" / "scripts" / "studio" / "pylint_plugins" / f"{module_basename}.py"
+        repo_root / "scripts" / "pylint_plugins" / f"{module_basename}.py"
     )
     full_name = f"tests._pylint_plugin_{module_basename}"
     sys.modules.pop(full_name, None)

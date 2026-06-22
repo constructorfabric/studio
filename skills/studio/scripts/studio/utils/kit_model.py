@@ -594,6 +594,8 @@ def _tool_risk_summary(resources: List[KitResource], warnings: List[str]) -> Dic
 
 
 def _public_components(resources: List[KitResource]) -> List[PublicComponent]:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-collect-meta
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-public-rule-gen-boundary
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
     return [
         PublicComponent(
@@ -625,6 +627,8 @@ def _public_components(resources: List[KitResource]) -> List[PublicComponent]:
         if resource.public and resource.kind in _PUBLIC_KINDS
     ]
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-public-rule-gen-boundary
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-collect-meta
 
 
 def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
@@ -848,6 +852,7 @@ def load_canonical_kit_models(kit_source: Path) -> List[KitModel]:
 def load_canonical_kit_model(kit_source: Path, kit_slug: str = "") -> Optional[KitModel]:
     """Load one kit from ``.cf-studio-kit.toml`` from *kit_source* when present."""
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-select-kit
     models = load_canonical_kit_models(kit_source)
     if not models:
         return None
@@ -861,6 +866,7 @@ def load_canonical_kit_model(kit_source: Path, kit_slug: str = "") -> Optional[K
         available = ", ".join(model.slug for model in models)
         raise ValueError(f"{_CANONICAL_MANIFEST}: contains multiple kits: {available}; choose one with --kit")
     return models[0]
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-select-kit
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
 
 
@@ -937,6 +943,7 @@ def _canonical_resource_from_raw(
         )
     public = _optional_bool(raw, "public", kind in _PUBLIC_KINDS)
     prefix_generated_name = _optional_bool(raw, "prefix_generated_name", True)
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
     generated_targets = _string_list(raw.get("generated_targets"), "generated_targets")
     if public and kind not in _PUBLIC_KINDS:
         raise ValueError(
@@ -950,6 +957,7 @@ def _canonical_resource_from_raw(
         raise ValueError(
             f"Resource '{resource_id}': generated_targets is only allowed for public resources",
         )
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
     artifact_bindings = _artifact_bindings(raw.get("artifacts"), f"resources.{resource_id}.artifacts")
     if artifact_bindings and kind != "constraints":
         raise ValueError(
@@ -966,7 +974,9 @@ def _canonical_resource_from_raw(
         description=_optional_string(raw, "description"),
         user_modifiable=_optional_bool(raw, "user_modifiable", True),
         aliases=_string_list(raw.get("aliases"), "aliases"),
+        # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-default-path
         generated_targets=generated_targets or (["installed"] if public else []),
+        # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-default-path
         origin=_optional_string(raw, "origin"),
         generated_name=_resource_generated_name(
             slug,
@@ -1047,7 +1057,9 @@ def _from_manifest_component(
     source = _source_from_component(component)
     if not source:
         return None
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
     generated_targets = component.agents or ["installed"]
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
     kwargs: Dict[str, Any] = {}
     if isinstance(component, AgentEntry):
         kwargs = {
@@ -1168,6 +1180,7 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
             slug,
             warnings,
         )
+        # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
         for workflow in manifest.workflows:
             _append_legacy_component_resource(
                 resources,
@@ -1183,6 +1196,7 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
                 warning_message=f"Legacy workflow '{workflow.id}' normalized to public skill resource",
                 deprecation_warning=_LEGACY_WORKFLOW_DEPRECATION_WARNING,
             )
+        # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
         for skill in manifest.skills:
             _append_legacy_component_resource(
                 resources,
@@ -1339,9 +1353,12 @@ def _core_binding_resource(
     warnings: List[str],
 ) -> Optional[KitResource]:
     raw_binding = binding.get("path") if isinstance(binding, dict) else binding
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-report-ambiguity
     if not isinstance(raw_binding, str) or not raw_binding.strip():
         warnings.append(f"Resource '{resource_id}' has no usable binding path; skipped")
         return None
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-report-ambiguity
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-containment
     bound_path = _resolve_core_path(studio_root, raw_binding)
     try:
         source = bound_path.relative_to(kit_source.resolve()).as_posix()
@@ -1351,17 +1368,20 @@ def _core_binding_resource(
         ) from exc
     if not bound_path.exists():
         raise ValueError(f"Resource '{resource_id}' binding path does not exist: {bound_path}")
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-containment
     binding_dict = binding if isinstance(binding, dict) else {}
     kind = (
         _normalize_kind(str(binding_dict.get("kind", "")).strip(), warnings=warnings, resource_id=str(resource_id))
         if str(binding_dict.get("kind", "")).strip()
         else _resource_kind_from_path(source, str(resource_id))
     )
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
     artifact_bindings = _artifact_bindings(binding_dict.get("artifacts"), f"resources.{resource_id}.artifacts")
     if artifact_bindings and kind != "constraints":
         raise ValueError(
             f"Resource '{resource_id}': artifacts bindings are only allowed for constraints resources",
         )
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
     origin = str(binding_dict.get("origin", "")).strip()
     if not origin and kind == "skill" and source.startswith("workflows/"):
         origin = "legacy-workflow"
@@ -1369,12 +1389,15 @@ def _core_binding_resource(
         id=str(resource_id),
         kind=kind,
         source=source,
+        # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-default-path
         install_path=source,
+        # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-default-path
         type="directory" if bound_path.is_dir() else "file",
         public=kind in _PUBLIC_KINDS,
         description=str(binding_dict.get("description", "")).strip(),
         user_modifiable=bool(binding_dict.get("user_modifiable", True)),
         aliases=_string_list(binding_dict.get("aliases"), f"resources.{resource_id}.aliases"),
+        # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
         generated_targets=(
             _string_list(
                 binding_dict.get("generated_targets"),
@@ -1382,6 +1405,7 @@ def _core_binding_resource(
             )
             or ["installed"]
         ),
+        # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
         origin=origin,
         generated_name=_resource_generated_name(
             slug,
@@ -1429,6 +1453,7 @@ def _load_core_model(kit_source: Path) -> KitModel:
 
     warnings = ["installed core.toml resource bindings normalized to canonical KitModel"]
     resources: List[KitResource] = []
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
     for resource_id, binding in sorted(bindings.items()):
         resource = _core_binding_resource(
             kit_source=kit_source,
@@ -1440,6 +1465,7 @@ def _load_core_model(kit_source: Path) -> KitModel:
         )
         if resource is not None:
             resources.append(resource)
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
     if not resources:
         raise ValueError(f"No usable resource bindings found for kit '{slug}'")
 
@@ -1485,6 +1511,7 @@ def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") 
 
 
 def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel) -> KitModel:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-update-drift
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
     source_by_id = {resource.id: resource for resource in source_model.resources}
     merged_resources: List[KitResource] = []
@@ -1546,6 +1573,7 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
         warnings=list(dict.fromkeys(list(core_model.warnings) + list(source_model.warnings))),
     )
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-update-drift
 
 
 def load_installed_kit_model(
@@ -1554,6 +1582,8 @@ def load_installed_kit_model(
     kit_slug: str = "",
 ) -> KitModel:
     """Load a registered installed kit using install-mode-aware source precedence."""
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-path-install
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-install-mode
     install_mode = str(core_kit.get("install_mode", "") or "").strip().lower()
     if install_mode != "register":
         try:
@@ -1567,7 +1597,11 @@ def load_installed_kit_model(
             except ValueError:
                 return core_model
             return _with_hashes(kit_source, _merge_core_authoritative_model(core_model, source_model))
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-install-mode
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place
     return load_kit_model(kit_source, kit_slug=kit_slug)
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-path-install
 
 
 def _resource_to_toml_item(resource: KitResource) -> Dict[str, Any]:
@@ -1579,6 +1613,7 @@ def _resource_to_toml_item(resource: KitResource) -> Dict[str, Any]:
         "type": resource.type,
         "user_modifiable": resource.user_modifiable,
     }
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
     optional_values = {
         "description": resource.description,
         "aliases": resource.aliases,
@@ -1596,6 +1631,7 @@ def _resource_to_toml_item(resource: KitResource) -> Dict[str, Any]:
         "targets": resource.target_configs,
         "artifacts": resource.artifact_bindings,
     }
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
     if resource.public:
         item["public"] = True
     if not resource.prefix_generated_name:
@@ -1621,6 +1657,7 @@ def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
     if not models:
         raise ValueError("At least one kit model is required")
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
     kits: List[Dict[str, Any]] = []
     for model in models:
         kits.append({
@@ -1629,6 +1666,7 @@ def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
             "version": model.version,
             "resources": [_resource_to_toml_item(resource) for resource in model.resources],
         })
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
     return {

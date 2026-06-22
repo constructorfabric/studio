@@ -146,7 +146,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Parse CLI arguments (including positional `path/...` alias for local sources, `--path`, --force, --dry-run, --no-interactive, -y) - `inst-parse-args`
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
-2a. [x] - `p1` - Validate source mode: registered GitHub-backed updates use GitHub authority; local `--path` updates are outside GitHub authority and conflict with GitHub selector flags - `inst-validate-source-mode`
+2. [x] - `p1` - Validate source mode: registered GitHub-backed updates use GitHub authority; local `--path` updates are outside GitHub authority and conflict with GitHub selector flags - `inst-validate-source-mode`
 3. [x] - `p1` - Read slug from canonical `.cf-studio-kit.toml` when present; otherwise use legacy source metadata - `inst-read-slug`
 4. [x] - `p1` - Resolve project root and studio directory - `inst-resolve-project`
 5. [x] - `p1` - **IF** kit source contains `whatsnew.toml`: display whatsnew entries via `cpt-studio-algo-kit-whatsnew-display`; in interactive mode prompt to continue or abort - `inst-show-whatsnew`

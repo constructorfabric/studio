@@ -126,8 +126,13 @@ def cmd_workspace_sync(argv: List[str]) -> int:
     if project_root is None:
         return 1
     # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-if-no-root
+    # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-find-ws
+    # workspace config is resolved together with project root by the shared loader
+    # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-find-ws
+    # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-if-no-ws
     if ws_cfg is None:
         return 1
+    # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-if-no-ws
 
     # @cpt-begin:cpt-studio-flow-workspace-sync:p1:inst-sync-collect-sources
     git_sources, src_err = _collect_git_sources(ws_cfg, args.source)

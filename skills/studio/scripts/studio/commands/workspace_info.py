@@ -209,8 +209,13 @@ def cmd_workspace_info(argv: List[str]) -> int:
     if project_root is None:
         return 1
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-no-root
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-find-ws
+    # workspace config is resolved together with project root by the shared loader
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-find-ws
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-no-ws
     if ws_cfg is None:
         return 1
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-no-ws
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-foreach-source
     sources_info = [_build_source_info(ws_cfg, name) for name in ws_cfg.sources]
@@ -224,6 +229,9 @@ def cmd_workspace_info(argv: List[str]) -> int:
     _augment_workspace_context(result, warnings)
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-load-context
 
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-error
+    # status already encodes degraded/error conditions for the final payload
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-error
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-return-ok
     ui.result(result, human_fn=_human_workspace_info)
     return 0

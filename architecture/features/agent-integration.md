@@ -78,14 +78,14 @@ Without this feature, users would need to manually create and maintain agent-spe
 1. [x] - `p1` - User invokes `cfs generate-agents [--agent A] [--dry-run]` - `inst-user-agents`
 2. [x] - `p1` - Resolve project root and studio directory - `inst-resolve-project`
 3. [x] - `p1` - Ensure studio files are local to project (copy if external) - `inst-ensure-local`
-4. - `p1` - Discover all workflow files from `.core/workflows/` and `.gen/kits/*/workflows/` - `inst-discover-workflows`
-5. - `p1` - Collect `@cpt:skill` content from `.gen/kits/*/SKILL.md` - `inst-collect-skill`
-6. - `p1` - Collect `@cpt:system-prompt` content from `.gen/AGENTS.md` - `inst-collect-sysprompt`
+4. [x] - `p1` - Discover all workflow files from `.core/workflows/` and `.gen/kits/*/workflows/` - `inst-discover-workflows`
+5. [x] - `p1` - Collect `@cpt:skill` content from `.gen/kits/*/SKILL.md` - `inst-collect-skill`
+6. [x] - `p1` - Collect `@cpt:system-prompt` content from `.gen/AGENTS.md` - `inst-collect-sysprompt`
 7. [x] - `p1` - **FOR EACH** supported agent (or filtered by `--agent`) - `inst-for-each-agent`
-   1. - `p1` - Generate agent-native entry points (skill shims, workflow proxies, rules) - `inst-generate-entry-points`
-   2. - `p1` - Write files to agent directory (e.g., `.windsurf/workflows/`, `.cursor/commands/`) - `inst-write-files`
-8. - `p1` - Compose and write main SKILL.md from collected skill sections - `inst-compose-skill`
-9. - `p1` - Inject the same managed `cf-studio-path` block into root AGENTS.md and CLAUDE.md - `inst-inject-agents`
+   1. [x] - `p1` - Generate agent-native entry points (skill shims, workflow proxies, rules) - `inst-generate-entry-points`
+   2. [x] - `p1` - Write files to agent directory (e.g., `.windsurf/workflows/`, `.cursor/commands/`) - `inst-write-files`
+8. [x] - `p1` - Compose and write main SKILL.md from collected skill sections - `inst-compose-skill`
+9. [x] - `p1` - Inject the same managed `cf-studio-path` block into root AGENTS.md and CLAUDE.md - `inst-inject-agents`
 10. [x] - `p1` - **RETURN** generation report (agents, files written, workflows discovered) - `inst-return-report`
 
 **Supporting**:

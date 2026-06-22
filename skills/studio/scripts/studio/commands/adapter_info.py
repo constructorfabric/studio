@@ -50,6 +50,7 @@ def _parse_adapter_info_args(argv: list[str]) -> tuple[Path, Optional[Path]]:
 
 
 def _emit_info_project_not_found(start_path: Path) -> int:
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-root
     ui.result({
         "status": "NOT_FOUND",
         "message": "No project root found (no AGENTS.md with @cf:root-agents or .git)",
@@ -57,9 +58,11 @@ def _emit_info_project_not_found(start_path: Path) -> int:
         "hint": "Run 'cfs init' in your project root",
     })
     return 1
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-root
 
 
 def _emit_info_studio_not_found(project_root: Path) -> int:
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-studio
     ui.result({
         "status": "NOT_FOUND",
         "message": "Constructor Studio not initialized in project",
@@ -67,6 +70,7 @@ def _emit_info_studio_not_found(project_root: Path) -> int:
         "hint": "Run 'cfs init' to initialize Constructor Studio for this project",
     })
     return 1
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-studio
 
 def _load_json_file(path: Path) -> Optional[dict]:
     # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-json

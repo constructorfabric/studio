@@ -583,6 +583,7 @@ def _load_kit_constraints(
     load_constraints_toml,
 ) -> _KitConstraintsLoad:
     """Load constraints for one kit from explicit paths or local constraints.toml."""
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-load-constraints
     explicit_constraints_paths = [
         Path(path_value)
         for path_value in (getattr(kit_obj, "constraints_paths", None) or [])
@@ -604,6 +605,7 @@ def _load_kit_constraints(
         _warn_self_check(f"failed to resolve constraints path under {kit_base}: {exc}")
         constraints_path = None
     return _KitConstraintsLoad(constraints=constraints, errors=list(errors), path=constraints_path)
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-constraints
 
 
 def _iter_kinds_to_check(raw_map: object, artifacts_dir: Path) -> List[str]:
@@ -725,6 +727,9 @@ def _build_kind_result(
     }
     issues: Dict[str, List[Dict[str, object]]] = {"errors": [], "warnings": []}
     if template_path is not None and template_path.is_file():
+        # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
+        # @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-headings
+        # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
         report = _check_template_constraints_consistency(
             template_path=template_path,
             kind=kind,
@@ -736,8 +741,12 @@ def _build_kind_result(
         )
         issues["errors"].extend(report["errors"])
         issues["warnings"].extend(report["warnings"])
+        # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
+        # @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-headings
+        # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
 
     if example_paths:
+        # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-example
         issues_for_examples = _validate_example_paths(
             example_paths=example_paths,
             kind=kind,
@@ -747,6 +756,7 @@ def _build_kind_result(
         )
         issues["errors"].extend(issues_for_examples["errors"])
         issues["warnings"].extend(issues_for_examples["warnings"])
+        # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-example
 
     if issues["errors"]:
         item["status"] = "FAIL"
@@ -832,6 +842,7 @@ def _collect_kit_results(
     verbose: bool,
 ) -> List[Dict[str, object]]:
     results: List[Dict[str, object]] = []
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
     for kind in _iter_kinds_to_check(kit_ctx.raw_map, kit_ctx.artifacts_dir):
         normalized_kind = str(kind).strip()
         if not normalized_kind:
@@ -852,6 +863,7 @@ def _collect_kit_results(
             artifacts_meta=artifacts_meta,
             verbose=verbose,
         ))
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
     return results
 
 
@@ -870,7 +882,9 @@ def run_self_check_from_meta(  # pylint: disable=too-many-locals
     It does NOT do studio/project discovery.
     """
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-user-self-check
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
     from ..utils.constraints import load_constraints_files, load_constraints_toml
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
 
     kits = getattr(artifacts_meta, "kits", None) or {}
     if not isinstance(kits, dict) or not kits:
@@ -884,6 +898,7 @@ def run_self_check_from_meta(  # pylint: disable=too-many-locals
     results: List[Dict[str, object]] = []
     overall_status = "PASS"
     kits_checked = 0
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kit
     for kit_id, kit_obj in kits.items():
         if kit_filter and str(kit_id) != str(kit_filter):
             continue
@@ -903,6 +918,7 @@ def run_self_check_from_meta(  # pylint: disable=too-many-locals
         if kit_status == "FAIL":
             overall_status = "FAIL"
         results.extend(kit_items)
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kit
 
     out = {
         "status": overall_status,

@@ -8,6 +8,7 @@ Kits are direct file packages — no blueprint processing or generation.
 from __future__ import annotations
 
 # @cpt-algo:cpt-studio-algo-kit-github-helpers:p1
+# @cpt-state:cpt-studio-state-kit-install-mode:p1
 # @cpt-begin:cpt-studio-algo-kit-github-helpers:p1:inst-kit-imports
 import argparse
 import json
@@ -2325,14 +2326,17 @@ def _build_install_success_result(
     success_context: _InstallSuccessContext,
 ) -> Dict[str, Any]:
     errors: List[str] = []
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-collect-meta
     meta = _collect_registered_kit_metadata(
         success_context.studio_dir,
         success_context.kit_slug,
         {"path": success_context.config_kit_rel},
     )
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-collect-meta
     legacy_manifest_warning = _legacy_manifest_install_warning(success_context.kit_source)
     if legacy_manifest_warning:
         errors.append(legacy_manifest_warning)
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-return-result
     return {
         "status": "PASS",
         "action": "installed",
@@ -2348,6 +2352,7 @@ def _build_install_success_result(
         "agents_content": meta.get("agents_content", ""),
         "actions": success_context.actions,
     }
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-return-result
 
 
 def _install_manifest_kit(
@@ -2387,12 +2392,19 @@ def _install_legacy_kit_copy(
     config_kit_rel: str,
 ) -> Dict[str, Any]:
     actions: Dict[str, str] = {}
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-copy-content
     copy_actions = _copy_kit_content(kit_source, config_kit_dir)
     actions.update(copy_actions)
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-copy-content
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-read-version
     local_metadata, kit_version = _read_install_local_metadata(kit_source, kit_version)
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-read-version
     scripts_dir = config_kit_dir / "scripts"
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-seed-configs
     if scripts_dir.is_dir():
         _seed_kit_config_files(scripts_dir, config_dir, actions)
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-seed-configs
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-register-core
     registration_errors = _register_kit_in_core_toml(
         config_dir,
         kit_slug,
@@ -2405,6 +2417,7 @@ def _install_legacy_kit_copy(
             local_metadata=local_metadata or None,
         ),
     )
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-register-core
     if registration_errors:
         return _install_result_fail(
             kit_slug,
@@ -2452,7 +2465,9 @@ def _load_manifest_install_artifacts(
             risk_errors,
             install_mode=install_context.install_mode,
         )
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-conflict
     name_conflicts = _public_component_name_conflicts(studio_dir, kit_slug, kit_model)
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-conflict
     if name_conflicts:
         return None, _install_result_fail(
             kit_slug,
@@ -2541,6 +2556,7 @@ def _install_manifest_copy_mode(  # pylint: disable=too-many-arguments
             [subagent_source_error],
             install_mode=install_context.install_mode,
         )
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-resources
     files_copied = _copy_manifest_install_payload(
         kit_source,
         studio_dir,
@@ -2561,6 +2577,7 @@ def _install_manifest_copy_mode(  # pylint: disable=too-many-arguments
         install_plan,
         files_copied,
     )
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-resources
 
 
 def _register_manifest_install_in_place(
@@ -2592,7 +2609,10 @@ def _register_manifest_install_in_place(
         artifacts.model_resources,
     )
     kit_root_rel = _serialize_manifest_binding_path(kit_source.resolve(), studio_dir)
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-read-version
     local_metadata, resolved_version = _read_install_local_metadata(kit_source, kit_version)
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-read-version
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-register-core
     registration_errors = _register_kit_in_core_toml(
         config_dir,
         kit_slug,
@@ -2615,17 +2635,21 @@ def _register_manifest_install_in_place(
             ),
         ),
     )
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-register-core
     if registration_errors:
         return _install_result_fail(
             kit_slug,
             registration_errors,
             install_mode=install_context.install_mode,
         )
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-collect-meta
     meta = _collect_registered_kit_metadata(
         studio_dir,
         kit_slug,
         {"path": kit_root_rel, "resources": resource_bindings},
     )
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-collect-meta
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-return-result
     return {
         "status": "PASS",
         "action": "installed",
@@ -2640,6 +2664,7 @@ def _register_manifest_install_in_place(
         "skill_nav": meta.get("skill_nav", ""),
         "agents_content": meta.get("agents_content", ""),
     }
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-return-result
 
 
 def _resolve_manifest_install_plan(
@@ -2650,6 +2675,7 @@ def _resolve_manifest_install_plan(
     model_resources: List[Any],
     interactive: bool,
 ) -> Tuple[Optional[_ManifestInstallPlan], Optional[Dict[str, Any]]]:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-root-prompt
     if kit_path:
         kit_root_rel = _normalize_registered_kit_path(kit_path, kit_slug)
         kit_root = _resolve_registered_kit_dir(studio_dir, kit_path)
@@ -2683,6 +2709,7 @@ def _resolve_manifest_install_plan(
         kit_root_rel=planned_root_rel,
         resource_bindings=resource_bindings,
     ), None
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-root-prompt
 
 
 def _copy_manifest_install_payload(
@@ -2693,9 +2720,12 @@ def _copy_manifest_install_payload(
 ) -> int:
     files_copied = 0
     install_plan.kit_root.mkdir(parents=True, exist_ok=True)
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-copy-content
     for res in artifacts.model_resources:
         binding_path = install_plan.resource_bindings[res.id]["path"]
+        # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
         _copy_manifest_resource(kit_source, res, (studio_dir / binding_path).resolve())
+        # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
         files_copied += 1
     for subagent_source in artifacts.extra_subagent_sources:
         source_abs = kit_source / Path(PurePosixPath(subagent_source))
@@ -2705,6 +2735,7 @@ def _copy_manifest_install_payload(
         target_abs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_abs, target_abs)
         files_copied += 1
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-copy-content
     return files_copied
 
 
@@ -2719,10 +2750,15 @@ def _finalize_manifest_copy_install(  # pylint: disable=too-many-locals,too-many
     files_copied: int,
 ) -> Dict[str, Any]:
     config_dir = studio_dir / "config"
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-read-version
     local_metadata, resolved_version = _read_install_local_metadata(kit_source, kit_version)
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-read-version
     scripts_dir = install_plan.kit_root / "scripts"
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-seed-configs
     if scripts_dir.is_dir():
         _seed_kit_config_files(scripts_dir, config_dir, {})
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-seed-configs
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-register-core
     registration_errors = _register_kit_in_core_toml(
         config_dir,
         kit_slug,
@@ -2740,6 +2776,7 @@ def _finalize_manifest_copy_install(  # pylint: disable=too-many-locals,too-many
             ),
         ),
     )
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-register-core
     if registration_errors:
         return _install_result_fail(
             kit_slug,
@@ -2747,11 +2784,15 @@ def _finalize_manifest_copy_install(  # pylint: disable=too-many-locals,too-many
             install_mode=install_context.install_mode,
             files_copied=files_copied,
         )
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-collect-meta
     meta = _collect_registered_kit_metadata(
         studio_dir,
         kit_slug,
         {"path": install_plan.kit_root_rel, "resources": install_plan.resource_bindings},
     )
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-collect-meta
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-return-result
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-return
     return {
         "status": "PASS",
         "action": "installed",
@@ -2767,6 +2808,8 @@ def _finalize_manifest_copy_install(  # pylint: disable=too-many-locals,too-many
         "skill_nav": meta.get("skill_nav", ""),
         "agents_content": meta.get("agents_content", ""),
     }
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-return
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-return-result
 
 
 # ---------------------------------------------------------------------------
@@ -2827,6 +2870,7 @@ def install_kit(  # pylint: disable=too-many-arguments,too-many-locals
     )
     if install_error is not None:
         return install_error
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-manifest-install
     if manifest is not None:
         return _install_manifest_kit(
             kit_source,
@@ -3104,7 +3148,9 @@ def _preserve_template_variables(
     ``resolve-vars``. Installation must not rewrite workflow, skill, rule, or
     template source content because those files are part of the kit source.
     """
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-vars
     _ = (kit_root, resource_bindings)
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-vars
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-resolve-template-vars
 
 
@@ -3338,21 +3384,25 @@ def _resolve_install_source_github(
 
     ui.step(f"Downloading {owner}/{repo}" + (f"@{version}" if version else " (latest)") + "...")
     try:
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-authority
         kit_source, resolved_version, authority_metadata = _download_kit_from_github_with_authority(
             owner,
             repo,
             requested_ref or version,
         )
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-authority
     except RuntimeError as exc:
         logger.exception("Failed to download GitHub kit source for %s/%s", owner, repo)
         ui.result({"status": "FAIL", "message": str(exc)})
         return (Path("."), "", "", "", None, 1, None)
 
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
     kit_slug = _read_kit_slug(kit_source)
     if not kit_slug and not _has_canonical_kit_models(kit_source):
         ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing manifest.toml; cannot resolve slug."})
         return (Path("."), "", "", "", kit_source.parent, 1, None)
     kit_version = resolved_version
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
     github_source = f"github:{owner}/{repo}"
     ui.substep(f"Resolved: {(kit_slug or '(select kit)')}@{kit_version or '(dev)'}")
     return (kit_source, kit_slug, kit_version, github_source, kit_source.parent, None, authority_metadata)
@@ -3420,6 +3470,7 @@ def _resolve_cmd_kit_install_source(args: argparse.Namespace) -> Tuple[Optional[
                 "hint": "Provide a path to a valid kit directory",
             })
             return None, 2
+        # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-noninteractive-required
         if not args.dry_run and not args.install_mode and not sys.stdin.isatty():
             ui.result({
                 "status": "FAIL",
@@ -3430,6 +3481,8 @@ def _resolve_cmd_kit_install_source(args: argparse.Namespace) -> Tuple[Optional[
                 ),
             })
             return None, 2
+        # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-noninteractive-required
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         return _KitInstallSourceState(
             kit_source=kit_source,
             kit_slug=_read_kit_slug(kit_source) or kit_source.name,
@@ -3438,6 +3491,7 @@ def _resolve_cmd_kit_install_source(args: argparse.Namespace) -> Tuple[Optional[
             tmp_dir_to_clean=None,
             authority_metadata=None,
         ), 0
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
     if source_is_generic_git(args.source):
         resolved_source = _resolve_install_source_git(args.source, args.version)
     else:
@@ -3490,6 +3544,7 @@ def _run_multi_kit_install(
 ) -> int:
     preflight_errors: List[str] = []
     dry_run_results: List[Dict[str, Any]] = []
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-check-existing
     for selected_slug, selected_version in selected_specs:
         selected_dir, _, _, _ = _resolve_installed_kit_root(
             execution.studio_dir, execution.config_dir, selected_slug,
@@ -3508,6 +3563,7 @@ def _run_multi_kit_install(
             "version": selected_version,
             "target": selected_dir.as_posix(),
         })
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-check-existing
     if preflight_errors:
         ui.result({
             "status": "FAIL",
@@ -3515,6 +3571,7 @@ def _run_multi_kit_install(
             "errors": preflight_errors,
         })
         return 2
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-dry-run
     if args.dry_run:
         ui.result({
             "status": "DRY_RUN",
@@ -3522,6 +3579,7 @@ def _run_multi_kit_install(
             "source": execution.source_registration or kit_source.as_posix(),
         })
         return 0
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-dry-run
     install_context = _build_install_context_from_args(args, execution)
     results: List[Dict[str, Any]] = []
     failed = False
@@ -3552,8 +3610,11 @@ def _run_multi_kit_install(
             "files_registered": result.get("files_registered", 0),
             "errors": result.get("errors", []),
         })
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-regen-gen
     if not failed:
         regenerate_gen_aggregates(execution.studio_dir)
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-regen-gen
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-output-result
     ui.result({
         "status": "FAIL" if failed else "PASS",
         "action": "installed",
@@ -3561,6 +3622,7 @@ def _run_multi_kit_install(
         "results": results,
         "source": execution.source_registration or kit_source.as_posix(),
     })
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-output-result
     return 2 if failed else 0
 
 
@@ -3576,6 +3638,7 @@ def _run_single_kit_install(
         execution.config_dir,
         kit_slug,
     )
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-check-existing
     if config_kit_dir is None:
         ui.result(
             {
@@ -3601,6 +3664,8 @@ def _run_single_kit_install(
             human_fn=_human_kit_install,
         )
         return 2
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-check-existing
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-dry-run
     if args.dry_run:
         ui.result({
             "status": "DRY_RUN",
@@ -3610,6 +3675,7 @@ def _run_single_kit_install(
             "target": config_kit_dir.as_posix(),
         })
         return 0
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-dry-run
     result = install_kit(
         kit_source,
         execution.studio_dir,
@@ -3648,10 +3714,14 @@ def _run_single_kit_install(
         output["local_metadata"] = result["local_metadata"]
     if result.get("errors"):
         output["errors"] = result["errors"]
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-output-result
     ui.result(output, human_fn=_human_kit_install)
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-output-result
     if str(result.get("status", "")).upper() == "FAIL":
         return 2
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-regen-gen
     regenerate_gen_aggregates(execution.studio_dir)
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-regen-gen
     return 0
 
 
@@ -3723,6 +3793,7 @@ def _validate_cmd_kit_install_args(
         parser.error("Provide a GitHub source (owner/repo) or --path for a local directory")
     if args.source and args.local_path:
         parser.error("Cannot use both positional source and --path")
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-local-only
     if args.install_mode and not args.local_path:
         ui.result({
             "status": "FAIL",
@@ -3730,8 +3801,10 @@ def _validate_cmd_kit_install_args(
             "hint": "Remote GitHub and generic Git installs always copy managed artifacts",
         })
         return 2
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-local-only
     if not args.local_path:
         return 0
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-validate-source-mode
     conflict = _validate_kit_source_mode(
         local_path=args.local_path,
         version=args.version,
@@ -3739,6 +3812,7 @@ def _validate_cmd_kit_install_args(
     if conflict:
         ui.result(conflict)
         return 2
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-validate-source-mode
     return 0
 
 
@@ -3754,11 +3828,13 @@ def _selected_install_specs(
         and str(authority_metadata.get("kit_identity") or "").strip()
     ):
         requested_kits = [str(authority_metadata.get("kit_identity") or "").strip()]
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
     selected_models, selection_error = _select_canonical_kit_models_for_install(
         source_state.kit_source,
         requested_kits,
         interactive=sys.stdin.isatty(),
     )
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
     if selection_error is not None:
         return [], selection_error
     selected_specs = [
@@ -3780,7 +3856,9 @@ def _resolve_selected_install_mode(
     selected_install_mode = args.install_mode or "copy"
     if args.local_path and not args.install_mode and sys.stdin.isatty():
         try:
+            # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
             local_manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
+            # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
         except (OSError, ValueError) as exc:
             logger.debug(
                 "kit: failed to inspect manifest install adapter for %s",
@@ -3789,6 +3867,7 @@ def _resolve_selected_install_mode(
             )
             local_manifest = None
         if local_manifest is not None:
+            # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
             selected_install_mode = _prompt_local_manifest_install_mode(
                 project_root,
                 studio_dir,
@@ -3796,6 +3875,7 @@ def _resolve_selected_install_mode(
                 kit_slug,
                 local_manifest,
             )
+            # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
     return selected_install_mode
 
 
@@ -3804,10 +3884,12 @@ def _resolve_kit_install_execution(
     source_state: _KitInstallSourceState,
     kit_slug: str,
 ) -> Tuple[Optional[_KitInstallExecution], int]:
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-project
     resolved = _resolve_studio_dir()
     if resolved is None:
         return None, 1
     project_root, studio_dir = resolved
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-project
     config_dir = studio_dir / "config"
     selected_install_mode = _resolve_selected_install_mode(
         args,
@@ -3857,11 +3939,14 @@ def cmd_kit_install(argv: List[str]) -> int:  # pylint: disable=too-many-locals
     source_state, source_exit_code = _resolve_cmd_kit_install_source(args)
     if source_state is None:
         return source_exit_code
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-validate-source
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
     selected_specs, selection_error = _selected_install_specs(args, source_state)
     if selection_error is not None:
         ui.result(selection_error)
         return 2
     kit_slug, kit_version = selected_specs[0]
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
     # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-validate-source
 
     try:
@@ -4425,6 +4510,7 @@ def _local_update_resolution(
     interactive: bool,
 ) -> Tuple[Optional[_KitUpdateResolution], int]:
     kit_source = Path(args.local_path).resolve()
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-validate-source
     if not kit_source.is_dir():
         ui.result({
             "status": "FAIL",
@@ -4432,6 +4518,7 @@ def _local_update_resolution(
             "hint": "Provide a path to a valid kit directory",
         })
         return None, 2
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-validate-source
     return _KitUpdateResolution(
         project_root=project_root,
         studio_dir=studio_dir,
@@ -4440,10 +4527,12 @@ def _local_update_resolution(
         update_targets=[
             _KitUpdateSourceTarget(
                 kit_slug=(
+                    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-read-slug
                     args.slug
                     or _registered_slug_for_local_kit_path(config_dir, studio_dir, kit_source)
                     or _read_kit_slug(kit_source)
                     or kit_source.name
+                    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-read-slug
                 ),
                 kit_source=kit_source,
                 github_source="",
@@ -4538,10 +4627,12 @@ def _resolve_cmd_kit_update_targets(
             })
             return None, 2
         kits_map = {args.slug: kits_map[args.slug]}
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-update-path-load-kitmodel
     raw_update_targets, source_failures = _resolve_registered_update_targets(
         kits_map,
         requested_ref_override=args.version,
     )
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-update-path-load-kitmodel
     if not raw_update_targets:
         return None, _emit_empty_update_target_result(source_failures)
     return _KitUpdateResolution(
@@ -4570,6 +4661,7 @@ def _run_cmd_kit_update_targets(
             errors.append(f"{source_failure['kit']}: {source_failure['message']}")
     for update_target in resolution.update_targets:
         if not args.dry_run:
+            # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-show-whatsnew
             installed_version = _read_kit_version_from_core(
                 resolution.config_dir,
                 update_target.kit_slug,
@@ -4591,7 +4683,9 @@ def _run_cmd_kit_update_targets(
                 if update_target.tmp_dir:
                     shutil.rmtree(update_target.tmp_dir, ignore_errors=True)
                 continue
+            # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-show-whatsnew
         try:
+            # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-delegate-update
             kit_result = update_kit(
                 update_target.kit_slug,
                 update_target.kit_source,
@@ -4610,6 +4704,7 @@ def _run_cmd_kit_update_targets(
                     project_root=resolution.project_root,
                 ),
             )
+            # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-delegate-update
         except Exception as exc:  # pylint: disable=broad-exception-caught
             kit_result = {"kit": update_target.kit_slug, "version": {"status": "failed"}, "gen": {}}
             errors.append(f"{update_target.kit_slug}: {exc}")
@@ -4636,8 +4731,10 @@ def _build_cmd_kit_update_output(
         _normalize_kit_update_action(result.get("action")) == "failed"
         for result in all_results
     )
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
     if not args.dry_run and not has_failed_updates:
         regenerate_gen_aggregates(studio_dir)
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
     n_updated = _count_kit_update_actions(all_results, "updated", "created")
     n_partial = _count_kit_update_actions(all_results, "partial")
     n_aborted = _count_kit_update_actions(all_results, "aborted")
@@ -4668,7 +4765,9 @@ def _build_cmd_kit_update_output(
         output["errors"] = errors
     if not n_updated and not errors and not n_aborted:
         output["message"] = "All kits are up to date"
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
     return output, command_failed, interactive_partial_success
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
 
 
 def _build_kit_update_parser() -> argparse.ArgumentParser:
@@ -4737,8 +4836,11 @@ def _validate_cmd_kit_update_args(args: argparse.Namespace) -> int:
     if local_path_error:
         ui.result(local_path_error)
         return 2
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-validate-source
     if not args.local_path:
         return 0
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-validate-source
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-validate-source-mode
     conflict = _validate_kit_source_mode(
         local_path=args.local_path,
         version=args.version,
@@ -4746,6 +4848,7 @@ def _validate_cmd_kit_update_args(args: argparse.Namespace) -> int:
     if conflict:
         ui.result(conflict)
         return 2
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-validate-source-mode
     return 0
 
 
@@ -4818,6 +4921,9 @@ def cmd_kit_update(argv: List[str]) -> int:
     )
     if resolution is None:
         return resolution_code
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-legacy-migration
+    # target resolution handles legacy manifest migration / compatibility before completion
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-legacy-migration
     return _complete_cmd_kit_update(args, resolution)
 
 
@@ -5093,12 +5199,18 @@ def _load_kit_normalize_output(
         all_canonical_models = load_canonical_kit_models(kit_source)
     requested_kits = _split_kit_selectors(args.kit)
     if all_canonical_models:
+        # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-select-kit
         selected_models = _select_normalize_models(all_canonical_models, requested_kits)
+        # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-select-kit
+        # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
         manifest_text = render_canonical_manifest_models(selected_models)
+        # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
     else:
         if requested_kits:
             raise ValueError("--kit can only select kits declared in .cf-studio-kit.toml")
+        # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
         model, manifest_text = normalize_kit_source(kit_source, args.source_hint)
+        # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
         selected_models = [model]
     if (
         all_canonical_models
@@ -5155,14 +5267,18 @@ def _emit_kit_normalize_result(
         "output": output_path.as_posix(),
         "report": report,
     }
+    # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-dry-run
     if args.dry_run:
         payload["manifest"] = manifest_text
         ui.result(payload, human_fn=_human_kit_normalize)
         return 0
+    # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-dry-run
+    # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-write-output
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(manifest_text, encoding="utf-8")
     ui.result(payload, human_fn=_human_kit_normalize)
     return 0
+    # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-write-output
 
 
 # @cpt-flow:cpt-studio-flow-kit-normalize-cli:p1
@@ -5896,6 +6012,7 @@ def _handle_registered_manifest_update(
         source_dir,
         list(getattr(kit_model, "resources", [])),
     )
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-update-core-toml
     registration_errors = _register_kit_in_core_toml(
         config_dir,
         kit_slug,
@@ -5912,6 +6029,7 @@ def _handle_registered_manifest_update(
             tool_risk_fingerprint=str(getattr(kit_model, "tool_risk_fingerprint", "") or ""),
         ),
     )
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-update-core-toml
     if registration_errors:
         return _result_with_failure(result, registration_errors)
     version_changed = bool(
@@ -6031,6 +6149,7 @@ def _maybe_finalize_current_version_update(
         and ctx.update_context.source
         and (authority_source_type == "git" or authority_freshness != "last_known")
     ):
+        # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-update-core-toml
         registration_errors = _register_kit_in_core_toml(
             ctx.config_dir,
             ctx.kit_slug,
@@ -6048,6 +6167,7 @@ def _maybe_finalize_current_version_update(
                 ),
             ),
         )
+        # @cpt-end:cpt-studio-algo-kit-update:p1:inst-update-core-toml
         if registration_errors:
             return _result_with_failure(ctx.result, registration_errors)
     return _append_registered_kit_metadata(
@@ -6246,6 +6366,7 @@ def _run_file_level_update(
         preserved_version = (
             str(existing.get("version") or "") or ctx.manifest_state.source_version
         )
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-update-core-toml
     registration_errors = _register_kit_in_core_toml(
         ctx.config_dir,
         ctx.kit_slug,
@@ -6272,6 +6393,7 @@ def _run_file_level_update(
             ),
         ),
     )
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-update-core-toml
     if registration_errors:
         return _result_with_failure(ctx.result, registration_errors)
     return None
@@ -6283,6 +6405,7 @@ def _prepare_kit_update_run_context(
     studio_dir: Path,
     update_context: _UpdateContext,
 ) -> Tuple[Optional[_KitUpdateRunContext], Dict[str, Any]]:
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-resolve-config
     config_dir = studio_dir / "config"
     result = _init_update_result(kit_slug, update_context)
     installed_kit_dir, installed_kit_rel, installed_kit_entry, has_registered_kit_path = _resolve_installed_kit_root(
@@ -6311,6 +6434,7 @@ def _prepare_kit_update_run_context(
     )
     if manifest_state is None:
         return None, result
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-resolve-config
     return _KitUpdateRunContext(
         kit_slug=kit_slug,
         source_dir=source_dir,
@@ -6327,6 +6451,7 @@ def _prepare_kit_update_run_context(
 def _run_nonregistered_kit_update(
     ctx: _KitUpdateRunContext,
 ) -> Dict[str, Any]:
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-legacy-manifest-migration
     if (
         ctx.manifest_state.manifest is not None
         and ctx.installed_kit_dir.is_dir()
@@ -6339,11 +6464,16 @@ def _run_nonregistered_kit_update(
             ctx.kit_slug,
             ctx.update_context.interactive,
         )
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-legacy-manifest-migration
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-resolve-resource-bindings
     resource_bindings, source_to_resource_id, resource_info = _resolve_manifest_update_bindings(ctx)
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-resolve-resource-bindings
     if ctx.result.get("errors"):
         return ctx.result
     was_installed = ctx.installed_kit_dir.is_dir()
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-first-install
     first_install_result = _run_first_install_update(ctx)
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-first-install
     if first_install_result is not None:
         return first_install_result
     if not was_installed:
@@ -6354,14 +6484,17 @@ def _run_nonregistered_kit_update(
             ctx.kit_slug,
             ctx.installed_kit_entry,
         )
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-file-level-diff
     failed_update = _run_file_level_update(
         ctx,
         resource_bindings,
         source_to_resource_id,
         resource_info,
     )
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-file-level-diff
     if failed_update is not None:
         return failed_update
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-collect-metadata
     return _append_registered_kit_metadata(
         ctx.result,
         ctx.studio_dir,
@@ -6369,6 +6502,7 @@ def _run_nonregistered_kit_update(
         ctx.kit_slug,
         ctx.installed_kit_entry,
     )
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-collect-metadata
 
 
 # @cpt-dod:cpt-studio-dod-kit-update:p1
@@ -6429,11 +6563,13 @@ def update_kit(  # pylint: disable=too-many-arguments,too-many-locals
     )
     source_dir = source_dir.resolve()
     studio_dir = studio_dir.resolve()
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-dry-run-check
     if update_context.dry_run:
         result = _init_update_result(kit_slug, update_context)
         result["version"] = {"status": "dry_run"}
         result["gen"] = "dry_run"
         return result
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-dry-run-check
     run_ctx, result = _prepare_kit_update_run_context(
         kit_slug,
         source_dir,
@@ -6457,7 +6593,9 @@ def update_kit(  # pylint: disable=too-many-arguments,too-many-locals
     current_version_result = _maybe_finalize_current_version_update(run_ctx)
     if current_version_result is not None:
         return current_version_result
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-return-result
     return _run_nonregistered_kit_update(run_ctx)
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-return-result
 
 # @cpt-begin:cpt-studio-flow-kit-dispatch:p1:inst-migrate-deprecated
 def cmd_kit_migrate(_argv: List[str]) -> int:
@@ -6954,6 +7092,7 @@ def _apply_registration_metadata(
             for key, value in register_context.source_provenance.items()
             if value
         }
+    # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-persist-authority-metadata
     if register_context.authority_metadata:
         existing["source_provenance"] = _build_registration_provenance(
             register_context.source,
@@ -6967,6 +7106,7 @@ def _apply_registration_metadata(
         )
         if authority_version:
             existing["version"] = str(authority_version)
+    # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-persist-authority-metadata
     elif kit_version:
         existing["version"] = kit_version
     existing.pop("content_identity", None)
@@ -7084,8 +7224,10 @@ def _register_kit_in_core_toml(  # pylint: disable=too-many-arguments,too-many-l
     if path_error:
         return [path_error]
     _apply_registration_metadata(existing, kit_version, register_context)
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
     if register_context.install_mode == "register":
         existing.pop("resources", None)
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
     elif register_context.resources is not None:
         resource_errors = _validate_registration_resources(
             register_context.resources,

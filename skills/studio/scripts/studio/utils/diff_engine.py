@@ -808,6 +808,7 @@ def _collect_user_files(
     resource_info: Optional[Dict[str, Any]],
 ) -> Dict[str, bytes]:
     """Enumerate current user files, including bound resources outside user_dir."""
+    # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-register-reread
     user_files: Dict[str, bytes] = {}
     for src_rel_path, target_path in target_mapping.items():
         content = _read_file_if_available(target_path)
@@ -825,6 +826,7 @@ def _collect_user_files(
         user_files[rel_path] = content
         target_mapping.setdefault(rel_path, user_dir / rel_path)
     return user_files
+    # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-register-reread
 
 
 def _strip_toc_maps(
@@ -901,6 +903,7 @@ def _decide_noninteractive_action(
 
 def _show_change_context(rel_path: str, change_type: str, old_content: bytes, new_content: bytes) -> None:
     """Render the diff context shown before interactive review."""
+    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-show-change-context
     if change_type == "added":
         _emit_terminal_message(
             f"\n    \033[32m+ {rel_path}\033[0m  (new file, {len(new_content)} bytes)"
@@ -913,6 +916,7 @@ def _show_change_context(rel_path: str, change_type: str, old_content: bytes, ne
         return
     _emit_terminal_message(f"\n    \033[33m~ {rel_path}\033[0m")
     show_file_diff(rel_path, old_content, new_content, prefix="      ")
+    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-show-change-context
 
 
 def _decide_interactive_action(
@@ -925,6 +929,7 @@ def _decide_interactive_action(
     prune_fingerprint: str,
 ) -> Tuple[str, bytes]:
     """Prompt for and resolve an interactive action for a changed file."""
+    # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-prune-path-prompts
     if change_type == "removed" and prune_fingerprint:
         _emit_terminal_message(
             f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream; prune fingerprint {prune_fingerprint})"
@@ -933,17 +938,22 @@ def _decide_interactive_action(
             decision = _prompt_kit_file(rel_path, review_state)
             return ("accepted" if decision == "accept" else "declined"), new_content
         return "declined", new_content
+    # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-prune-path-prompts
 
     _show_change_context(rel_path, change_type, old_content, new_content)
+    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-prompt-decision
     decision = _prompt_kit_file(rel_path, review_state)
     if decision == "accept":
         return "accepted", new_content
     if decision == "decline":
         return "declined", new_content
+    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-prompt-decision
+    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-editor-merge
     if decision == "modify":
         edited = _open_editor_for_file(rel_path, old_content, new_content)
         if edited is not None:
             return "modified", edited
+    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-editor-merge
     return "declined", new_content
 
 
@@ -1079,6 +1089,7 @@ def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
     )
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
 
+    # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-copy-diff
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
     # Enumerate user files from target paths (may be outside user_dir)
     user_files = _collect_user_files(
@@ -1235,6 +1246,7 @@ def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
                         if not _prompt_toc_error_continue(rel_path, exc):
                             break
         # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-toc-regen
+    # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-copy-diff
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-result
     all_entries = result_added + result_removed + result_modified

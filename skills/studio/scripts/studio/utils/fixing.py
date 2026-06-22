@@ -5,6 +5,7 @@ instruction that an LLM agent can follow to resolve the issue.  The prompt
 includes the clickable ``location`` (PATH:LINE), the affected ID, and relevant
 constraint context (SYSTEM, KIND, template).
 """
+# @cpt-algo:cpt-studio-algo-traceability-validation-fixing-prompts:p1
 # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-datamodel
 from __future__ import annotations
 
@@ -391,7 +392,7 @@ class _FixPromptContext:
     tpl: str
     ctx: str
 
-
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-datamodel
 def _build_fix_prompt_context(
     issue: Dict[str, object],
     project_root: Optional[Path],
@@ -409,8 +410,10 @@ def _build_fix_prompt_context(
         tpl=_tpl_hint(issue),
         ctx=_kind_ctx(issue),
     )
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-datamodel
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-task-consistency
 def _prompt_for_structure_task_consistency(ctx: _FixPromptContext) -> Optional[str]:
     if ctx.code == EC.CDSL_STEP_UNCHECKED:
         return (
@@ -429,8 +432,10 @@ def _prompt_for_structure_task_consistency(ctx: _FixPromptContext) -> Optional[s
             f"or check all nested unchecked items under it."
         )
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-task-consistency
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-references
 def _prompt_for_structure_references(ctx: _FixPromptContext) -> Optional[str]:
     if ctx.code == EC.REF_NO_DEFINITION:
         return (
@@ -462,8 +467,13 @@ def _prompt_for_structure_references(ctx: _FixPromptContext) -> Optional[str]:
             f"or verify this ID is intentionally unreferenced."
         )
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-references
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-id-kind-presence
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-task-priority-defs
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-placement
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-numbering
 def _prompt_for_constraints(ctx: _FixPromptContext) -> Optional[str]:
     prompt_map = {
         EC.HEADING_NUMBER_NOT_CONSECUTIVE: (
@@ -503,8 +513,13 @@ def _prompt_for_constraints(ctx: _FixPromptContext) -> Optional[str]:
             f"Currently under: {ctx.issue.get('found_headings')}.{ctx.tpl}"
         )
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-numbering
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-placement
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-task-priority-defs
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-id-kind-presence
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-contract
 def _prompt_for_heading_contract(ctx: _FixPromptContext) -> Optional[str]:
     if ctx.code == EC.HEADING_MISSING:
         pat = ctx.issue.get("heading_pattern")
@@ -523,8 +538,10 @@ def _prompt_for_heading_contract(ctx: _FixPromptContext) -> Optional[str]:
         verb = "is required but missing" if numbered is True else "is prohibited but present"
         return f"Open `{ctx.loc}`: heading numbering {verb}."
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-heading-contract
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-cross-ref-coverage
 def _prompt_for_cross_ref_coverage(ctx: _FixPromptContext) -> Optional[str]:
     if ctx.code == EC.REF_TARGET_NOT_IN_SCOPE:
         return (
@@ -574,8 +591,10 @@ def _prompt_for_cross_ref_coverage(ctx: _FixPromptContext) -> Optional[str]:
         ),
     }
     return prompt_map.get(ctx.code)
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-cross-ref-coverage
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-marker-errors
 def _prompt_for_code_traceability(ctx: _FixPromptContext) -> Optional[str]:
     prompt_map = {
         EC.MARKER_DUP_BEGIN: (
@@ -622,8 +641,10 @@ def _prompt_for_code_traceability(ctx: _FixPromptContext) -> Optional[str]:
             f"Add the CDSL step in the artifact, or rename/remove the code marker if the instruction was renamed."
         )
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-marker-errors
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-toc
 def _prompt_for_toc_and_warnings(ctx: _FixPromptContext) -> Optional[str]:
     path_s = ctx.loc.rsplit(':', 1)[0] if ':' in ctx.loc else ctx.loc
     if ctx.code == EC.TOC_MISSING:
@@ -649,6 +670,7 @@ def _prompt_for_toc_and_warnings(ctx: _FixPromptContext) -> Optional[str]:
             f"consider adding other artifact kinds that reference it."
         )
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-toc
 
 
 # ---------------------------------------------------------------------------
@@ -671,6 +693,7 @@ def _build_fixing_prompt(issue: Dict[str, object], project_root: Optional[Path] 
         prompt = builder(ctx)
         if prompt is not None:
             return prompt
+    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-warnings
     return None
     # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-warnings
 # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-build-prompt

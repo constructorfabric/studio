@@ -665,7 +665,9 @@ def _resolve_included_manifest_path(
     include_order: List[Path],
 ) -> Path:
     """Resolve one include path and enforce traversal, cycle, and depth guards."""
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-include-path
     resolved = (manifest_dir / include_path_str).resolve()
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-include-path
     try:
         resolved.relative_to(trusted_root)
     except ValueError as exc:
@@ -673,15 +675,19 @@ def _resolve_included_manifest_path(
             f"Include path '{include_path_str}' escapes the trusted root "
             f"'{trusted_root}' — path traversal is not allowed"
         ) from exc
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-circular
     if resolved in include_chain:
         chain_str = " -> ".join(str(path) for path in include_order) + f" -> {resolved}"
         raise ValueError(f"Circular include detected: {chain_str}")
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-circular
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-depth
     if len(include_chain) >= _MAX_INCLUDE_DEPTH:
         raise ValueError(
             f"Max include depth of {_MAX_INCLUDE_DEPTH} exceeded "
             f"while resolving '{include_path_str}' "
             f"(chain depth: {len(include_chain)})"
         )
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-depth
     return resolved
 
 
@@ -765,6 +771,7 @@ def _merge_included_manifest(
             rules=rewritten_rules,
         )
     )
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-collision
     inter_includee_collisions = state.accumulated_includee_ids & included_ids
     if inter_includee_collisions:
         raise ValueError(
@@ -772,6 +779,8 @@ def _merge_included_manifest(
             f"{sorted(inter_includee_collisions)}"
         )
     shadowed_by_includer = state.includer_ids & included_ids
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-collision
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-merge-included
     rewritten_agents, rewritten_skills, rewritten_workflows, rewritten_rules = _filter_shadowed_components(
         rewritten_agents,
         rewritten_skills,
@@ -785,9 +794,9 @@ def _merge_included_manifest(
     state.rules.extend(rewritten_rules)
     state.resources.extend(included_manifest.resources)
     state.accumulated_includee_ids |= included_ids - shadowed_by_includer
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-merge-included
 
 
-# @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-includes-header
 def resolve_includes(
     manifest: ManifestV2,
     manifest_dir: Path,
@@ -824,11 +833,10 @@ def resolve_includes(
         ValueError: On path traversal, circular includes, depth exceeded, or
                     ID collision.
     """
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-includes-header
-    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step1-read-includes
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-read-includes
     if not manifest.includes:
         return manifest
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step1-read-includes
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-read-includes
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-init-collections
     include_chain, include_order, trusted_root = _initialize_include_resolution(
@@ -840,9 +848,8 @@ def resolve_includes(
     state = _IncludeResolutionState.from_manifest(manifest)
     # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-init-collections
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2-foreach-include
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-iterate-includes
     for include_path_str in manifest.includes:
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.1-resolve-path
         resolved = _resolve_included_manifest_path(
             manifest_dir,
             include_path_str,
@@ -851,12 +858,12 @@ def resolve_includes(
             include_order,
         )
 
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.4-parse-included
+        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-parse-included
         included_manifest = parse_manifest_v2(resolved)
         included_dir = resolved.parent
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.4-parse-included
+        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-parse-included
 
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.5-recurse
+        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-recurse-includes
         included_manifest = resolve_includes(
             included_manifest,
             included_dir,
@@ -864,9 +871,8 @@ def resolve_includes(
             trusted_root,
             include_order + [resolved],
         )
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.5-recurse
+        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-recurse-includes
 
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.6-rewrite-paths
         _merge_included_manifest(
             state,
             included_manifest,
@@ -874,10 +880,9 @@ def resolve_includes(
             trusted_root,
             resolved,
         )
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.8-merge
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2-foreach-include
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-iterate-includes
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step3-return
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-return-augmented
     return ManifestV2(
         version=manifest.version,
         includes=manifest.includes,
@@ -887,7 +892,7 @@ def resolve_includes(
         rules=state.rules,
         resources=state.resources,
     )
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step3-return
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-return-augmented
 
 
 # ---------------------------------------------------------------------------
@@ -963,7 +968,6 @@ def _merge_component_entry(
 # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-merge-entry
 
 
-# @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-merge-components-header
 def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
     """Merge component entries from multiple manifest layers.
 
@@ -983,12 +987,11 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
     Returns:
         ``MergedComponents`` with all merged dicts and provenance metadata.
     """
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-merge-components-header
-    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step1-init
+    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-init-merged
     merged = MergedComponents()
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step1-init
+    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-init-merged
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-foreach-layer
+    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-layers
     for layer in layers:
         # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2.1-skip-non-loaded
         if layer.state != ManifestLayerState.LOADED or layer.manifest is None:
@@ -998,7 +1001,7 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
         manifest = layer.manifest
 
         # Iterate all component sections with their type labels
-        # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-inner
+        # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-components
         sections: List[Tuple[str, Dict, List]] = [
             ("agents", merged.agents, manifest.agents),
             ("skills", merged.skills, manifest.skills),
@@ -1009,13 +1012,14 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
             for component in component_list:
                 cid = component.id
 
-                # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-overwrite
+                # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-overwrite
                 if cid in merged_dict:
                     # Record previous winner as overridden
                     prov_key = f"{component_type}:{cid}"
                     prev_prov = merged.provenance[prov_key]
                     overridden = list(prev_prov.overridden)
                     overridden.insert(0, (prev_prov.winning_scope, prev_prov.winning_path))
+                    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
                     merged.provenance[prov_key] = ProvenanceRecord(
                         component_id=cid,
                         component_type=component_type,
@@ -1023,11 +1027,12 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
                         winning_path=layer.path,
                         overridden=overridden,
                     )
+                    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
                     # Inherit source and accumulate appends from the outer entry
                     component = _merge_component_entry(merged_dict[cid], component)  # type: ignore[arg-type]
                 else:
-                    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-newentry
                     prov_key = f"{component_type}:{cid}"
+                    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
                     merged.provenance[prov_key] = ProvenanceRecord(
                         component_id=cid,
                         component_type=component_type,
@@ -1035,19 +1040,18 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
                         winning_path=layer.path,
                         overridden=[],
                     )
-                    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-newentry
+                    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
 
                 merged_dict[cid] = component  # type: ignore[assignment]
-                # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-overwrite
-        # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-inner
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-foreach-layer
+                # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-overwrite
+        # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-components
+    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-layers
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step3-return
+    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-return-merged
     return merged
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step3-return
+    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-return-merged
 
 
-# @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-appends-header
 def apply_section_appends(
     base_content: str,
     components: List[ComponentEntry],
@@ -1076,12 +1080,11 @@ def apply_section_appends(
     Returns:
         Composed content string.
     """
-    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-appends-header
-    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step1-base
+    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-start-base
     composed = base_content
-    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step1-base
+    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-start-base
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step2-foreach-component
+    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-iterate-appends
     type_class_map = {
         "agents": AgentEntry,
         "skills": SkillEntry,
@@ -1093,16 +1096,18 @@ def apply_section_appends(
         if expected_cls is not None and not isinstance(component, expected_cls):
             continue
         if component.id == component_id and component.append:
+            # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-append-content
             composed = composed + "\n" + component.append
+            # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-append-content
             # The component's .append field already contains all accumulated
             # layer appends (built by _merge_component_entry), so we only
             # need to apply it once.
             break
-    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step2-foreach-component
+    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-iterate-appends
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step3-return
+    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-return-composed
     return composed
-    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step3-return
+    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-return-composed
 
 
 # ---------------------------------------------------------------------------

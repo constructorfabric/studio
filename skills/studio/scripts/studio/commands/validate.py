@@ -1032,20 +1032,47 @@ def cmd_validate(argv: List[str]) -> int:
     Performs deterministic validation checks (structure, cross-references,
     task statuses, traceability markers) and produces a machine-readable report.
     """
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-user-validate
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-load-context
     session, exit_code = _build_validate_session(_parse_validate_args(argv))
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-load-context
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-user-validate
     if exit_code is not None or session is None:
         return 1 if exit_code is None else exit_code
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-resolve-artifacts
     exit_code = _resolve_artifacts_to_validate(session)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-resolve-artifacts
     if exit_code is not None:
         return exit_code
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-self-check
+    # validate-kits gate runs during session construction and has already passed here
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-self-check
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-load-constraints
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-structure
     results, exit_code = _run_initial_artifact_validation(session)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-structure
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-load-constraints
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-structure-fail
     if exit_code is not None:
         return exit_code
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-structure-fail
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-registry-fail
+    # registry-level failures are handled inside _run_initial_artifact_validation()
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-registry-fail
     all_artifacts_for_cross = _build_cross_validation_context(session, results)
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-cross-validate
     _run_cross_validation(session, results, all_artifacts_for_cross)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-cross-validate
     _run_code_validation(session, results, all_artifacts_for_cross)
     _run_reference_coverage(session, results, all_artifacts_for_cross)
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-enrich-errors
+    # final report emission enriches issues before output
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-enrich-errors
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-return-report
     return _emit_final_validate_report(session, results)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-return-report
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-helpers
 def _enrich_target_artifact_paths(

@@ -11,7 +11,6 @@ Uses only Python stdlib (urllib.request) — no third-party dependencies.
 # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 import io
 import json
-import logging
 import os
 import shutil
 import tarfile
@@ -28,13 +27,13 @@ from studio_proxy.resolve import (
     get_cache_provenance_file,
     get_version_file,
 )
+from studio_proxy.stderr import write_stderr, write_stderr_warning
 
 # GitHub repository for skill bundle releases
 GITHUB_OWNER = "constructorfabric"
 GITHUB_REPO = "studio"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
 USER_AGENT = "constructor-studio/1.0"
-LOGGER = logging.getLogger(__name__)
 
 
 class _WhatsnewGenerationError(RuntimeError):
@@ -42,7 +41,7 @@ class _WhatsnewGenerationError(RuntimeError):
 
 
 def _warn(message: str) -> None:
-    LOGGER.warning("Warning: %s", message)
+    write_stderr_warning(message)
 
 
 def _patch_cached_version(cache_dir: Path, version: str) -> None:
@@ -141,10 +140,8 @@ def _github_json_list(url: str) -> List[Dict[str, Any]]:
 
 
 def _warn_whatsnew_generation_failed(scope: str, exc: BaseException) -> None:
-    LOGGER.warning(
-        "Warning: unable to generate %s whatsnew.toml from GitHub release notes: %s",
-        scope,
-        exc,
+    write_stderr_warning(
+        f"unable to generate {scope} whatsnew.toml from GitHub release notes: {exc}"
     )
 
 
@@ -405,15 +402,13 @@ def _latest_release_snapshot_fallback(api_base: str) -> Tuple[Optional[str], Opt
     try:
         snapshot = _resolve_default_branch_snapshot(api_base)
     except (HTTPError, URLError, json.JSONDecodeError, OSError) as exc:
-        LOGGER.warning("No releases found and default branch resolution failed: %s", exc)
+        write_stderr_warning(f"No releases found and default branch resolution failed: {exc}")
         return None, None, {}
     if not snapshot:
-        LOGGER.warning("No releases found and default branch could not be resolved.")
+        write_stderr_warning("No releases found and default branch could not be resolved.")
         return None, None, {}
-    LOGGER.warning(
-        "No releases found. Using default branch commit %s@%s.",
-        snapshot["branch"],
-        snapshot["commit_sha"],
+    write_stderr_warning(
+        f"No releases found. Using default branch commit {snapshot['branch']}@{snapshot['commit_sha']}."
     )
     return snapshot["commit_sha"], snapshot["download_url"], {
         "resolver_mode": "default_branch_snapshot",
@@ -430,19 +425,19 @@ def _report_github_http_error(exc: HTTPError) -> Tuple[Optional[str], Optional[s
         body = exc.read().decode("utf-8", errors="replace")
     except OSError as read_exc:
         _warn(f"unable to read GitHub error body: {read_exc}")
-    LOGGER.error("GitHub API error: HTTP %s - %s", exc.code, exc.reason)
+    write_stderr(f"GitHub API error: HTTP {exc.code} - {exc.reason}")
     if body:
         try:
             err_data = json.loads(body)
             if "message" in err_data:
-                LOGGER.error("  %s", err_data["message"])
+                write_stderr(f"  {err_data['message']}")
         except json.JSONDecodeError:
-            LOGGER.error("  %s", body[:200])
+            write_stderr(f"  {body[:200]}")
     return None, None, {}
 
 
 def _report_github_error(exc: BaseException) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
-    LOGGER.error("GitHub API error: %s", exc)
+    write_stderr(f"GitHub API error: {exc}")
     return None, None, {}
 
 
@@ -719,9 +714,11 @@ def _download_archive(asset_url: str) -> Tuple[bool, bytes | str]:
 
 
 def _reset_cache_dir(cache_dir: Path) -> None:
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-mkdir-cache
     if cache_dir.exists():
         shutil.rmtree(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-mkdir-cache
 
 
 def _extract_tar_archive(archive_data: bytes, cache_dir: Path) -> bool:
@@ -768,6 +765,7 @@ def _finalize_cached_download(
     _patch_cached_version(cache_dir, resolved_version)
     _remove_non_github_whatsnew(cache_dir)
     _write_github_whatsnew(cache_dir, api_base)
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
     version_file.write_text(resolved_version, encoding="utf-8")
     metadata.update({
         "download_url": asset_url,
@@ -775,11 +773,14 @@ def _finalize_cached_download(
     })
     _write_cache_version_toml(cache_dir, resolved_version, metadata)
     _write_cache_provenance(metadata)
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-path-new
     return True, (
         f"Cached: {resolved_version}\n"
         f"  from: {asset_url}\n"
         f"  to:   {cache_dir}"
     )
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-path-new
 
 
 def _prepare_download_payload(
@@ -818,6 +819,7 @@ def download_and_cache(
     cache_dir = get_cache_dir()
     version_file = get_version_file()
     canonical_source, api_base = _resolve_cache_sources(url)
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-resolve-version
     resolved_version, asset_url, metadata, early_result = _resolve_download_metadata(
         version,
         api_base,
@@ -825,6 +827,7 @@ def download_and_cache(
         cache_dir,
         version_file,
     )
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-resolve-version
     if early_result is not None:
         return early_result
 
@@ -832,6 +835,7 @@ def download_and_cache(
         "canonical_source": canonical_source,
         "effective_source": api_base,
     })
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
     cached_result = _reuse_cached_download(
         force,
         version_file,
@@ -841,14 +845,25 @@ def download_and_cache(
         asset_url,
     )
     if cached_result is not None:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
         return cached_result
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
     archive_data, archive_error = _prepare_download_payload(resolved_version, asset_url)
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
     if archive_error is not None:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
         return archive_error
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
 
     _reset_cache_dir(cache_dir)
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-archive
     if archive_data is None or not _extract_archive(archive_data, cache_dir):
         return False, "Failed to extract archive: unrecognized format"
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-archive
     return _finalize_cached_download(
         cache_dir,
         version_file,

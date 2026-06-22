@@ -439,10 +439,12 @@ def _build_constraints_error(
 
 def _load_kit_dependencies(adapter_dir: Path, kit_id, kit_root: Optional[Path]):
     """Load resource bindings and constraint metadata for a kit."""
+    # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
     resource_bindings, resolved_bindings, resource_binding_errors = load_resource_bindings(
         adapter_dir,
         kit_id,
     )
+    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
     resource_entries = _load_core_resource_entries(adapter_dir, str(kit_id))
     (
         kit_constraints,
@@ -450,11 +452,13 @@ def _load_kit_dependencies(adapter_dir: Path, kit_id, kit_root: Optional[Path]):
         resolved_constraints_path,
         constraints_root,
         resolved_constraints_paths,
+        # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
     ) = resolve_constraints_from_bindings(
         resolved_bindings,
         kit_root,
         resource_entries,
     )
+    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
     return {
         "resource_bindings": resource_bindings,
         "resource_binding_errors": resource_binding_errors,

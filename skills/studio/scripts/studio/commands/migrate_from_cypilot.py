@@ -419,6 +419,7 @@ def migrate_from_cypilot(
     Set ``force_overwrite_root`` to skip the AGENTS.md / CLAUDE.md
     uncommitted-changes probe and rewrite their managed blocks anyway.
     """
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-dirs
     state, state_error = _resolve_migration_state(
         project_root=project_root,
         from_dir=from_dir,
@@ -429,16 +430,41 @@ def migrate_from_cypilot(
         skip_update=skip_update,
         force_overwrite_root=force_overwrite_root,
     )
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-dirs
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
     if state_error is not None:
         return state_error
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
     assert state is not None
 
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
+    # existing-target rejection is resolved inside _resolve_migration_state/_run_migration_phases
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
+    # root-file dirty probing happens inside the phase runner before rewrites
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-reuse-target
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-post-copy-rewrites
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
     phase_error = _run_migration_phases(state)
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-post-copy-rewrites
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-reuse-target
     if phase_error is not None:
         return phase_error
 
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
     update_rc, update_result = _run_followup_steps(state)
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
     return _build_migration_result(state, update_rc, update_result)
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
 
 
 def detect_legacy_cypilot_install(project_root: Path) -> Optional[str]:

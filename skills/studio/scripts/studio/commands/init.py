@@ -1,5 +1,11 @@
 """Initialize Constructor Studio project files."""
 
+# @cpt-flow:cpt-studio-flow-core-infra-project-init:p1
+# @cpt-algo:cpt-studio-algo-core-infra-create-config:p1
+# @cpt-algo:cpt-studio-algo-core-infra-create-config-agents:p1
+# @cpt-algo:cpt-studio-algo-core-infra-define-root-system:p1
+# @cpt-algo:cpt-studio-algo-core-infra-inject-root-agents:p1
+
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-helpers
 import argparse
 import json
@@ -640,13 +646,17 @@ def _show_init_welcome(interactive: bool) -> None:
 
 def _resolve_init_project_root(args: argparse.Namespace, cwd: Path, interactive: bool) -> Path:
     default_project_root = cwd
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-interactive
     if args.project_root is None and interactive:
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-dir
         _emit_stderr_lines(
             "  \033[2mThe project root is the top-level directory of your repository.\033[0m\n",
             "  \033[2mPress Enter to use the current directory.\033[0m\n",
         )
         raw_root = _prompt_path("Project root directory?", default_project_root.as_posix())
         return _resolve_user_path(raw_root, cwd)
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-dir
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-if-interactive
     raw_root = args.project_root or default_project_root.as_posix()
     return _resolve_user_path(raw_root, cwd)
 
@@ -663,7 +673,9 @@ def _build_init_state(
 ) -> _InitState:
     default_install_dir = existing_install_rel or DEFAULT_INSTALL_DIR
     install_rel = (args.install_dir or default_install_dir).strip() or default_install_dir
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
     root_system = _define_root_system(project_root)
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
     project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
     return _InitState(
         project_root=project_root,
@@ -1428,7 +1440,14 @@ def _inject_managed_block(
             raise ValueError(f"Refusing to write outside project root: {resolved_target}")
     # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-validate-path
     expected_block = _compute_managed_block(install_dir)
-    return _write_managed_block_file(
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-no-agents
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-create-agents-file
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-read-existing
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-markers-exist
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-replace-block
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
+    action = _write_managed_block_file(
         target_file,
         expected_block,
         marker_start=MARKER_START,
@@ -1436,6 +1455,16 @@ def _inject_managed_block(
         insert_mode="prepend",
         dry_run=dry_run,
     )
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-replace-block
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-markers-exist
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-read-existing
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-create-agents-file
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-no-agents
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-return-agents-path
+    return action
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-return-agents-path
 
 _DEFAULT_KIT_SOURCE = "constructorfabric/studio-kit-sdlc"
 
@@ -1614,6 +1643,7 @@ def _emit_missing_cache_error(project_root: Path, *, studio_dir: Optional[Path] 
 
 
 def _prepare_init_layout(studio_dir: Path, args: argparse.Namespace, actions: Dict[str, str]) -> _InitLayout:
+    # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-config
     if not args.dry_run:
         studio_dir.mkdir(parents=True, exist_ok=True)
         copy_results = _copy_from_cache(CACHE_DIR, studio_dir, force=args.force)
@@ -1631,6 +1661,7 @@ def _prepare_init_layout(studio_dir: Path, args: argparse.Namespace, actions: Di
         (gen_dir / _README_FILENAME).write_text(_gen_readme(), encoding="utf-8")
         (config_dir / _README_FILENAME).write_text(_config_readme(), encoding="utf-8")
     actions["readmes"] = "created"
+    # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-config
     return _InitLayout(
         studio_dir=studio_dir,
         config_dir=config_dir,
@@ -1648,6 +1679,7 @@ def _write_init_core_toml(
     state: _InitState,
     actions: Dict[str, str],
 ) -> None:
+    # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-write-core-toml
     desired_core = _default_core_toml()
     core_toml_existed = layout.core_toml_path.is_file()
     if core_toml_existed and not args.force:
@@ -1666,6 +1698,7 @@ def _write_init_core_toml(
     if not args.dry_run:
         toml_utils.dump(desired_core, layout.core_toml_path, header_comment="Constructor Studio project configuration")
     actions["core_toml"] = "updated" if core_toml_existed else "created"
+    # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-write-core-toml
 
 
 def _ensure_init_config_agents(
@@ -1674,6 +1707,7 @@ def _ensure_init_config_agents(
     args: argparse.Namespace,
     actions: Dict[str, str],
 ) -> None:
+    # @cpt-begin:cpt-studio-algo-core-infra-create-config-agents:p1:inst-write-config-agents
     config_agents_existed = layout.config_agents_path.is_file()
     if config_agents_existed and not args.force:
         actions["config_agents"] = "unchanged"
@@ -1689,6 +1723,7 @@ def _ensure_init_config_agents(
             )
         actions["config_agents"] = "unchanged" if config_agents_existed else "created"
     actions["config_agents_path"] = layout.config_agents_path.as_posix()
+    # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-write-config-agents
 
 
 def _emit_init_error(
@@ -1745,8 +1780,10 @@ def _maybe_install_default_kit_for_init(
         return {}, None
     install_kit_flag = _prompt_kit_install_flag(interactive)
     if not install_kit_flag:
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-skip-kit-declined
         ui.info(f"Skipped kit installation. Install later: cfs kit install {_DEFAULT_KIT_SOURCE}")
         return {}, None
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-skip-kit-declined
     state.kit_tracking_overrides["sdlc"] = _prompt_kit_tracking_policy(
         "sdlc",
         state.default_kit_tracking,
@@ -1780,6 +1817,7 @@ def _finalize_init_files(
     installed_kit_slug = next(iter(kit_results), "") if kit_results else ""
     desired_registry = generate_default_registry(state.project_name, kit_slug=installed_kit_slug)
     registry_path = (layout.config_dir / "artifacts.toml").resolve()
+    # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-write-artifacts-toml
     registry_existed_before = registry_path.is_file()
     if registry_existed_before and not args.force:
         actions["artifacts_registry"] = "unchanged"
@@ -1787,6 +1825,7 @@ def _finalize_init_files(
         if not args.dry_run:
             toml_utils.dump(desired_registry, registry_path, header_comment="Constructor Studio artifacts registry")
         actions["artifacts_registry"] = "updated" if registry_existed_before else "created"
+    # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-write-artifacts-toml
     if not args.dry_run:
         actions.update(regenerate_gen_aggregates(layout.studio_dir))
         config_skill_path = layout.config_dir / "SKILL.md"
@@ -1974,8 +2013,13 @@ def _prepare_init_state(
     interactive = not args.yes
     _show_init_welcome(interactive)
     project_root = _resolve_init_project_root(args, cwd, interactive)
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
     existing_install_rel = _read_existing_install(project_root)
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-existing-repair-mode
     if existing_install_rel is not None and not args.force:
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-exists
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-return-repair
         return (
             _repair_existing_install(
                 project_root,
@@ -1995,6 +2039,9 @@ def _prepare_init_state(
                 agent_tracking=tracking.agent_tracking,
             ),
         )
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-return-repair
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-if-exists
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-existing-repair-mode
 
     state = _build_init_state(
         args=args,
@@ -2020,6 +2067,7 @@ def _prepare_init_state(
 def cmd_init(argv: List[str]) -> int:
     """Run the init command."""
     # @cpt-dod:cpt-studio-dod-core-infra-init-config:p1
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
     args, tracking = _parse_init_args(argv)
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
@@ -2058,15 +2106,19 @@ def cmd_init(argv: List[str]) -> int:
             run_state.backups.append(backup_path.as_posix())
 
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
     layout = _prepare_init_layout(studio_dir, args, run_state.actions)
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
 
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
     _write_init_core_toml(
         layout=layout,
         args=args,
         state=state,
         actions=run_state.actions,
     )
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
 
     # Write user-editable AGENTS.md to config/ (preserve existing)
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
@@ -2076,6 +2128,9 @@ def cmd_init(argv: List[str]) -> int:
         args=args,
         actions=run_state.actions,
     )
+    # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-gen-when-rules
+    # @cpt-begin:cpt-studio-algo-core-infra-create-config-agents:p1:inst-return-config-agents-path
+    # (path reported in final JSON output)
     # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-return-config-agents-path
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
 
@@ -2106,6 +2161,9 @@ def cmd_init(argv: List[str]) -> int:
         kit_results=kit_results,
         actions=run_state.actions,
     )
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-write-gitignore-footprint
+    # finalize step writes the install footprint, including gitignore-related files when needed
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-write-gitignore-footprint
     # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-kits
 
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-delegate-agents
@@ -2121,6 +2179,9 @@ def cmd_init(argv: List[str]) -> int:
             backups=run_state.backups,
         )
 
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-inject-agents
+    # Root managed AGENTS.md / CLAUDE.md writes are performed by `_finalize_init_files`.
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-inject-agents
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-return-init-ok
     # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-init-complete
     init_result = _build_init_result(

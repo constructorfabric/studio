@@ -10,6 +10,7 @@ IMPORTANT: This module MUST NOT contain business logic.
   modules under studio.utils or command modules.
 """
 
+# @cpt-algo:cpt-studio-algo-core-infra-route-command:p1
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 import sys
 import logging
@@ -309,23 +310,41 @@ def main(argv: Optional[List[str]] = None) -> int:
         while "--json" in argv_list:
             argv_list.remove("--json")
     try:
+        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
         return _main_impl(argv_list)
+        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
     finally:
         set_json_mode(previous_json_mode)
 
 
 def _main_impl(argv_list: List[str]) -> int:
     """Dispatch a command after global flags have been handled."""
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
     _load_startup_context()
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
     if not argv_list or argv_list[0] in ("-h", "--help"):
         return _render_top_level_help()
 
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
     cmd, rest = _parse_command(argv_list)
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
     handler_name = _COMMAND_HANDLERS.get(cmd)
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
     if handler_name is None:
+        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
+        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
         return _report_unknown_command(cmd)
+        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
+        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args
     handler = globals()[handler_name]
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
     return handler(rest)
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
 
 
 def _load_startup_context() -> None:
@@ -386,7 +405,6 @@ def _report_unknown_command(cmd: str) -> int:
     )
     return 1
 
-# @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 if __name__ == "__main__":
     raise SystemExit(main())
 

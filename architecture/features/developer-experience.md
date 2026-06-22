@@ -102,12 +102,12 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 **Steps**:
 1. [x] - `p1` - User invokes `cfs self-check [--kit K] [--verbose]` - `inst-user-self-check`
 2. [x] - `p1` - Load artifacts registry and kit metadata - `inst-load-registry`
-3. - `p1` - **FOR EACH** kit (or filtered by `--kit`) - `inst-for-each-kit`
-   1. - `p1` - Load constraints.toml for the kit - `inst-load-constraints`
-   2. - `p1` - **FOR EACH** artifact kind in kit - `inst-for-each-kind`
-      1. - `p1` - Validate template against heading constraints - `inst-validate-template`
-      2. - `p1` - Validate example against heading constraints - `inst-validate-example`
-      3. - `p1` - Check template/example consistency - `inst-check-consistency`
+3. [x] - `p1` - **FOR EACH** kit (or filtered by `--kit`) - `inst-for-each-kit`
+   1. [x] - `p1` - Load constraints.toml for the kit - `inst-load-constraints`
+   2. [x] - `p1` - **FOR EACH** artifact kind in kit - `inst-for-each-kind`
+      1. [x] - `p1` - Validate template against heading constraints - `inst-validate-template`
+      2. [x] - `p1` - Validate example against heading constraints - `inst-validate-example`
+      3. [x] - `p1` - Check template/example consistency - `inst-check-consistency`
 4. [x] - `p1` - **RETURN** self-check report with per-kind results - `inst-return-self-check`
 
 ### Pre-Commit Hooks

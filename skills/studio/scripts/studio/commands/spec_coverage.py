@@ -281,17 +281,38 @@ def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict
         return validation_error, 2
     if system_slugs == set():
         return {}, 2
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
     filtered_files = _filter_ignored_files(
         _collect_selected_system_files(meta, project_root, system_slugs),
         project_root,
         meta,
     )
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
+    # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
     if not filtered_files:
         return _empty_coverage_result(), 0
+    # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
     file_coverages = _scan_file_coverages(filtered_files)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
     report = calculate_metrics(file_coverages)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
+    # granularity is computed as part of calculate_metrics() and preserved on report
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
     json_report = generate_report(report, verbose=args.verbose, project_root=project_root)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
     status = _apply_thresholds(report, args, project_root, json_report)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
+    # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-covered
+    # PASS means coverage and granularity satisfied configured thresholds
+    # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-covered
+    # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-partial
+    # non-PASS result still returns a report with partial coverage details
+    # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-partial
     return json_report, 0 if status == "PASS" else 2
 
 def cmd_spec_coverage(argv: List[str]) -> int:
