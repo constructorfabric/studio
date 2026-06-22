@@ -4,6 +4,7 @@ import subprocess
 import tarfile
 from io import BytesIO
 import json
+import textwrap
 from urllib.error import HTTPError, URLError
 import time
 
@@ -173,6 +174,47 @@ def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path, ca
 
     assert "pipx upgrade constructor-studio" in caplog.text
     assert "cfs kit update sdlc" in caplog.text
+
+
+def test_proxy_forwards_skill_stdout_and_preserves_skill_logger_stderr(monkeypatch, tmp_path, capfd):
+    from studio_proxy import cli
+    import studio_proxy.telemetry as telemetry
+
+    skill_path = tmp_path / "fake_skill.py"
+    skill_path.write_text(
+        textwrap.dedent(
+            """
+            import logging
+            import sys
+
+            studio_logger = logging.getLogger("studio")
+            handler = logging.StreamHandler(sys.stderr)
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            studio_logger.handlers = [handler]
+            studio_logger.setLevel(logging.WARNING)
+            studio_logger.propagate = False
+
+            print("legal stdout from skill")
+            logging.getLogger("studio.test").warning("diagnostic warning from skill")
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(telemetry, "track_invocation", lambda _args: None)
+    monkeypatch.setattr(cli, "resolve_skill", lambda: (skill_path, "project"))
+    monkeypatch.setattr(cli, "_background_version_check", lambda *_args, **_kwargs: None)
+    with open("/dev/null", "r", encoding="utf-8") as fake_stdin:
+        monkeypatch.setattr(cli.sys, "stdin", fake_stdin)
+        rc = cli.main(["doctor"])
+
+    captured = capfd.readouterr()
+    assert rc == 0
+    assert "legal stdout from skill" in captured.out
+    assert "diagnostic warning from skill" not in captured.out
+    assert "diagnostic warning from skill" in captured.err
+    assert "legal stdout from skill" not in captured.err
 
 
 def test_background_update_check_spawns_refresh_when_stale(monkeypatch, tmp_path):
