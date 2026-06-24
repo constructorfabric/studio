@@ -254,13 +254,13 @@ def _layout_metrics(
     # @cpt-end:cpt-studio-algo-map-layout:p1:inst-layout-metrics
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-layout-score
 def _layout_score(
     metrics: rectpack.StackedLayoutMetrics,
     positions: dict[str, tuple[int, int]],
     category_links: dict[tuple[str, str], int],
     choice_by_cat: dict[str, rectpack.LayoutCandidate],
 ) -> tuple[float, float, float, float, float, float]:
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-layout-score
     density_loss = 1.0 - metrics.total_density
     category_loss = 1.0 - metrics.total_category_density
     affinity_loss = _affinity_loss(metrics, positions, category_links, choice_by_cat)
@@ -273,7 +273,6 @@ def _layout_score(
         affinity_loss,
         float(metrics.total_height),
     )
-    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-layout-score
 
 
 def _affinity_loss(
@@ -306,6 +305,7 @@ def _choice_center(
     choice = choice_by_cat[cat_id]
     pos_x, pos_y = positions[cat_id]
     return pos_x + choice.width / 2.0, pos_y + choice.height / 2.0
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-layout-score
 
 
 def _layout_improves(
@@ -325,14 +325,13 @@ def _layout_improves(
     )
     # @cpt-end:cpt-studio-algo-map-layout:p1:inst-layout-improves
 
-
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-greedy-affinity-order
 def _greedy_affinity_order(
     seed: str,
     choice_by_cat: dict[str, rectpack.LayoutCandidate],
     category_links: dict[tuple[str, str], int],
     category_link_totals: dict[str, int],
 ) -> tuple[str, ...]:
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-greedy-affinity-order
     def _affinity(left: str, right: str) -> int:
         if left == right:
             return 0
@@ -358,12 +357,12 @@ def _greedy_affinity_order(
     # @cpt-end:cpt-studio-algo-map-layout:p1:inst-greedy-affinity-order
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-row-pack-positions
 def _row_pack_positions(
     order: tuple[str, ...],
     width_limit: int,
     choice_by_cat: dict[str, rectpack.LayoutCandidate],
 ) -> dict[str, tuple[int, int]]:
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-row-pack-positions
     positions: dict[str, tuple[int, int]] = {}
     cur_x = 0
     cur_y = 0
@@ -381,6 +380,7 @@ def _row_pack_positions(
     # @cpt-end:cpt-studio-algo-map-layout:p1:inst-row-pack-positions
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-compute-layout
 def _group_layout_inputs(
     nodes: list[Node],
     edges: list[Edge],
@@ -407,8 +407,10 @@ def _group_layout_inputs(
         category_link_totals[left] = category_link_totals.get(left, 0) + 1
         category_link_totals[right] = category_link_totals.get(right, 0) + 1
     return sorted_nodes, degrees, grouped, category_links, category_link_totals
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-compute-layout
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-build-candidates
 def _category_input(cat_id: str, cat_nodes: list[Node], verbose: bool) -> dict[str, Any]:
     node_count = len(cat_nodes)
     width, height, _cols = _dims(node_count, node_count)
@@ -452,12 +454,14 @@ def _category_input(cat_id: str, cat_nodes: list[Node], verbose: bool) -> dict[s
             f"aspect={candidates[0].aspect:.3f} density={candidates[0].density:.3f}"
         )
     return {"cat_id": cat_id, "nodes": cat_nodes, "candidates": candidates}
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-build-candidates
 
 
 def _build_category_inputs(grouped: dict[str, list[Node]], verbose: bool) -> list[dict[str, Any]]:
     return [_category_input(cat_id, grouped[cat_id], verbose) for cat_id in sorted(grouped)]
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-optimize-stacked
 def _optimize_stacked_layout(category_inputs: list[dict[str, Any]], verbose: bool):
     best_choices, _chosen_indexes, _snapshots = rectpack.optimize_stacked_categories(
         [(entry["cat_id"], entry["candidates"]) for entry in category_inputs],
@@ -487,8 +491,10 @@ def _optimize_stacked_layout(category_inputs: list[dict[str, Any]], verbose: boo
         cur_y += candidate.height + CATEGORY_GAP
     stacked_metrics = _layout_metrics(best_choices, stacked_positions, category_inputs)
     return best_choices, choice_by_cat, stacked_positions, stacked_metrics
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-optimize-stacked
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-repack-across
 def _try_repacked_layout(
     best_choices,
     category_inputs,
@@ -531,8 +537,10 @@ def _try_repacked_layout(
     if verbose:
         _emit_stdout("[layout] category repack rolled back")
     return chosen_positions, chosen_metrics
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-repack-across
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
 def _affinity_order_candidates(layout_input: _AffinityLayoutInput) -> set[tuple[str, ...]]:
     order_candidates: set[tuple[str, ...]] = {
         tuple(cat_id for cat_id in layout_input.choice_by_cat),
@@ -563,8 +571,10 @@ def _affinity_order_candidates(layout_input: _AffinityLayoutInput) -> set[tuple[
         order_candidates.add(order)
         order_candidates.add(tuple(reversed(order)))
     return order_candidates
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
 def _affinity_width_candidates(best_choices, stacked_metrics) -> tuple[int, list[int]]:
     max_cat_width = max(choice.width for choice in best_choices)
     natural_cat_width = sum(
@@ -580,8 +590,10 @@ def _affinity_width_candidates(best_choices, stacked_metrics) -> tuple[int, list
         }
     )
     return max_cat_width, width_candidates
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
 def _try_affinity_layout(layout_input: _AffinityLayoutInput):
     order_candidates = _affinity_order_candidates(layout_input)
     max_cat_width, width_candidates = _affinity_width_candidates(
@@ -629,8 +641,10 @@ def _try_affinity_layout(layout_input: _AffinityLayoutInput):
         if layout_input.verbose:
             _emit_stdout("[layout] affinity layout rolled back")
     return layout_input.chosen_positions, layout_input.chosen_metrics
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-build-output
 def _category_band(candidate, cat_id: str, cat_x: int, cat_y: int, category_style) -> dict[str, Any]:
     return {
         "x": cat_x,
@@ -681,8 +695,10 @@ def _emit_category_layout(  # pylint: disable=too-many-locals
         node_y = int(by_local + cat_y + _PAD_TOP + (index // cols) * _SPACING)
         vis_nodes.append(_make_vis_node(node, node_x, node_y, category_style, degrees))
     return vis_nodes, bucket_rect, cat_band
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-build-output
 
 
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-build-output
 def _emit_layout_output(category_inputs, best_choices, chosen_positions, category_style, degrees):
     vis_nodes: list[dict[str, Any]] = []
     bucket_rects: dict[str, dict[str, Any]] = {}
@@ -698,13 +714,15 @@ def _emit_layout_output(category_inputs, best_choices, chosen_positions, categor
         )
         vis_nodes.extend(category_nodes)
     return vis_nodes, bucket_rects, cat_bands
+    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-build-output
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def compute_layout(
+# @cpt-begin:cpt-studio-algo-map-layout:p1:inst-compute-layout
+def compute_layout(  # pylint: disable=too-many-locals
     nodes: list[Node],
     edges: list[Edge],
     category_style: dict[str, dict[str, str]] | None = None,
@@ -723,27 +741,21 @@ def compute_layout(
         keyed by category name; each value {x, y, w, h, label, style}.
     """
     # Sort nodes by id for determinism
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-compute-layout
     _sorted_nodes, degrees, grouped, category_links, category_link_totals = _group_layout_inputs(nodes, edges)
 
     # Build rectpack layout candidates per category
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-build-candidates
     category_inputs = _build_category_inputs(grouped, verbose)
     if not category_inputs:
         return [], {}, {}
-    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-build-candidates
 
     # Optimize stacked arrangement
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-optimize-stacked
     best_choices, choice_by_cat, chosen_positions, stacked_metrics = _optimize_stacked_layout(
         category_inputs, verbose
     )
     chosen_metrics = stacked_metrics
-    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-optimize-stacked
 
     # --- Try rectpack repack across categories ---
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-repack-across
-    chosen_positions, chosen_metrics = _try_repacked_layout(
+    repacked_layout = _try_repacked_layout(
         best_choices,
         category_inputs,
         stacked_metrics,
@@ -753,11 +765,10 @@ def compute_layout(
         choice_by_cat,
         verbose,
     )
-    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-repack-across
+    chosen_positions, chosen_metrics = repacked_layout
 
     # --- Try affinity-ordered row-packs ---
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
-    chosen_positions, chosen_metrics = _try_affinity_layout(_AffinityLayoutInput(
+    affinity_layout = _try_affinity_layout(_AffinityLayoutInput(
         best_choices=best_choices,
         category_inputs=category_inputs,
         stacked_metrics=stacked_metrics,
@@ -768,10 +779,9 @@ def compute_layout(
         choice_by_cat=choice_by_cat,
         verbose=verbose,
     ))
-    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
+    chosen_positions, chosen_metrics = affinity_layout
 
     # --- Build output ---
-    # @cpt-begin:cpt-studio-algo-map-layout:p1:inst-build-output
-    return _emit_layout_output(category_inputs, best_choices, chosen_positions, category_style, degrees)
-    # @cpt-end:cpt-studio-algo-map-layout:p1:inst-build-output
+    layout_output = _emit_layout_output(category_inputs, best_choices, chosen_positions, category_style, degrees)
+    return layout_output
     # @cpt-end:cpt-studio-algo-map-layout:p1:inst-compute-layout

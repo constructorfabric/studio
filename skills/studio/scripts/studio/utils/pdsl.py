@@ -204,7 +204,6 @@ def scan_blocks(source: str, text: str) -> Tuple[List[PdslBlock], List[PdslFindi
         lang = (fence.group("lang") or "").lower()
         if in_pdsl:
             block_text = "\n".join(current)
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-assign-block-index
             blocks.append(PdslBlock(
                 source=source,
                 block_index=len(blocks),
@@ -214,7 +213,6 @@ def scan_blocks(source: str, text: str) -> Tuple[List[PdslBlock], List[PdslFindi
                 end_line=max(start_line, idx - 1),
                 end_column=len(current[-1]) + 1 if current else 1,
             ))
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-assign-block-index
             in_pdsl = False
             current = []
             continue
@@ -259,21 +257,23 @@ def scan_blocks(source: str, text: str) -> Tuple[List[PdslBlock], List[PdslFindi
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-scan-blocks
 
     if not blocks and not findings:
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-if-no-delimiters
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-use-whole-source
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-assign-block-index
+        # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-if-no-delimiters
+        # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-use-whole-source
+        block_text = text
+        # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-use-whole-source
+        # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-assign-block-index
+        block_index = 0
+        # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-assign-block-index
         blocks.append(PdslBlock(
             source=source,
-            block_index=0,
-            text=text,
+            block_index=block_index,
+            text=block_text,
             line=1,
             column=1,
             end_line=max(1, len(lines)),
             end_column=(len(lines[-1]) + 1) if lines else 1,
         ))
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-assign-block-index
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-use-whole-source
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-if-no-delimiters
+        # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-if-no-delimiters
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-scan-return
     return blocks, findings
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-scan:p1:inst-scan-return
@@ -291,22 +291,28 @@ def validate_source(source: PdslSource, *, verbose: bool = False) -> PdslSourceR
         findings.extend(_validate_block(block))
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-parse-block
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-foreach-block
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-sort-findings
-    findings.sort(key=lambda f: (f.source_path, f.block_index, f.line, f.column, f.rule_id, f.message))
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-sort-findings
     errors: Tuple[PdslError, ...] = ()
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-if-source-error
+    # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-sort-findings
+    findings.sort(key=lambda f: (f.source_path, f.block_index, f.line, f.column, f.rule_id, f.message))
     status = "FAIL" if findings else "PASS"
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-if-source-error
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-if-findings
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-fail
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-else-source-pass
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-pass
-    return PdslSourceResult(source.source, status, tuple(findings), errors)
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-pass
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-else-source-pass
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-fail
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-if-findings
+    # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-sort-findings
+    # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-if-source-error
+    # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-if-findings
+    if findings:
+        fail_findings = tuple(findings)
+        # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-fail
+        fail_result = PdslSourceResult(source.source, status, fail_findings, errors)
+        return fail_result
+        # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-fail
+    # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-if-findings
+    # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-else-source-pass
+    pass_findings = tuple(findings)
+    # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-pass
+    pass_result = PdslSourceResult(source.source, status, pass_findings, errors)
+    return pass_result
+    # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-pass
+    # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-else-source-pass
+    # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-if-source-error
 
 
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-error
@@ -412,7 +418,6 @@ def _validate_block(block: PdslBlock) -> List[PdslFinding]:
         findings.extend(_validate_section_item(block, state.section, state.menu_expected, line_no, raw_line))
         _advance_menu_option_counter(stripped, state)
 
-# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-run-local-semantics
         _append_missing_match_pattern_findings(
             block,
             line_no,
@@ -420,7 +425,6 @@ def _validate_block(block: PdslBlock) -> List[PdslFinding]:
             local_patterns,
             findings,
         )
-# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-run-local-semantics
     return findings
 
 
@@ -511,6 +515,7 @@ def _advance_menu_option_counter(
             state.menu_expected += 1
 
 
+# @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-run-local-semantics
 def _append_missing_match_pattern_findings(
     block: PdslBlock,
     line_no: int,
@@ -535,6 +540,7 @@ def _append_missing_match_pattern_findings(
                 hint=f"Declare `{pattern_name}` in a local PATTERNS block.",
                 context=raw_line,
             ))
+# @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-run-local-semantics
 
 
 def _validate_section_item(

@@ -104,7 +104,8 @@ SCRIPT_RANGES: Dict[str, List[Tuple[int, int]]] = {
 
 # Language codes that are recognized by this module.
 # @cpt-begin:cpt-studio-algo-traceability-validation-lang-scan:p1:inst-supported-langs
-SUPPORTED_LANGUAGES: List[str] = sorted(SCRIPT_RANGES.keys())
+SUPPORTED_LANGUAGES: List[str] = list(SCRIPT_RANGES.keys())
+SUPPORTED_LANGUAGES.sort()
 # @cpt-end:cpt-studio-algo-traceability-validation-lang-scan:p1:inst-supported-langs
 
 # Always-allowed: emoji and zero-width / directional markers that are

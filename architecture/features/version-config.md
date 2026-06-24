@@ -98,6 +98,24 @@ Ensures teams can upgrade Studio without losing configuration or customizations 
 17. [ ] - `p1` - Persist project install metadata with structured provenance and freshness state after `.core/` refresh succeeds - `inst-write-install-metadata`
 18. [ ] - `p1` - Include resolved release/tag, commit/content identity, metadata update status, and local-files-ignored note in the update report - `inst-report-provenance`
 
+**Supporting**:
+- [x] - `p1` - Parse update CLI arguments and legacy-migration flags - `inst-parse-update-args`
+- [x] - `p1` - Resolve existing project root and install-relative Studio path - `inst-resolve-existing-project-root`
+- [x] - `p1` - Handle missing install by routing into legacy migration or init guidance - `inst-handle-missing-install`
+- [x] - `p1` - Handle optional in-place legacy migration when old Cyber Pilot layout is detected beside an existing install - `inst-handle-existing-install-legacy-migration`
+- [x] - `p1` - Show `whatsnew` only when cache metadata is authoritative and the run is interactive enough to gate continuation - `inst-show-update-whatsnew`
+- [x] - `p1` - Copy cache content into the install root and refresh install-root metadata files - `inst-copy-core-from-cache`
+- [x] - `p1` - Resolve GitHub kit update source with download fallback to cached last-known content - `inst-resolve-github-update-source`
+- [x] - `p1` - Resolve per-kit update source from explicit GitHub source, cache fallback, or dry-run authority payload - `inst-resolve-update-kit-source`
+- [x] - `p1` - Confirm per-kit update after showing kit whatsnew against installed state - `inst-confirm-kit-update`
+- [x] - `p1` - Execute one registered kit update with authority metadata and attach manifest migration outcome - `inst-perform-registered-kit-update`
+- [x] - `p1` - Orchestrate one registered kit update including source resolution, confirmation, execution, and cleanup - `inst-update-single-registered-kit`
+- [x] - `p1` - Orchestrate all registered kit updates or emit a skipped payload when `--with-kits` is disabled - `inst-update-registered-kits`
+- [x] - `p1` - Record one kit update result into aggregated actions and surfaced errors - `inst-record-single-kit-update`
+- [x] - `p1` - Ensure config scaffold files and root integration entrypoints exist without overwriting user content - `inst-ensure-update-scaffold`
+- [x] - `p1` - Run post-update validate-kits and downgrade failures to warnings in the final report - `inst-run-update-validation`
+- [x] - `p1` - Build and render the final update result payload with actions, warnings, and errors - `inst-render-update-result`
+
 ### Manage Config via CLI
 
 - [ ] `p2` - **ID**: `cpt-studio-flow-version-config-manage`
@@ -130,6 +148,13 @@ Ensures teams can upgrade Studio without losing configuration or customizations 
 8. [x] - `p1` - (Removed — no separate regen step; kit files are updated directly) - `inst-regen-algo`
 9. [x] - `p1` - Ensure config scaffold - `inst-scaffold-algo`
 
+**Supporting**:
+- [x] - `p1` - Record layout migration actions after invoking the shared layout migrator - `inst-record-layout-migration`
+- [x] - `p1` - Persist post-update install tracking metadata into `core.toml` - `inst-persist-post-update-metadata`
+- [x] - `p1` - Record `core.toml` migrations such as removing legacy `[system]`, deduplicating kit slugs, and adding GitHub sources - `inst-record-core-toml-migrations`
+- [x] - `p1` - Run post-core update phases in order: dry-run metadata, layout migration, install metadata, `.gitignore`, and `core.toml` migrations - `inst-run-post-core-update-steps`
+- [x] - `p1` - Record manifest-driven legacy migration outcome without aborting the enclosing kit update on unexpected migration errors - `inst-record-manifest-migration-result`
+
 ### Resolve GitHub Version Authority
 
 - [ ] `p1` - **ID**: `cpt-studio-algo-version-config-github-authority`
@@ -143,6 +168,9 @@ Ensures teams can upgrade Studio without losing configuration or customizations 
 5. [ ] - `p1` - Never overwrite authoritative provenance from local copied `__version__`, `.version`, or equivalent legacy files - `inst-authority-ignore-local-files`
 6. [ ] - `p1` - Configure proxy package metadata so `pyproject.toml` declares dynamic versioning from SCM tags instead of a checked-in literal package version - `inst-proxy-dynamic-version`
 
+**Supporting**:
+- [x] - `p1` - Build offline last-known GitHub authority metadata for cached kit update fallback, preserving resolved ref, commit identity, canonical/effective source, and stale freshness labels - `inst-build-offline-github-authority`
+
 ### Layout Restructuring
 
 - [x] `p1` - **ID**: `cpt-studio-algo-version-config-layout-restructure`
@@ -154,12 +182,14 @@ Ensures teams can upgrade Studio without losing configuration or customizations 
 **Detection**: Old layout is detected when `{cf-studio-path}/.gen/kits/{slug}/` exists.
 
 **Steps**:
-1. [x] - `p1` - Backup affected directories - `inst-layout-backup`
-2. [x] - `p1` - Move generated outputs: `.gen/kits/{slug}/` → `config/kits/{slug}/` - `inst-layout-move-gen`
-3. [x] - `p1` - Remove old `kits/{slug}/` reference copies if present - `inst-layout-remove-refs`
-4. [x] - `p1` - Remove `.gen/kits/` directory (preserve `.gen/AGENTS.md` and `.gen/README.md`) - `inst-layout-clean-gen`
-5. [x] - `p1` - Update `core.toml` kit registrations with new paths (`config/kits/{slug}`) - `inst-layout-update-core`
-6. [x] - `p1` - **IF** any step fails, restore from backup and report error - `inst-layout-rollback`
+1. [x] - `p1` - Detect whether either legacy source refs (`kits/`) or generated kit outputs (`.gen/kits/`) are present; **RETURN** no-op when both are absent - `inst-layout-detect`
+2. [x] - `p1` - Initialize per-run migration state, including the result map and backup directory location - `inst-layout-init-state`
+3. [x] - `p1` - Backup affected directories - `inst-layout-backup`
+4. [x] - `p1` - Move generated outputs: `.gen/kits/{slug}/` → `config/kits/{slug}/` - `inst-layout-move-gen`
+5. [x] - `p1` - Remove old `kits/{slug}/` reference copies if present - `inst-layout-remove-refs`
+6. [x] - `p1` - Remove `.gen/kits/` directory (preserve `.gen/AGENTS.md` and `.gen/README.md`) - `inst-layout-clean-gen`
+7. [x] - `p1` - Update `core.toml` kit registrations with new paths (`config/kits/{slug}`) - `inst-layout-update-core`
+8. [x] - `p1` - **IF** any step fails, restore from backup and report error - `inst-layout-rollback`
 
 **Supporting**:
 - [x] - `p1` - Migrate single entry from old `kits/{slug}/` directory to new layout - `inst-migrate-kits-entry`

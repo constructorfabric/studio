@@ -128,6 +128,7 @@ def resolve_project_root_from_core_data(
     default_to_parent: bool,
 ) -> Optional[Path]:
     """Resolve the effective project root from parsed ``core.toml`` data."""
+    # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-project-root-from-core
     raw_root = data.get("project_root")
     if isinstance(raw_root, str) and raw_root.strip():
         root_path = Path(raw_root.strip())
@@ -137,6 +138,7 @@ def resolve_project_root_from_core_data(
     if default_to_parent:
         return studio_dir.parent.resolve()
     return None
+    # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-project-root-from-core
 
 
 def load_project_root_from_core_toml(
@@ -226,6 +228,7 @@ _VALID_AGENT_CONTEXTS = {"low", "medium", "high", "max"}
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-component-helpers
 
 
+# @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-component-helpers
 def _ensure_agent_table(path: Path, idx: int, raw: Any) -> Dict[str, Any]:
     """Return an agent table or raise a section-specific error."""
     if not isinstance(raw, dict):
@@ -281,8 +284,10 @@ def _parse_optional_agent_choice(
         str(value).strip() if value is not None else None,
         valid,
     )
+# @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-component-helpers
 
 
+# @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-agents
 def _parse_agent_entry(path: Path, idx: int, raw: Any) -> AgentEntry:
     """Parse one ``[[agents]]`` entry with schema validation."""
     raw_agent = _ensure_agent_table(path, idx, raw)
@@ -363,6 +368,7 @@ def _validate_agent_choice(
             f"expected one of {sorted(valid)}"
         )
     return value
+# @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-agents
 
 
 # @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-v2
@@ -638,6 +644,7 @@ def _initialize_include_resolution(
     trusted_root: Optional[Path],
 ) -> tuple[Set[Path], List[Path], Path]:
     """Seed include traversal state for the top-level manifest."""
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-init-collections
     if include_chain is None or include_order is None:
         root_manifest_path = (manifest_dir / "manifest.toml").resolve()
         include_chain = {root_manifest_path}
@@ -645,8 +652,10 @@ def _initialize_include_resolution(
     if trusted_root is None:
         trusted_root = manifest_dir.resolve()
     return include_chain, include_order, trusted_root
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-init-collections
 
 
+# @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-manifest-component-ids
 def _manifest_component_ids(manifest: ManifestV2) -> set[tuple[str, str]]:
     """Collect component ids keyed by manifest section."""
     return (
@@ -655,6 +664,7 @@ def _manifest_component_ids(manifest: ManifestV2) -> set[tuple[str, str]]:
         | {("workflows", component.id) for component in manifest.workflows}
         | {("rules", component.id) for component in manifest.rules}
     )
+# @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-manifest-component-ids
 
 
 def _resolve_included_manifest_path(
@@ -667,7 +677,6 @@ def _resolve_included_manifest_path(
     """Resolve one include path and enforce traversal, cycle, and depth guards."""
     # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-include-path
     resolved = (manifest_dir / include_path_str).resolve()
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-include-path
     try:
         resolved.relative_to(trusted_root)
     except ValueError as exc:
@@ -675,6 +684,7 @@ def _resolve_included_manifest_path(
             f"Include path '{include_path_str}' escapes the trusted root "
             f"'{trusted_root}' — path traversal is not allowed"
         ) from exc
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-include-path
     # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-circular
     if resolved in include_chain:
         chain_str = " -> ".join(str(path) for path in include_order) + f" -> {resolved}"
@@ -705,6 +715,7 @@ def _rewrite_manifest_components(
     )
 
 
+# @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-filter-shadowed-components
 def _filter_shadowed_components(
     rewritten_agents: list[AgentEntry],
     rewritten_skills: list[SkillEntry],
@@ -725,8 +736,10 @@ def _filter_shadowed_components(
         [component for component in rewritten_workflows if component.id not in shadowed_workflow_ids],
         [component for component in rewritten_rules if component.id not in shadowed_rule_ids],
     )
+# @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-filter-shadowed-components
 
 
+# @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-include-resolution-state
 @dataclass
 class _IncludeResolutionState:
     agents: List[AgentEntry]
@@ -748,6 +761,7 @@ class _IncludeResolutionState:
             resources=list(manifest.resources),
             includer_ids=_manifest_component_ids(manifest),
         )
+# @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-include-resolution-state
 
 
 def _merge_included_manifest(
@@ -864,13 +878,14 @@ def resolve_includes(
         # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-parse-included
 
         # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-recurse-includes
-        included_manifest = resolve_includes(
-            included_manifest,
-            included_dir,
-            include_chain | {resolved},
-            trusted_root,
-            include_order + [resolved],
-        )
+        if included_manifest.includes:
+            included_manifest = resolve_includes(
+                included_manifest,
+                included_dir,
+                include_chain | {resolved},
+                trusted_root,
+                include_order + [resolved],
+            )
         # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-recurse-includes
 
         _merge_included_manifest(
@@ -883,7 +898,7 @@ def resolve_includes(
     # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-iterate-includes
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-return-augmented
-    return ManifestV2(
+    resolved_manifest = ManifestV2(
         version=manifest.version,
         includes=manifest.includes,
         agents=state.agents,
@@ -892,6 +907,7 @@ def resolve_includes(
         rules=state.rules,
         resources=state.resources,
     )
+    return resolved_manifest
     # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-return-augmented
 
 
@@ -949,6 +965,7 @@ def _merge_component_entry(
 
     All other fields follow inner-scope-wins (taken from *inner*).
     """
+    # @cpt-begin:cpt-studio-dod-project-extensibility-inner-scope-wins:p1:inst-inherit-source-and-append
     inherited_source = inner.source or outer.source
     inherited_prompt_file = inner.prompt_file or outer.prompt_file
 
@@ -965,6 +982,7 @@ def _merge_component_entry(
         prompt_file=inherited_prompt_file,
         append=accumulated_append,
     )
+    # @cpt-end:cpt-studio-dod-project-extensibility-inner-scope-wins:p1:inst-inherit-source-and-append
 # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-merge-entry
 
 
@@ -987,9 +1005,7 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
     Returns:
         ``MergedComponents`` with all merged dicts and provenance metadata.
     """
-    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-init-merged
     merged = MergedComponents()
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-init-merged
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-layers
     for layer in layers:
@@ -1013,13 +1029,14 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
                 cid = component.id
 
                 # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-overwrite
+                # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
+                # @cpt-begin:cpt-studio-dod-project-extensibility-inner-scope-wins:p1:inst-apply-inner-scope-wins
                 if cid in merged_dict:
                     # Record previous winner as overridden
                     prov_key = f"{component_type}:{cid}"
                     prev_prov = merged.provenance[prov_key]
                     overridden = list(prev_prov.overridden)
                     overridden.insert(0, (prev_prov.winning_scope, prev_prov.winning_path))
-                    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
                     merged.provenance[prov_key] = ProvenanceRecord(
                         component_id=cid,
                         component_type=component_type,
@@ -1027,12 +1044,10 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
                         winning_path=layer.path,
                         overridden=overridden,
                     )
-                    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
                     # Inherit source and accumulate appends from the outer entry
                     component = _merge_component_entry(merged_dict[cid], component)  # type: ignore[arg-type]
                 else:
                     prov_key = f"{component_type}:{cid}"
-                    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
                     merged.provenance[prov_key] = ProvenanceRecord(
                         component_id=cid,
                         component_type=component_type,
@@ -1040,9 +1055,10 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
                         winning_path=layer.path,
                         overridden=[],
                     )
-                    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
+                # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
 
                 merged_dict[cid] = component  # type: ignore[assignment]
+                # @cpt-end:cpt-studio-dod-project-extensibility-inner-scope-wins:p1:inst-apply-inner-scope-wins
                 # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-overwrite
         # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-components
     # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-layers
@@ -1085,6 +1101,7 @@ def apply_section_appends(
     # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-start-base
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-iterate-appends
+    # @cpt-begin:cpt-studio-dod-project-extensibility-section-appending:p1:inst-apply-section-appends
     type_class_map = {
         "agents": AgentEntry,
         "skills": SkillEntry,
@@ -1103,6 +1120,7 @@ def apply_section_appends(
             # layer appends (built by _merge_component_entry), so we only
             # need to apply it once.
             break
+    # @cpt-end:cpt-studio-dod-project-extensibility-section-appending:p1:inst-apply-section-appends
     # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-iterate-appends
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-return-composed
@@ -1114,6 +1132,7 @@ def apply_section_appends(
 # Schema validation helper
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
 def _validate_schema_manifest_section(manifest: Any, errors: list[str]) -> bool:
     """Validate the top-level manifest section."""
     if not isinstance(manifest, dict):
@@ -1132,8 +1151,10 @@ def _validate_schema_manifest_section(manifest: Any, errors: list[str]) -> bool:
     if user_modifiable is not None and not isinstance(user_modifiable, bool):
         errors.append("[manifest].user_modifiable must be a boolean when present")
     return True
+# @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
 
 
+# @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
 def _validate_schema_resource_entry(
     res: Any,
     idx: int,
@@ -1175,6 +1196,7 @@ def _validate_schema_resource_entry(
     if user_modifiable is not None and not isinstance(user_modifiable, bool):
         errors.append(f"{prefix}.user_modifiable must be a boolean when present")
     return errors
+# @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
 
 
 # @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
@@ -1214,6 +1236,7 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
 # Public API
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 def resolve_kit_manifest_path(kit_source: Path) -> Optional[Path]:
     """Return the effective manifest path for a kit source.
 
@@ -1227,6 +1250,7 @@ def resolve_kit_manifest_path(kit_source: Path) -> Optional[Path]:
     if legacy_path.is_file():
         return legacy_path
     return None
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
@@ -1287,8 +1311,10 @@ def load_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Union[Manife
         user_modifiable=bool(meta.get("user_modifiable", True)),
         resources=resources,
     )
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 def _load_canonical_kit_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Manifest]:
     """Adapt canonical kit metadata into the manifest installer model."""
     canonical_path = kit_source / ".cf-studio-kit.toml"
@@ -1323,6 +1349,7 @@ def _load_canonical_kit_manifest(kit_source: Path, kit_slug: str = "") -> Option
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-validate
 def _validate_manifest_unique_ids(manifest: Manifest) -> list[str]:
     """Validate that manifest resource ids are unique."""
     errors: list[str] = []
@@ -1386,6 +1413,7 @@ def _validate_manifest_source_traversal(resource: ManifestResource) -> list[str]
     if resource.source and ".." in str(resource.source):
         return [f"Resource '{resource.id}': source path contains '..' traversal: {resource.source}"]
     return []
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-validate
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-validate
@@ -1417,7 +1445,7 @@ def validate_manifest(manifest: Manifest, kit_source: Path) -> list[str]:
 # Resource Resolution API
 # ---------------------------------------------------------------------------
 
-# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-path
 def _resolve_binding_path(
     studio_dir: Path,
     identifier: str,
@@ -1463,7 +1491,7 @@ def _resolve_binding_path(
             f"the current project root '{project_root}'"
         )
     return resolved_path
-# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-path
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
@@ -1476,6 +1504,8 @@ def _project_root_from_core_toml(core_toml: Path, studio_dir: Path) -> Optional[
 # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-config
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
 def _load_binding_config(core_toml: Path) -> tuple[Optional[Dict[str, Any]], list[str]]:
     """Load ``core.toml`` and return the kits table plus parse errors."""
     if not core_toml.is_file():
@@ -1491,8 +1521,11 @@ def _load_binding_config(core_toml: Path) -> tuple[Optional[Dict[str, Any]], lis
     if not isinstance(kits, dict):
         return None, []
     return kits, []
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-config
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-register-from-manifest
 def _resolve_registered_manifest_bindings(
     studio_dir: Path,
     slug: str,
@@ -1524,8 +1557,10 @@ def _resolve_registered_manifest_bindings(
         except ValueError as exc:
             binding_errors.append(str(exc))
     return result, binding_errors
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-register-from-manifest
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-extract
 def _extract_binding_path(binding: Any) -> str:
     """Extract a resource binding path from either string or table syntax."""
     if isinstance(binding, dict):
@@ -1533,8 +1568,10 @@ def _extract_binding_path(binding: Any) -> str:
     if isinstance(binding, str):
         return binding.strip()
     return ""
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-extract
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-declared-bindings
 def _resolve_declared_resource_bindings(
     studio_dir: Path,
     resources: Dict[str, Any],
@@ -1547,6 +1584,7 @@ def _resolve_declared_resource_bindings(
         binding_path = _extract_binding_path(binding)
         if not binding_path:
             continue
+        # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
         try:
             result[identifier] = _resolve_binding_path(
                 studio_dir,
@@ -1556,7 +1594,9 @@ def _resolve_declared_resource_bindings(
             )
         except ValueError as exc:
             binding_errors.append(str(exc))
+        # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
     return result, binding_errors
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-declared-bindings
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
@@ -1610,14 +1650,11 @@ def resolve_resource_bindings_with_errors(
         return {}, []
     # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
 
-    # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
     result, binding_errors = _resolve_declared_resource_bindings(
         studio_dir,
         resources,
         str(kit_entry.get("path", "") or ""),
     )
-    # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
-
     # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-return
     return result, binding_errors
     # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-return
@@ -1638,6 +1675,7 @@ class ResourceInfo:
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-resource-info
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-resolve-source-within-kit
 def _resolve_relative_source_within_kit(
     kit_source: Path,
     resource_id: str,
@@ -1656,8 +1694,10 @@ def _resolve_relative_source_within_kit(
             f"Resource '{resource_id}': {label} '{source}' escapes the kit root"
         ) from exc
     return resolved_source
+# @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-resolve-source-within-kit
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-directory-files
 def _record_directory_resource_files(
     kit_source: Path,
     source_dir: Path,
@@ -1671,8 +1711,10 @@ def _record_directory_resource_files(
         if file_path.is_file():
             rel_path = file_path.relative_to(kit_source).as_posix()
             source_to_resource_id[rel_path] = resource_id
+# @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-directory-files
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-subagent-sources
 def _record_subagent_sources(
     kit_source: Path,
     resource: Any,
@@ -1701,6 +1743,7 @@ def _record_subagent_sources(
             user_modifiable=resource.user_modifiable,
         )
         source_to_resource_id[subagent_source] = synthetic_id
+# @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-subagent-sources
 
 
 # @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-build-mapping-header
@@ -1727,9 +1770,8 @@ def build_source_to_resource_mapping(
           source_base path for computing relative paths within directories).
 
     Returns (empty_dict, empty_dict) if no manifest.toml exists.
-
-    @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-load-manifest
     """
+    # @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-load-manifest
     manifest = load_manifest(kit_source, kit_slug=kit_slug)
     if manifest is None:
         return {}, {}
@@ -1745,12 +1787,12 @@ def build_source_to_resource_mapping(
     for res in manifest.resources:
         # @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-source-mapping-relative-only
         resolved_source = _resolve_relative_source_within_kit(kit_source, res.id, res.source)
-        # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-source-mapping-relative-only
         resource_info[res.id] = ResourceInfo(
             type=res.type,
             source_base=res.source,
             user_modifiable=res.user_modifiable,
         )
+        # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-source-mapping-relative-only
         if res.type == "file":
             source_to_resource_id[res.source] = res.id
         elif res.type == "directory":

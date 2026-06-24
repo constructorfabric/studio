@@ -17,6 +17,7 @@ from .model import Node
 
 def _emit_warning(message: str) -> None:
     """Emit a warning to stderr via a dedicated logger handler."""
+    # @cpt-begin:cpt-studio-algo-map-categorize:p1:inst-emit-warning
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setFormatter(logging.Formatter("%(message)s"))
     category_logger = logging.getLogger(f"{__name__}.category_warning")
@@ -27,6 +28,7 @@ def _emit_warning(message: str) -> None:
         category_logger.warning("%s", message.rstrip("\n"))
     finally:
         stderr_handler.close()
+    # @cpt-end:cpt-studio-algo-map-categorize:p1:inst-emit-warning
 
 
 @dataclass(frozen=True)
@@ -62,7 +64,6 @@ class CategorizeOptions:
 def categorize_nodes(nodes: Sequence[Node], opts: CategorizeOptions) -> None:
     """Mutate nodes in place, filling .category and .category_origin."""
     # Build per-source registry indices (primary + any federated sources).
-    # @cpt-begin:cpt-studio-algo-map-categorize:p1:inst-categorize-nodes
     source_roots: dict = dict(opts.source_roots or {})
     # Always include primary root under "local" (and as default).
     primary_index = _build_registry_index(opts.project_root)
@@ -71,6 +72,7 @@ def categorize_nodes(nodes: Sequence[Node], opts: CategorizeOptions) -> None:
         if src_name != "local":
             per_source_index[src_name] = _build_registry_index(src_root)
 
+    # @cpt-begin:cpt-studio-algo-map-categorize:p1:inst-categorize-nodes
     for node in nodes:
         if node.kind == "phantom-cpt":
             node.category = "_undefined"
@@ -149,6 +151,7 @@ def _node_slug_path(system_node) -> str:
 
 
 def _load_registry_meta(project_root: Path):
+    # @cpt-begin:cpt-studio-algo-map-categorize-chain:p1:inst-load-registry-meta
     from studio.utils.files import find_studio_directory, find_project_root, load_artifacts_registry
     from studio.utils.artifacts_meta import ArtifactsMeta
 
@@ -162,6 +165,7 @@ def _load_registry_meta(project_root: Path):
     if cfg is None:
         return None
     return ArtifactsMeta.from_dict(cfg)
+    # @cpt-end:cpt-studio-algo-map-categorize-chain:p1:inst-load-registry-meta
 
 
 def _build_registry_index(project_root: Path) -> List[_RegistryEntry]:

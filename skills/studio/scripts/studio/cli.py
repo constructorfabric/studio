@@ -11,13 +11,13 @@ IMPORTANT: This module MUST NOT contain business logic.
 """
 
 # @cpt-algo:cpt-studio-algo-core-infra-route-command:p1
-# @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 import sys
 import logging
 from pathlib import Path
 from typing import Callable, List, Optional
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 def _configure_studio_logging() -> None:
     """Route studio diagnostics to stderr with a stable handler."""
     studio_logger = logging.getLogger("studio")
@@ -177,7 +177,6 @@ def _cmd_pdsl(argv: List[str]) -> int:
 def _cmd_map(argv: List[str]) -> int:
     from .commands.map.cli import cmd_map
     return cmd_map(argv)
-# @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 
 CommandHandler = Callable[[List[str]], int]
 
@@ -295,13 +294,12 @@ _ALL_COMMANDS = list(_COMMAND_HANDLERS)
 # MAIN ENTRY POINT
 # =============================================================================
 
-# @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 def main(argv: Optional[List[str]] = None) -> int:
     """Run the command-line entry point."""
     _configure_studio_logging()
     argv_list = list(argv) if argv is not None else sys.argv[1:]
 
-    # Extract global --json flag (must come before command dispatch)
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args
     from .utils.ui import is_json_mode, set_json_mode
     previous_json_mode = is_json_mode()
     json_mode = "--json" in argv_list
@@ -309,41 +307,31 @@ def main(argv: Optional[List[str]] = None) -> int:
         set_json_mode(True)
         while "--json" in argv_list:
             argv_list.remove("--json")
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args
     try:
-        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
         return _main_impl(argv_list)
-        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
     finally:
         set_json_mode(previous_json_mode)
 
 
 def _main_impl(argv_list: List[str]) -> int:
     """Dispatch a command after global flags have been handled."""
-    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
     _load_startup_context()
-    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
     if not argv_list or argv_list[0] in ("-h", "--help"):
-        return _render_top_level_help()
+        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
+        help_result = _render_top_level_help()
+        return help_result
+        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
 
-    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
     cmd, rest = _parse_command(argv_list)
-    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
-    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
-    handler_name = _COMMAND_HANDLERS.get(cmd)
-    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
-    if handler_name is None:
-        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
-        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
+    handler = _resolve_command_handler(cmd)
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
+    if handler is None:
         return _report_unknown_command(cmd)
-        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
-        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
-    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args
-    handler = globals()[handler_name]
-    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
-    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
-    return handler(rest)
-    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
+    handler_result = handler(rest)
+    return handler_result
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
 
 
@@ -355,16 +343,26 @@ def _load_startup_context() -> None:
     ensure_context(Path.cwd())
 
 
+def _emit_help_json_payload() -> None:
+    """Emit the top-level help payload in JSON mode."""
+    from .utils.ui import ui
+
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
+    payload = {
+        "usage": "cfs <command> [options]",
+        "commands": _COMMAND_DESCRIPTIONS,
+        "sections": dict(_COMMAND_SECTIONS),
+    }
+    ui.result(payload)
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
+
+
 def _render_top_level_help() -> int:
     """Render top-level CLI help in human or JSON format."""
     from .utils.ui import is_json_mode, ui
 
     if is_json_mode():
-        ui.result({
-            "usage": "cfs <command> [options]",
-            "commands": _COMMAND_DESCRIPTIONS,
-            "sections": dict(_COMMAND_SECTIONS),
-        })
+        _emit_help_json_payload()
         return 0
 
     ui.header("Constructor Studio CLI")
@@ -386,24 +384,50 @@ def _render_top_level_help() -> int:
 
 def _parse_command(argv_list: List[str]) -> tuple[str, List[str]]:
     """Resolve the requested command and remaining args."""
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
     if argv_list[0].startswith("-"):
         return "validate", argv_list
     return argv_list[0], argv_list[1:]
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
 
 
-def _report_unknown_command(cmd: str) -> int:
-    """Emit the standard unknown-command error payload."""
+def _resolve_command_handler(cmd: str) -> Optional[CommandHandler]:
+    """Resolve a command handler from the dispatch table."""
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
+    handler_name = _COMMAND_HANDLERS.get(cmd)
+    if handler_name is None:
+        return None
+    return globals()[handler_name]
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
+
+
+def _emit_unknown_command_payload(cmd: str) -> None:
+    """Emit the unknown-command payload."""
     from .utils.ui import ui
 
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
+    payload = {
+        "status": "ERROR",
+        "message": f"Unknown command: {cmd}",
+        "available": _ALL_COMMANDS,
+    }
     ui.result(
-        {"status": "ERROR", "message": f"Unknown command: {cmd}", "available": _ALL_COMMANDS},
+        payload,
         human_fn=lambda _data: (
             ui.error(f"Unknown command: {cmd}"),
             ui.hint(f"Available commands: {', '.join(_ALL_COMMANDS)}"),
             ui.hint("Run 'cfs --help' for usage."),
         ),
     )
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
+
+
+def _report_unknown_command(cmd: str) -> int:
+    """Emit the standard unknown-command error payload."""
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
+    _emit_unknown_command_payload(cmd)
     return 1
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
 
 if __name__ == "__main__":
     raise SystemExit(main())

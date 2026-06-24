@@ -142,18 +142,19 @@ def scan_cpt_ids(path: Path) -> List[Dict[str, object]]:
     for idx0, raw, stripped in _iter_non_fenced_lines(lines):
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-def
         m = _ID_DEF_RE.match(stripped)
-        # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-def
-        # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-if-def
         if m:
-            hits.append(_build_id_hit(
+            # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-if-def
+            definition_hit = _build_id_hit(
                 m,
                 idx0=idx0,
                 hit_type="definition",
                 id_group_names=("id", "id2", "id3", "id4"),
                 priority_group_names=("priority", "priority_only", "priority_only2"),
-            ))
+            )
+            hits.append(definition_hit)
             continue
-        # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-if-def
+            # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-if-def
+        # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-def
 
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-ref
         # Reference line format (optionally checkbox / priority).
@@ -260,14 +261,15 @@ def scan_cdsl_instructions(path: Path) -> List[Dict[str, object]]:
         # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-extract-inst
 
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-associate-parent
-        hits.append({
+        hit = {
             "type": "cdsl",
             "checked": checked,
             "phase": phase,
             "inst": str(m.group("inst")),
             "parent_id": last_defined_id,
             "line": idx0 + 1,
-        })
+        }
+        hits.append(hit)
         # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-associate-parent
     # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-foreach-cdsl
 
@@ -337,7 +339,6 @@ def get_content_scoped(
         return scoped
 
     return None
-# @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-scan-ids-get-content
 
 
 def _get_hash_fence_scoped(lines, wanted, emit):
@@ -469,6 +470,7 @@ def _emit_definition_scope(lines, start_idx, heading_level, emit):
     if start > end:
         return None
     return emit(lines[start : end + 1], start, end)
+# @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-scan-ids-get-content
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-scan-ids-file-utils
 def iter_text_files(

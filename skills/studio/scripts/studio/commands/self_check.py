@@ -4,9 +4,6 @@ Self-Check Command — validate kit examples against their own templates/constra
 Ensures kit integrity by verifying that generated templates and examples
 pass the same heading contract and constraint checks used for user artifacts.
 
-@cpt-flow:cpt-studio-flow-developer-experience-self-check:p1
-@cpt-algo:cpt-studio-algo-developer-experience-self-check:p1
-@cpt-dod:cpt-studio-dod-developer-experience-self-check:p1
 """
 
 import re
@@ -55,6 +52,7 @@ class _KitCheckContext:
     constraint_errors: List[object]
 
 
+# @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-check-id-kinds
 def _get_constraints_for_kind(kit_constraints: object, kind_u: str) -> object:
     """Return loaded constraints for one artifact kind."""
     by_kind = getattr(kit_constraints, "by_kind", None) if kit_constraints is not None else None
@@ -198,8 +196,11 @@ def _collect_outside_heading_hits(
             continue
         outside_hits.append((line_no, active))
     return outside_hits
+# @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-check-id-kinds
 
 
+# @cpt-algo:cpt-studio-algo-developer-experience-self-check:p1
+# @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-check-id-kinds
 def _check_defined_id_placeholders(
     *,
     template_path: Path,
@@ -324,8 +325,10 @@ def _template_pattern_kind_issue(
         artifact_kind=kind_u,
         id_kind_template=found,
     )
+# @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-check-id-kinds
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
 def _build_reference_expectations(  # pylint: disable=too-many-locals
     *,
     constraints_for_kind: object,
@@ -361,8 +364,10 @@ def _build_reference_expectations(  # pylint: disable=too-many-locals
             target["required"] = bool(target["required"]) or (getattr(rule, "coverage", None) is True)
             target["allowed"].update(heading.lower() for heading in allowed)
     return expectations
+# @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
 def _append_missing_reference_issue(
     issues: Dict[str, List[Dict[str, object]]],
     target: str,
@@ -388,8 +393,10 @@ def _append_missing_reference_issue(
         id_kind=id_kind,
         id_kind_template=template_id,
     ))
+# @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
 def _check_reference_placeholders(  # pylint: disable=too-many-locals
     *,
     template_path: Path,
@@ -432,8 +439,10 @@ def _check_reference_placeholders(  # pylint: disable=too-many-locals
         if issue is not None:
             issues["errors"].append(issue)
     return issues
+# @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
 def _required_reference_heading_issue(  # pylint: disable=too-many-arguments
     *,
     headings_at: object,
@@ -469,6 +478,7 @@ def _required_reference_heading_issue(  # pylint: disable=too-many-arguments
         headings=sorted(allowed_norm),
         found_headings=active,
     )
+# @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
 
 
 def _check_template_constraints_consistency(
@@ -491,6 +501,7 @@ def _check_template_constraints_consistency(
     if constraints_for_kind is None:
         return issues
 
+    # @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-headings
     report = validate_headings_contract(
         path=template_path,
         constraints=constraints_for_kind,
@@ -503,7 +514,9 @@ def _check_template_constraints_consistency(
     issues["warnings"].extend(list(report.get("warnings", []) or []))
     if issues["errors"]:
         return issues
+    # @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-headings
 
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
     lines = _load_template_lines(template_path)
     if lines is None:
         issues["errors"].append(constraints_error(
@@ -539,6 +552,9 @@ def _check_template_constraints_consistency(
         lines=lines,
     ))
 
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
+
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
     reference_issues = _check_reference_placeholders(
         template_path=template_path,
         kit_id=str(kit_id),
@@ -553,6 +569,7 @@ def _check_template_constraints_consistency(
     )
     issues["errors"].extend(reference_issues["errors"])
     issues["warnings"].extend(reference_issues["warnings"])
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
     return issues
 
 
@@ -561,6 +578,7 @@ def _resolve_constraints_path(
     constraints_path: Optional[Path],
 ) -> Optional[Path]:
     """Resolve the constraints file path used for heading-contract reporting."""
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-load-constraints
     if constraints_path is not None:
         return constraints_path
     try:
@@ -568,6 +586,7 @@ def _resolve_constraints_path(
     except OSError as exc:
         _warn_self_check(f"failed to resolve constraints path under {kit_base}: {exc}")
         return None
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-constraints
 
 
 def _load_template_lines(template_path: Path) -> Optional[List[str]]:
@@ -610,6 +629,7 @@ def _load_kit_constraints(
 
 def _iter_kinds_to_check(raw_map: object, artifacts_dir: Path) -> List[str]:
     """Resolve artifact kinds to validate for one kit."""
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
     if isinstance(raw_map, dict) and raw_map:
         return sorted([
             str(kind_name).strip()
@@ -619,8 +639,9 @@ def _iter_kinds_to_check(raw_map: object, artifacts_dir: Path) -> List[str]:
     if artifacts_dir.is_dir():
         return sorted([entry.name for entry in artifacts_dir.iterdir() if entry.is_dir()])
     return []
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
 
-
+# @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-load-kit-constraints
 def _build_kit_context(
     *,
     kit_id: object,
@@ -656,8 +677,10 @@ def _build_kit_context(
         constraints_path=constraints_load.path,
         constraint_errors=constraints_load.errors,
     )
+# @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-load-kit-constraints
 
 
+# @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-load-kit-constraints
 def _append_constraints_load_failure(
     results: List[Dict[str, object]],
     *,
@@ -667,7 +690,7 @@ def _append_constraints_load_failure(
     constraint_errors: List[object],
 ) -> None:
     """Record a failed constraints load as one result item."""
-    results.append({
+    failure_result = {
         "kit": kit_id,
         "kind": None,
         "status": "FAIL",
@@ -679,9 +702,12 @@ def _append_constraints_load_failure(
             line=1,
             errors=list(constraint_errors),
         )],
-    })
+    }
+    results.append(failure_result)
+# @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-load-kit-constraints
 
 
+# @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-example
 def _validate_example_paths(
     *,
     example_paths: List[Path],
@@ -704,8 +730,10 @@ def _validate_example_paths(
         issues["errors"].extend(list(report.get("errors", []) or []))
         issues["warnings"].extend(list(report.get("warnings", []) or []))
     return issues
+# @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-example
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
 def _build_kind_result(
     *,
     kit_ctx: _KitCheckContext,
@@ -726,10 +754,8 @@ def _build_kind_result(
         "status": "PASS",
     }
     issues: Dict[str, List[Dict[str, object]]] = {"errors": [], "warnings": []}
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
     if template_path is not None and template_path.is_file():
-        # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
-        # @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-headings
-        # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
         report = _check_template_constraints_consistency(
             template_path=template_path,
             kind=kind,
@@ -741,12 +767,10 @@ def _build_kind_result(
         )
         issues["errors"].extend(report["errors"])
         issues["warnings"].extend(report["warnings"])
-        # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-check-consistency
-        # @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-headings
-        # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
 
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-example
     if example_paths:
-        # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-example
         issues_for_examples = _validate_example_paths(
             example_paths=example_paths,
             kind=kind,
@@ -756,8 +780,9 @@ def _build_kind_result(
         )
         issues["errors"].extend(issues_for_examples["errors"])
         issues["warnings"].extend(issues_for_examples["warnings"])
-        # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-example
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-example
 
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
     if issues["errors"]:
         item["status"] = "FAIL"
         item["error_count"] = len(issues["errors"])
@@ -767,6 +792,8 @@ def _build_kind_result(
         if issues["errors"] or bool(verbose):
             item["warnings"] = issues["warnings"]
     return item
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
+# @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
 
 
 # @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-locate-files
@@ -805,8 +832,10 @@ def _resolve_kit_kind_paths(  # pylint: disable=too-many-locals
     if examples_dir is None and not explicit_kind:
         examples_dir = (kind_dir / "examples").resolve()
     return template_path, examples_dir
+# @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-locate-files
 
 
+# @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-locate-files
 def _collect_example_paths(examples_dir: Optional[Path]) -> List[Path]:
     """Return markdown example paths from a file or directory."""
     if examples_dir is None:
@@ -833,6 +862,7 @@ def _is_explicit_kind(raw_map: object, normalized_kind: str) -> bool:
     )
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
 def _collect_kit_results(
     *,
     kit_ctx: _KitCheckContext,
@@ -842,7 +872,6 @@ def _collect_kit_results(
     verbose: bool,
 ) -> List[Dict[str, object]]:
     results: List[Dict[str, object]] = []
-    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
     for kind in _iter_kinds_to_check(kit_ctx.raw_map, kit_ctx.artifacts_dir):
         normalized_kind = str(kind).strip()
         if not normalized_kind:
@@ -863,11 +892,12 @@ def _collect_kit_results(
             artifacts_meta=artifacts_meta,
             verbose=verbose,
         ))
-    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
     return results
+# @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
 
 
-# @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-user-self-check
+# @cpt-flow:cpt-studio-flow-developer-experience-self-check:p1
+# @cpt-dod:cpt-studio-dod-developer-experience-self-check:p1
 def run_self_check_from_meta(  # pylint: disable=too-many-locals
     *,
     project_root: Path,
@@ -881,10 +911,8 @@ def run_self_check_from_meta(  # pylint: disable=too-many-locals
     This is used by both the CLI `self-check` command and by `validate` to fail-fast.
     It does NOT do studio/project discovery.
     """
-    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-user-self-check
     # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
     from ..utils.constraints import load_constraints_files, load_constraints_toml
-    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
 
     kits = getattr(artifacts_meta, "kits", None) or {}
     if not isinstance(kits, dict) or not kits:
@@ -894,6 +922,7 @@ def run_self_check_from_meta(  # pylint: disable=too-many-locals
             "project_root": project_root.as_posix(),
             "studio_dir": adapter_dir.as_posix(),
         }
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
 
     results: List[Dict[str, object]] = []
     overall_status = "PASS"
@@ -920,6 +949,7 @@ def run_self_check_from_meta(  # pylint: disable=too-many-locals
         results.extend(kit_items)
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kit
 
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
     out = {
         "status": overall_status,
         "project_root": project_root.as_posix(),
@@ -928,7 +958,6 @@ def run_self_check_from_meta(  # pylint: disable=too-many-locals
         "templates_checked": len(results),
         "results": results,
     }
-    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
     return (0 if overall_status == "PASS" else 2), out
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
 
@@ -945,6 +974,7 @@ def _run_single_kit_self_check(
     verbose: bool,
 ) -> Tuple[Optional[str], List[Dict[str, object]], int]:
     """Return status, emitted items, and kit-count increment for one kit."""
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-load-constraints
     kit_ctx = _build_kit_context(
         kit_id=kit_id,
         kit_obj=kit_obj,
@@ -955,6 +985,8 @@ def _run_single_kit_self_check(
     )
     if kit_ctx is None:
         return None, [], 0
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-constraints
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-load-constraints
     if kit_ctx.constraint_errors:
         failures: List[Dict[str, object]] = []
         _append_constraints_load_failure(
@@ -965,6 +997,8 @@ def _run_single_kit_self_check(
             constraint_errors=kit_ctx.constraint_errors,
         )
         return "FAIL", failures, 1
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-constraints
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
     items = _collect_kit_results(
         kit_ctx=kit_ctx,
         adapter_dir=adapter_dir,
@@ -973,4 +1007,7 @@ def _run_single_kit_self_check(
         verbose=verbose,
     )
     status = "FAIL" if any(item.get("status") == "FAIL" for item in items) else "PASS"
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
     return status, items, 1
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check

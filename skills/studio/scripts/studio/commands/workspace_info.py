@@ -1,6 +1,7 @@
 """
 workspace-info: Display workspace configuration and per-source status.
 """
+# @cpt-flow:cpt-studio-flow-workspace-info:p1
 # @cpt-algo:cpt-studio-feature-workspace:p1
 # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-helpers
 import argparse
@@ -114,12 +115,20 @@ def _enrich_with_artifact_counts(info: dict, adapter_dir: Path) -> None:
 def _load_workspace_info_context():
     from ..utils.workspace import find_workspace_config, require_project_root
 
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-load-context
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-find-root
     project_root = require_project_root()
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-no-root
     if project_root is None:
         return None, None
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-no-root
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-find-root
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-find-ws
     ws_cfg, ws_err = find_workspace_config(project_root)
     if ws_cfg is not None:
         return project_root, ws_cfg
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-find-ws
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-no-ws
     if ws_err:
         ui.result({
             "status": "ERROR",
@@ -139,6 +148,8 @@ def _load_workspace_info_context():
             ),
         })
     return project_root, None
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-no-ws
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-load-context
 
 
 def _build_workspace_info_result(
@@ -191,7 +202,6 @@ def _augment_workspace_context(result: dict, warnings: list[str]) -> None:
 # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-helpers
 
 
-# @cpt-flow:cpt-studio-flow-workspace-info:p1
 def cmd_workspace_info(argv: List[str]) -> int:
     """Display workspace config, list sources, show per-source status."""
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-user-workspace-info
@@ -202,20 +212,9 @@ def cmd_workspace_info(argv: List[str]) -> int:
     p.parse_args(argv)
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-user-workspace-info
 
-    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-find-root
     project_root, ws_cfg = _load_workspace_info_context()
-    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-find-root
-    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-no-root
-    if project_root is None:
+    if project_root is None or ws_cfg is None:
         return 1
-    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-no-root
-    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-find-ws
-    # workspace config is resolved together with project root by the shared loader
-    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-find-ws
-    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-no-ws
-    if ws_cfg is None:
-        return 1
-    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-if-no-ws
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-foreach-source
     sources_info = [_build_source_info(ws_cfg, name) for name in ws_cfg.sources]
@@ -223,11 +222,8 @@ def cmd_workspace_info(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-build-result
     result, warnings = _build_workspace_info_result(project_root, ws_cfg, sources_info)
-    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-build-result
-
-    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-load-context
     _augment_workspace_context(result, warnings)
-    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-load-context
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-build-result
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-if-error
     # status already encodes degraded/error conditions for the final payload

@@ -23,6 +23,7 @@ def _is_scp_style_ssh(url: str) -> bool:
     return _SCP_SSH_RE.match(url) is not None
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-validate-args
 def _validate_add_args(args: argparse.Namespace) -> str | None:
     """Validate parsed workspace-add args. Return error message or None."""
     if args.inline and args.url:
@@ -37,8 +38,10 @@ def _validate_add_args(args: argparse.Namespace) -> str | None:
         if not (url.startswith("https://") or url.startswith("ssh://") or _is_scp_style_ssh(url)):
             return "Unsupported URL scheme — only HTTPS and SSH are allowed."
     return None
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-validate-args
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-inline-load-workspace
 def _resolve_inline_workspace(existing: dict) -> tuple[dict, str | None]:
     """Validate and return the inline workspace dict from a parsed core.toml.
 
@@ -69,8 +72,10 @@ def _resolve_inline_workspace(existing: dict) -> tuple[dict, str | None]:
     if sources is None:
         ws["sources"] = {}
     return ws, None
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-inline-load-workspace
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-build-result
 def _emit_add_result(args: argparse.Namespace, replaced: bool, config_path: str, message: str) -> int:
     """Build and emit the workspace-add result dict."""
     source_info: dict = {"name": args.name, "role": args.role}
@@ -94,8 +99,10 @@ def _emit_add_result(args: argparse.Namespace, replaced: bool, config_path: str,
         result["replaced"] = True
     ui.result(result, human_fn=_human_workspace_add)
     return 0
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-build-result
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-parse-args
 def _parse_workspace_add_args(argv: List[str]) -> argparse.Namespace:
     """Parse workspace-add CLI arguments."""
     parser = argparse.ArgumentParser(
@@ -137,8 +144,10 @@ def _parse_workspace_add_args(argv: List[str]) -> argparse.Namespace:
         help="Replace existing source with the same name instead of returning an error",
     )
     return parser.parse_args(argv)
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-parse-args
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-validate-name
 def _validate_workspace_add_name(args: argparse.Namespace) -> int:
     """Validate source naming rules."""
     from ..utils.workspace import validate_source_name
@@ -148,19 +157,29 @@ def _validate_workspace_add_name(args: argparse.Namespace) -> int:
         ui.result({"status": "ERROR", "message": name_err})
         return 1
     return 0
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-validate-name
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-find-root
 def _resolve_workspace_add_root() -> Path | None:
     """Return the current project root or emit the existing error."""
     from ..utils.workspace import require_project_root
 
-    return require_project_root()
+    project_root = require_project_root()
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-if-no-root
+    if project_root is None:
+        return None
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-if-no-root
+    return project_root
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-find-root
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-if-inline-flag
 def _add_inline_when_requested(args: argparse.Namespace, project_root: Path) -> int | None:
     """Handle explicit --inline mode, or return None when standalone flow should continue."""
     from ..utils.workspace import find_workspace_config
 
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-inline-check-mode
     if not args.inline:
         return None
     existing, ws_err = find_workspace_config(project_root)
@@ -173,30 +192,33 @@ def _add_inline_when_requested(args: argparse.Namespace, project_root: Path) -> 
             "Remove --inline to add to the standalone file, or delete the standalone file first."
         )})
         return 1
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-inline-check-mode
     return _add_to_inline(args, project_root)
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-if-inline-flag
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-find-ws
 def _resolve_workspace_config(project_root: Path):
     """Load workspace config or emit the standard missing-config error."""
     from ..utils.workspace import find_workspace_config
 
     ws_cfg, ws_err = find_workspace_config(project_root)
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-if-no-ws
     if ws_cfg is None:
         msg = ws_err or "No workspace config found. Run 'workspace-init' first."
         ui.result({"status": "ERROR", "message": msg})
         return None
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-if-no-ws
     return ws_cfg
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-find-ws
 
 
+# @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-route-config
 def _route_workspace_add(args: argparse.Namespace, project_root: Path):
     """Route the add operation to inline or standalone config handling."""
-    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-find-ws
     ws_cfg = _resolve_workspace_config(project_root)
-    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-find-ws
-    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-if-no-ws
     if ws_cfg is None:
         return 1
-    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-if-no-ws
     # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-auto-detect-inline
     if ws_cfg.is_inline:
         if args.url:
@@ -213,39 +235,45 @@ def _route_workspace_add(args: argparse.Namespace, project_root: Path):
         return _add_to_inline(args, project_root)
     # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-auto-detect-inline
     return _add_to_standalone(args, ws_cfg)
+# @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-route-config
 
 
 def _add_to_standalone(args: argparse.Namespace, ws_cfg: WorkspaceConfig) -> int:
     """Add source to an existing standalone .cf-workspace.toml."""
     # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-check-collision
+    # @cpt-state:cpt-studio-state-workspace-config-lifecycle:p1
+    # @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-update-standalone
     replaced = args.name in ws_cfg.sources
     if replaced and not args.force:
         ui.result({"status": "ERROR", "message": f"Source '{args.name}' already exists. Use --force to replace."})
         return 1
     # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-check-collision
     # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-source
-    ws_cfg.add_source(args.name, args.path, role=args.role, adapter=args.adapter, url=args.url, branch=args.branch)
+    source_kwargs = {
+        "role": args.role,
+        "adapter": args.adapter,
+        "url": args.url,
+        "branch": args.branch,
+    }
+    ws_cfg.add_source(args.name, args.path, **source_kwargs)
     # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-source
     # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-save
-    # @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-update-standalone
     save_err = ws_cfg.save()
     if save_err:
         ui.result({"status": "ERROR", "message": save_err})
         return 1
-    # @cpt-end:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-update-standalone
     # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-save
 
     # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-return-ok
     verb = "updated in" if replaced else "added to"
     return _emit_add_result(args, replaced, str(ws_cfg.workspace_file), f"Source '{args.name}' {verb} workspace")
     # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-return-ok
+# @cpt-end:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-update-standalone
 
 
-# @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-update-inline
 def _add_to_inline(args: argparse.Namespace, project_root: Path) -> int:
     """Add source inline to the current repo's config/core.toml."""
-    # @cpt-end:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-update-inline
-    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-inline-impl
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-inline-load-workspace
     if getattr(args, "url", None):
         ui.result({"status": "ERROR", "message": "Git URL sources are not supported in inline workspace config."})
         return 1
@@ -263,7 +291,9 @@ def _add_to_inline(args: argparse.Namespace, project_root: Path) -> int:
     if ws_err:
         ui.result({"status": "ERROR", "message": ws_err})
         return 1
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-inline-load-workspace
 
+    # @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-update-inline
     branch = getattr(args, "branch", None)
     # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-check-collision
     replaced = args.name in ws["sources"]
@@ -271,6 +301,7 @@ def _add_to_inline(args: argparse.Namespace, project_root: Path) -> int:
         ui.result({"status": "ERROR", "message": f"Source '{args.name}' already exists. Use --force to replace."})
         return 1
     # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-check-collision
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-inline-build-source
     source_entry: dict = {"path": args.path}
     if args.role != "full":
         source_entry["role"] = args.role
@@ -281,17 +312,22 @@ def _add_to_inline(args: argparse.Namespace, project_root: Path) -> int:
 
     ws["sources"][args.name] = source_entry
     existing["workspace"] = ws
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-inline-build-source
 
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-inline-write
     try:
         toml_utils.dump(existing, config_path)
     except OSError as exc:
         logger.error("Failed to write inline workspace config %s", config_path, exc_info=exc)
         ui.result({"status": "ERROR", "message": f"Failed to write to {config_path}: {exc}"})
         return 1
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-inline-write
 
+    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-return-ok
     verb = "updated in" if replaced else "added inline to"
     return _emit_add_result(args, replaced, str(config_path), f"Source '{args.name}' {verb} core.toml")
-    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-inline-impl
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-return-ok
+# @cpt-end:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-update-inline
 
 
 # @cpt-flow:cpt-studio-flow-workspace-add:p1
@@ -308,21 +344,15 @@ def cmd_workspace_add(argv: List[str]) -> int:
 
     if _validate_workspace_add_name(args):
         return 1
-    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-user-workspace-add
 
-    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-find-root
     project_root = _resolve_workspace_add_root()
-    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-find-root
-    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-if-no-root
     if project_root is None:
         return 1
-    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-if-no-root
 
-    # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-if-inline-flag
     inline_result = _add_inline_when_requested(args, project_root)
     if inline_result is not None:
         return inline_result
-    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-add-if-inline-flag
+    # @cpt-end:cpt-studio-flow-workspace-add:p1:inst-user-workspace-add
 
     return _route_workspace_add(args, project_root)
 
@@ -330,7 +360,6 @@ def cmd_workspace_add(argv: List[str]) -> int:
 # ---------------------------------------------------------------------------
 # Human-friendly formatter
 # ---------------------------------------------------------------------------
-
 # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-human-fmt
 def _human_workspace_add(data: dict) -> None:
     status = data.get("status", "")

@@ -75,15 +75,15 @@ def _c(code: str, text: str) -> str:
 # ---------------------------------------------------------------------------
 # Public API — progress messages (stdout, suppressed in JSON mode)
 # ---------------------------------------------------------------------------
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-header
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-progress-header
 def header(title: str) -> None:
     """Print a bold section header."""
     if _JSON_MODE:
         return
     sys.stdout.write(f"\n  {_c(_BOLD, title)}\n")
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-header
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-progress-header
 
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-step
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-progress-step
 def step(msg: str) -> None:
     """Print a step indicator."""
     if _JSON_MODE:
@@ -96,9 +96,9 @@ def substep(msg: str) -> None:
     if _JSON_MODE:
         return
     sys.stdout.write(f"    {msg}\n")
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-step
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-progress-step
 
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-status-messages
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-status-messages
 def success(msg: str) -> None:
     """Print a success message."""
     if _JSON_MODE:
@@ -125,9 +125,9 @@ def info(msg: str) -> None:
     if _JSON_MODE:
         return
     sys.stdout.write(f"  {msg}\n")
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-status-messages
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-status-messages
 
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-detail-hint
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-detail-hint
 def detail(key: str, value: str) -> None:
     """Print a key: value detail line."""
     if _JSON_MODE:
@@ -154,9 +154,9 @@ def divider() -> None:
     if _JSON_MODE:
         return
     sys.stdout.write(f"  {_c(_DIM, '─' * 50)}\n")
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-detail-hint
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-detail-hint
 
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-table
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-table
 def table(headers: List[str], rows: List[List[str]], indent: int = 4) -> None:
     """Print a simple aligned table to stdout."""
     if _JSON_MODE:
@@ -183,9 +183,9 @@ def table(headers: List[str], rows: List[List[str]], indent: int = 4) -> None:
             for i in range(len(widths))
         )
         sys.stdout.write(f"{prefix}{line}\n")
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-table
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-table
 
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-file-action
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-file-action
 def file_action(path: str, action: str) -> None:
     """Print a file action (created/updated/unchanged)."""
     if _JSON_MODE:
@@ -202,13 +202,13 @@ def file_action(path: str, action: str) -> None:
     }
     icon = icons.get(action, " ")
     sys.stdout.write(f"    {icon} {path} {_c(_DIM, f'({action})')}\n")
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-file-action
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-file-action
 
 
 # ---------------------------------------------------------------------------
 # Result output — the main dual-mode function
 # ---------------------------------------------------------------------------
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-json
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-result-json
 def result(
     data: Dict[str, Any],
     *,
@@ -224,9 +224,9 @@ def result(
     if _JSON_MODE:
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-json
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-result-json
 
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-human
+    # @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-result-human
     if human_fn is not None:
         human_fn(data)
         return
@@ -242,26 +242,26 @@ def result(
         warn("Aborted" + (f": {message}" if message else ""))
     else:
         info(f"Status: {status}" + (f" — {message}" if message else ""))
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-human
+    # @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-result-human
 
 
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-relpath
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-relpath
 def relpath(path: str) -> str:
     """Return *path* relative to cwd, falling back to the original on error."""
     try:
         return os.path.relpath(path)
     except ValueError:
         return path
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-relpath
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-relpath
 
 
 # ---------------------------------------------------------------------------
 # Convenience singleton
 # ---------------------------------------------------------------------------
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-singleton
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-singleton
 class _UI:  # pylint: disable=too-few-public-methods
     """Namespace object so commands can do ``from ..utils.ui import ui``."""
     header = staticmethod(header)
@@ -283,4 +283,4 @@ class _UI:  # pylint: disable=too-few-public-methods
 
 
 ui = _UI()
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-singleton
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-singleton

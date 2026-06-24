@@ -139,26 +139,39 @@ def _cmd_pdsl_validate(argv: Sequence[str]) -> int:
 # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-source-scan
 # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-foreach-source
 
-# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-select-output
-# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-build-summary
-    envelope = build_envelope(results, command="pdsl validate", verbose=bool(args.verbose))
-# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-build-summary
-    ui.result(envelope, human_fn=_render_human)
-# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-if-error
-# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-error
-# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-else-if-fail
-# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-fail
-# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-else-pass
-# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-pass
-    return exit_code_for_results(results)
-# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-pass
-# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-else-pass
-# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-fail
-# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-else-if-fail
-# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-error
-# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-if-error
-# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-select-output
+    _emit_validation_result(results, bool(args.verbose))
+    exit_code = exit_code_for_results(results)
+    # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-if-error
+    if exit_code == 1:
+        # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-error
+        return 1
+        # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-error
+    # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-if-error
+    # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-else-if-fail
+    if exit_code == 2:
+        # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-fail
+        return 2
+        # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-fail
+    # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-else-if-fail
+    # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-else-pass
+    # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-pass
+    return 0
+    # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-return-pass
+    # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-else-pass
 # @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-user-validate
+
+
+# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-select-output
+def _emit_validation_result(results: List[object], verbose: bool) -> None:
+    envelope = _build_validation_envelope(results, verbose)
+    ui.result(envelope, human_fn=_render_human)
+# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-select-output
+
+
+# @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-build-summary
+def _build_validation_envelope(results: List[object], verbose: bool) -> Dict[str, object]:
+    return build_envelope(results, command="pdsl validate", verbose=verbose)
+# @cpt-end:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-build-summary
 
 
 # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-cli-thin-wrapper

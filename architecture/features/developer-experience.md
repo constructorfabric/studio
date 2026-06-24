@@ -64,7 +64,7 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 
 ### Environment Health Check
 
-- [ ] `p2` - **ID**: `cpt-studio-flow-developer-experience-doctor`
+- [x] `p2` - **ID**: `cpt-studio-flow-developer-experience-doctor`
 
 **Actor**: `cpt-studio-actor-user`
 
@@ -72,18 +72,15 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 - User runs `cfs doctor` → all checks pass, environment is healthy
 
 **Error Scenarios**:
-- Python version too old → FAIL with version requirement
-- `gh` CLI not installed → WARN (optional dependency)
-- Config corrupted → FAIL with remediation hint
+- Registered doctor check raises an exception → FAIL with exception detail
+- `ralphex` not installed → WARN with installation guidance
+- `ralphex` installed but incompatible → WARN with version compatibility detail
 
 **Steps**:
-1. - `p2` - User invokes `cfs doctor` - `inst-user-doctor`
-2. - `p2` - Check Python version (≥ 3.11) - `inst-check-python`
-3. - `p2` - Check git availability - `inst-check-git`
-4. - `p2` - Check `gh` CLI availability and authentication - `inst-check-gh`
-5. - `p2` - Check agent installations - `inst-check-agents`
-6. - `p2` - Check config integrity (core.toml, artifacts.toml parseable) - `inst-check-config`
-7. - `p2` - **RETURN** health report with pass/fail per check - `inst-return-health`
+1. [x] - `p2` - User invokes `cfs doctor [--root PATH]` and the command resolves the project root - `inst-user-doctor`
+2. [x] - `p2` - Run each registered doctor check and convert unexpected exceptions into FAIL records - `inst-run-checks`
+3. [x] - `p2` - Render each check result as PASS, WARN, or FAIL in the human output stream - `inst-render-checks`
+4. [x] - `p2` - **RETURN** the overall health summary and exit code after all checks complete - `inst-return-health`
 
 ### Self-Check
 
@@ -170,6 +167,8 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 6. [x] - `p1` - Merge system + kit variables into flat dict - `inst-resolve-vars-merge`
 7. [x] - `p1` - **IF** `--kit` filter, restrict to that kit - `inst-resolve-vars-filter-kit`
 8. [x] - `p1` - **RETURN** JSON: `{status, system, kits, variables, counts}` - `inst-resolve-vars-return`
+9. [x] - `p1` - Reuse the shared resolver from `cfs info` to populate `variables_by_kit` metadata without duplicating binding scans - `inst-info-load-variables`
+10. [x] - `p1` - **IF** shared variable resolution degrades in `cfs info`, store error metadata; **ELSE** attach `variables_by_kit` plus collision details - `inst-info-store-variables`
 
 **Supporting**:
 - [x] - `p1` - Render resolved variables in human-friendly `info` output per kit - `inst-info-render-variables`
@@ -195,17 +194,17 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 3. - `p2` - Check `gh --version` and `gh auth status` - `inst-check-gh-status`
 4. - `p2` - Check Studio installation: `.core/`, `.gen/`, `config/` exist - `inst-check-installation`
 5. - `p2` - Attempt to parse `core.toml` and `artifacts.toml` - `inst-check-parseable`
-6. - `p2` - Check `ralphex` availability: discover on `PATH` or via persisted `core.toml` `[integrations.ralphex].executable_path`; if found, run `ralphex --version` to verify compatibility; if missing, WARN with installation guidance (Homebrew, `go install`, binary releases) — ralphex is optional, so missing is WARN not FAIL (see `cpt-studio-adr-ralphex-delegation-skill`) - `inst-check-ralphex`
+6. [x] - `p2` - Check `ralphex` availability: discover on `PATH` or via persisted `core.toml` `[integrations.ralphex].executable_path`; if found, run `ralphex --version` to verify compatibility; if missing, WARN with installation guidance (Homebrew, `go install`, binary releases) — ralphex is optional, so missing is WARN not FAIL (see `cpt-studio-adr-ralphex-delegation-skill`) - `inst-check-ralphex`
 
 ### Run Self-Check
 
 - [x] `p1` - **ID**: `cpt-studio-algo-developer-experience-self-check`
 
-1. - `p1` - Load constraints.toml for each kit - `inst-load-kit-constraints`
+1. [x] - `p1` - Load constraints.toml for each kit - `inst-load-kit-constraints`
 2. [x] - `p1` - For each artifact kind, locate template and example paths - `inst-locate-files`
 3. [x] - `p1` - Validate template headings match constraints heading contract - `inst-validate-headings`
-4. - `p1` - Validate example headings match constraints heading contract - `inst-validate-example-headings`
-5. - `p1` - Check that template defines all required ID kinds from constraints - `inst-check-id-kinds`
+4. [x] - `p1` - Validate example artifacts against the same heading and constraint contract used for user artifacts - `inst-validate-example`
+5. [x] - `p1` - Check that template defines all required ID kinds from constraints - `inst-check-id-kinds`
 
 ### Resolve Variables
 
@@ -241,11 +240,11 @@ No feature-specific state machines. Self-check is stateless (run → report).
 
 ### Doctor Command
 
-- [ ] `p2` - **ID**: `cpt-studio-dod-developer-experience-doctor`
+- [x] `p2` - **ID**: `cpt-studio-dod-developer-experience-doctor`
 
-- [ ] - `p2` - `cfs doctor` checks Python, git, gh CLI, config integrity, and optional `ralphex` availability
-- [ ] - `p2` - Each check reports pass/fail/warn with actionable remediation
-- [ ] - `p2` - Exit code 0 if all checks pass, 2 if any fail (WARN-only does not fail)
+1. [x] - `p2` - `cfs doctor` emits a documented JSON payload with overall `status`, normalized per-check `status`, and `summary` text - `inst-json-result`
+2. [x] - `p2` - Each implemented check reports pass/fail/warn with actionable remediation when available
+3. [x] - `p2` - Exit code 0 if all checks pass, 2 if any fail (WARN-only does not fail)
 
 ### Self-Check Command
 

@@ -101,6 +101,7 @@ def _resolve_registered_artifact_scan(
     outside_root_message: Optional[str] = None,
 ) -> Optional[Tuple[object, ArtifactScanList]]:
     """Load context for one artifact argument and return its registered scan entry."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve
     artifact_path = Path(artifact_arg).resolve()
     if not artifact_path.exists():
         ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
@@ -138,10 +139,12 @@ def _resolve_registered_artifact_scan(
         ui.result({"status": "ERROR", "message": registry_message.format(artifact=artifact_arg, rel_path=rel_path)})
         return None
     return ctx, artifacts_to_scan
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve
 
 
 def _load_active_context(init_message: str) -> Optional[object]:
     """Load the active Studio context from the current working directory."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
     from ..utils.context import get_context
 
     ctx = get_context()
@@ -149,6 +152,7 @@ def _load_active_context(init_message: str) -> Optional[object]:
         return ctx
     ui.result({"status": "ERROR", "message": init_message})
     return None
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 
 
 def _collect_known_kinds(ctx: object) -> Set[str]:
@@ -225,6 +229,7 @@ def _collect_artifact_hits(
     known_kinds: Set[str],
 ) -> List[Dict[str, object]]:
     """Scan artifact IDs and annotate each hit with inferred kind metadata."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-scan-all
     hits: List[Dict[str, object]] = []
     for artifact_path, artifact_type in artifacts_to_scan:
         for fh in scan_cpt_ids(artifact_path):
@@ -244,10 +249,12 @@ def _collect_artifact_hits(
                 hit["priority"] = fh.get("priority")
             hits.append(hit)
     return hits
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-scan-all
 
 
 def _apply_hit_filters(hits: List[Dict[str, object]], args: argparse.Namespace) -> List[Dict[str, object]]:
     """Apply kind, pattern, and duplicate filters to query hits."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-list
     filtered_hits = list(hits)
     if args.kind:
         kind_filter = str(args.kind)
@@ -264,6 +271,7 @@ def _apply_hit_filters(hits: List[Dict[str, object]], args: argparse.Namespace) 
     if not args.all:
         filtered_hits = _dedupe_hits(filtered_hits)
     return filtered_hits
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-list
 
 
 def _group_hits_by_kind(ids: List[Dict[str, object]]) -> Dict[str, List[Dict[str, object]]]:

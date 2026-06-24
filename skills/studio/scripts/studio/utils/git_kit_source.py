@@ -756,14 +756,12 @@ def materialize_git_kit_source(  # pylint: disable=too-many-locals
     # @cpt-end:cpt-studio-algo-generic-git-kit-installer-auth-runtime:p1:inst-git-auth-runtime-object
 
     try:
-        # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
         resolution_basis, commit_sha, kit_source_dir = _clone_git_source(
             parsed,
             repo_dir,
             requested_ref,
             env,
         )
-        # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
     except RuntimeError as exc:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         if previous_metadata:
@@ -778,7 +776,6 @@ def materialize_git_kit_source(  # pylint: disable=too-many-locals
     selector = requested_ref or "HEAD"
     identity = f"{parsed.canonical_source}@{selector}#{commit_sha}"
     cache_metadata = _cache_artifact(parsed, kit_source_dir, requested_ref, commit_sha, resolution_basis)
-    # @cpt-begin:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-content
     authority = _build_git_authority(
         parsed,
         _GitAuthorityOptions(
@@ -791,7 +788,6 @@ def materialize_git_kit_source(  # pylint: disable=too-many-locals
             cache_metadata=cache_metadata,
         ),
     )
-    # @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-content
     return GitKitResolution(
         kit_source_dir=kit_source_dir,
         tmp_dir=tmp_dir,

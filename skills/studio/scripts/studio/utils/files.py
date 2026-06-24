@@ -68,7 +68,8 @@ def find_project_root(start: Path) -> Optional[Path]:
     Searches up to 25 levels in directory hierarchy.
     """
     # @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-resolve-start
-    current = start.resolve()
+    current = start
+    current = current.resolve()
     # @cpt-end:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-resolve-start
     for _ in range(25):
         # @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-found-agents

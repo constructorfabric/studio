@@ -297,6 +297,8 @@ _DEFAULT_CONTENT_FILES: Optional[Tuple[str, ...]] = None
 
 # @cpt-algo:cpt-studio-algo-kit-file-enumerate:p1
 # @cpt-algo:cpt-studio-algo-kit-snapshot:p1
+# @cpt-begin:cpt-studio-algo-kit-file-enumerate:p1:inst-walk-dir
+# @cpt-begin:cpt-studio-algo-kit-snapshot:p1:inst-read-files
 def _enumerate_kit_files(
     dir_path: Path,
     *,
@@ -314,8 +316,6 @@ def _enumerate_kit_files(
     *content_files* entry are included (include-only mode).  Otherwise the
     legacy exclude-based filtering is applied.
     """
-    # @cpt-begin:cpt-studio-algo-kit-file-enumerate:p1:inst-walk-dir
-    # @cpt-begin:cpt-studio-algo-kit-snapshot:p1:inst-read-files
     files: Dict[str, bytes] = {}
     if not dir_path.is_dir():
         return files
@@ -361,6 +361,7 @@ def _enumerate_kit_files(
 
 
 # @cpt-algo:cpt-studio-algo-kit-file-classify:p1
+# @cpt-begin:cpt-studio-algo-kit-file-classify:p1:inst-classify
 def _classify_kit_files(
     source_files: Dict[str, bytes],
     user_files: Dict[str, bytes],
@@ -369,15 +370,17 @@ def _classify_kit_files(
 
     Returns a DiffReport with added/removed/modified/unchanged lists.
     """
-    # @cpt-begin:cpt-studio-algo-kit-file-classify:p1:inst-classify
+    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-classify-changes
     report = DiffReport()
     all_paths = sorted(set(source_files) | set(user_files))
     for p in all_paths:
         getattr(report, _classify_kit_file_state(p, source_files, user_files)).append(p)
     return report
     # @cpt-end:cpt-studio-algo-kit-file-classify:p1:inst-classify
+    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-classify-changes
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-classify:p1:inst-classify-state
 def _classify_kit_file_state(
     rel_path: str,
     source_files: Dict[str, bytes],
@@ -393,9 +396,11 @@ def _classify_kit_file_state(
     if source_files[rel_path] == user_files[rel_path]:
         return "unchanged"
     return "modified"
+# @cpt-end:cpt-studio-algo-kit-file-classify:p1:inst-classify-state
 
 
 # @cpt-algo:cpt-studio-algo-kit-interactive-review:p1
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-prompt-decision
 def _prompt_kit_file(  # pylint: disable=too-many-return-statements
     rel_path: str,
     state: Dict[str, bool],
@@ -455,10 +460,12 @@ def _prompt_kit_file(  # pylint: disable=too-many-return-statements
 
     return "decline"
     # @cpt-end:cpt-studio-algo-kit-interactive-review:p1:inst-prompt
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-prompt-decision
 
 
 def _show_kit_update_summary(report: DiffReport, prefix: str = "    ") -> None:
     """Print kit update summary to stderr with colour coding."""
+    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-show-summary
     # @cpt-begin:cpt-studio-algo-kit-diff-display:p1:inst-show-summary
     counts = []
     if report.added:
@@ -477,6 +484,7 @@ def _show_kit_update_summary(report: DiffReport, prefix: str = "    ") -> None:
     for p in report.modified:
         _emit_terminal_message(f"{prefix}  \033[33m~ {p}\033[0m")
     # @cpt-end:cpt-studio-algo-kit-diff-display:p1:inst-show-summary
+    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-show-summary
 
 
 # ---------------------------------------------------------------------------
@@ -525,6 +533,7 @@ def _expand_toc_range(lines: List[str], start: int, end: int) -> Tuple[int, int]
     return _expand_blank_line_region(lines, start, end)
 
 
+# @cpt-begin:cpt-studio-algo-kit-toc-handling:p1:inst-strip-toc
 def _remove_toc_range(lines: List[str], span: Tuple[int, int], toc_format: str) -> Tuple[bytes, str]:
     """Remove a TOC span from text lines and return encoded content plus format."""
     start, end = _expand_toc_range(lines, *span)
@@ -556,6 +565,7 @@ def _find_heading_toc_range(lines: List[str]) -> Optional[Tuple[int, int]]:
                 break
         return index, toc_end
     return None
+# @cpt-end:cpt-studio-algo-kit-toc-handling:p1:inst-strip-toc
 
 
 def _prompt_toc_regen(rel_path: str) -> str:
@@ -686,6 +696,7 @@ def _build_target_mapping(
         )
         for src_rel_path in source_files
     }
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
 
 
 def _read_file_if_available(path: Path) -> Optional[bytes]:
@@ -699,6 +710,7 @@ def _read_file_if_available(path: Path) -> Optional[bytes]:
         return None
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
 def _read_bound_directory_resource(
     source_base: str,
     binding_path: Path,
@@ -765,9 +777,10 @@ def _read_bound_resource_files(
             user_files,
             target_mapping,
         )
-# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
 def _collect_enum_kwargs(
     content_dirs: Optional[Tuple[str, ...]],
     content_files: Optional[Tuple[str, ...]],
@@ -798,6 +811,7 @@ def _filter_source_files_for_resources(
         for rel_path, content in source_files.items()
         if rel_path in source_to_resource_id
     }
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
 
 
 def _collect_user_files(
@@ -808,6 +822,7 @@ def _collect_user_files(
     resource_info: Optional[Dict[str, Any]],
 ) -> Dict[str, bytes]:
     """Enumerate current user files, including bound resources outside user_dir."""
+    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
     # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-register-reread
     user_files: Dict[str, bytes] = {}
     for src_rel_path, target_path in target_mapping.items():
@@ -827,6 +842,7 @@ def _collect_user_files(
         target_mapping.setdefault(rel_path, user_dir / rel_path)
     return user_files
     # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-register-reread
+    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
 
 
 def _strip_toc_maps(
@@ -834,6 +850,7 @@ def _strip_toc_maps(
     user_files: Dict[str, bytes],
 ) -> Tuple[Dict[str, bytes], Dict[str, bytes], Dict[str, str]]:
     """Build stripped-content views plus detected TOC formats."""
+    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-strip-toc
     source_stripped: Dict[str, bytes] = {}
     user_stripped: Dict[str, bytes] = {}
     toc_formats: Dict[str, str] = {}
@@ -850,8 +867,10 @@ def _strip_toc_maps(
         if fmt and key not in toc_formats:
             toc_formats[key] = fmt
     return source_stripped, user_stripped, toc_formats
+    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-strip-toc
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
 def _resolve_resource_id(
     rel_path: str,
     source_to_resource_id: Optional[Dict[str, str]],
@@ -876,8 +895,10 @@ def _approval_tokens_for_overwrite(res_id: Optional[str], rel_path: str, dest: P
         if dest.is_relative_to(base_dir):
             approval_tokens.add(dest.relative_to(base_dir).as_posix())
     return approval_tokens
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-prompt-decision
 def _decide_noninteractive_action(
     *,
     force: bool,
@@ -899,6 +920,7 @@ def _decide_noninteractive_action(
             return "accepted"
         return "declined"
     return None
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-prompt-decision
 
 
 def _show_change_context(rel_path: str, change_type: str, old_content: bytes, new_content: bytes) -> None:
@@ -957,6 +979,7 @@ def _decide_interactive_action(
     return "declined", new_content
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-result
 def _record_decline_metadata(
     entry: Dict[str, str],
     *,
@@ -978,8 +1001,10 @@ def _record_decline_metadata(
         entry["prune_fingerprint"] = prune_fingerprint
     elif requires_prune_mode:
         entry["prune_fingerprint"] = prune_fingerprint
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-result
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-apply-changes
 def _apply_file_change(
     change_type: str,
     action: str,
@@ -1000,8 +1025,10 @@ def _apply_file_change(
     elif change_type == "removed" and action == "accepted" and not dry_run and dest.is_file():
         dest.unlink()
     return wrote_file, wrote_raw
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-apply-changes
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-result
 def _append_result_entry(
     change_type: str,
     entry: Dict[str, str],
@@ -1016,9 +1043,11 @@ def _append_result_entry(
         result_removed.append(entry)
     else:
         result_modified.append(entry)
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-result
 
 
 # @cpt-algo:cpt-studio-algo-kit-file-update:p1
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
 def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     source_dir: Path,
     user_dir: Path,
@@ -1068,7 +1097,6 @@ def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
             "unchanged": N,
         }
     """
-    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
     enum_kw = _collect_enum_kwargs(content_dirs, content_files)
     source_files = _filter_source_files_for_resources(
         _enumerate_kit_files(source_dir, **enum_kw),
@@ -1079,7 +1107,6 @@ def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
     )
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
 
-    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
     target_mapping = _build_target_mapping(
         source_files,
         user_dir,
@@ -1087,10 +1114,8 @@ def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
         source_to_resource_id,
         resource_info,
     )
-    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
 
     # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-copy-diff
-    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
     # Enumerate user files from target paths (may be outside user_dir)
     user_files = _collect_user_files(
         target_mapping,
@@ -1099,19 +1124,14 @@ def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
         resource_bindings,
         resource_info,
     )
-    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
 
-    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-strip-toc
     # Strip TOC from both sides so diffs only show content changes.
     # TOC is regenerated post-write if the user agrees.
     source_stripped, user_stripped, toc_formats = _strip_toc_maps(source_files, user_files)
-    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-strip-toc
 
-    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-classify-changes
     # Classify using raw content so TOC-only differences are detected.
     # Stripped content is used only for diff display (less noise).
     report = _classify_kit_files(source_files, user_files)
-    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-classify-changes
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-check-no-changes
     if not report.has_changes:
@@ -1127,9 +1147,7 @@ def file_level_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
         }
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-check-no-changes
 
-    # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-show-summary
     _show_kit_update_summary(report)
-    # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-show-summary
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-update-datamodel
     result_added: List[Dict[str, str]] = []

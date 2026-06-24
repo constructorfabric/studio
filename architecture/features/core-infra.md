@@ -25,6 +25,7 @@
   - [Cache Skill from GitHub](#cache-skill-from-github)
   - [Create Config AGENTS.md](#create-config-agentsmd)
   - [Display Project Info](#display-project-info)
+  - [Render Human Info](#render-human-info)
   - [Project Root Detection](#project-root-detection)
   - [Config Management](#config-management)
   - [TOML Utilities](#toml-utilities)
@@ -121,7 +122,25 @@ Enables users to install Studio globally, initialize it in any project with sens
 10. [x] - `p1` - **RETURN** exit code from skill engine (0=PASS, 1=error, 2=FAIL) - `inst-return-exit`
 
 **Supporting**:
-- [x] - `p1` - Imports, param extraction helpers (`_extract_version_param`, `_extract_named_param`), version display, init cache logic, forward-to-skill subprocess wrapper, background version check function - `inst-cli-proxy-helpers`
+- [x] - `p1` - Proxy imports and shared option datamodel for command routing helpers - `inst-cli-imports`
+- [x] - `p1` - Define proxy-local routing datamodels for extracted CLI options and resolved target source - `inst-cli-routing-datamodel`
+- [x] - `p1` - Configure fallback proxy logging to plain stderr only when the root logger is still unmanaged - `inst-cli-configure-logging`
+- [x] - `p1` - Extract and remove `--version` from argv before proxy routing decisions - `inst-cli-extract-version-param`
+- [x] - `p1` - Extract and remove arbitrary named argv params in `--flag value` and `--flag=value` forms - `inst-cli-extract-named-param`
+- [x] - `p1` - Read arbitrary named argv params without mutating forwarded args - `inst-cli-peek-named-param`
+- [x] - `p1` - Normalize proxy-managed `init` and `update` flags into extracted routing options before command dispatch - `inst-cli-extract-proxy-options`
+- [x] - `p1` - Legacy shared proxy helper coverage for update-check and routing support utilities - `inst-cli-proxy-helpers`
+- [x] - `p1` - Resolve proxy-local early exits for `--version`, `update`, and `init` cache preparation before skill selection - `inst-cli-early-proxy-command`
+- [x] - `p1` - Dispatch proxy-local `mirror` subcommands without invoking the skill engine - `inst-cli-mirror-dispatch`
+- [x] - `p1` - Forward the resolved skill entry point through the current Python interpreter subprocess - `inst-cli-forward-subprocess`
+- [x] - `p1` - Convert proxy subprocess launch failures into stderr diagnostics and exit code 1 - `inst-cli-forward-subprocess-errors`
+- [x] - `p1` - Read cached update metadata before deciding whether to refresh background notices - `inst-cli-bg-check-cache`
+- [x] - `p1` - Spawn the detached update worker only when cached update metadata is stale - `inst-cli-bg-check-refresh`
+- [x] - `p1` - Launch the detached update-check worker with stdio redirected to `os.devnull` - `inst-cli-spawn-update-worker`
+- [x] - `p1` - Normalize `local:` cache version labels before comparing project and cache versions - `inst-cli-normalize-version`
+- [x] - `p1` - Emit one plain proxy stderr line through a temporary logger handler - `inst-cli-stderr-line`
+- [x] - `p1` - Emit multiple plain proxy stderr lines in order - `inst-cli-stderr-lines`
+- [x] - `p1` - Prefix and emit plain proxy warning lines to stderr - `inst-cli-stderr-warning`
 
 ### Project Initialization
 
@@ -169,6 +188,14 @@ Enables users to install Studio globally, initialize it in any project with sens
 21. [x] - `p1` - Write or replace the Constructor Studio managed `.gitignore` block via `cpt-studio-algo-core-infra-gitignore-footprint` - `inst-write-gitignore-footprint`
 22. [x] - `p1` - **IF** existing initialization is detected and `--force` is absent: validate install-dir compatibility before repair - `inst-existing-repair-mode`
 
+**Supporting**:
+- [x] - `p1` - Default SDLC kit download helper: parse GitHub source, emit progress, and return source plus resolved version and extracted temp dir - `inst-download-default-kit`
+- [x] - `p1` - Default SDLC kit install post-processing: merge returned actions/errors and downgrade non-pass statuses to warnings for human output - `inst-default-kit-actions`
+- [x] - `p1` - Build the summarized default-kit result payload from the installed artifacts directory - `inst-summarize-default-kit`
+- [x] - `p1` - Finalize init-managed surfaces: regenerate aggregates, ensure config extension files, persist install metadata, inject managed root files, and rewrite `.gitignore` - `inst-finalize-init-surfaces`
+- [x] - `p1` - Build the final init result payload with paths, tracking policy, actions, and optional backups - `inst-build-init-result`
+- [x] - `p1` - Emit the structured init error result with project/install paths, dry-run state, errors, and optional backups - `inst-init-error-result`
+
 ### Project Init Repair
 
 - [ ] `p1` - **ID**: `cpt-studio-flow-core-infra-init-repair`
@@ -192,11 +219,15 @@ Enables users to install Studio globally, initialize it in any project with sens
 2. [ ] - `p1` - Load project config and resolve pinned Studio version/source via `cpt-studio-algo-core-infra-version-metadata` - `inst-resolve-pinned-version`
 3. [ ] - `p1` - **IF** version metadata is unavailable and cannot be migrated from existing `.core/`: return `NEEDS_UPDATE_METADATA` with actionable `cfs update` guidance - `inst-needs-update-metadata`
 4. [ ] - `p1` - Restore `.core/` from local cache for the pinned version, or download exactly the pinned version from configured source; never upgrade to latest implicitly - `inst-restore-core-pinned`
-5. [ ] - `p1` - Regenerate `.gen/` aggregates and generated agent outputs for the existing config - `inst-restore-generated-surfaces`
+5. [x] - `p1` - Regenerate `.gen/` aggregates and generated agent outputs for the existing config - `inst-restore-generated-surfaces`
 6. [x] - `p1` - Rebuild the managed `.gitignore` block from install-dir and per-kit tracking policy - `inst-restore-gitignore`
 7. [ ] - `p1` - **FOR EACH** registered kit with `tracking = ignored`: restore kit files as overwriteable generated/ephemeral content - `inst-restore-ignored-kits`
 8. [ ] - `p1` - **FOR EACH** registered kit with `tracking = tracked` and missing files: report warning/error and suggest `cfs kit install` or `cfs update --with-kits yes` - `inst-report-missing-tracked-kits`
-9. [ ] - `p1` - **RETURN** JSON status `REPAIRED` or `ALREADY_INITIALIZED_REPAIRED` with restored surfaces, `version_source = project_config`, and `version_changed = false` - `inst-return-repair-result`
+9. [x] - `p1` - **RETURN** JSON status `REPAIRED` or `ALREADY_INITIALIZED_REPAIRED` with restored surfaces, `version_source = project_config`, and `version_changed = false` - `inst-return-repair-result`
+
+**Supporting**:
+- [x] - `p1` - Load persisted runtime, agent, and kit tracking settings from `core.toml` before rebuilding repair-owned surfaces - `inst-repair-load-tracking`
+- [x] - `p1` - Restore runtime-owned install surfaces from cache, recreate runtime README files, and refresh install metadata for the existing install dir - `inst-restore-runtime-surfaces`
 
 ### Project Update
 
@@ -258,39 +289,40 @@ Enables users to install Studio globally, initialize it in any project with sens
 9. [x] - `p1` - **ELSE** report dry-run rewrite actions without writing files - `inst-dry-run-actions`
 10. [x] - `p1` - Run follow-up update unless skipped or dry-run, preserving warning status when update fails - `inst-followup-update`
 11. [x] - `p1` - Return a structured migration result with actions, backups, warnings, and update details - `inst-return-result`
-12. [x] - `p1` - Detect a legacy install from root AGENTS.md or known legacy directories - `inst-detect-legacy`
-13. [x] - `p1` - Resolve ask/yes/no migration prompts for interactive and non-interactive callers - `inst-should-migrate`
-14. [x] - `p1` - Return an explicit declined result when user rejects migration - `inst-declined-result`
-15. [x] - `p1` - Read legacy version and accept only supported migration baseline versions - `inst-check-legacy-version`
-16. [x] - `p1` - For dry-run unsupported legacy installs, report the planned baseline update without running it - `inst-preflight-dry-run`
-17. [x] - `p1` - Prompt for unsupported legacy update and abort when user declines - `inst-prompt-legacy-update`
-18. [x] - `p1` - Run legacy `cfs update --version` with bridge bypass environment and report subprocess result - `inst-run-legacy-update`
-19. [x] - `p1` - Re-read legacy version after update and reject version mismatch - `inst-check-updated-version`
-20. [x] - `p1` - Merge legacy preflight metadata into the final migration result without overwriting migration actions - `inst-merge-preflight`
-21. [x] - `p1` - Read legacy version from known legacy skill package locations - `inst-read-version`
-22. [x] - `p1` - Normalize optional legacy version strings before comparison - `inst-normalize-version`
-23. [x] - `p1` - Prompt interactively for baseline update when needed - `inst-prompt-update-ui`
-24. [x] - `p1` - Prompt interactively for migration approval with project and legacy directory context - `inst-prompt-migration-ui`
-25. [x] - `p1` - Run follow-up Constructor update and capture JSON output when JSON mode is active - `inst-run-followup-update`
-26. [x] - `p1` - Restore target directory backup after failed replacement - `inst-restore-target`
-27. [x] - `p1` - Create root file backups before managed block rewrites - `inst-backup-root-files`
-28. [x] - `p1` - Refuse root rewrites when AGENTS.md or CLAUDE.md are dirty unless force-overwrite is set - `inst-probe-root-dirty`
-29. [x] - `p1` - Execute post-copy rewrite steps in deterministic order and restore root files on rewrite failure - `inst-run-rewrite-steps`
-30. [x] - `p1` - Resolve project root from explicit argument, root markers, or git root fallback - `inst-resolve-project-root`
-31. [x] - `p1` - Enforce child-directory constraints for source and target options - `inst-child-dir-guard`
-32. [x] - `p1` - Read legacy install directory from root AGENTS.md TOML or known legacy directories - `inst-read-legacy-install`
-33. [x] - `p1` - Probe dirty root files through git status without failing when git is unavailable - `inst-probe-git-dirty`
-34. [x] - `p1` - Replace root managed blocks and warn when malformed legacy blocks must be preserved - `inst-replace-root-blocks`
-35. [x] - `p1` - Remove well-formed legacy managed blocks while preserving malformed content for manual cleanup - `inst-remove-legacy-block`
-36. [x] - `p1` - Migrate core TOML kit keys, kit paths, kit sources, and obsolete system section - `inst-migrate-core-toml`
-37. [x] - `p1` - Migrate artifacts TOML systems from legacy kit slug to canonical SDLC kit slug - `inst-migrate-artifacts-toml`
-38. [x] - `p1` - Recursively walk `config/**/*.md` (via `rglob("*.md")`) and apply four conservative substitutions: `{cypilot_path}` → `{cf-studio-path}`, backtick-`cpt` → backtick-`cfs`, space-surrounded `cpt` → `cfs`, `Cypilot` → `Constructor Studio`; returns changed paths as POSIX strings relative to the config dir - `inst-migrate-config-markdown`
-39. [x] - `p1` - Rewrite the `{cypilot_path}` template placeholder to `{cf-studio-path}` across config TOML files (e.g. `pr-review.toml`) under the migrated config dir - `inst-migrate-config-toml-template-vars`
-40. [x] - `p1` - Run `cfs kit update` after migration so renamed kit sources pull their latest release from the canonical `constructorfabric/studio-kit-sdlc` (or the user's mirror); honor `--dry-run` by recording the planned action only; **in JSON mode** suppress `cfs kit update` sub-command stdout via `contextlib.redirect_stdout` so the outer migration JSON remains the sole document on the wire - `inst-followup-kit-update`
-41. [x] - `p1` - Render human migration summary with actions, warnings, and error/hint text when migration aborts before completion - `inst-human-output`
-42. [x] - `p1` - Defer-import cleanup helpers from `agents.py` (one source of truth for legacy-artifact recognition) and short-circuit with a warning if the import fails - `inst-cleanup-legacy-host-import`
-43. [x] - `p1` - Sweep each supported host (`claude`, `windsurf`, `cursor`, `copilot`, `openai`) and remove pre-rebrand `cypilot-*` / `cf-constructor-*` agent files, skill directories, install markers, and per-tool single-file legacy skill paths whose body is a pure generator stub; preserve user-edited files; collect `{agent: [relpath, ...]}` of removals - `inst-cleanup-legacy-host-sweep`
-44. [x] - `p1` - For every host with at least one removed artifact, regenerate fresh `cf-*` integration inline via `_process_single_agent`; surface per-host regeneration failure as a non-fatal warning; return `{"removed": {agent: [relpath, ...]}, "regenerated": [agent, ...]}` - `inst-cleanup-legacy-host-regen`
+12. [x] - `p1` - Orchestrate migration phases in order: target validation, dirty-root guard, target copy/reuse, dry-run short-circuit, then post-copy rewrites - `inst-run-migration-phases`
+13. [x] - `p1` - Detect a legacy install from root AGENTS.md or known legacy directories - `inst-detect-legacy`
+14. [x] - `p1` - Resolve ask/yes/no migration prompts for interactive and non-interactive callers - `inst-should-migrate`
+15. [x] - `p1` - Return an explicit declined result when user rejects migration - `inst-declined-result`
+16. [x] - `p1` - Read legacy version and accept only supported migration baseline versions - `inst-check-legacy-version`
+17. [x] - `p1` - For dry-run unsupported legacy installs, report the planned baseline update without running it - `inst-preflight-dry-run`
+18. [x] - `p1` - Prompt for unsupported legacy update and abort when user declines - `inst-prompt-legacy-update`
+19. [x] - `p1` - Run legacy `cfs update --version` with bridge bypass environment and report subprocess result - `inst-run-legacy-update`
+20. [x] - `p1` - Re-read legacy version after update and reject version mismatch - `inst-check-updated-version`
+21. [x] - `p1` - Merge legacy preflight metadata into the final migration result without overwriting migration actions - `inst-merge-preflight`
+22. [x] - `p1` - Read legacy version from known legacy skill package locations - `inst-read-version`
+23. [x] - `p1` - Normalize optional legacy version strings before comparison - `inst-normalize-version`
+24. [x] - `p1` - Prompt interactively for baseline update when needed - `inst-prompt-update-ui`
+25. [x] - `p1` - Prompt interactively for migration approval with project and legacy directory context - `inst-prompt-migration-ui`
+26. [x] - `p1` - Run follow-up Constructor update and capture JSON output when JSON mode is active - `inst-run-followup-update`
+27. [x] - `p1` - Restore target directory backup after failed replacement - `inst-restore-target`
+28. [x] - `p1` - Create root file backups before managed block rewrites - `inst-backup-root-files`
+29. [x] - `p1` - Refuse root rewrites when AGENTS.md or CLAUDE.md are dirty unless force-overwrite is set - `inst-probe-root-dirty`
+30. [x] - `p1` - Execute post-copy rewrite steps in deterministic order and restore root files on rewrite failure - `inst-run-rewrite-steps`
+31. [x] - `p1` - Resolve project root from explicit argument, root markers, or git root fallback - `inst-resolve-project-root`
+32. [x] - `p1` - Enforce child-directory constraints for source and target options - `inst-child-dir-guard`
+33. [x] - `p1` - Read legacy install directory from root AGENTS.md TOML or known legacy directories - `inst-read-legacy-install`
+34. [x] - `p1` - Probe dirty root files through git status without failing when git is unavailable - `inst-probe-git-dirty`
+35. [x] - `p1` - Replace root managed blocks and warn when malformed legacy blocks must be preserved - `inst-replace-root-blocks`
+36. [x] - `p1` - Remove well-formed legacy managed blocks while preserving malformed content for manual cleanup - `inst-remove-legacy-block`
+37. [x] - `p1` - Migrate core TOML kit keys, kit paths, kit sources, and obsolete system section - `inst-migrate-core-toml`
+38. [x] - `p1` - Migrate artifacts TOML systems from legacy kit slug to canonical SDLC kit slug - `inst-migrate-artifacts-toml`
+39. [x] - `p1` - Recursively walk `config/**/*.md` (via `rglob("*.md")`) and apply four conservative substitutions: `{cypilot_path}` → `{cf-studio-path}`, backtick-`cpt` → backtick-`cfs`, space-surrounded `cpt` → `cfs`, `Cypilot` → `Constructor Studio`; returns changed paths as POSIX strings relative to the config dir - `inst-migrate-config-markdown`
+40. [x] - `p1` - Rewrite the `{cypilot_path}` template placeholder to `{cf-studio-path}` across config TOML files (e.g. `pr-review.toml`) under the migrated config dir - `inst-migrate-config-toml-template-vars`
+41. [x] - `p1` - Run `cfs kit update` after migration so renamed kit sources pull their latest release from the canonical `constructorfabric/studio-kit-sdlc` (or the user's mirror); honor `--dry-run` by recording the planned action only; **in JSON mode** suppress `cfs kit update` sub-command stdout via `contextlib.redirect_stdout` so the outer migration JSON remains the sole document on the wire - `inst-followup-kit-update`
+42. [x] - `p1` - Render human migration summary with actions, warnings, and error/hint text when migration aborts before completion - `inst-human-output`
+43. [x] - `p1` - Defer-import cleanup helpers from `agents.py` (one source of truth for legacy-artifact recognition) and short-circuit with a warning if the import fails - `inst-cleanup-legacy-host-import`
+44. [x] - `p1` - Sweep each supported host (`claude`, `windsurf`, `cursor`, `copilot`, `openai`) and remove pre-rebrand `cypilot-*` / `cf-constructor-*` agent files, skill directories, install markers, and per-tool single-file legacy skill paths whose body is a pure generator stub; preserve user-edited files; collect `{agent: [relpath, ...]}` of removals - `inst-cleanup-legacy-host-sweep`
+45. [x] - `p1` - For every host with at least one removed artifact, regenerate fresh `cf-*` integration inline via `_process_single_agent`; surface per-host regeneration failure as a non-fatal warning; return `{"removed": {agent: [relpath, ...]}, "regenerated": [agent, ...]}` - `inst-cleanup-legacy-host-regen`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -382,12 +414,12 @@ Enables users to install Studio globally, initialize it in any project with sens
 **Steps**:
 1. [ ] - `p1` - Build exact project-relative ignore paths for the current install-dir: `<install-dir>/.core/` and `<install-dir>/.gen/` - `inst-ignore-core-gen`
 2. [x] - `p1` - Add concrete `config/kits/<slug>/` ignore entries only for kits whose `tracking = ignored`; keep other kits tracked - `inst-ignore-kits-by-policy`
-3. [ ] - `p1` - Add only generator-owned agent paths and patterns, never broad parent directories such as `.github/`, `.claude/`, `.cursor/`, `.codex/`, or `.agents/` - `inst-ignore-agent-generated-only`
+3. [x] - `p1` - Add only generator-owned agent paths and patterns, never broad parent directories such as `.github/`, `.claude/`, `.cursor/`, `.codex/`, or `.agents/` - `inst-ignore-agent-generated-only`
 4. [ ] - `p1` - Include safe shared skill patterns: `.agents/skills/cf/`, `.agents/skills/cf-*/`, and legacy Studio-owned `studio-*`, `cypilot-*`, `cf-constructor-*` skill dirs - `inst-ignore-shared-skills`
 5. [ ] - `p1` - Include safe Codex patterns: `.codex/agents/cf*.toml`, legacy Studio-owned Codex TOML names, and `.codex/.cf-installed` - `inst-ignore-codex-generated`
 6. [ ] - `p1` - Include safe Claude/Cursor/Copilot/Windsurf generated names with `cf*` patterns and install markers, plus legacy Studio-owned `studio-*`, `cypilot-*`, and `cf-constructor-*` names where generated by prior versions - `inst-ignore-tool-generated`
 7. [x] - `p1` - Write a warning comment that ignored entries are generated surfaces and may be regenerated or overwritten by `cfs init`, `cfs update`, or `cfs generate-agents`; include concrete ignored kit paths only when any kit has `tracking = ignored` - `inst-write-overwrite-warning`
-8. [ ] - `p1` - Replace the managed `.gitignore` block only when start/end markers are intact; on malformed, partial, or nested markers, return warning/error without overwriting user content - `inst-gitignore-marker-safety`
+8. [x] - `p1` - Replace the managed `.gitignore` block only when start/end markers are intact; on malformed, partial, or nested markers, return warning/error without overwriting user content - `inst-gitignore-marker-safety`
 
 ### Resolve Project Version Metadata
 
@@ -456,6 +488,10 @@ Enables users to install Studio globally, initialize it in any project with sens
 5. [x] - `p1` - **IF** download fails (network error, 404, rate limit) - `inst-if-download-error`
    1. [x] - `p1` - **RETURN** error with HTTP status and retry suggestion - `inst-return-download-fail`
 6. [x] - `p1` - Extract archive into `~/.cf-studio/cache/` (overwrite previous) - `inst-extract-archive`
+   1. [x] - `p1` - Detect tar archives, strip a shared top-level directory prefix, and extract the remaining members into cache - `inst-extract-tar-stripped`
+   2. [x] - `p1` - Detect zip archives, strip a shared top-level directory prefix, and extract the remaining members into cache - `inst-extract-zip-stripped`
+   3. [x] - `p1` - Skip tar members whose stripped relative path is empty, absolute, or traverses parent directories before writing them into cache - `inst-extract-tar-members`
+   4. [x] - `p1` - Skip zip members whose stripped relative path is empty, absolute, or traverses parent directories before writing them into cache - `inst-extract-zip-members`
 7. [x] - `p1` - Write version marker file `~/.cf-studio/cache/.version` with downloaded version - `inst-write-version`
 8. [x] - `p1` - **RETURN** path to cached skill bundle - `inst-return-cache-path-new`
 
@@ -493,22 +529,52 @@ Enables users to install Studio globally, initialize it in any project with sens
 5. [x] - `p1` - **IF** studio directory not found - `inst-info-if-no-studio`
    1. [x] - `p1` - **RETURN** JSON: `{status: NOT_FOUND, hint}` (exit 1) - `inst-info-return-no-studio`
 6. [x] - `p1` - Load studio config from directory - `inst-info-load-config`
-7. [x] - `p1` - Locate artifacts registry (config/artifacts.toml, fallback to legacy paths) - `inst-info-locate-registry`
-8. [x] - `p1` - **IF** registry found — load and expand with autodetect data - `inst-info-expand-registry`
-9. [x] - `p1` - **ELSE** — set registry to null with error code - `inst-info-registry-missing`
-10. [x] - `p1` - Compute relative path and config presence - `inst-info-compute-metadata`
-11. [x] - `p1` - **FOR EACH** installed kit with effective resources: collect resolved resource variables from `core.toml` bindings for copy mode or from the registered canonical manifest root for `register` mode, and expose them as `variables_by_kit` - `inst-info-collect-resources`
-12. [x] - `p1` - Detect and display workspace config status in info output - `inst-info-workspace-section`
-13. [x] - `p1` - **RETURN** JSON: `{status: FOUND, project_root, config, registry, workspace}` (exit 0) - `inst-info-return-ok`
+7. [x] - `p1` - Resolve artifacts registry path from `config/artifacts.toml` with legacy fallbacks - `inst-info-resolve-registry-path`
+8. [x] - `p1` - Load raw registry payload plus `core.toml` metadata needed for later expansion - `inst-info-load-registry-payload`
+9. [x] - `p1` - **IF** registry found — build autodetect view and expand with context data - `inst-info-expand-registry`
+   1. [x] - `p1` - Build the autodetect-only registry view used for pre-expansion reporting - `inst-info-build-autodetect-registry`
+   2. [x] - `p1` - Expand the registry through `StudioContext` before returning info output - `inst-info-expand-registry-context`
+   3. [x] - `p1` - Serialize artifact entries for expanded registry output - `inst-info-serialize-artifact`
+   4. [x] - `p1` - Serialize codebase entries for expanded registry output - `inst-info-serialize-codebase`
+   5. [x] - `p1` - Serialize system trees recursively for expanded registry output - `inst-info-serialize-system`
+10. [x] - `p1` - **ELSE** — set registry to null with error code - `inst-info-registry-missing`
+11. [x] - `p1` - Compute relative path, config presence, kit info, integrations, and directory health - `inst-info-compute-metadata`
+12. [x] - `p1` - Load variable metadata from the shared resolver for info output - `inst-info-load-variables`
+13. [x] - `p1` - Load workspace status plus per-source reachability details for info output - `inst-info-workspace-section`
+   1. [x] - `p1` - Load workspace config or degraded error state - `inst-info-load-workspace`
+   2. [x] - `p1` - Resolve per-source path or URL reachability details for reporting - `inst-info-workspace-source-details`
+14. [x] - `p1` - **RETURN** JSON: `{status: FOUND, project_root, config, registry, workspace}` (exit 0) - `inst-info-return-ok`
 
 **Supporting**:
 - [x] - `p1` - Human-friendly output formatter for info command (callback passed to ui.result) - `inst-info-human-fmt`
+- [x] - `p1` - Extract one autodetect-only system subtree recursively for pre-expansion registry reporting - `inst-info-extract-autodetect-system`
+- [x] - `p1` - Compute adapter path relative to project root with absolute fallback when the adapter lives outside the root - `inst-info-relative-adapter-path`
+- [x] - `p1` - Detect whether adapter config exists, with fallback from `config/core.toml` to flat-layout `core.toml` - `inst-info-has-config`
+- [x] - `p1` - Detect installed agent integrations by probing the recognized agent set against the project root - `inst-info-agent-integrations`
+- [x] - `p1` - Snapshot presence of the managed adapter directories `.core`, `.gen`, and `config` - `inst-info-directory-status`
+- [x] - `p1` - JSON mode flag: `_json_mode` global, `set_json_mode`, `is_json_mode` - `inst-ui-json-mode-flag`
+- [x] - `p1` - ANSI escape code constants and color availability/application helpers - `inst-ui-ansi-helpers`
+
+### Render Human Info
+
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-render-info-human`
+
+**Input**: Final `cfs info` result payload
+
+**Output**: Human-readable stderr summary for non-JSON `cfs info`
+
+**Steps**:
+1. [x] - `p1` - Render kit details and effective resource bindings per installed kit - `inst-info-render-kit-details`
+2. [x] - `p1` - Render system summaries from expanded registry data, falling back to autodetect view when needed - `inst-info-render-systems`
+3. [x] - `p1` - Render generic list sections such as rules and agent integrations - `inst-info-render-list`
+4. [x] - `p1` - Render workspace summary or workspace error details - `inst-info-render-workspace`
+5. [x] - `p1` - Render registry warning footer when registry loading degraded - `inst-info-render-registry-warning`
+
+**Supporting**:
 - [x] - `p1` - Render artifact rows for a single system in human output - `inst-info-show-system-artifacts`
 - [x] - `p1` - Render codebase rows for a single system in human output - `inst-info-show-system-codebase`
 - [x] - `p1` - Render nested child-system summaries in human output - `inst-info-show-child-systems`
 - [x] - `p1` - Render one complete system summary entry in human output - `inst-info-show-system-info`
-- [x] - `p1` - JSON mode flag: `_json_mode` global, `set_json_mode`, `is_json_mode` - `inst-ui-json-mode-flag`
-- [x] - `p1` - ANSI escape code constants and color availability/application helpers - `inst-ui-ansi-helpers`
 - [x] - `p1` - `header`: print bold section header to stderr (suppressed in JSON mode) - `inst-ui-progress-header`
 - [x] - `p1` - `step` / `substep`: progress step indicators printed to stderr - `inst-ui-progress-step`
 - [x] - `p1` - `success` / `error` / `warn` / `info`: status message printers to stderr - `inst-ui-status-messages`
@@ -517,6 +583,8 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - `file_action`: file-change icon printer (created/updated/unchanged/etc.) to stderr - `inst-ui-file-action`
 - [x] - `p1` - `result` JSON branch: serialize result dict as JSON to stdout in `--json` mode - `inst-ui-result-json`
 - [x] - `p1` - `result` human branch: invoke `human_fn` or generic status/message fallback to stderr - `inst-ui-result-human`
+- [x] - `p1` - Create a temporary stderr-bound logger handler with plain-message formatting for UI diagnostics - `inst-ui-stderr-handler`
+- [x] - `p1` - Emit one logger-backed stderr message at the requested level, then close the handler - `inst-ui-stderr-emit`
 - [x] - `p1` - `relpath`: convert absolute path to cwd-relative path with fallback - `inst-ui-relpath`
 - [x] - `p1` - `_UI` singleton class exposing all helpers as static methods via `ui` module attribute - `inst-ui-singleton`
 

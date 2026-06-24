@@ -36,12 +36,15 @@ def _load_text(path: Path) -> tuple[str, Optional[str]]:
         return "", f"Failed to read {path}: {exc}"
 
 
+# @cpt-dod:cpt-studio-dod-core-infra-agents-integrity:p1
 def _read_root_agents_marked_text(project_root: Path) -> Optional[str]:
     """Return root AGENTS.md text only when it includes the managed marker."""
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
     agents_file = project_root / "AGENTS.md"
     content, err = _load_text(agents_file)
     if err or MARKER_START not in content:
         return None
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
     return content
 
 def find_project_root(start_dir: Optional[Path] = None) -> Optional[Path]:
@@ -128,6 +131,7 @@ def get_cache_provenance_file() -> Path:
     return get_cache_dir() / ".provenance.json"
 # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-walk-parents
 def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     """
     Find project-installed skill by reading ``cf-studio-path`` variable from root AGENTS.md.
@@ -138,7 +142,6 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
 
     Returns path to the skill entry point (studio.py) or None.
     """
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-walk-parents
     project_root = find_project_root(start_dir)
     if project_root is None:
         return None
@@ -146,7 +149,6 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     install_dir = read_cf_studio_path(project_root)
     if install_dir is None:
         return None
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-walk-parents
 
     # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
     # Check .core/ layout first, then flat layout (new: studio; legacy: cypilot)
@@ -170,14 +172,15 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
 
     return None
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-walk-parents
 
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-check-global-cache
 def find_cached_skill() -> Optional[Path]:
     """
     Check for cached skill at ~/.cf-studio/cache/.
 
     Returns path to the skill entry point or None.
     """
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-check-global-cache
     cache_dir = get_cache_dir()
     # Check new layout first (studio), then legacy layout (cypilot)
     for skill_name in ("studio", "cypilot"):
@@ -186,9 +189,12 @@ def find_cached_skill() -> Optional[Path]:
             # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-cache-path
             return entry_point
             # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-cache-path
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-check-global-cache
     return None
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-check-global-cache
 
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-cache-exists
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-not-found
 def resolve_skill(start_dir: Optional[Path] = None) -> Tuple[Optional[Path], str]:
     """
     Resolve skill target: project-installed first, then cache.
@@ -196,21 +202,18 @@ def resolve_skill(start_dir: Optional[Path] = None) -> Tuple[Optional[Path], str
     Returns (path_to_skill_entry, source) where source is "project" or "cache".
     Returns (None, "none") if no skill found.
     """
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
     project_skill = find_project_skill(start_dir)
     if project_skill is not None:
         return project_skill, "project"
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
 
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-cache-exists
     cached_skill = find_cached_skill()
     if cached_skill is not None:
         return cached_skill, "cache"
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-cache-exists
 
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-not-found
     return None, "none"
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-not-found
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-not-found
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-cache-exists
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
 
 # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 def get_cached_version() -> Optional[str]:

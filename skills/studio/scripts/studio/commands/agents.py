@@ -2259,6 +2259,7 @@ def _registered_kit_dirs(project_root: Optional[Path]) -> Set[str]:
 
 
 def _resolve_registered_kit_path(project_root: Path, studio_root: Path, slug: str, kit_entry: object) -> Optional[Path]:
+    # @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
     if isinstance(kit_entry, dict):
         raw_path = kit_entry.get("path")
         if isinstance(raw_path, str) and raw_path.strip():
@@ -2269,6 +2270,7 @@ def _resolve_registered_kit_path(project_root: Path, studio_root: Path, slug: st
             if legacy_resolved is not None:
                 return legacy_resolved
             return resolved
+    # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
     return _resolve_registered_project_relative_path(project_root, f"config/kits/{slug}")
 
 
@@ -2280,6 +2282,7 @@ def _resolve_registered_resource_path(
     kit_entry: object,
     source: Optional[str] = None,
 ) -> Optional[Path]:
+    # @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
     component_id = str(getattr(component, "id", ""))
     resources = kit_entry.get("resources") if isinstance(kit_entry, dict) else None
     binding = resources.get(component_id) if isinstance(resources, dict) else None
@@ -2304,6 +2307,7 @@ def _resolve_registered_resource_path(
         or ".." in source_path_obj.parts
     ):
         return None
+    # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
     return kit_root / Path(normalized_source)
 
 
@@ -2312,14 +2316,14 @@ def _component_enabled_for_agent(component: object, agent: str) -> bool:
     return not targets or "installed" in targets or "all" in targets or agent in targets
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-generate-agents
+# @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+# @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
 def _list_public_components(
     studio_root: Path,
     project_root: Optional[Path],
     agent: Optional[str],
 ) -> Tuple[List[KitPublicComponent], Set[str]]:
-    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-generate-agents
-    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
-    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
     if project_root is None:
         return [], set()
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
@@ -3464,8 +3468,8 @@ def _build_desired_workflow_outputs(
     studio_root: Path,
 ) -> Dict[str, Dict[str, str]]:
     desired: Dict[str, Dict[str, str]] = {}
-    custom_content = workflows_cfg.get("custom_content", "")
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-discover-workflows
+    custom_content = workflows_cfg.get("custom_content", "")
     studio_workflow_entries = _list_workflow_files(studio_root, project_root)
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-discover-workflows
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-generate-entry-points
@@ -3907,9 +3911,8 @@ def _render_skill_output(
     if not isinstance(template, list) or not all(isinstance(x, str) for x in template):
         return None
 
-    target_rel, out_name, out_description = _resolve_skill_output_target(out_cfg, ctx)
-
     # @cpt-begin:cpt-studio-algo-agent-integration-compose-skill:p1:inst-assemble-sections
+    target_rel, out_name, out_description = _resolve_skill_output_target(out_cfg, ctx)
     content = _render_template(
         template,
         {
@@ -3922,11 +3925,13 @@ def _render_skill_output(
             "custom_content": ctx.custom_content,
         },
     )
-    # @cpt-end:cpt-studio-algo-agent-integration-compose-skill:p1:inst-assemble-sections
     return (ctx.project_root / rel_path).resolve(), rel_path, content
+    # @cpt-end:cpt-studio-algo-agent-integration-compose-skill:p1:inst-assemble-sections
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-agent-cfg-extract
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-compose-skill:p1:inst-write-skill
+# @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-write-files
 def _write_rendered_skill_output(
     rendered: Tuple[Path, str, str],
     skills_result: Dict[str, Any],
@@ -3934,11 +3939,9 @@ def _write_rendered_skill_output(
     dry_run: bool,
 ) -> None:
     out_path, _, content = rendered
-    # @cpt-begin:cpt-studio-algo-agent-integration-compose-skill:p1:inst-write-skill
-    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-write-files
     _write_or_skip(out_path, content, skills_result, project_root, dry_run)
-    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-write-files
-    # @cpt-end:cpt-studio-algo-agent-integration-compose-skill:p1:inst-write-skill
+# @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-write-files
+# @cpt-end:cpt-studio-algo-agent-integration-compose-skill:p1:inst-write-skill
 
 
 def _process_skills(
@@ -4882,11 +4885,11 @@ def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
                 content = _read_generated_output_text(path)
                 if content is None:
                     continue
+                # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-track-agent-results
                 rel = _safe_relpath(path, project_root)
                 owner_kind = _classify_generated_output_owner(rel, content)
                 if owner_kind is None:
                     continue
-                # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-track-agent-results
                 outputs.append(
                     ManagedOutput(
                         path=rel,
@@ -6614,10 +6617,10 @@ def _execute_legacy_generation(
             dry_run=False,
             remove_cypilot=remove_cypilot,
         )
-        # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-generate-entry-points
         results[agent] = result
         if result.get("status") != "PASS" and _result_has_fatal_errors(result):
             has_errors = True
+        # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-generate-entry-points
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
     return results, has_errors
 
@@ -6810,18 +6813,16 @@ def cmd_generate_agents(argv: List[str]) -> int:
     # ── EXISTING PATH: Legacy agents.toml flow ────────────────────────────
     # @cpt-begin:cpt-studio-dod-project-extensibility-backward-compat:p1:inst-legacy-path
     # Backward compatibility: no v2.0 manifest → use existing _discover_kit_agents() flow.
-    return _run_legacy_generate_path(
-        _GeneratePathContext(
-            args=args,
-            agents_to_process=agents_to_process,
-            project_root=project_root,
-            studio_root=studio_root,
-            cfg=cfg,
-            cfg_path=cfg_path,
-            remove_cypilot=remove_cypilot,
-        ),
-        copy_report,
+    legacy_ctx = _GeneratePathContext(
+        args=args,
+        agents_to_process=agents_to_process,
+        project_root=project_root,
+        studio_root=studio_root,
+        cfg=cfg,
+        cfg_path=cfg_path,
+        remove_cypilot=remove_cypilot,
     )
+    return _run_legacy_generate_path(legacy_ctx, copy_report)
     # @cpt-end:cpt-studio-dod-project-extensibility-backward-compat:p1:inst-legacy-path
 
 
@@ -6994,6 +6995,7 @@ def _build_result(
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
 
 
+# @cpt-algo:cpt-studio-algo-core-infra-gitignore-footprint:p1
 def _write_expected_gitignore_block(
     project_root: Path,
     expected_block: str,
@@ -7007,6 +7009,7 @@ def _write_expected_gitignore_block(
         _write_managed_block_file,
     )
 
+    # @cpt-begin:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-gitignore-marker-safety
     managed_block_kwargs = {
         "marker_start": GITIGNORE_MARKER_START,
         "marker_end": GITIGNORE_MARKER_END,
@@ -7020,6 +7023,7 @@ def _write_expected_gitignore_block(
         expected_block,
         **managed_block_kwargs,
     )
+    # @cpt-end:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-gitignore-marker-safety
 
 
 def _build_managed_gitignore_block(
@@ -7028,6 +7032,7 @@ def _build_managed_gitignore_block(
     """Return a managed .gitignore block for the supplied project-relative paths."""
     from .init import GITIGNORE_MARKER_END, GITIGNORE_MARKER_START
 
+    # @cpt-begin:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-write-overwrite-warning
     normalized: List[str] = []
     seen: Set[str] = set()
     for raw_path in paths:
@@ -7049,6 +7054,7 @@ def _build_managed_gitignore_block(
             GITIGNORE_MARKER_END,
         ]
     )
+    # @cpt-end:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-write-overwrite-warning
 
 
 def _merge_gitignore_extra_paths(
@@ -7078,6 +7084,7 @@ def _refresh_managed_gitignore(
     extra_paths: Optional[List[str]] = None,
 ) -> Optional[str]:
     """Refresh the managed Constructor Studio .gitignore block when possible."""
+    # @cpt-begin:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-ignore-agent-generated-only
     core_toml_path = studio_root / "config" / "core.toml"
     extra_entries = [
         _normalize_managed_output_path(project_root, path)
@@ -7123,6 +7130,7 @@ def _refresh_managed_gitignore(
     )
     if expected_block is None:
         return None
+    # @cpt-end:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-ignore-agent-generated-only
     return _write_expected_gitignore_block(project_root, expected_block, dry_run=dry_run)
 
 
@@ -7807,6 +7815,7 @@ def _build_skill_content(
 # @cpt-end:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-build-skill-content
 
 
+# @cpt-begin:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-iterate-skills
 def _iter_target_skills(
     skills: Dict[str, "_SkillEntry"],
     target: str,
@@ -7816,6 +7825,7 @@ def _iter_target_skills(
         for skill_id, skill in skills.items()
         if (not skill.agents or target in skill.agents) and _is_safe_generated_id(skill_id)
     ]
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-iterate-skills
 
 
 def _process_manifest_skill(
@@ -7827,6 +7837,7 @@ def _process_manifest_skill(
     if not src_str:
         _warn_agents(f"skill '{skill_id}' has no source or prompt_file, skipping")
         return
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-read-skill-source
     source_content = _read_source_content(
         "skill",
         skill_id,
@@ -7837,17 +7848,22 @@ def _process_manifest_skill(
     )
     if source_content is None:
         return
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-read-skill-source
     content = _build_skill_content(skill_id, skill, source_content, ctx.variables)
     ctx.generated_skill_contents[skill_id] = content
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-determine-skill-path
     rel_out = ctx.path_template.replace("{id}", skill_id)
     _write_or_skip(ctx.project_root / rel_out, content, ctx.result, ctx.project_root, ctx.dry_run)
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-determine-skill-path
 
 
+# @cpt-begin:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-track-skill-results
 def _finalize_generated_result(result: Dict[str, Any]) -> Dict[str, Any]:
     result["unchanged"] = [
         entry["path"] for entry in result["outputs"] if entry.get("action") == "unchanged"
     ]
     return result
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-track-skill-results
 
 
 _LEGACY_SKILL_OUTPUT_PATHS: Dict[str, str] = {
@@ -8175,11 +8191,11 @@ def _build_standard_agent_file(
         safe_vars = {k: v.replace("\n", " ") for k, v in variables.items()}
     else:
         safe_vars = variables
-    content = _apply_variables(content, safe_vars)
     # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
+    content = _apply_variables(content, safe_vars)
     rel_out = path_template.replace("{id}", agent_id)
-    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
     return content, rel_out
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
 
 
 def _legacy_claude_mcp_broadening_translation(agent: Any) -> Dict[str, Any]:
@@ -8462,14 +8478,14 @@ def _process_manifest_agent(
         return
     if not _is_safe_generated_id(agent_id):
         return
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-translate-schema
     try:
-        # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-translate-schema
         translated = translate_agent_schema(agent, target)
-        # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-translate-schema
     except ValueError as exc:
         _warn_agents(f"agent '{agent_id}' schema translation failed for target '{target}': {exc}, skipping")
         ctx.result.setdefault("errors", []).append({"agent": agent_id, "error": str(exc)})
         return
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-translate-schema
     # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-check-skip
     if translated.get("skip"):
         _cleanup_skipped_manifest_agent(
@@ -8556,6 +8572,7 @@ def generate_manifest_agents(
         dry_run=dry_run,
     )
 
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-return-agents
     for agent_id, agent in agents.items():
         _process_manifest_agent(
             agent_id,
@@ -8563,7 +8580,6 @@ def generate_manifest_agents(
             target,
             ctx,
         )
-    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-return-agents
     return _finalize_generated_result(result)
     # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-return-agents
 

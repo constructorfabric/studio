@@ -24,12 +24,14 @@ _VAR_PATH_RE = re.compile(
 
 
 def _link_edge_targets(content: str, src: Node, known: set[str], template_vars: Dict[str, str]):
+    # @cpt-begin:cpt-studio-algo-map-file-links:p1:inst-link-edge-targets
     for match in _LINK_RE.finditer(content):
         target = match.group("target").strip()
         yield match, _resolve(src.rel_path, _expand_vars(target, template_vars), known)
     for match in _VAR_PATH_RE.finditer(content):
         expanded = _expand_vars(match.group(0), template_vars)
         yield match, _resolve(src.rel_path, "/" + expanded.lstrip("/"), known)
+    # @cpt-end:cpt-studio-algo-map-file-links:p1:inst-link-edge-targets
 
 
 def extract_file_links(nodes: Sequence[Node],
@@ -46,7 +48,6 @@ def extract_file_links(nodes: Sequence[Node],
             When set, `{var}` references in link targets AND in prose path patterns
             are expanded before resolution.
     """
-    # @cpt-begin:cpt-studio-algo-map-file-links:p1:inst-extract-file-links
     if project_root is None:
         return []
 
@@ -56,6 +57,7 @@ def extract_file_links(nodes: Sequence[Node],
     by_rel: Dict[str, Node] = {n.rel_path: n for n in md_nodes if n.rel_path}
     known = set(by_rel.keys())
 
+    # @cpt-begin:cpt-studio-algo-map-file-links:p1:inst-extract-file-links
     edges: List[Edge] = []
     edge_id = 0
     for src in md_nodes:
@@ -88,6 +90,7 @@ def _append_file_link_edge(
     match_start: int,
 ) -> int:
     """Append one resolved file-link edge and return the next edge id."""
+    # @cpt-begin:cpt-studio-algo-map-file-links:p1:inst-append-file-link-edge
     if resolved is None or resolved == src.rel_path or resolved in targets_seen:
         return edge_id
     tgt = by_rel.get(resolved)
@@ -107,6 +110,7 @@ def _append_file_link_edge(
         dangling=False,
     ))
     return edge_id + 1
+    # @cpt-end:cpt-studio-algo-map-file-links:p1:inst-append-file-link-edge
 
 
 def _expand_vars(target: str, template_vars: Dict[str, str]) -> str:

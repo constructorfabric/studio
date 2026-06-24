@@ -186,12 +186,12 @@ def _compute_local_path(
     # Apply template and compute local path
     # @cpt-begin:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
     template = _resolve_git_template(host, resolve_config)
-    # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
     try:
         templated = _apply_template(template, org, repo)
     except ValueError as exc:
         logger.warning("Unsafe git workspace template for %s: %s", _redact_url(source.url or ""), exc)
         return None
+    # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
 
     workdir = getattr(resolve_config, "workdir", ".workspace-sources")
     local_path = (workspace_parent / workdir / templated).resolve()

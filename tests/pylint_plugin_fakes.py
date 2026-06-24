@@ -225,6 +225,10 @@ class BaseChecker:
         raise NotImplementedError
 
 
+class BaseRawFileChecker(BaseChecker):
+    pass
+
+
 class FakeRoot:
     def __init__(self, file_path: str) -> None:
         self.file = file_path
@@ -277,6 +281,7 @@ def _install_fake_dependencies() -> None:
 
     astroid_module.nodes = nodes_module
     checkers_module.BaseChecker = BaseChecker
+    checkers_module.BaseRawFileChecker = BaseRawFileChecker
     pylint_module.checkers = checkers_module
 
     sys.modules["astroid"] = astroid_module

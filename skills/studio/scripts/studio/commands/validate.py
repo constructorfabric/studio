@@ -95,6 +95,7 @@ def _collect_cross_repo_artifacts(
     """
     from ..utils.context import get_expanded_meta as _get_expanded_meta
 
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cross-repo-artifacts
     result: List[ArtifactRecord] = []
     seen = set(already_seen)
     for sc in ws_ctx.sources.values():
@@ -114,15 +115,16 @@ def _collect_cross_repo_artifacts(
                 constraints=None,
             ))
     return result
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cross-repo-artifacts
 
 
-# @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
 def _collect_artifact_code_expectations(
     artifacts: List[ArtifactRecord],
     traceability_by_path: Dict[str, str],
     registered_systems: Optional[Set[str]] = None,
 ) -> Tuple[Set[str], Set[str], Set[str]]:
     """Collect artifact IDs and to-code expectations for strict validation."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
     artifact_ids: Set[str] = set()
     to_code_ids: Set[str] = set()
     to_code_ids_task_unchecked: Set[str] = set()
@@ -153,6 +155,7 @@ def _collect_artifact_code_expectations(
                     to_code_ids.add(did)
                 break
     return artifact_ids, to_code_ids, to_code_ids_task_unchecked
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
 
 
 def _cpt_definition_matches_kind(
@@ -161,6 +164,7 @@ def _cpt_definition_matches_kind(
     registered_systems: Optional[Set[str]] = None,
 ) -> bool:
     """Return whether a CPT definition ID has *kind* in its structural kind slot."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
     normalized_id = cpt_id.strip().lower()
     normalized_kind = kind.strip().lower()
     if not normalized_id.startswith("cpt-") or not normalized_kind:
@@ -174,6 +178,7 @@ def _cpt_definition_matches_kind(
 
     parts = normalized_id.split("-")
     return len(parts) >= 3 and parts[2] == normalized_kind
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
 
 
 def _collect_full_artifact_instances(
@@ -181,6 +186,7 @@ def _collect_full_artifact_instances(
     traceability_by_path: Dict[str, str],
 ) -> Tuple[Dict[str, Set[str]], Dict[str, Set[str]]]:
     """Collect checked and all CDSL instruction instances from FULL artifacts."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
     artifact_instances: Dict[str, Set[str]] = {}
     artifact_instances_all: Dict[str, Set[str]] = {}
     for art in artifacts:
@@ -201,11 +207,12 @@ def _collect_full_artifact_instances(
             if bool(step.get("checked", False)):
                 artifact_instances.setdefault(pid, set()).add(inst)
     return artifact_instances, artifact_instances_all
-# @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
 
 
 def _parse_validate_args(argv: List[str]) -> argparse.Namespace:
     """Parse CLI args for the validate command."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cli-setup
     parser = argparse.ArgumentParser(
         prog="validate",
         description=(
@@ -238,17 +245,21 @@ def _parse_validate_args(argv: List[str]) -> argparse.Namespace:
         ),
     )
     return parser.parse_args(argv)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cli-setup
 
 
 def _extend_known_kinds(ctx: object, known_kinds: Set[str]) -> None:
     """Merge kit-defined ID kinds into the known-kinds set."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cli-setup
     from ..utils.context import collect_known_id_kinds
 
     known_kinds.update(collect_known_id_kinds(ctx))
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cli-setup
 
 
 def _run_validate_kits_gate(project_root: Path, ctx: object, verbose: bool) -> Optional[int]:
     """Run validate-kits fail-fast gate when kits are present."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-session
     meta = getattr(ctx, "meta", None)
     if not getattr(meta, "kits", None):
         return None
@@ -277,10 +288,13 @@ def _run_validate_kits_gate(project_root: Path, ctx: object, verbose: bool) -> O
         "validate_kits": report,
     })
     return 2 if rc == 2 else 1
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-session
 
 
 def _build_validate_session(args: argparse.Namespace) -> Tuple[Optional[_ValidateSession], Optional[int]]:
     """Load context, workspace state, and static validation metadata."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-load-context
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-session
     from ..utils.context import WorkspaceContext, get_context
 
     ctx = get_context()
@@ -320,10 +334,13 @@ def _build_validate_session(args: argparse.Namespace) -> Tuple[Optional[_Validat
         known_kinds=known_kinds,
         ctx_errors=ctx_errors,
     ), None
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-session
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-load-context
 
 
 def _emit_validate_output(data: Dict[str, object], *, output_path: Optional[str], human: bool, pretty: bool) -> None:
     """Emit validate output to stdout or a JSON file."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-output
     if output_path:
         text = json.dumps(data, indent=2 if pretty else None, ensure_ascii=False)
         if pretty:
@@ -331,10 +348,12 @@ def _emit_validate_output(data: Dict[str, object], *, output_path: Optional[str]
         Path(output_path).write_text(text, encoding="utf-8")
         return
     ui.result(data, human_fn=_human_validate if human else None)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-output
 
 
 def _emit_no_artifacts_result(session: _ValidateSession) -> int:
     """Emit the empty-registry result, preserving context load errors."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-output
     if session.ctx_errors:
         enrich_issues(session.ctx_errors, project_root=session.project_root)
         ui.result({
@@ -351,9 +370,10 @@ def _emit_no_artifacts_result(session: _ValidateSession) -> int:
         "artifacts_validated": 0,
         "error_count": 0,
         "warning_count": 0,
-        "message": "No artifacts found in registry",
+            "message": "No artifacts found in registry",
     })
     return 0
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-output
 
 
 def _append_registered_artifact(
@@ -363,6 +383,7 @@ def _append_registered_artifact(
     system_node: object,
 ) -> None:
     """Append one resolved registry artifact to the validation target list."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-resolution
     pkg = session.meta.get_kit(system_node.kit)
     if not pkg or not pkg.is_cfs_format():
         return
@@ -374,10 +395,12 @@ def _append_registered_artifact(
         artifact_meta.traceability,
         system_node.kit,
     ))
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-resolution
 
 
 def _resolve_explicit_artifact(session: _ValidateSession, artifact_path: Path) -> Optional[int]:
     """Resolve one explicit artifact path against the registry and active context."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-resolution
     from ..utils.context import StudioContext, determine_target_source
 
     if not artifact_path.exists():
@@ -425,10 +448,12 @@ def _resolve_explicit_artifact(session: _ValidateSession, artifact_path: Path) -
     artifact_meta, system_node = result
     _append_registered_artifact(session, artifact_path, artifact_meta, system_node)
     return None
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-resolution
 
 
 def _collect_all_registered_artifacts(session: _ValidateSession) -> None:
     """Resolve all registered artifacts for the active context."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-resolution
     for artifact_meta, system_node in session.meta.iter_all_artifacts():
         if session.ws_ctx is not None:
             artifact_path = session.ws_ctx.resolve_artifact_path(artifact_meta, session.project_root)
@@ -437,10 +462,13 @@ def _collect_all_registered_artifacts(session: _ValidateSession) -> None:
         if artifact_path is None or not artifact_path.exists():
             continue
         _append_registered_artifact(session, artifact_path, artifact_meta, system_node)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-resolution
 
 
 def _resolve_artifacts_to_validate(session: _ValidateSession) -> Optional[int]:
     """Populate the validation target list from args or registry state."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-resolve-artifacts
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-resolution
     if session.args.artifact:
         exit_code = _resolve_explicit_artifact(session, Path(session.args.artifact).resolve())
         if exit_code is not None:
@@ -450,10 +478,13 @@ def _resolve_artifacts_to_validate(session: _ValidateSession) -> Optional[int]:
     if session.artifacts_to_validate:
         return None
     return _emit_no_artifacts_result(session)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-resolution
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-resolve-artifacts
 
 
 def _maybe_emit_registry_failure(session: _ValidateSession, results: _ValidateResults) -> Optional[int]:
     """Stop early when registry-level errors make later checks unreliable."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-constraint-resolution
     if session.ctx_errors:
         results.all_errors.extend(session.ctx_errors)
     if not any(str(issue.get("type", "")) == "registry" for issue in results.all_errors):
@@ -468,6 +499,7 @@ def _maybe_emit_registry_failure(session: _ValidateSession, results: _ValidateRe
         "errors": results.all_errors,
     }, output_path=session.args.output, human=True, pretty=True)
     return 2
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-constraint-resolution
 
 
 def _resolve_constraints_for_artifact(
@@ -476,6 +508,7 @@ def _resolve_constraints_for_artifact(
     kit_id: str,
 ) -> Tuple[object, Optional[Path]]:
     """Resolve artifact-kind constraints and the originating constraints path."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-constraint-resolution
     from ..utils.context import _resolve_loaded_kit_constraints_path
 
     constraints_for_kind = None
@@ -493,6 +526,7 @@ def _resolve_constraints_for_artifact(
         logger.warning("Failed to resolve loaded kit constraints path for %s", loaded_kit, exc_info=exc)
         constraints_path = None
     return constraints_for_kind, constraints_path
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-constraint-resolution
 
 
 def _validate_one_artifact(
@@ -501,13 +535,17 @@ def _validate_one_artifact(
     artifact_entry: Tuple[Path, Path, str, str, str],
 ) -> None:
     """Run structure validation for one artifact and record its report."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
     artifact_path, _template_path, artifact_type, traceability, kit_id = artifact_entry
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-load-constraints
     constraints_for_kind, constraints_path = _resolve_constraints_for_artifact(session, artifact_type, kit_id)
     results.artifact_records.append(ArtifactRecord(
         path=artifact_path,
         artifact_kind=str(artifact_type),
         constraints=constraints_for_kind,
     ))
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-load-constraints
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-structure
     report = validate_artifact_file(
         artifact_path=artifact_path,
         artifact_kind=str(artifact_type),
@@ -527,6 +565,8 @@ def _validate_one_artifact(
     results.artifact_report_by_path[str(artifact_path)] = artifact_report
     results.all_errors.extend(report.get("errors", []))
     results.all_warnings.extend(report.get("warnings", []))
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-structure
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
 
 
 def _build_artifact_report(
@@ -538,6 +578,7 @@ def _build_artifact_report(
     verbose: bool,
 ) -> Dict[str, object]:
     """Build one per-artifact validate report, including optional ID stats."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
     errors = report.get("errors", [])
     warnings = report.get("warnings", [])
     artifact_report: Dict[str, object] = {
@@ -554,10 +595,12 @@ def _build_artifact_report(
         artifact_report["warnings"] = warnings
         artifact_report.update(_artifact_traceability_counts(artifact_path))
     return artifact_report
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
 
 
 def _artifact_traceability_counts(artifact_path: Path) -> Dict[str, int]:
     """Count traceability definitions and references for one artifact."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
     try:
         hits = scan_cpt_ids(artifact_path)
     except (OSError, ValueError) as exc:
@@ -567,6 +610,7 @@ def _artifact_traceability_counts(artifact_path: Path) -> Dict[str, int]:
         "id_definitions": len([hit for hit in hits if hit.get("type") == "definition"]),
         "id_references": len([hit for hit in hits if hit.get("type") == "reference"]),
     }
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
 
 
 def _attach_issue_to_artifact_report(
@@ -577,6 +621,7 @@ def _attach_issue_to_artifact_report(
     is_error: bool,
 ) -> None:
     """Increment per-artifact counters for a later validation issue."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
     report = results.artifact_report_by_path.get(str(issue.get("path", "") or ""))
     if report is None:
         return
@@ -589,16 +634,20 @@ def _attach_issue_to_artifact_report(
     report["warning_count"] = int(report.get("warning_count", 0) or 0) + 1
     if verbose and isinstance(report.get("warnings"), list):
         report["warnings"].append(issue)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
 
 
 def _run_initial_artifact_validation(session: _ValidateSession) -> Tuple[_ValidateResults, Optional[int]]:
     """Run per-artifact structure checks and stop on early failures."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
     results = _ValidateResults()
     exit_code = _maybe_emit_registry_failure(session, results)
     if exit_code is not None:
         return results, exit_code
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
     for artifact_entry in session.artifacts_to_validate:
         _validate_one_artifact(session, results, artifact_entry)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
     if not results.all_errors:
         for language_error in _run_content_language_check(session.artifacts_to_validate, session.project_root):
             results.all_errors.append(language_error)
@@ -624,10 +673,12 @@ def _run_initial_artifact_validation(session: _ValidateSession) -> Tuple[_Valida
         out["warnings"] = results.all_warnings
     _emit_validate_output(out, output_path=session.args.output, human=True, pretty=True)
     return results, 2
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-artifact-report
 
 
 def _build_cross_validation_context(session: _ValidateSession, results: _ValidateResults) -> List[ArtifactRecord]:
     """Load all artifacts needed for cross-reference and code validation context."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cross-context
     all_artifacts = list(results.artifact_records)
     validated_paths = {str(path) for path, _, _, _, _ in session.artifacts_to_validate}
     for artifact_meta, system_node in session.meta.iter_all_artifacts():
@@ -656,6 +707,7 @@ def _build_cross_validation_context(session: _ValidateSession, results: _Validat
         seen_paths = {str(record.path) for record in all_artifacts}
         all_artifacts.extend(_collect_cross_repo_artifacts(session.ws_ctx, seen_paths))
     return all_artifacts
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cross-context
 
 
 def _run_cross_validation(
@@ -664,6 +716,8 @@ def _run_cross_validation(
     all_artifacts_for_cross: List[ArtifactRecord],
 ) -> None:
     """Apply cross-artifact reference validation to the selected artifacts."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-cross-validate
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cross-run
     if not all_artifacts_for_cross:
         return
     validated_paths = {str(path) for path, _, _, _, _ in session.artifacts_to_validate}
@@ -682,6 +736,8 @@ def _run_cross_validation(
             continue
         results.all_warnings.append(issue)
         _attach_issue_to_artifact_report(issue, results=results, verbose=bool(session.args.verbose), is_error=False)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-cross-run
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-cross-validate
 
 
 def _scan_codebase_entry(
@@ -693,6 +749,7 @@ def _scan_codebase_entry(
     strict_code_validation: bool,
 ) -> None:
     """Scan one configured codebase entry and collect code traceability state."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
     for file_path in _resolve_code_scan_targets(session, entry):
         try:
             rel_path = file_path.resolve().relative_to(session.project_root).as_posix()
@@ -726,10 +783,12 @@ def _scan_codebase_entry(
                 "block_markers": len(code_file.block_markers),
                 "ids_referenced": len(file_ids),
             })
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
 
 
 def _resolve_code_scan_targets(session: _ValidateSession, entry: object) -> List[Path]:
     """Resolve concrete files for one codebase entry."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
     src_name = getattr(entry, "source", None)
     if src_name and session.ws_ctx is not None:
         code_path = session.ws_ctx.resolve_artifact_path(entry, session.project_root)
@@ -746,6 +805,7 @@ def _resolve_code_scan_targets(session: _ValidateSession, entry: object) -> List
         else entry.get("extensions", None)
     ) or [".py"]
     return [candidate for ext in extensions for candidate in code_path.rglob(f"*{ext}")]
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
 
 
 def _scan_system_codebase(
@@ -756,6 +816,7 @@ def _scan_system_codebase(
     strict_code_validation: bool,
 ) -> None:
     """Recursively scan a system node's configured codebase entries."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
     traceability = "FULL" if any(art.traceability == "FULL" for art in system_node.artifacts) else "DOCS-ONLY"
     for codebase_entry in system_node.codebase:
         _scan_codebase_entry(
@@ -772,6 +833,7 @@ def _scan_system_codebase(
             results=results,
             strict_code_validation=strict_code_validation,
         )
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
 
 
 def _run_code_validation(
@@ -780,6 +842,8 @@ def _run_code_validation(
     all_artifacts_for_cross: List[ArtifactRecord],
 ) -> None:
     """Run code traceability validation unless disabled by CLI flags."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-run
     traceability_by_path = _build_traceability_by_path(session.artifacts_to_validate)
     full_ids_to_check = _collect_full_traceability_ids(session.artifacts_to_validate)
     strict_code_validation = not session.args.artifact
@@ -820,22 +884,27 @@ def _run_code_validation(
     )
     results.all_errors.extend(code_validation.get("errors", []))
     results.all_warnings.extend(code_validation.get("warnings", []))
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-run
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
 
 
 def _build_traceability_by_path(
     artifacts_to_validate: List[Tuple[Path, Path, str, str, str]],
 ) -> Dict[str, str]:
     """Build a quick artifact-path to traceability lookup."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
     return {
         str(artifact_path): traceability
         for artifact_path, _template_path, _artifact_type, traceability, _kit_id in artifacts_to_validate
     }
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
 
 
 def _collect_full_traceability_ids(
     artifacts_to_validate: List[Tuple[Path, Path, str, str, str]],
 ) -> Set[str]:
     """Collect definition IDs from FULL-traceability artifacts."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
     full_ids_to_check: Set[str] = set()
     for artifact_path, _template_path, _artifact_kind, traceability, _kit_id in artifacts_to_validate:
         if traceability != "FULL":
@@ -848,6 +917,7 @@ def _collect_full_traceability_ids(
             _warn_validate(f"failed to collect definition ids from {artifact_path}: {exc}")
             continue
     return full_ids_to_check
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
 
 
 def _run_reference_coverage(
@@ -856,6 +926,7 @@ def _run_reference_coverage(
     all_artifacts_for_cross: List[ArtifactRecord],
 ) -> None:
     """Enforce fallback cross-reference coverage for unconstrained artifact kinds."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-reference-coverage
     if not all_artifacts_for_cross:
         return
     present_kinds, refs_by_id = _build_reference_index(all_artifacts_for_cross)
@@ -872,12 +943,14 @@ def _run_reference_coverage(
             results=results,
             verbose=bool(session.args.verbose),
         )
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-reference-coverage
 
 
 def _build_reference_index(
     all_artifacts_for_cross: List[ArtifactRecord],
 ) -> Tuple[Set[str], Dict[str, Set[str]]]:
     """Build present-kind and reference indices across all artifacts."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
     present_kinds: Set[str] = set()
     refs_by_id: Dict[str, Set[str]] = {}
     for artifact in all_artifacts_for_cross:
@@ -894,6 +967,7 @@ def _build_reference_index(
             _warn_validate(f"failed to index references in {artifact.path}: {exc}")
             continue
     return present_kinds, refs_by_id
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
 
 
 def _apply_reference_coverage_for_artifact(
@@ -908,6 +982,7 @@ def _apply_reference_coverage_for_artifact(
     verbose: bool,
 ) -> None:
     """Apply fallback coverage rules to one artifact without explicit constraints."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-reference-coverage
     artifact_path_str = str(artifact.path)
     if artifact_path_str not in validated_paths or getattr(artifact, "constraints", None) is not None:
         return
@@ -930,6 +1005,7 @@ def _apply_reference_coverage_for_artifact(
             results=results,
             verbose=verbose,
         )
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-reference-coverage
 
 
 def _apply_reference_coverage_for_definition(
@@ -944,6 +1020,7 @@ def _apply_reference_coverage_for_definition(
     verbose: bool,
 ) -> None:
     """Apply fallback coverage rules to one definition hit."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-reference-coverage
     defined_id = str(definition.get("id") or "").strip()
     if not defined_id:
         return
@@ -975,13 +1052,18 @@ def _apply_reference_coverage_for_definition(
     )
     results.all_errors.append(error)
     _attach_issue_to_artifact_report(error, results=results, verbose=verbose, is_error=True)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-reference-coverage
 
 
 def _emit_final_validate_report(session: _ValidateSession, results: _ValidateResults) -> int:
     """Enrich issues and emit the final validate report."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-return-report
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-output
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-enrich-errors
     _enrich_target_artifact_paths(results.all_errors, meta=session.meta, project_root=session.project_root)
     enrich_issues(results.all_errors, project_root=session.project_root)
     enrich_issues(results.all_warnings, project_root=session.project_root)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-enrich-errors
     overall_status = "PASS" if not results.all_errors else "FAIL"
     report: Dict[str, object] = {
         "status": overall_status,
@@ -1021,6 +1103,8 @@ def _emit_final_validate_report(session: _ValidateSession, results: _ValidateRes
         pretty=bool(session.args.verbose) or (overall_status != "PASS"),
     )
     return 0 if overall_status == "PASS" else 2
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-output
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-return-report
 
 
 # @cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
@@ -1033,27 +1117,16 @@ def cmd_validate(argv: List[str]) -> int:
     task statuses, traceability markers) and produces a machine-readable report.
     """
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-user-validate
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-load-context
     session, exit_code = _build_validate_session(_parse_validate_args(argv))
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-load-context
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-user-validate
     if exit_code is not None or session is None:
         return 1 if exit_code is None else exit_code
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-resolve-artifacts
     exit_code = _resolve_artifacts_to_validate(session)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-resolve-artifacts
     if exit_code is not None:
         return exit_code
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-self-check
     # validate-kits gate runs during session construction and has already passed here
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-self-check
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-load-constraints
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-structure
     results, exit_code = _run_initial_artifact_validation(session)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-structure
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-load-constraints
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-structure-fail
     if exit_code is not None:
         return exit_code
@@ -1062,17 +1135,11 @@ def cmd_validate(argv: List[str]) -> int:
     # registry-level failures are handled inside _run_initial_artifact_validation()
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-registry-fail
     all_artifacts_for_cross = _build_cross_validation_context(session, results)
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-cross-validate
     _run_cross_validation(session, results, all_artifacts_for_cross)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-cross-validate
     _run_code_validation(session, results, all_artifacts_for_cross)
     _run_reference_coverage(session, results, all_artifacts_for_cross)
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-enrich-errors
-    # final report emission enriches issues before output
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-enrich-errors
-    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-return-report
     return _emit_final_validate_report(session, results)
-    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-return-report
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-user-validate
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-helpers
 def _enrich_target_artifact_paths(
@@ -1197,9 +1264,9 @@ def _suggest_path_from_autodetect(node: object, target_kind: str) -> Optional[st
 # Content language check helper
 # ---------------------------------------------------------------------------
 
-
 def _load_language_validation_settings(project_root: "Path") -> Tuple[Optional[List[str]], list]:
     """Load configured allowed content languages and any config-load errors."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-config
     from ..utils.constraints import error as _error
     from ..utils import error_codes as _EC
 
@@ -1226,6 +1293,7 @@ def _load_language_validation_settings(project_root: "Path") -> Tuple[Optional[L
 
     validation = getattr(ws_cfg, "validation", None) if ws_cfg is not None else None
     return getattr(validation, "allowed_content_languages", None), []
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-config
 
 
 def _scan_artifact_language_violations(
@@ -1234,6 +1302,7 @@ def _scan_artifact_language_violations(
     allowed_ranges: object,
 ) -> list:
     """Scan one artifact for language violations."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-scan
     from ..utils.constraints import error as _error
     from ..utils import error_codes as _EC
     from ..utils.content_language import LangScanError as _LangScanError, scan_file as _scan_file
@@ -1258,6 +1327,7 @@ def _scan_artifact_language_violations(
             code=_EC.FILE_READ_ERROR,
         ))
     return results
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-scan
 
 def _run_content_language_check(
     artifacts_to_validate: list,
@@ -1272,6 +1342,7 @@ def _run_content_language_check(
     Config failures (malformed .cf-workspace.toml) are surfaced as
     FILE_LOAD_ERROR entries rather than silently disabling validation.
     """
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-run
     try:
         from ..utils.content_language import build_allowed_ranges
     except ImportError as exc:
@@ -1291,6 +1362,7 @@ def _run_content_language_check(
             continue
         results.extend(_scan_artifact_language_violations(artifact_path, allowed_langs, allowed_ranges))
     return results
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-run
 
 
 # ---------------------------------------------------------------------------
@@ -1343,6 +1415,7 @@ def _human_validate(data: dict) -> None:
 
 def _issue_location(issue: dict) -> str:
     """Extract display location from an issue dict, relative to cwd."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-issue-format
     loc = str(issue.get("location") or "")
     if not loc:
         path = str(issue.get("path") or "")
@@ -1356,10 +1429,12 @@ def _issue_location(issue: dict) -> str:
         if parts[1].isdigit():
             return f"{ui.relpath(parts[0])}:{parts[1]}"
     return ui.relpath(loc)
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-issue-format
 
 
 def _emit_issue_header(loc: str, code: str, msg: str, *, is_error: bool) -> None:
     """Emit the main issue heading and message."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-issue-format
     header_parts = []
     if loc:
         header_parts.append(loc)
@@ -1380,10 +1455,12 @@ def _emit_issue_header(loc: str, code: str, msg: str, *, is_error: bool) -> None
         ui.warn(msg)
     else:
         ui.substep(f"  > {msg}")
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-issue-format
 
 
 def _emit_issue_extras(issue: dict) -> bool:
     """Emit structured extra fields for an issue."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-issue-format
     has_extra = False
     reasons = issue.get("reasons")
     if isinstance(reasons, list) and reasons:
@@ -1409,6 +1486,7 @@ def _emit_issue_extras(issue: dict) -> bool:
             ui.substep(f"    {key}: {value}")
         has_extra = True
     return has_extra
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-issue-format
 
 
 def _format_issue(issue: object, *, is_error: bool) -> None:
@@ -1418,6 +1496,7 @@ def _format_issue(issue: object, *, is_error: bool) -> None:
     Special formatting for known structural keys (location, message, code,
     reasons, fixing_prompt); everything else auto-formatted as key: value.
     """
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-issue-format
     if not isinstance(issue, dict):
         if is_error:
             ui.warn(str(issue))
@@ -1433,4 +1512,5 @@ def _format_issue(issue: object, *, is_error: bool) -> None:
 
     if has_extra:
         ui.blank()
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-issue-format
 # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-format

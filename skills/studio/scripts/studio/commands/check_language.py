@@ -1,7 +1,4 @@
-"""check-language command — scan Markdown artifacts for disallowed Unicode scripts.
-
-@cpt-algo:cpt-studio-flow-traceability-validation-check-language:p1
-"""
+"""check-language command — scan Markdown artifacts for disallowed Unicode scripts."""
 # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-imports
 import argparse
 import logging
@@ -53,11 +50,7 @@ def _build_language_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _emit_language_error(message: str) -> int:
-    ui.result({"status": "ERROR", "message": message})
-    return 1
-
-
+# @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-languages
 def _resolve_allowed_languages(args, supported_languages: List[str]) -> List[str]:
     if args.languages is None:
         return _read_config_languages()
@@ -67,17 +60,21 @@ def _resolve_allowed_languages(args, supported_languages: List[str]) -> List[str
         supported = ", ".join(supported_languages)
         raise ValueError(f"Unknown language code(s): {', '.join(unknown)}. Supported: {supported}")
     return raw_langs
+# @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-languages
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-roots
 def _resolve_scan_roots(path_args: List[str]) -> List[Path]:
     roots = [Path(pth) for pth in path_args] if path_args else _default_roots()
     missing = [str(root) for root in roots if not root.exists()]
     if missing:
         raise ValueError(f"Path(s) not found: {', '.join(missing)}")
     return roots
+# @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-roots
 
 
 def _group_violations(violations) -> tuple[dict[str, list], list[dict]]:
+    # @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-group-violations
     by_file: dict[str, list] = {}
     violation_items: list[dict] = []
     for violation in violations:
@@ -91,15 +88,23 @@ def _group_violations(violations) -> tuple[dict[str, list], list[dict]]:
             "code": EC.CONTENT_LANGUAGE_VIOLATION,
         })
     return by_file, violation_items
+    # @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-group-violations
 
 
+# @cpt-algo:cpt-studio-algo-traceability-validation-check-language-scan:p1
 def _run_language_scan(args, supported_languages):
     from ..utils.content_language import LangScanError, build_allowed_ranges, scan_paths
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-ignore
     allowed_langs = _resolve_allowed_languages(args, supported_languages)
     ignore_patterns: List[str] = list(args.ignore)
     ignore_patterns.extend(_read_config_ignore_patterns())
+    # @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-ignore
+
     roots = _resolve_scan_roots(args.paths)
+    # @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-return-scan
+    # @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-count-files
+    # @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-scan-execution
     try:
         violations = scan_paths(
             roots,
@@ -108,10 +113,20 @@ def _run_language_scan(args, supported_languages):
         )
     except LangScanError as exc:
         raise ValueError(str(exc)) from exc
-    return allowed_langs, _count_md_files(roots), violations
+    # @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-scan-execution
+
+    files_scanned = _count_md_files(roots)
+    # @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-count-files
+
+    by_file, violation_items = _group_violations(violations)
+    return allowed_langs, files_scanned, violations, by_file, violation_items
+    # @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-return-scan
 
 
-# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-cmd-check-language
+# @cpt-flow:cpt-studio-flow-traceability-validation-check-language:p1
+# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-run-scan
+# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-parse-args
+# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-user-check-language
 def cmd_check_language(argv: List[str]) -> int:
     """Scan Markdown files for characters outside the allowed language set.
 
@@ -120,28 +135,43 @@ def cmd_check_language(argv: List[str]) -> int:
         1 — configuration / path error
         2 — one or more language violations found
     """
-    args = _build_language_parser().parse_args(argv)
+    requested_argv = list(argv)
+    # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-user-check-language
+
+    args = _build_language_parser().parse_args(requested_argv)
+    # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-parse-args
 
     try:
+        # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-error
         from ..utils.content_language import SUPPORTED_LANGUAGES
 
-        allowed_langs, files_scanned, violations = _run_language_scan(args, SUPPORTED_LANGUAGES)
+        allowed_langs, files_scanned, violations, by_file, violation_items = _run_language_scan(
+            args, SUPPORTED_LANGUAGES
+        )
+        # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-run-scan
     except ValueError as exc:
-        return _emit_language_error(str(exc))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.warning("check-language failed: %s", exc)
+        ui.result({"status": "ERROR", "message": str(exc)})
+        return 1
+    # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-error
 
     if not violations:
+        # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-pass
+        # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output
         result = {
             "status": "PASS",
             "allowed_languages": allowed_langs,
             "files_scanned": files_scanned,
             "violation_count": 0,
         }
+        # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-pass
         ui.result(result, human_fn=lambda d: _human_result(d, quiet=args.quiet))
         return 0
+        # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output
 
-    # Group violations by file for reporting
-    by_file, violation_items = _group_violations(violations)
-
+    # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-fail
+    # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output
     result = {
         "status": "FAIL",
         "allowed_languages": allowed_langs,
@@ -150,16 +180,16 @@ def cmd_check_language(argv: List[str]) -> int:
         "file_count": len(by_file),
         "violations": violation_items,
     }
+    # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-fail
     ui.result(result, human_fn=lambda d: _human_result(d, quiet=args.quiet))
     return 2
-
-# @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-cmd-check-language
+    # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-helpers
+# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-support
 
 def _read_config_languages() -> List[str]:
     """Read allowed_content_languages from workspace config; fall back to ['en'].
@@ -232,13 +262,13 @@ def _count_md_files(roots: List[Path]) -> int:
             count += sum(1 for _ in root.rglob("*.md"))
     return count
 
-# @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-helpers
+# @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-support
 
 
 # ---------------------------------------------------------------------------
 # Human formatter
 # ---------------------------------------------------------------------------
-# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-human-result
+# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output
 
 def _human_result(data: dict, quiet: bool = False) -> None:
     status = data.get("status", "")
@@ -285,4 +315,4 @@ def _human_result(data: dict, quiet: bool = False) -> None:
     )
     ui.blank()
 
-# @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-human-result
+# @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output

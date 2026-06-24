@@ -28,9 +28,9 @@ class _PathValidationContext:
     constraint_errors: List[Any]
     constraints_error_path: Path
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _constraint_artifact_bindings(loaded_kit: Any) -> Dict[str, Dict[str, str]]:
     """Return explicit artifact-kind bindings declared on constraints resources."""
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     entries = getattr(loaded_kit, "resource_entries", None)
     if not isinstance(entries, dict):
         return {}
@@ -58,8 +58,8 @@ def _constraint_artifact_bindings(loaded_kit: Any) -> Dict[str, Dict[str, str]]:
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _constraints_binding_path(loaded_kit: Any, resource_bindings: Dict[str, str]) -> str:
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     entries = getattr(loaded_kit, "resource_entries", None)
     if isinstance(entries, dict):
         for resource_id, raw_entry in sorted(entries.items()):
@@ -73,8 +73,8 @@ def _constraints_binding_path(loaded_kit: Any, resource_bindings: Dict[str, str]
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _known_constraint_kinds(loaded_kit: Any) -> Set[str]:
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     constraints = getattr(loaded_kit, "constraints", None)
     return {
         str(kind).strip().upper()
@@ -83,20 +83,19 @@ def _known_constraint_kinds(loaded_kit: Any) -> Set[str]:
     }
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
-
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _resource_binding_path(resource_bindings: Dict[str, str], resource_id: str) -> str:
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     return str(resource_bindings.get(resource_id, "") or "").strip()
-    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+# @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _missing_bound_artifact_warnings(
     *,
     kit_id: str,
     known_kinds: Set[str],
     artifacts: Dict[str, Dict[str, str]],
 ) -> List[Dict[str, object]]:
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     results: List[Dict[str, object]] = []
     for kind in sorted(known_kinds):
         spec = artifacts.get(kind, {})
@@ -129,11 +128,11 @@ def _missing_bound_artifact_warnings(
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _constraints_binding_paths(
     loaded_kit: Any,
     resource_bindings: Dict[str, str],
 ) -> List[Path]:
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     paths: List[Path] = []
     loaded_paths = getattr(loaded_kit, "constraints_paths", None)
     if isinstance(loaded_paths, list):
@@ -170,6 +169,7 @@ def _constraints_binding_paths(
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _synthesized_meta_from_resource_bindings(
     *,
     base_meta: Any,
@@ -178,7 +178,6 @@ def _synthesized_meta_from_resource_bindings(
     loaded_kit: Any,
 ) -> Tuple[Optional[Any], List[Dict[str, object]]]:
     """Build self-check metadata from loaded manifest resource bindings."""
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     from ..utils.artifacts_meta import ArtifactsMeta, Kit
 
     rb = getattr(loaded_kit, "resource_bindings", None)
@@ -228,6 +227,7 @@ def _synthesized_meta_from_resource_bindings(
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _bound_artifacts_from_resources(
     resource_bindings: Dict[str, str],
     loaded_kit: Any,
@@ -239,8 +239,10 @@ def _bound_artifacts_from_resources(
         if spec:
             artifacts[kind] = spec
     return artifacts
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _bound_artifact_spec(
     resource_bindings: Dict[str, str],
     binding_spec: Dict[str, str],
@@ -259,8 +261,10 @@ def _bound_artifact_spec(
     if example_path:
         spec["examples"] = example_path
     return spec
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _resolve_bound_kit_base(
     *,
     adapter_dir: Path,
@@ -271,8 +275,10 @@ def _resolve_bound_kit_base(
         return Path(constraints_path).parent
     kit_root = getattr(loaded_kit, "kit_root", None)
     return kit_root if isinstance(kit_root, Path) else adapter_dir
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 def _synthesized_meta_from_kit_model(
     *,
     base_meta: Any,
@@ -282,7 +288,6 @@ def _synthesized_meta_from_kit_model(
     constraints: Any,
 ) -> Tuple[Optional[Any], List[Dict[str, object]]]:
     """Build self-check metadata from a standalone canonical KitModel."""
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
     resource_bindings: Dict[str, str] = {}
     resource_entries: Dict[str, Dict[str, object]] = {}
     constraints_paths: List[Path] = []
@@ -324,7 +329,7 @@ def _merge_self_check_report(
     source: Dict[str, object],
 ) -> None:
     """Merge one self-check report into an aggregate report."""
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-template-check
     if not source:
         return
     target.setdefault("results", [])
@@ -339,9 +344,10 @@ def _merge_self_check_report(
     results = source.get("results", [])
     if isinstance(results, list):
         target["results"].extend(results)  # type: ignore[union-attr]
-    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-template-check
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-init-context
 def _collect_context_kit_errors(
     ctx: Any,
     kit_filter: Optional[str],
@@ -358,8 +364,10 @@ def _collect_context_kit_errors(
             context_kit_errors.setdefault(err_kit, []).append(err)
         all_errors.append(err)
     return all_errors, context_kit_errors
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-init-context
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-structural-check
 def _append_loaded_kit_reports(
     *,
     ctx: Any,
@@ -381,8 +389,10 @@ def _append_loaded_kit_reports(
         if rep_errors:
             kit_errors_by_id[kit_id_str] = rep_errors
         _sync_kit_report(rep, kit_errors_by_id.get(kit_id_str, []), verbose)
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-structural-check
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-structural-check
 def _new_loaded_kit_report(kit_id: str, loaded_kit: Any, verbose: bool) -> Dict[str, object]:
     kit_root = getattr(loaded_kit, "kit_root", None)
     kit_path_value = str(getattr(getattr(loaded_kit, "kit", None), "path", "") or "")
@@ -397,8 +407,10 @@ def _new_loaded_kit_report(kit_id: str, loaded_kit: Any, verbose: bool) -> Dict[
     if verbose and constraints is not None and getattr(constraints, "by_kind", None):
         rep["kinds"] = sorted(constraints.by_kind.keys())
     return rep
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-structural-check
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-build-result
 def _sync_kit_report(rep: Dict[str, object], rep_errors: List[Dict[str, object]], verbose: bool) -> None:
     rep["status"] = "FAIL" if rep_errors else "PASS"
     rep["error_count"] = len(rep_errors)
@@ -408,8 +420,10 @@ def _sync_kit_report(rep: Dict[str, object], rep_errors: List[Dict[str, object]]
         rep["errors"] = rep_errors
     else:
         rep.pop("errors", None)
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-build-result
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-resolve-resource-paths
 def _verify_loaded_kit_resource_paths(
     *,
     ctx: Any,
@@ -432,8 +446,10 @@ def _verify_loaded_kit_resource_paths(
         rep = kit_reports_by_id.get(kit_id_str)
         if rep is not None:
             _sync_kit_report(rep, kit_errors_by_id.get(kit_id_str, []), verbose)
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-resolve-resource-paths
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-resolve-resource-paths
 def _missing_resource_binding_errors(
     kit_id: str,
     resource_bindings: Dict[str, str],
@@ -453,8 +469,10 @@ def _missing_resource_binding_errors(
             )
         )
     return errors
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-resolve-resource-paths
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-template-check
 def _run_registered_self_check(
     *,
     project_root: Path,
@@ -506,8 +524,10 @@ def _run_registered_self_check(
         )
         _merge_self_check_report(self_check_report, sc_out)
     return self_check_report
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-template-check
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-template-check
 def _record_binding_warnings(
     self_check_report: Dict[str, object],
     binding_warnings: List[Dict[str, object]],
@@ -519,8 +539,10 @@ def _record_binding_warnings(
     self_check_report.setdefault("status", "PASS")
     self_check_report.setdefault("templates_checked", 0)
     self_check_report.setdefault("kits_checked", 0)
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-template-check
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-template-check
 def _collect_self_check_failures(
     self_check_report: Dict[str, object],
     all_errors: List[Dict[str, object]],
@@ -530,8 +552,11 @@ def _collect_self_check_failures(
             errors = result.get("errors", [])
             if isinstance(errors, list):
                 all_errors.extend(errors)
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-template-check
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-build-result
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
 def _build_validate_kits_result(
     *,
     verbose: bool,
@@ -561,10 +586,13 @@ def _build_validate_kits_result(
             if len(all_errors) > 10:
                 result["errors_truncated"] = len(all_errors) - 10
     return (0 if overall_status == "PASS" else 2), result
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-build-result
 
 
 # @cpt-dod:cpt-studio-dod-kit-validate:p1
 # @cpt-algo:cpt-studio-algo-kit-validate:p1
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-init-context
 def run_validate_kits(
     *,
     project_root: Path,
@@ -577,7 +605,6 @@ def run_validate_kits(
     Returns (return_code, report_dict).  rc=0 means PASS, rc=2 means FAIL.
     This is the reusable engine called by both the CLI and ``cmd_update``.
     """
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-init-context
     from ..utils.context import get_context
     from ..utils.artifacts_meta import load_artifacts_meta
 
@@ -603,7 +630,6 @@ def run_validate_kits(
     )
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-structural-check
 
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-resolve-resource-paths
     # ── Phase 1b: Resource path verification (manifest-driven kits) ───
     _verify_loaded_kit_resource_paths(
         ctx=ctx,
@@ -613,7 +639,6 @@ def run_validate_kits(
         kit_errors_by_id=kit_errors_by_id,
         verbose=verbose,
     )
-    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-resolve-resource-paths
 
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-template-check
     # ── Phase 2: Template & example validation ────────────────────────
@@ -633,7 +658,6 @@ def run_validate_kits(
         _collect_self_check_failures(self_check_report, all_errors)
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-template-check
 
-    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-build-result
     # ── Build result ──────────────────────────────────────────────────
     return _build_validate_kits_result(
         verbose=verbose,
@@ -641,12 +665,12 @@ def run_validate_kits(
         all_errors=all_errors,
         self_check_report=self_check_report,
     )
-    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-build-result
 
 
 # @cpt-flow:cpt-studio-flow-kit-validate-cli:p1
 def cmd_validate_kits(argv: List[str]) -> int:
     """Validate Studio kit packages (CLI entry point)."""
+    # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-user-self-check
     # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-parse-args
     p = argparse.ArgumentParser(
         prog="validate-kits",
@@ -698,12 +722,13 @@ def cmd_validate_kits(argv: List[str]) -> int:
     ui.result(result, human_fn=_human_validate_kits)
     return rc
     # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-output-result
+    # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-user-self-check
 
 
 # @cpt-algo:cpt-studio-algo-kit-validate-by-path:p1
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-resolve-dir
 def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int, Dict[str, Any]]:
     """Validate a standalone kit directory (not necessarily registered in config)."""
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-resolve-dir
     from ..utils.constraints import load_constraints_files, load_constraints_toml
     from ..utils.artifacts_meta import ArtifactsMeta
 
@@ -732,7 +757,6 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
     )
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
 
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
     # ── Phase 1b: KitModel resource verification ─────────────────────
     _apply_path_model_info(
         model=validation.model,
@@ -744,7 +768,6 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         kit_report=kit_report,
         all_errors=all_errors,
     )
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
     # ── Phase 2: Template & example validation ────────────────────────
@@ -763,7 +786,6 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
     )
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
     self_check_report = _run_path_self_check(
         kc_errs=validation.constraint_errors,
         binding_warnings=binding_warnings,
@@ -773,9 +795,7 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         verbose=verbose,
         all_errors=all_errors,
     )
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
 
-    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
     # ── Build result ──────────────────────────────────────────────────
     return _build_validate_kits_result(
         verbose=verbose,
@@ -783,9 +803,9 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         all_errors=all_errors,
         self_check_report=self_check_report,
     )
-    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
 def _prepare_path_validation(
     *,
     kit_dir: Path,
@@ -821,8 +841,10 @@ def _prepare_path_validation(
         constraint_errors=constraint_errors,
         constraints_error_path=constraints_error_path,
     )
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
 def _load_path_validation_constraints(
     *,
     kit_dir: Path,
@@ -842,8 +864,10 @@ def _load_path_validation_constraints(
         return constraints, errors, constraint_paths, constraint_paths[0]
     constraints, errors = load_constraints_toml(kit_dir)
     return constraints, errors, constraint_paths, kit_dir / "constraints.toml"
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
 def _new_path_kit_report(
     *,
     slug: str,
@@ -878,8 +902,10 @@ def _new_path_kit_report(
     if verbose and constraints is not None and getattr(constraints, "by_kind", None):
         kit_report["kinds"] = sorted(constraints.by_kind.keys())
     return kit_report
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
 def _apply_path_model_info(
     *,
     model: Any,
@@ -914,8 +940,10 @@ def _apply_path_model_info(
     kit_report["error_count"] = int(kit_report.get("error_count", 0)) + 1
     if verbose:
         kit_report.setdefault("errors", []).append(err)
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 def _build_path_validation_meta(
     *,
     ArtifactsMeta: Any,
@@ -935,8 +963,10 @@ def _build_path_validation_meta(
             constraints=constraints,
         )
     return _legacy_path_validation_meta(ArtifactsMeta, kit_dir, slug), []
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 def _legacy_path_validation_meta(artifacts_meta_cls: Any, kit_dir: Path, slug: str) -> Any:
     artifacts_dict: Dict[str, Dict[str, str]] = {}
     artifacts_dir = kit_dir / "artifacts"
@@ -956,8 +986,10 @@ def _legacy_path_validation_meta(artifacts_meta_cls: Any, kit_dir: Path, slug: s
         "project_root": str(kit_dir.parent),
         "kits": {slug: {"format": "CFS", "path": str(kit_dir), "artifacts": artifacts_dict}},
     })
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
 def _run_path_self_check(
     *,
     kc_errs: List[Any],
@@ -993,6 +1025,7 @@ def _run_path_self_check(
         _merge_self_check_report(self_check_report, sc_out)
     _collect_self_check_failures(self_check_report, all_errors)
     return self_check_report
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
 
 # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 def _show_error(e: object, *, prefix: str = "\u2717") -> None:
@@ -1048,6 +1081,7 @@ def _human_validate_kits(data: dict) -> None:
 # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 
 
+# @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 def _render_verbose_kit_reports(kits: List[dict]) -> None:
     for kit_report in kits:
         kit_id = kit_report.get("kit", "?")
@@ -1060,8 +1094,10 @@ def _render_verbose_kit_reports(kits: List[dict]) -> None:
         ui.warn(f"{kit_id}: {status} ({kit_report.get('error_count', 0)} errors)")
         for error in kit_report.get("errors", [])[:10]:
             _show_error(error)
+    # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 
 
+# @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 def _render_self_check_results(sc_results: List[dict], *, show_verbose: bool) -> None:
     if not sc_results:
         return
@@ -1069,8 +1105,10 @@ def _render_self_check_results(sc_results: List[dict], *, show_verbose: bool) ->
     ui.substep("Templates & examples:")
     for result in sc_results:
         _render_self_check_result(result, show_verbose=show_verbose)
+    # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 
 
+# @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 def _render_self_check_result(result: dict, *, show_verbose: bool) -> None:
     kit_id = result.get("kit") or "?"
     kind = result.get("kind") or "?"
@@ -1090,8 +1128,10 @@ def _render_self_check_result(result: dict, *, show_verbose: bool) -> None:
         _show_error(error)
     for warning in result.get("warnings", [])[:10]:
         _show_error(warning, prefix="!")
+    # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 
 
+# @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 def _render_non_verbose_validate_errors(data: dict, sc_results: List[dict]) -> None:
     if data.get("kits"):
         return
@@ -1112,8 +1152,10 @@ def _render_non_verbose_validate_errors(data: dict, sc_results: List[dict]) -> N
     truncated = data.get("errors_truncated", 0)
     if truncated:
         ui.substep(f"  ... and {truncated} more error(s)")
+    # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 
 
+# @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format
 def _shown_self_check_messages(sc_results: List[dict]) -> Set[str]:
     shown_msgs: Set[str] = set()
     for result in sc_results:
@@ -1121,3 +1163,4 @@ def _shown_self_check_messages(sc_results: List[dict]) -> Set[str]:
             if isinstance(error, dict):
                 shown_msgs.add(str(error.get("message", "")))
     return shown_msgs
+    # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-format

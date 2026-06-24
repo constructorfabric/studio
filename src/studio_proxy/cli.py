@@ -11,7 +11,7 @@ All actual logic lives in the skill engine — this proxy only routes.
 @cpt-state:cpt-studio-state-core-infra-project-install:p1
 """
 
-# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-imports
 import os
 import logging
 import subprocess
@@ -31,14 +31,18 @@ from studio_proxy.resolve import (
     get_project_version,
     resolve_skill,
 )
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-imports
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-configure-logging
 def _configure_proxy_logging() -> None:
     """Ensure proxy diagnostics are emitted to stderr in unmanaged environments."""
     root_logger = logging.getLogger()
     if root_logger.handlers:
         return
     logging.basicConfig(level=logging.WARNING, format="%(message)s", stream=sys.stderr)
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-configure-logging
+
 
 def _extract_version_param(args: List[str]) -> Optional[str]:
     """
@@ -47,7 +51,21 @@ def _extract_version_param(args: List[str]) -> Optional[str]:
     Supports: --version VALUE, --version=VALUE
     Mutates args in place, returns the version string or None.
     """
-    return _extract_named_param(args, "--version")
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-extract-version-param
+    i = 0
+    while i < len(args):
+        if args[i] == "--version" and i + 1 < len(args):
+            value = args[i + 1]
+            del args[i:i + 2]
+            return value
+        if args[i].startswith("--version="):
+            value = args[i].split("=", 1)[1]
+            del args[i]
+            return value
+        i += 1
+    return None
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-extract-version-param
+
 
 def _extract_named_param(args: List[str], name: str) -> Optional[str]:
     """
@@ -56,6 +74,7 @@ def _extract_named_param(args: List[str], name: str) -> Optional[str]:
     Supports: NAME VALUE, NAME=VALUE
     Mutates args in place, returns the value string or None.
     """
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-extract-named-param
     i = 0
     while i < len(args):
         if args[i] == name and i + 1 < len(args):
@@ -68,10 +87,12 @@ def _extract_named_param(args: List[str], name: str) -> Optional[str]:
             return value
         i += 1
     return None
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-extract-named-param
 
 
 def _peek_named_param(args: List[str], name: str) -> Optional[str]:
     """Read a named parameter without mutating the forwarded args."""
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-peek-named-param
     i = 0
     while i < len(args):
         if args[i] == name and i + 1 < len(args):
@@ -80,9 +101,10 @@ def _peek_named_param(args: List[str], name: str) -> Optional[str]:
             return args[i].split("=", 1)[1]
         i += 1
     return None
-# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-peek-named-param
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-routing-datamodel
 @dataclass
 class _ProxyCommandOptions:
     target_version: Optional[str] = None
@@ -92,7 +114,15 @@ class _ProxyCommandOptions:
     custom_url: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class _ResolvedSkillTarget:
+    path: Path
+    source: str
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-routing-datamodel
+
+
 def _mirror_override(args: List[str], set_override: Any) -> int:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
     if len(args) < 3:
         write_stderr("Usage: cfs mirror override <old-url> <new-url>")
         return 1
@@ -100,9 +130,11 @@ def _mirror_override(args: List[str], set_override: Any) -> int:
     path = set_override(old_url, new_url)
     print(f"Registered: {old_url} -> {new_url}  (wrote: {path})")
     return 0
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
 def _mirror_list(list_overrides: Any) -> int:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
     entries = list_overrides()
     if not entries:
         print("(no overrides)")
@@ -110,9 +142,11 @@ def _mirror_list(list_overrides: Any) -> int:
     for from_url, to_url, source_path in entries:
         print(f"{from_url}  ->  {to_url}      [{source_path}]")
     return 0
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
 def _mirror_sources(mirror_sources: Any) -> int:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
     sources = mirror_sources()
     any_changed = False
     for name, original, effective in sources:
@@ -128,9 +162,11 @@ def _mirror_sources(mirror_sources: Any) -> int:
     if any_changed:
         print("Lines marked `*` are currently rewritten by active overrides.")
     return 0
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
 def _mirror_remove(args: List[str], remove_override: Any) -> int:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
     if len(args) < 2:
         write_stderr("Usage: cfs mirror remove <old-url>")
         return 1
@@ -140,9 +176,11 @@ def _mirror_remove(args: List[str], remove_override: Any) -> int:
         return 0
     write_stderr(f"Not found: {old_url}")
     return 1
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
 def _confirm_mirror_clear(args: List[str]) -> bool:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
     if "--yes" in args or "-y" in args:
         return True
     if not sys.stdin.isatty():
@@ -156,17 +194,21 @@ def _confirm_mirror_clear(args: List[str]) -> bool:
         return True
     write_stderr("Aborted.")
     return False
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
 def _mirror_clear(args: List[str], clear_overrides: Any) -> int:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
     if not _confirm_mirror_clear(args):
         return 1
     count = clear_overrides()
     print(f"Cleared {count} override(s).")
     return 0
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
 def _print_mirror_help() -> int:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
     print("Usage: cfs mirror <subcommand> [args]")
     print("")
     print("Subcommands:")
@@ -181,8 +223,8 @@ def _print_mirror_help() -> int:
     print("  cfs mirror override github.com/constructorfabric/studio github.com/ainetx/studio")
     print("  cfs mirror override constructorfabric ainetx   # rewrites all constructorfabric/* URLs")
     return 0
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
-# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 def _handle_mirror(args: List[str]) -> int:
     """
     Handle the 'mirror' subcommand family.
@@ -198,6 +240,7 @@ def _handle_mirror(args: List[str]) -> int:
         mirror_sources,
     )
 
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-mirror-dispatch
     sub = args[0] if args else None
     handlers = {
         "override": lambda: _mirror_override(args, set_override),
@@ -207,7 +250,7 @@ def _handle_mirror(args: List[str]) -> int:
         "clear": lambda: _mirror_clear(args, clear_overrides),
     }
     return handlers.get(sub, _print_mirror_help)()
-# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-mirror-dispatch
 
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
@@ -271,6 +314,7 @@ def _print_update_check_human(data: Dict[str, Any]) -> None:
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 
 
+# @cpt-begin:cpt-studio-dod-core-infra-cli-routes:p1:inst-print-version-provenance
 def _print_version_provenance(provenance: Optional[Dict[str, Any]], default_unknown: bool = False) -> None:
     if not provenance:
         if default_unknown:
@@ -288,8 +332,10 @@ def _print_version_provenance(provenance: Optional[Dict[str, Any]], default_unkn
         print(f"  resolved ref: {resolved_ref}")
     if verified:
         print(f"  verified: {verified}")
+# @cpt-end:cpt-studio-dod-core-infra-cli-routes:p1:inst-print-version-provenance
 
 
+# @cpt-begin:cpt-studio-dod-core-infra-global-package:p1:inst-report-installed-versions
 def _handle_version_info(args: List[str]) -> Optional[int]:
     if not (args and args[0] == "--version" and len(args) == 1):
         return None
@@ -308,8 +354,10 @@ def _handle_version_info(args: List[str]) -> Optional[int]:
             print(f"  path: {project_skill}")
             _print_version_provenance(get_project_provenance(project_skill), default_unknown=True)
     return 0
+# @cpt-end:cpt-studio-dod-core-infra-global-package:p1:inst-report-installed-versions
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-extract-proxy-options
 def _extract_proxy_command_options(args: List[str]) -> _ProxyCommandOptions:
     options = _ProxyCommandOptions()
     if not (args and args[0] in ("init", "update")):
@@ -334,8 +382,10 @@ def _extract_proxy_command_options(args: List[str]) -> _ProxyCommandOptions:
         options.skip_cache = True
         args.remove("--no-cache")
     return options
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-extract-proxy-options
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-explicit-cache-update
 def _run_cache_update(
     source_dir: Optional[str],
     target_version: Optional[str],
@@ -353,6 +403,7 @@ def _run_cache_update(
     if explicit is None and len(args) > 1 and not args[1].startswith("-"):
         explicit = args[1]
     return download_and_cache(version=explicit, force=force_update, url=custom_url)
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-explicit-cache-update
 
 
 def _handle_update_command(args: List[str], options: _ProxyCommandOptions) -> Optional[int]:
@@ -360,7 +411,6 @@ def _handle_update_command(args: List[str], options: _ProxyCommandOptions) -> Op
         return None
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-update-cache
     if not options.skip_cache and "--help" not in args and "-h" not in args:
-        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-explicit-cache-update
         success, message = _run_cache_update(
             options.source_dir,
             options.target_version,
@@ -368,29 +418,24 @@ def _handle_update_command(args: List[str], options: _ProxyCommandOptions) -> Op
             options.custom_url,
             args,
         )
-        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-explicit-cache-update
         write_stderr(message)
-        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-cache-update
         if not success:
             return 1
-        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-cache-update
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-update-cache
     skill_path = find_cached_skill()
     if skill_path is None:
         write_stderr("Cache not found. Run 'cfs update' without --no-cache first.")
         return 1
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-cache-update
     write_stderr("Updating project...")
-    update_args = list(args)
+    forwarded_args = list(args)
     if options.target_version is None and len(args) > 1 and not args[1].startswith("-"):
-        update_args = ["update"] + args[2:]
-    # @cpt-begin:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
-    # forwarded skill update owns project-footprint refresh such as gitignore updates
-    # @cpt-end:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
-    # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-update-complete
-    return _forward_to_skill(skill_path, update_args)
-    # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-update-complete
+        forwarded_args = ["update"] + args[2:]
+    return _forward_to_skill(skill_path, forwarded_args)
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-cache-update
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
 def _maybe_prepare_init_cache(args: List[str], options: _ProxyCommandOptions) -> Optional[int]:
     if options.force_update and args and args[0] == "init":
         args.append("--force")
@@ -401,7 +446,6 @@ def _maybe_prepare_init_cache(args: List[str], options: _ProxyCommandOptions) ->
     )
     if not should_prepare:
         return None
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
     if options.source_dir is not None:
         from studio_proxy.cache import copy_from_local
 
@@ -419,27 +463,46 @@ def _maybe_prepare_init_cache(args: List[str], options: _ProxyCommandOptions) ->
             force=options.force_update,
             url=options.custom_url,
         )
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
-    write_stderr(message)
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
-    return None if success else 1
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
+    write_stderr(message)
+    if not success:
+        return 1
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
+    return None
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
 
 
-def _resolve_skill_for_command(args: List[str], skip_cache: bool) -> Optional[Path]:
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-project-skill
+def _resolve_skill_for_command(args: List[str], skip_cache: bool) -> Optional[_ResolvedSkillTarget]:
     use_cache_for_init = (
         args and args[0] == "init"
         and not skip_cache
         and "--help" not in args and "-h" not in args
     )
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-project-skill
     if use_cache_for_init:
-        return find_cached_skill()
-    skill_path, _source = resolve_skill()
-    return skill_path
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-cache
+        cached_skill = find_cached_skill()
+        cache_missing = cached_skill is None
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-cache
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-cache
+        if not cache_missing:
+            return _ResolvedSkillTarget(cached_skill, "cache")
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-cache
+        return None
+
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-project-skill
+    resolved_skill, resolved_source = resolve_skill()
+    if resolved_skill is not None and resolved_source in ("project", "cache"):
+        return _ResolvedSkillTarget(resolved_skill, resolved_source)
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-project-skill
+
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
+    return None
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
 def _ensure_skill_available(skill_path: Optional[Path]) -> Optional[Path]:
     if skill_path is not None:
         return skill_path
@@ -470,9 +533,7 @@ def _ensure_skill_available(skill_path: Optional[Path]) -> Optional[Path]:
         write_stderr("  Downloading automatically (non-interactive mode)...")
 
     write_stderr("")
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
     success, message = download_and_cache()
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
     if not success:
         # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
@@ -481,11 +542,27 @@ def _ensure_skill_available(skill_path: Optional[Path]) -> Optional[Path]:
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-download-error
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-download-failed
     write_stderr_lines(f"  {message}", "")
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
     return find_cached_skill()
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-auto-download
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
+def _resolve_invocation_target(
+    args: List[str],
+    skip_cache: bool,
+) -> Optional[_ResolvedSkillTarget]:
+    resolved = _resolve_skill_for_command(args, skip_cache)
+    if resolved is not None:
+        return resolved
+    skill_path = _ensure_skill_available(None)
+    if skill_path is None:
+        return None
+    target = _ResolvedSkillTarget(skill_path, "fresh-cache")
+    return target
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-early-proxy-command
 def _handle_proxy_command(args: List[str]) -> tuple[Optional[int], _ProxyCommandOptions]:
     version_result = _handle_version_info(args)
     if version_result is not None:
@@ -498,6 +575,7 @@ def _handle_proxy_command(args: List[str]) -> tuple[Optional[int], _ProxyCommand
     if init_result is not None:
         return init_result, options
     return None, options
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-early-proxy-command
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -510,8 +588,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-user-invokes
 
     # Mirror subcommand — pure proxy-local, never triggers skill engine or cache download
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-mirror-dispatch
     if args and args[0] == "mirror":
         return _handle_mirror(args[1:])
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-mirror-dispatch
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-telemetry
     from studio_proxy.telemetry import track_invocation
@@ -521,60 +601,57 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args and args[0] == "check-updates":
         return _handle_check_updates(args[1:])
 
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-early-proxy-command
     early_result, options = _handle_proxy_command(args)
     if early_result is not None:
         return early_result
-
-    # @cpt-dod:cpt-studio-dod-core-infra-agents-integrity:p1
-    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
-    # Project-installed skill resolution is anchored on the managed root
-    # AGENTS.md block (`@cf:root-agents`) and its `cf-studio-path` variable.
-    # If that block is absent or unreadable, routing falls back to cache rather
-    # than mutating repository state during ordinary command dispatch.
-    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-project-skill
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-project-skill
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-cache
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-cache
-    skill_path = _resolve_skill_for_command(args, options.skip_cache)
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-cache
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-cache
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-project-skill
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-project-skill
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-early-proxy-command
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-cache
-    skill_path = _ensure_skill_available(skill_path)
-    if skill_path is None:
+    target = _resolve_invocation_target(args, options.skip_cache)
+    if target is None:
         return 1
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-cache
 
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-engine-execute
-    result = _forward_to_skill(skill_path, args)
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-engine-execute
+    if target.source == "fresh-cache":
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
+        skill_path = target.path
+        forwarded_args = list(args)
+        result = _forward_to_skill(skill_path, forwarded_args)
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
+    elif target.source == "project":
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-project
+        skill_path = target.path
+        forwarded_args = list(args)
+        result = _forward_to_skill(skill_path, forwarded_args)
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-project
+    else:
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-cache
+        skill_path = target.path
+        forwarded_args = list(args)
+        result = _forward_to_skill(skill_path, forwarded_args)
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-cache
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
     if not os.environ.get("CFS_NO_VERSION_CHECK"):
-        _background_version_check(skill_path, args)
+        _background_version_check(target.path, args)
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-exit
     return result
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-exit
 
-# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-forward-subprocess
 def _forward_to_skill(skill_path: Path, args: List[str]) -> int:
     """
     Forward command to the resolved skill engine via subprocess.
 
     Uses the same Python interpreter that's running this proxy.
     """
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-project
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-cache
     cmd = [sys.executable, str(skill_path)] + args
 
     try:
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-engine-execute
         proc = subprocess.run(
             cmd,
             stdin=sys.stdin,
@@ -582,15 +659,18 @@ def _forward_to_skill(skill_path: Path, args: List[str]) -> int:
             check=False,
         )
         return proc.returncode
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-engine-execute
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-forward-subprocess-errors
     except FileNotFoundError:
         write_stderr(f"Error: Skill entry point not found: {skill_path}")
         return 1
-    except OSError as e:
-        write_stderr(f"Error: Failed to execute skill: {e}")
+    except OSError as exc:
+        write_stderr(f"Error: Failed to execute skill: {exc}")
         return 1
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-cache
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-project
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-forward-subprocess-errors
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-forward-subprocess
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 def _background_version_check(project_skill_path: Path, args: Optional[List[str]] = None) -> None:
     """
     Non-blocking background version check.
@@ -603,21 +683,23 @@ def _background_version_check(project_skill_path: Path, args: Optional[List[str]
     if "--json" in args:
         return
     try:
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-bg-check-cache
         from studio_proxy.update_check import read_cached_update_check, should_refresh
         cached = read_cached_update_check()
-        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
-        # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-bg-check-cache
         _print_cached_update_notices(cached)
+        # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-bg-check-refresh
         if should_refresh(cached):
             _spawn_update_check_worker(project_skill_path, args)
-        # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
-        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
+        # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-bg-check-refresh
     except (OSError, ValueError) as exc:
         write_stderr(f"Warning: background update check unavailable: {exc}")
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 def _print_cached_update_notices(cached: Optional[Dict[str, Any]]) -> None:
-    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
+    # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
     if not cached or not cached.get("updates_available"):
         return
     checks = cached.get("checks", {})
@@ -646,10 +728,12 @@ def _print_cached_update_notices(cached: Optional[Dict[str, Any]]) -> None:
         write_stderr(
             f"cfs: {kits.get('updates_available')} kit update(s) available. Run: {command_hint}"
         )
-    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
+    # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 
 
 def _spawn_update_check_worker(project_skill_path: Path, args: List[str]) -> None:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-spawn-update-worker
     project_root = _peek_named_param(args, "--project-root") or ""
     cmd = [
         sys.executable,
@@ -672,11 +756,13 @@ def _spawn_update_check_worker(project_skill_path: Path, args: List[str]) -> Non
             )
     except OSError as exc:
         write_stderr(f"Warning: unable to start update-check worker: {exc}")
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-spawn-update-worker
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-normalize-version
 def _normalize_version_for_compare(version: str) -> str:
     """Normalize local cache display versions for project/cache equality checks."""
     if version.startswith("local:"):
         return version.removeprefix("local:")
     return version
-# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-normalize-version

@@ -83,29 +83,27 @@ class StudioContext:
 
         project_root = (adapter_dir / meta.project_root).resolve()
 
-        # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-kits
         kits, errors = _load_all_kits(meta, adapter_dir, project_root)
-        # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-kits
 
-        # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-expand-autodetect
         errors.extend(_expand_autodetect_errors(meta, adapter_dir, project_root, kits))
-        # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-expand-autodetect
 
         # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-collect-systems
-        registered_systems = meta.get_all_system_prefixes()
+        registered_systems: Set[str] = set()
+        for system_prefix in meta.get_all_system_prefixes():
+            registered_systems.add(system_prefix)
         # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-collect-systems
 
         # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-build-primary
-        ctx = cls(
-            adapter_dir=adapter_dir,
-            project_root=project_root,
-            meta=meta,
-            kits=kits,
-            registered_systems=registered_systems,
-            _errors=errors,
-        )
+        ctx_kwargs = {
+            "adapter_dir": adapter_dir,
+            "project_root": project_root,
+            "meta": meta,
+            "kits": kits,
+            "registered_systems": registered_systems,
+            "_errors": errors,
+        }
         # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-build-primary
-        return ctx
+        return cls(**ctx_kwargs)
 
     # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-globals
     def get_known_id_kinds(self) -> Set[str]:
@@ -227,6 +225,7 @@ def load_resource_bindings(
     cfg_dir = adapter_dir / "config"
     if not cfg_dir.is_dir():
         cfg_dir = adapter_dir
+    # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
     try:
         from .manifest import resolve_resource_bindings_with_errors as _resolve_rb
 
@@ -251,6 +250,7 @@ def load_resource_bindings(
         ))
     except (OSError, ImportError) as exc:
         logger.warning("Context: failed to load resource bindings for kit %s: %s", kit_id, exc)
+    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
     return rb, resolved_bindings, errors
 
 
@@ -439,26 +439,23 @@ def _build_constraints_error(
 
 def _load_kit_dependencies(adapter_dir: Path, kit_id, kit_root: Optional[Path]):
     """Load resource bindings and constraint metadata for a kit."""
-    # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
     resource_bindings, resolved_bindings, resource_binding_errors = load_resource_bindings(
         adapter_dir,
         kit_id,
     )
-    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
     resource_entries = _load_core_resource_entries(adapter_dir, str(kit_id))
+    # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
     (
         kit_constraints,
         constraints_errs,
         resolved_constraints_path,
         constraints_root,
         resolved_constraints_paths,
-        # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
     ) = resolve_constraints_from_bindings(
         resolved_bindings,
         kit_root,
         resource_entries,
     )
-    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
     return {
         "resource_bindings": resource_bindings,
         "resource_binding_errors": resource_binding_errors,
@@ -469,6 +466,7 @@ def _load_kit_dependencies(adapter_dir: Path, kit_id, kit_root: Optional[Path]):
         "constraints_root": constraints_root,
         "resolved_constraints_paths": resolved_constraints_paths,
     }
+    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
 
 
 def _load_single_kit(kit_id, kit, adapter_dir, project_root):
@@ -681,25 +679,18 @@ class WorkspaceContext:
         silently falling back to a local path.  Falls back to *fallback_root*
         only when no source is specified.
         """
-        # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-check-source
         src_name = getattr(artifact, "source", None)
-        # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-check-source
-        # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-if-source
-        if src_name:
-            # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-if-source
-            # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-lookup-source
-            sc = self.sources.get(src_name)
-            # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-lookup-source
-            # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-if-reachable
-            if sc is not None and sc.reachable and sc.path is not None:
-                return (sc.path / artifact.path).resolve()
-            # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-if-reachable
-            # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-return-none
-            return None
-            # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-return-none
+        # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-check-source
         # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-return-local
-        return (fallback_root / artifact.path).resolve()
+        if not src_name:
+            return (fallback_root / artifact.path).resolve()
         # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-return-local
+        # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-check-source
+        # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-lookup-source
+        sc = self.sources.get(src_name)
+        resolved_path = _resolve_workspace_artifact_source(sc, artifact)
+        return resolved_path
+        # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-lookup-source
 
     # @cpt-algo:cpt-studio-algo-workspace-collect-ids:p1
     def get_all_artifact_ids(self) -> Set[str]:
@@ -717,11 +708,7 @@ class WorkspaceContext:
             # @cpt-begin:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-foreach-source
             for sc in self.sources.values():
                 # @cpt-end:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-foreach-source
-                # @cpt-begin:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-scan-source-artifacts
-                # @cpt-begin:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-add-with-warning
                 _collect_source_definition_ids(sc, ids)
-                # @cpt-end:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-add-with-warning
-                # @cpt-end:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-scan-source-artifacts
         # @cpt-begin:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-return
         return ids
         # @cpt-end:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-return
@@ -735,11 +722,7 @@ class WorkspaceContext:
 
         Returns WorkspaceContext if workspace found, None otherwise.
         """
-        from .workspace import find_workspace_config
-
-        # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-find-config
-        ws_cfg, ws_err = find_workspace_config(primary_ctx.project_root)
-        # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-find-config
+        ws_cfg, ws_err = _load_workspace_config_for_context(primary_ctx.project_root)
         # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-if-error
         if ws_cfg is None:
             if ws_err:
@@ -755,17 +738,15 @@ class WorkspaceContext:
         # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-foreach-source
 
         # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-build
-        result = cls(
-            primary=primary_ctx,
-            sources=sources,
-            workspace_file=ws_cfg.workspace_file,
-            cross_repo=ws_cfg.traceability.cross_repo,
-            resolve_remote_ids=ws_cfg.traceability.resolve_remote_ids,
-        )
+        workspace_kwargs = {
+            "primary": primary_ctx,
+            "sources": sources,
+            "workspace_file": ws_cfg.workspace_file,
+            "cross_repo": ws_cfg.traceability.cross_repo,
+            "resolve_remote_ids": ws_cfg.traceability.resolve_remote_ids,
+        }
         # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-build
-        # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-return
-        return result
-        # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-return
+        return cls(**workspace_kwargs)
 
     @classmethod
     def load_from_workspace_root(cls, project_root: Path) -> Optional["WorkspaceContext"]:
@@ -776,9 +757,7 @@ class WorkspaceContext:
         loadable adapter becomes the primary context; all configured sources
         remain addressable through ``sources``.
         """
-        from .workspace import find_workspace_config
-
-        ws_cfg, ws_err = find_workspace_config(project_root)
+        ws_cfg, ws_err = _load_workspace_config_for_context(project_root)
         if ws_cfg is None:
             if ws_err:
                 logger.warning("Workspace config error: %s", ws_err)
@@ -857,9 +836,7 @@ def resolve_adapter_context(
         )
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-load-fail
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-load-context
-    # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-return
     return _finalize_adapter_context(sc, resolved)
-    # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-return
 
 
 def _warn_adapter_context(emit_warnings: bool, message: str) -> None:
@@ -867,7 +844,7 @@ def _warn_adapter_context(emit_warnings: bool, message: str) -> None:
     if emit_warnings:
         logger.warning("%s", message)
 
-
+# @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-return
 def _finalize_adapter_context(
     sc: "SourceContext",
     loaded: Optional["StudioContext"],
@@ -876,6 +853,7 @@ def _finalize_adapter_context(
     sc.adapter_context = loaded
     sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
     return loaded
+# @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-return
 
 
 # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-expand-meta
@@ -902,6 +880,30 @@ def get_expanded_meta(sc: "SourceContext") -> Optional[ArtifactsMeta]:
 # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-expand-meta
 
 
+def _target_matches_source(abs_target: Path, sc: "SourceContext") -> bool:
+    # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-abs
+    source_root = sc.path.resolve()
+    matches = abs_target.is_relative_to(source_root)
+    return matches
+    # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-abs
+
+
+def _target_context_for_source(
+    sc: "SourceContext",
+    ws_ctx: "WorkspaceContext",
+) -> Tuple["SourceContext", "StudioContext"]:
+    # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-adapter
+    adapter_ctx = resolve_adapter_context(sc)
+    # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-source
+    if adapter_ctx is not None:
+        return sc, adapter_ctx
+    # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-source
+    # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-adapter
+    # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-source-no-adapter
+    return sc, ws_ctx.primary
+    # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-source-no-adapter
+
+
 # @cpt-algo:cpt-studio-algo-workspace-determine-target:p1
 def determine_target_source(
     target_path: Union[str, Path],
@@ -913,9 +915,7 @@ def determine_target_source(
     Returns (source_context, adapter_or_primary_context).
     When no source matches, returns (None, primary_context).
     """
-    # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-abs
     abs_target = Path(target_path).resolve()
-    # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-abs
     # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-foreach-source
     # Sort by path length descending for longest-prefix match
     sorted_sources = sorted(
@@ -927,20 +927,10 @@ def determine_target_source(
         if not sc.reachable or sc.path is None:
             continue
         # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-if-match
-        source_root = sc.path.resolve()
-        if not abs_target.is_relative_to(source_root):
+        if not _target_matches_source(abs_target, sc):
             continue
         # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-if-match
-        # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-adapter
-        adapter_ctx = resolve_adapter_context(sc)
-        # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-adapter
-        # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-source
-        if adapter_ctx is not None:
-            return (sc, adapter_ctx)
-        # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-source
-        # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-source-no-adapter
-        return (sc, ws_ctx.primary)
-        # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-source-no-adapter
+        return _target_context_for_source(sc, ws_ctx)
     # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-foreach-source
     # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-return-primary
     return (None, ws_ctx.primary)
@@ -956,12 +946,14 @@ def _scan_definition_ids(artifact_path: Path, ids: Set[str]) -> None:
     """Scan an artifact file and add definition IDs to the set."""
     from .document import scan_cpt_ids
 
+    # @cpt-begin:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-add-with-warning
     try:
         for h in scan_cpt_ids(artifact_path):
             if h.get("type") == "definition" and h.get("id"):
                 ids.add(str(h["id"]))
     except (OSError, ValueError) as exc:
         logger.warning("Failed to scan IDs from %s: %s", artifact_path, exc)
+    # @cpt-end:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-add-with-warning
 
 
 def _collect_source_definition_ids(sc: "SourceContext", ids: Set[str]) -> None:
@@ -973,10 +965,28 @@ def _collect_source_definition_ids(sc: "SourceContext", ids: Set[str]) -> None:
     meta = get_expanded_meta(sc)
     if meta is None:
         return
+    # @cpt-begin:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-scan-source-artifacts
     for art, _sys in meta.iter_all_artifacts():
         art_path = (sc.path / art.path).resolve()
         if art_path.exists():
             _scan_definition_ids(art_path, ids)
+    # @cpt-end:cpt-studio-algo-workspace-collect-ids:p1:inst-ids-scan-source-artifacts
+
+
+def _resolve_workspace_artifact_source(
+    sc: Optional["SourceContext"],
+    artifact: Union[Artifact, CodebaseEntry, Kit],
+) -> Optional[Path]:
+    # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-if-reachable
+    if sc is not None and sc.reachable and sc.path is not None:
+        # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-if-source
+        resolved_path = (sc.path / artifact.path).resolve()
+        return resolved_path
+        # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-if-source
+    # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-if-reachable
+    # @cpt-begin:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-return-none
+    return None
+    # @cpt-end:cpt-studio-algo-workspace-resolve-artifact:p1:inst-art-return-none
 
 
 # @cpt-state:cpt-studio-state-workspace-source-reachability:p1
@@ -1125,6 +1135,34 @@ def get_context() -> Optional[Union[StudioContext, WorkspaceContext]]:
     return _global_context
 
 
+def _load_workspace_config_for_context(
+    project_root: Path,
+) -> Tuple[Optional["WorkspaceConfig"], Optional[str]]:
+    from .workspace import find_workspace_config
+
+    # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-find-config
+    ws_cfg, ws_err = find_workspace_config(project_root)
+    return ws_cfg, ws_err
+    # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-find-config
+
+
+def _select_workspace_or_primary_context(
+    base_ctx: StudioContext,
+    ws_ctx: Optional["WorkspaceContext"],
+) -> Union[StudioContext, "WorkspaceContext"]:
+    # @cpt-algo:cpt-studio-algo-core-infra-context-loading:p1
+    # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return-workspace
+    if ws_ctx is not None:
+        return ws_ctx
+    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return-workspace
+    # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
+    # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-return
+    selected_ctx = base_ctx
+    return selected_ctx
+    # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-return
+    # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
+
+
 def set_context(ctx: Optional[Union[StudioContext, WorkspaceContext]]) -> None:
     """Set the global Studio context."""
     global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement
@@ -1150,11 +1188,9 @@ def ensure_context(start_path: Optional[Path] = None) -> Optional[Union[StudioCo
                 ws_ctx = None
             _workspace_upgrade_attempted = True
             # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-workspace-upgrade
-            # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return-workspace
             if ws_ctx is not None:
                 _workspace_upgrade_error = None
-            _global_context = ws_ctx if ws_ctx is not None else base_ctx
-            # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return-workspace
+            _global_context = _select_workspace_or_primary_context(base_ctx, ws_ctx)
         else:
             project_root = _find_project_root_for_workspace(start_path or Path.cwd())
             if project_root is not None:
@@ -1167,9 +1203,7 @@ def ensure_context(start_path: Optional[Path] = None) -> Optional[Union[StudioCo
                 else:
                     _workspace_upgrade_error = None
             else:
-                # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
                 _global_context = None
-                # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
     return _global_context
 
 

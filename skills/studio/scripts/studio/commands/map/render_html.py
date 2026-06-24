@@ -13,6 +13,7 @@ ASSETS = Path(__file__).resolve().parent / "assets"
 VENDOR = ASSETS / "vendor"
 
 
+# @cpt-begin:cpt-studio-algo-map-render-html:p1:inst-render-html
 @dataclass(frozen=True)
 class RenderHtmlInput:
     """Inputs required to render the map HTML output."""
@@ -28,7 +29,6 @@ def render_html(inp: RenderHtmlInput) -> Tuple[str, Optional[str]]:
     When inline_data=True: returns (html with embedded data, None).
     When inline_data=False: returns (html referencing sidecar, js sidecar content).
     """
-    # @cpt-begin:cpt-studio-algo-map-render-html:p1:inst-render-html
     viewer_js = (ASSETS / "viewer.js").read_text(encoding="utf-8")
     viewer_css = (ASSETS / "viewer.css").read_text(encoding="utf-8")
     marked_js = (VENDOR / "marked.min.js").read_text(encoding="utf-8")

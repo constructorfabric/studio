@@ -32,6 +32,7 @@ def _warn_adapter_info(message: str) -> None:
     logger.warning("info: %s", message)
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-parse-args
 def _parse_adapter_info_args(argv: list[str]) -> tuple[Path, Optional[Path]]:
     parser = argparse.ArgumentParser(prog="info", description="Discover Constructor Studio project configuration")
     parser.add_argument("--root", default=".", help="Project root to search from (default: current directory)")
@@ -47,10 +48,36 @@ def _parse_adapter_info_args(argv: list[str]) -> tuple[Path, Optional[Path]]:
     start_path = Path(args.root).resolve()
     studio_root_path = Path(args.cf_studio_root).resolve() if args.cf_studio_root else None
     return start_path, studio_root_path
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-parse-args
 
 
+def _discover_info_context(
+    start_path: Path,
+    studio_root_path: Optional[Path],
+) -> tuple[Optional[Path], Optional[Path]]:
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-find-root
+    project_root = find_project_root(start_path)
+    if project_root is None:
+        return None, None
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-find-root
+
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-find-studio
+    adapter_dir = find_studio_directory(start_path, studio_root=studio_root_path)
+    return project_root, adapter_dir
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-find-studio
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-config
+def _initialize_info_config(adapter_dir: Path, project_root: Path) -> dict:
+    config = load_studio_config(adapter_dir)
+    config["status"] = "FOUND"
+    config["project_root"] = project_root.as_posix()
+    return config
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-config
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-root
 def _emit_info_project_not_found(start_path: Path) -> int:
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-root
     ui.result({
         "status": "NOT_FOUND",
         "message": "No project root found (no AGENTS.md with @cf:root-agents or .git)",
@@ -58,11 +85,11 @@ def _emit_info_project_not_found(start_path: Path) -> int:
         "hint": "Run 'cfs init' in your project root",
     })
     return 1
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-root
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-root
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-studio
 def _emit_info_studio_not_found(project_root: Path) -> int:
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-studio
     ui.result({
         "status": "NOT_FOUND",
         "message": "Constructor Studio not initialized in project",
@@ -70,10 +97,11 @@ def _emit_info_studio_not_found(project_root: Path) -> int:
         "hint": "Run 'cfs init' to initialize Constructor Studio for this project",
     })
     return 1
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-studio
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-no-studio
 
+
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-json
 def _load_json_file(path: Path) -> Optional[dict]:
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-json
     if not path.is_file():
         return None
     try:
@@ -83,12 +111,12 @@ def _load_json_file(path: Path) -> Optional[dict]:
     except (json.JSONDecodeError, OSError, IOError) as exc:
         _warn_adapter_info(f"failed to load JSON file {path}: {exc}")
         return None
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-json
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-json
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-show-system-artifacts
 def _show_system_artifacts(sys_info: dict) -> None:
     """Render artifacts for one system."""
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-artifacts
     for artifact in sys_info.get("artifacts") or []:
         if not isinstance(artifact, dict):
             continue
@@ -101,12 +129,12 @@ def _show_system_artifacts(sys_info: dict) -> None:
         if trace and trace != "DOCS-ONLY":
             parts.append(trace)
         ui.substep(f"      {parts[0]}  ({', '.join(parts[1:])})" if len(parts) > 1 else f"      {parts[0]}")
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-artifacts
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-show-system-artifacts
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-show-system-codebase
 def _show_system_codebase(sys_info: dict, *, indent: str = "      ") -> None:
     """Render codebase entries for one system."""
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-codebase
     for code_entry in sys_info.get("codebase") or []:
         if not isinstance(code_entry, dict):
             continue
@@ -114,12 +142,12 @@ def _show_system_codebase(sys_info: dict, *, indent: str = "      ") -> None:
         exts = code_entry.get("extensions") or []
         ext_str = f"  [{', '.join(exts)}]" if exts else ""
         ui.substep(f"{indent}{cpath}{ext_str}")
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-codebase
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-show-system-codebase
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-show-child-systems
 def _show_child_systems(sys_info: dict) -> None:
     """Render child system summaries."""
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-child-systems
     for child in sys_info.get("children") or []:
         if not isinstance(child, dict):
             continue
@@ -130,12 +158,12 @@ def _show_child_systems(sys_info: dict) -> None:
             if isinstance(artifact, dict):
                 ui.substep(f"        {artifact.get('path', '?')}  ({artifact.get('kind', '')})")
         _show_system_codebase(child, indent="        ")
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-child-systems
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-show-child-systems
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-show-system-info
 def _show_system_info(sys_info: dict) -> None:
     """Render one system registry entry."""
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-info
     name = sys_info.get("name", "?")
     slug = sys_info.get("slug", "")
     kit = sys_info.get("kit", "")
@@ -146,12 +174,12 @@ def _show_system_info(sys_info: dict) -> None:
     _show_system_artifacts(sys_info)
     _show_system_codebase(sys_info)
     _show_child_systems(sys_info)
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-info
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-show-system-info
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-read-kit-conf
 def _read_kit_conf(conf_path: Path) -> dict:
     """Read kit conf.toml and return key fields."""
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-read-kit-conf
     try:
         with open(conf_path, "rb") as f:
             data = tomllib.load(f)
@@ -163,11 +191,11 @@ def _read_kit_conf(conf_path: Path) -> dict:
     except (OSError, ValueError) as exc:
         _warn_adapter_info(f"failed to read kit metadata from {conf_path}: {exc}")
         return {}
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-read-kit-conf
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-read-kit-conf
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-kit-root
 def _resolve_info_kit_root(adapter_dir: Path, slug: str, core_kit: dict) -> Path:
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-kit-root
     from .kit import _resolve_registered_kit_root_dir
 
     registered_path = core_kit.get("path") if isinstance(core_kit, dict) else None
@@ -178,7 +206,7 @@ def _resolve_info_kit_root(adapter_dir: Path, slug: str, core_kit: dict) -> Path
         path = Path(registered_path)
         return path if path.is_absolute() else adapter_dir / path
     return adapter_dir / "config" / "kits" / slug
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-kit-root
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-kit-root
 
 
 def _effective_info_resource_bindings(adapter_dir: Path, slug: str, core_kit: dict) -> dict:
@@ -192,7 +220,7 @@ def _effective_info_resource_bindings(adapter_dir: Path, slug: str, core_kit: di
 
     from .kit import _serialize_manifest_binding_path
 
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-collect-resources
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-variables
     bindings, _binding_errors = resolve_resource_bindings_with_errors(
         adapter_dir / "config",
         slug,
@@ -204,11 +232,11 @@ def _effective_info_resource_bindings(adapter_dir: Path, slug: str, core_kit: di
             "path": _serialize_manifest_binding_path(path, adapter_dir),
         }
     return result
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-collect-resources
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-variables
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resource-to-info
 def _kit_resource_to_info(resource: object, binding: object) -> dict:
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resource-to-info
     data = {
         "id": str(getattr(resource, "id", "")),
         "kind": str(getattr(resource, "kind", "")),
@@ -224,33 +252,33 @@ def _kit_resource_to_info(resource: object, binding: object) -> dict:
     if isinstance(binding, dict) and "path" in binding:
         data["binding_path"] = binding["path"]
     return data
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resource-to-info
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resource-to-info
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-binding-path
 def _resolve_info_binding_path(adapter_dir: Path, raw_path: object) -> Optional[Path]:
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-binding-path
     if not isinstance(raw_path, str) or not raw_path.strip():
         return None
     if os.name != "nt" and PureWindowsPath(raw_path).is_absolute():
         return None
     path = Path(raw_path)
     return path if path.is_absolute() else adapter_dir / path
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-binding-path
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-binding-path
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
 def _is_relative_to(path: Path, parent: Path) -> bool:
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
     try:
         path.resolve().relative_to(parent.resolve())
         return True
     except ValueError as exc:
         _warn_adapter_info(f"path {path} is not relative to {parent}: {exc}")
         return False
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-frontmatter-type
 def _frontmatter_type(path: Path) -> str:
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-frontmatter-type
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as exc:
@@ -268,17 +296,17 @@ def _frontmatter_type(path: Path) -> str:
         if key.strip() == "type":
             return value.strip().strip('"\'')
     return ""
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-frontmatter-type
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-frontmatter-type
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-workflow-frontmatter
 def _is_workflow_frontmatter_file(path: Path) -> bool:
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-workflow-frontmatter
     return path.is_file() and path.suffix.lower() == ".md" and _frontmatter_type(path) == "workflow"
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-workflow-frontmatter
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-workflow-frontmatter
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
 def _legacy_workflow_names_from_component(kit_root: Path, component: object) -> list[str]:
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
     if str(getattr(component, "origin", "")) != "legacy-workflow":
         return []
     source = str(getattr(component, "source", ""))
@@ -292,11 +320,11 @@ def _legacy_workflow_names_from_component(kit_root: Path, component: object) -> 
     if path.is_file() and path.suffix.lower() == ".md":
         return [path.stem]
     return []
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
 def _public_workflow_ids_from_resource(resource: object) -> list[str]:
-    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
     kind = str(getattr(resource, "kind", "") or "")
     if kind not in {"skill", "workflow"} or not bool(getattr(resource, "public", False)):
         return []
@@ -304,7 +332,7 @@ def _public_workflow_ids_from_resource(resource: object) -> list[str]:
     if not resource_id:
         return []
     return [resource_id]
-    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
 
 
 def _kit_resource_drift(
@@ -314,6 +342,7 @@ def _kit_resource_drift(
 ) -> tuple[list[str], list[str]]:
     missing_resources: list[str] = []
     containment_violations: list[str] = []
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift-resource-scan
     for resource_id in sorted(model_resource_ids):
         binding = resource_bindings.get(resource_id)
         binding_path = binding.get("path") if isinstance(binding, dict) else None
@@ -324,9 +353,11 @@ def _kit_resource_drift(
             containment_violations.append(resource_id)
         if not resolved.exists():
             missing_resources.append(resource_id)
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift-resource-scan
     return missing_resources, containment_violations
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift-containment-status
 def _drift_containment_status(
     containment_violations: list[str],
     resource_count: int,
@@ -336,6 +367,7 @@ def _drift_containment_status(
     if len(containment_violations) == resource_count:
         return "external"
     return "mixed"
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift-containment-status
 
 
 def _kit_model_drift(
@@ -393,9 +425,7 @@ def _kit_model_to_info(  # pylint: disable=too-many-locals
 
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape
     drift = _kit_model_drift(adapter_dir, model, core_kit, resource_bindings)
-    # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-disable-missing-public
-    disabled_public_components = set(drift.get("disabled_public_components", []))
-    # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-disable-missing-public
+    disabled_public_components = _disabled_public_component_ids(drift)
     active_targets = sorted({
         target
         for component in model.public_components
@@ -483,6 +513,14 @@ def _kit_model_to_info(  # pylint: disable=too-many-locals
     return model_info, kit_detail
 
 
+def _disabled_public_component_ids(drift: dict) -> set[str]:
+    # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-disable-missing-public
+    component_ids = set(drift.get("disabled_public_components", []))
+    return component_ids
+    # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-disable-missing-public
+
+
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-content-shape
 def _legacy_kit_content_dirs(kit_root: Path) -> list[str]:
     if not kit_root.is_dir():
         return []
@@ -491,13 +529,16 @@ def _legacy_kit_content_dirs(kit_root: Path) -> list[str]:
         for directory in kit_root.iterdir()
         if directory.is_dir() and directory.name in ("artifacts", "codebase", "scripts", "workflows")
     )
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-content-shape
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-content-shape
 def _legacy_kit_artifact_kinds(kit_root: Path) -> list[str]:
     art_dir = kit_root / "artifacts"
     if not art_dir.is_dir():
         return []
     return sorted(directory.name for directory in art_dir.iterdir() if directory.is_dir())
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-content-shape
 
 
 def _legacy_workflows_from_resources(core_kit: dict) -> set[str]:
@@ -505,15 +546,18 @@ def _legacy_workflows_from_resources(core_kit: dict) -> set[str]:
     resources = core_kit.get("resources") if isinstance(core_kit, dict) else {}
     if not isinstance(resources, dict):
         return workflows
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-workflows
     for resource_id, binding in resources.items():
         if not isinstance(binding, dict):
             continue
         kind = str(binding.get("kind", "") or "")
         if bool(binding.get("public", False)) and kind in {"skill", "workflow"}:
             workflows.add(str(resource_id))
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-workflows
     return workflows
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-workflows
 def _legacy_kit_workflows(kit_root: Path, core_kit: dict) -> list[str]:
     wf_dir = kit_root / "workflows"
     workflows = _legacy_workflows_from_resources(core_kit)
@@ -522,8 +566,10 @@ def _legacy_kit_workflows(kit_root: Path, core_kit: dict) -> list[str]:
             path.stem for path in wf_dir.iterdir() if _is_workflow_frontmatter_file(path)
         )
     return sorted(workflows)
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-workflows
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-detail-build
 def _legacy_kit_detail(adapter_dir: Path, slug: str, kit_root: Path, core_kit: dict) -> dict:
     kd: dict = {"slug": slug}
     if "version" in core_kit:
@@ -549,8 +595,10 @@ def _legacy_kit_detail(adapter_dir: Path, slug: str, kit_root: Path, core_kit: d
     if resource_bindings:
         kd["resources"] = resource_bindings
     return kd
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-legacy-detail-build
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-resolve-registry-path
 def _resolve_registry_path(adapter_dir: Path) -> Path:
     registry_path = (adapter_dir / "config" / "artifacts.toml").resolve()
     if registry_path.is_file():
@@ -562,8 +610,10 @@ def _resolve_registry_path(adapter_dir: Path) -> Path:
     if legacy_json.is_file():
         return legacy_json.resolve()
     return registry_path
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-resolve-registry-path
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-registry-payload
 def _load_registry_data(registry_path: Path) -> Optional[dict]:
     registry = _load_json_file(registry_path) if registry_path.suffix == ".json" else None
     if registry is not None or registry_path.suffix != ".toml" or not registry_path.is_file():
@@ -575,8 +625,10 @@ def _load_registry_data(registry_path: Path) -> Optional[dict]:
         _warn_adapter_info(f"failed to read registry data from {registry_path}: {exc}")
         return None
     return loaded if isinstance(loaded, dict) else None
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-registry-payload
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-extract-autodetect-system
 def _extract_autodetect_system(system_data: object) -> dict:
     if not isinstance(system_data, dict):
         return {}
@@ -594,8 +646,10 @@ def _extract_autodetect_system(system_data: object) -> dict:
         else []
     )
     return out
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-extract-autodetect-system
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-build-autodetect-registry
 def _extract_autodetect_registry(raw: object, core_data: Optional[dict]) -> Optional[dict]:
     if not isinstance(raw, dict) or "systems" not in raw:
         return None
@@ -619,16 +673,20 @@ def _extract_autodetect_registry(raw: object, core_data: Optional[dict]) -> Opti
             for system_data in (raw.get("systems") or [])
         ],
     }
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-build-autodetect-registry
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-serialize-artifact
 def _artifact_to_registry_dict(artifact: object) -> dict:
     return {
         "path": str(getattr(artifact, "path", "")),
         "kind": str(getattr(artifact, "kind", getattr(artifact, "type", ""))),
         "traceability": str(getattr(artifact, "traceability", "DOCS-ONLY")),
     }
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-serialize-artifact
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-serialize-codebase
 def _codebase_to_registry_dict(codebase: object) -> dict:
     data = {"path": str(getattr(codebase, "path", ""))}
     exts = getattr(codebase, "extensions", None)
@@ -644,8 +702,10 @@ def _codebase_to_registry_dict(codebase: object) -> dict:
     if isinstance(multi_line_comments, list) and multi_line_comments:
         data["multiLineComments"] = multi_line_comments
     return data
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-serialize-codebase
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-serialize-system
 def _system_to_registry_dict(system: object) -> dict:
     return {
         "name": str(getattr(system, "name", "")),
@@ -655,8 +715,10 @@ def _system_to_registry_dict(system: object) -> dict:
         "codebase": [_codebase_to_registry_dict(codebase) for codebase in (getattr(system, "codebase", []) or [])],
         "children": [_system_to_registry_dict(child) for child in (getattr(system, "children", []) or [])],
     }
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-serialize-system
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-expand-registry-context
 def _expand_registry_with_context(adapter_dir: Path, registry: dict) -> dict:
     if "systems" not in registry:
         return registry
@@ -689,23 +751,29 @@ def _expand_registry_with_context(adapter_dir: Path, registry: dict) -> dict:
         ],
         "systems": [_system_to_registry_dict(system) for system in (getattr(meta, "systems", []) or [])],
     }
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-expand-registry-context
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-relative-adapter-path
 def _relative_adapter_path(adapter_dir: Path, project_root: Path) -> str:
     try:
         return adapter_dir.relative_to(project_root).as_posix()
     except ValueError as exc:
         logger.warning("adapter dir %s is outside project root %s: %s", adapter_dir, project_root, exc)
         return adapter_dir.as_posix()
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-relative-adapter-path
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-has-config
 def _has_config_file(adapter_dir: Path) -> bool:
     core_toml = adapter_dir / "config" / "core.toml"
     if not core_toml.is_file():
         core_toml = adapter_dir / "core.toml"
     return core_toml.exists()
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-has-config
 
 
+# @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-collect-kit-entries
 def _collect_kit_entries(core_data: Optional[dict]) -> dict:
     if not core_data or not isinstance(core_data.get("kits"), dict):
         return {}
@@ -713,11 +781,13 @@ def _collect_kit_entries(core_data: Optional[dict]) -> dict:
         str(slug): entry if isinstance(entry, dict) else {}
         for slug, entry in core_data["kits"].items()
     }
+# @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-collect-kit-entries
 
 
 def _collect_kit_info(adapter_dir: Path, core_data: Optional[dict]) -> tuple[dict, dict]:
     kit_models: dict = {}
     kit_details: dict = {}
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-collect-kit-info
     for slug, core_kit in sorted(_collect_kit_entries(core_data).items()):
         kit_dir = _resolve_info_kit_root(adapter_dir, slug, core_kit)
         try:
@@ -729,9 +799,11 @@ def _collect_kit_info(adapter_dir: Path, core_data: Optional[dict]) -> tuple[dic
             kit_details[slug] = _legacy_kit_detail(adapter_dir, slug, kit_dir, core_kit)
             if kit_details[slug]:
                 kit_details[slug]["model_error"] = str(exc)
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-collect-kit-info
     return kit_models, kit_details
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-agent-integrations
 def _collect_agent_integrations(project_root: Path) -> list[str]:
     from .agents import _ALL_RECOGNIZED_AGENTS, _is_agent_installed
 
@@ -739,13 +811,16 @@ def _collect_agent_integrations(project_root: Path) -> list[str]:
         agent for agent in _ALL_RECOGNIZED_AGENTS
         if _is_agent_installed(agent, project_root)
     ]
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-agent-integrations
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-directory-status
 def _collect_directory_status(adapter_dir: Path) -> dict:
     return {
         subdir: (adapter_dir / subdir).is_dir()
         for subdir in (".core", ".gen", "config")
     }
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-directory-status
 
 
 def _apply_variables_metadata(
@@ -756,6 +831,7 @@ def _apply_variables_metadata(
     core_data: Optional[dict],
     core_load_error: Optional[str],
 ) -> None:
+    # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-load-variables
     if core_load_error is not None:
         config["variables"] = None
         config["variables_error"] = f"core.toml load failed: {core_load_error}"
@@ -771,11 +847,15 @@ def _apply_variables_metadata(
         config["variables_error"] = str(exc)
         config["variables_degraded"] = True
         return
+    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-load-variables
+    # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-store-variables
     config["variables_by_kit"] = vars_result.get("kits", {})
     if vars_result.get("collisions"):
         config["variables_collisions"] = vars_result["collisions"]
+    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-store-variables
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-workspace-source-details
 def _workspace_source_details(ws_cfg: object, name: str, src: object) -> dict:
     if getattr(src, "url", None):
         from ..utils.git_utils import peek_git_source_path
@@ -799,8 +879,10 @@ def _workspace_source_details(ws_cfg: object, name: str, src: object) -> dict:
         "role": getattr(src, "role", None),
         "reachable": resolved is not None and resolved.is_dir(),
     }
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-workspace-source-details
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-workspace
 def _load_workspace_info(project_root: Path) -> dict:
     try:
         from ..utils.workspace import find_workspace_config
@@ -814,6 +896,7 @@ def _load_workspace_info(project_root: Path) -> dict:
         if ws_err:
             workspace_info["error"] = ws_err
         return workspace_info
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-workspace-section
     return {
         "active": True,
         "version": ws_cfg.version,
@@ -825,41 +908,50 @@ def _load_workspace_info(project_root: Path) -> dict:
             for name, src in ws_cfg.sources.items()
         },
     }
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-workspace-section
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-workspace
+
+
+# @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-render-variables
+def _render_info_variables(data: dict) -> None:
+    variables_by_kit = data.get("variables_by_kit") or {}
+    if variables_by_kit:
+        ui.blank()
+        ui.step(f"Variables By Kit ({len(variables_by_kit)})")
+        for slug, variables in sorted(variables_by_kit.items()):
+            if not isinstance(variables, dict) or not variables:
+                continue
+            ui.substep(f"  {slug}:")
+            for name, path in sorted(variables.items()):
+                ui.substep(f"    {{{name}}}: {ui.relpath(path)}")
+    if data.get("variables_degraded"):
+        ui.blank()
+        ui.warn(f"Variables: {data.get('variables_error', 'unknown error')}")
+# @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-render-variables
 
 def cmd_adapter_info(argv: list[str]) -> int:
     """Discover and display Constructor Studio project configuration."""
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-parse-args
     start_path, studio_root_path = _parse_adapter_info_args(argv)
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-parse-args
 
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-find-root
-    project_root = find_project_root(start_path)
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-find-root
+    project_root, adapter_dir = _discover_info_context(start_path, studio_root_path)
     # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-if-no-root
     if project_root is None:
         return _emit_info_project_not_found(start_path)
     # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-if-no-root
 
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-find-studio
-    adapter_dir = find_studio_directory(start_path, studio_root=studio_root_path)
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-find-studio
     # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-if-no-studio
     if adapter_dir is None:
         return _emit_info_studio_not_found(project_root)
     # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-if-no-studio
 
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-config
-    config = load_studio_config(adapter_dir)
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-config
-    config["status"] = "FOUND"
-    config["project_root"] = project_root.as_posix()
+    config = _initialize_info_config(adapter_dir, project_root)
 
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-locate-registry
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-registry-payload
     registry_path = _resolve_registry_path(adapter_dir)
     config["artifacts_registry_path"] = registry_path.as_posix()
     registry = _load_registry_data(registry_path)
     core_data, core_load_error, _core_path = _load_core_data_with_error(adapter_dir)
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-locate-registry
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-registry-payload
     # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-registry-missing
     if registry is None:
         config["artifacts_registry"] = None
@@ -890,9 +982,7 @@ def cmd_adapter_info(argv: list[str]) -> int:
     )
     # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-compute-metadata
 
-    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-workspace-section
     config["workspace"] = _load_workspace_info(project_root)
-    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-workspace-section
 
     # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-ok
     ui.result(config, human_fn=_human_info)
@@ -900,6 +990,7 @@ def cmd_adapter_info(argv: list[str]) -> int:
     # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-return-ok
 
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-human-fmt
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-kit-details
 def _render_info_kit_details(kit_details: dict) -> None:
     if not kit_details:
         return
@@ -928,8 +1019,10 @@ def _render_info_kit_details(kit_details: dict) -> None:
             for resource_id, binding in resources.items():
                 resource_path = binding.get("path", "?") if isinstance(binding, dict) else str(binding)
                 ui.substep(f"      {resource_id}: {resource_path}")
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-kit-details
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-systems
 def _render_info_systems(data: dict) -> None:
     auto_reg = data.get("autodetect_registry") or {}
     systems = auto_reg.get("systems") or []
@@ -943,8 +1036,10 @@ def _render_info_systems(data: dict) -> None:
     for sys_info in display_systems:
         if isinstance(sys_info, dict):
             _show_system_info(sys_info)
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-systems
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-list
 def _render_info_list(label: str, values: list) -> None:
     if not values:
         return
@@ -952,24 +1047,10 @@ def _render_info_list(label: str, values: list) -> None:
     ui.step(f"{label} ({len(values)})")
     for value in values:
         ui.substep(f"  {value}")
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-list
 
 
-def _render_info_variables(data: dict) -> None:
-    variables_by_kit = data.get("variables_by_kit") or {}
-    if variables_by_kit:
-        ui.blank()
-        ui.step(f"Variables By Kit ({len(variables_by_kit)})")
-        for slug, variables in sorted(variables_by_kit.items()):
-            if not isinstance(variables, dict) or not variables:
-                continue
-            ui.substep(f"  {slug}:")
-            for name, path in sorted(variables.items()):
-                ui.substep(f"    {{{name}}}: {ui.relpath(path)}")
-    if data.get("variables_degraded"):
-        ui.blank()
-        ui.warn(f"Variables: {data.get('variables_error', 'unknown error')}")
-
-
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-workspace
 def _render_info_workspace(workspace: dict) -> None:
     if workspace.get("active"):
         ui.blank()
@@ -980,6 +1061,7 @@ def _render_info_workspace(workspace: dict) -> None:
     if workspace.get("error"):
         ui.blank()
         ui.warn(f"Workspace: {workspace['error']}")
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-workspace
 
 
 def _human_info(data: dict) -> None:
@@ -1010,16 +1092,16 @@ def _human_info(data: dict) -> None:
         ui.step(f"Agent integrations ({len(agents)})")
         ui.substep(f"  {', '.join(agents)}")
 
-    # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-render-variables
     _render_info_variables(data)
-    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-render-variables
 
     _render_info_workspace(data.get("workspace", {}))
 
     reg_err = data.get("artifacts_registry_error")
+    # @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-registry-warning
     if reg_err:
         ui.blank()
         ui.warn(f"Registry: {reg_err}")
+    # @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-info-render-registry-warning
 
     ui.blank()
 # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-human-fmt

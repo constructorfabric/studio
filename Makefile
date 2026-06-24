@@ -14,11 +14,12 @@ ACT_FLAGS ?= --container-architecture $(ACT_ARCH)
 
 PYTHON ?= python3
 PIPX ?= pipx
+PIPX_BIN_DIR ?= $(HOME)/.local/bin
 CFS ?= cfs
 BOOTSTRAP_STUDIO ?= .bootstrap/.core/skills/studio/scripts/studio.py
 SOURCE_STUDIO ?= skills/studio/scripts/studio.py
-PYTEST_PIPX ?= $(PIPX) run --spec pytest pytest
-PYTEST_PIPX_COV ?= $(PIPX) run --spec pytest-cov pytest
+PYTEST_PIPX ?= $(PIPX_BIN_DIR)/pytest
+PYTEST_PIPX_COV ?= $(PYTEST_PIPX)
 VULTURE_PIPX ?= $(PIPX) run --spec vulture vulture
 PYLINT_PIPX ?= $(PIPX) run --spec pylint pylint
 DIFF_COVER_PIPX ?= $(PIPX) run --spec diff-cover diff-cover
@@ -38,7 +39,7 @@ help:
 	@echo "Constructor Studio Makefile"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make test                          - Run all tests"
+	@echo "  make test                          - Run all tests in parallel (-n 6)"
 	@echo "  make test-verbose                  - Run tests with verbose output"
 	@echo "  make test-quick                    - Run fast tests only (skip slow integration tests)"
 	@echo "  make test-coverage                 - Run tests with coverage report"
@@ -49,7 +50,7 @@ help:
 	@echo "  make validate-kits                 - Validate all registered kits"
 	@echo "  make validate-kits-sdlc            - Validate kits/sdlc kit by path"
 	@echo "  make check-versions                - Check version consistency across components"
-	@echo "  make spec-coverage                 - Check spec coverage (≥90% overall, ≥60% per file)"
+	@echo "  make spec-coverage                 - Check spec coverage (≥90% overall, ≥60% per file, ≥0.46 granularity)"
 	@echo "  make vulture                       - Scan python code for dead code (report only, does not fail)"
 	@echo "  make vulture-ci                    - Scan python code for dead code (fails if findings)"
 	@echo "  make ci                            - Run full CI pipeline locally"
@@ -81,9 +82,27 @@ check-pipx:
 	}
 
 check-pytest: check-pipx
+	@test -x "$(PYTEST_PIPX)" || { \
+		echo ""; \
+		echo "ERROR: pytest binary not found at $(PYTEST_PIPX)"; \
+		echo ""; \
+		echo "Install it with:"; \
+		echo "  make install"; \
+		echo ""; \
+		exit 1; \
+	}
 	@$(PYTEST_PIPX) --version >/dev/null 2>&1 || { \
 		echo ""; \
 		echo "ERROR: pytest is not runnable via pipx"; \
+		echo ""; \
+		echo "Install it with:"; \
+		echo "  make install"; \
+		echo ""; \
+		exit 1; \
+	}
+	@$(PYTEST_PIPX) --help 2>/dev/null | grep -q -- '--numprocesses' || { \
+		echo ""; \
+		echo "ERROR: pytest-xdist not available (missing -n support)"; \
 		echo ""; \
 		echo "Install it with:"; \
 		echo "  make install"; \
@@ -128,7 +147,7 @@ check-pylint: check-pipx
 
 test: check-pytest
 	@echo "Running Constructor Studio tests with pipx..."
-	$(PYTEST_PIPX) tests/ -v --tb=short
+	$(PYTEST_PIPX) tests/ -n 6 -v --tb=short
 
 # Run tests with verbose output
 test-verbose: check-pytest
@@ -144,6 +163,7 @@ test-quick: check-pytest
 test-coverage: check-pytest-cov
 	@echo "Running tests with coverage..."
 	$(PYTEST_PIPX_COV) tests/ \
+		-n 6 \
 		--cov=skills/studio/scripts/studio \
 		--cov-report=term-missing \
 		--cov-report=json:coverage.json \
@@ -199,12 +219,12 @@ vulture-ci: check-vulture
 
 pylint: check-pylint
 	@echo "Running pylint..."
-	PYTHONPATH=src:skills/studio/scripts $(PYLINT_PIPX) $(PYLINT_TARGETS)
+	PYTHONPATH=src:skills/studio/scripts $(PYLINT_PIPX) --jobs=6 $(PYLINT_TARGETS)
 
 # Spec coverage check (Constructor Studio system only)
 spec-coverage: ensure-bootstrap
 	@echo "Checking spec coverage (Constructor Studio system)..."
-	$(PYTHON) $(BOOTSTRAP_STUDIO) spec-coverage --system studio --min-coverage 90 --min-file-coverage 60 --min-granularity 0.44
+	$(PYTHON) $(BOOTSTRAP_STUDIO) spec-coverage --system studio --min-coverage 90 --min-file-coverage 60 --min-granularity 0.46
 
 # Check version consistency
 check-versions:
@@ -268,7 +288,7 @@ validate-kits-sdlc: ensure-bootstrap
 install-pipx: check-pipx
 	@echo "Installing pytest + pytest-cov via pipx..."
 	@$(PIPX) install pytest >/dev/null 2>&1 || $(PIPX) upgrade pytest
-	@$(PIPX) inject pytest pytest-cov
+	@$(PIPX) inject pytest pytest-cov pytest-xdist
 	@echo "Done. If pytest is not found, run: pipx ensurepath (then restart your shell)."
 
 install: install-pipx

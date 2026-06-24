@@ -257,7 +257,6 @@ def _next_heading_or_separator(
         if re.match(r"^#{1,6}\s", lines[j]) or lines[j].strip() == "---":
             return j
     return None
-# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 
 
 def _find_marker_bounds(lines: List[str]) -> Tuple[Optional[int], Optional[int]]:
@@ -368,6 +367,7 @@ def _find_metadata_block_insert(lines: List[str], start: int) -> Optional[int]:
             break
         return end
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-unique-slug
 def _unique_slug(text: str, slug_counts: Dict[str, int]) -> str:
@@ -563,9 +563,14 @@ def process_file(
 # TOC validation
 # ---------------------------------------------------------------------------
 
-# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-link-re
 # Regex to extract markdown links from TOC entries: ``[text](#anchor)``
 _TOC_LINK_RE = re.compile(r"\[([^\]]+)\]\(#([^)]+)\)")
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-link-re
+def _extract_toc_links(line: str) -> List[Tuple[str, str]]:
+    """Extract markdown TOC links from one line."""
+    return _TOC_LINK_RE.findall(line)
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-link-re
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-find-section
@@ -619,7 +624,7 @@ def _extract_toc_entries(
     """
     entries: List[Tuple[str, str, int]] = []
     for i in range(toc_start, toc_end):
-        for display, anchor in _TOC_LINK_RE.findall(lines[i]):
+        for display, anchor in _extract_toc_links(lines[i]):
             entries.append((display.strip(), anchor.strip(), i + 1))
     return entries
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-extract-entries
@@ -641,6 +646,7 @@ def _build_expected_anchors(
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-anchors
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 def _collect_toc_validation_inputs(
     content: str,
     artifact_path: Optional[Path],
@@ -681,6 +687,7 @@ def _record_missing_toc_error(
     ))
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-compare
 def _validate_toc_entries(
     toc_entries: List[Tuple[str, str, int]],
     expected_anchors: Dict[str, str],
@@ -715,6 +722,7 @@ def _validate_toc_entries(
                 heading_text=heading_text,
                 expected_anchor=anchor,
             ))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-compare
 
 
 def _build_fresh_toc(content: str, toc_mode: str, max_heading_level: int) -> str:
@@ -754,6 +762,7 @@ def _append_stale_toc_warning(
             path=path,
             line=_first_diff_line(lines, fresh),
         ))
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate
 def validate_toc(
@@ -807,10 +816,8 @@ def validate_toc(
     expected_anchors = _build_expected_anchors(headings)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-generate-expected
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-compare
     # 3. Every TOC anchor must point to a real heading
     _validate_toc_entries(toc_entries, expected_anchors, lines, path, errors)
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-compare
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-if-mismatch
     # 5. Staleness check — regenerate TOC and compare

@@ -8,6 +8,7 @@ to absolute file paths.  Output is a flat dict suitable for
 
 @cpt-flow:cpt-studio-flow-developer-experience-resolve-vars:p1
 @cpt-dod:cpt-studio-dod-developer-experience-resolve-vars:p1
+@cpt-algo:cpt-studio-algo-developer-experience-resolve-vars:p1
 @cpt-algo:cpt-studio-algo-project-extensibility-resolve-layer-variables:p1
 @cpt-algo:cpt-studio-algo-project-extensibility-deterministic-assembly:p1
 """
@@ -34,7 +35,7 @@ from ..utils.ui import ui
 
 logger = logging.getLogger(__name__)
 
-
+# @cpt-begin:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
 def _binding_rel_path_and_aliases(binding: object) -> Tuple[str | None, list[str]]:
     """Return a normalized binding path plus any aliases."""
     if isinstance(binding, dict):
@@ -86,10 +87,12 @@ def _resolve_registered_kit_bindings(
     }
 
 
+# @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
 def _apply_binding_aliases(result: Dict[str, str], aliases: list[str], resolved_path: str) -> None:
     """Attach aliases for a resolved binding path."""
     for alias in aliases:
         result[alias] = resolved_path
+# @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
 
 
 def _merge_model_kit_variables(
@@ -99,16 +102,22 @@ def _merge_model_kit_variables(
     kit_slug: str,
 ) -> None:
     """Merge model-derived variables and aliases into the resolved map."""
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
     model_vars = _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
     for var_name, var_path in model_vars.items():
         result.setdefault(var_name, var_path)
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
 
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
     model_aliases = _resolve_kit_aliases_from_model(adapter_dir, core_kit, kit_slug)
     for alias, resource_id in model_aliases.items():
         if resource_id in result:
             result.setdefault(alias, result[resource_id])
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
+# @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-load-core
 def _load_core_data_with_error(adapter_dir: Path) -> Tuple[Optional[dict], Optional[str], Optional[str]]:
     """Load core.toml from the modern or legacy location."""
     for core_path in (adapter_dir / "config" / "core.toml", adapter_dir / "core.toml"):
@@ -120,8 +129,10 @@ def _load_core_data_with_error(adapter_dir: Path) -> Tuple[Optional[dict], Optio
         except (tomllib.TOMLDecodeError, OSError) as exc:
             return None, f"{type(exc).__name__}: {exc}", str(core_path)
     return None, None, None
+# @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-load-core
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-discover
 def _warn_optional_resolution(context: str, exc: Exception) -> None:
     """Report a best-effort resolve-vars fallback without aborting the command."""
     logger.warning("%s: %s: %s", context, type(exc).__name__, exc)
@@ -145,8 +156,10 @@ def _project_context_result(start_path: Path) -> Tuple[Optional[Path], Optional[
             "project_root": project_root.as_posix(),
         }
     return project_root, adapter_dir, None
+# @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-discover
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-merge
 def _add_discovered_layer_variables(
     result: Dict[str, Any],
     project_root: Path,
@@ -159,8 +172,10 @@ def _add_discovered_layer_variables(
         result["variables"] = add_layer_variables(result["variables"], layers, project_root)
     except (ValueError, OSError) as exc:
         logger.warning("layer discovery failed for %s: %s", project_root, exc)
+# @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-merge
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-filter-kit
 def _filter_result_to_kit(result: Dict[str, Any], slug: str) -> Dict[str, Any]:
     """Return only the requested kit plus system and layer variables."""
     kit_section = result["kits"].get(slug)
@@ -184,8 +199,10 @@ def _filter_result_to_kit(result: Dict[str, Any], slug: str) -> Dict[str, Any]:
         "kits": {slug: kit_section},
         "variables": filtered_flat,
     }
+# @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-filter-kit
 
 
+# @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-return
 def _emit_resolve_vars_output(result: Dict[str, Any], *, flat: bool) -> None:
     """Render resolve-vars output in either flat or structured mode."""
     if flat:
@@ -203,9 +220,18 @@ def _emit_resolve_vars_output(result: Dict[str, Any], *, flat: bool) -> None:
         "counts": _variable_counts(result),
     }
     ui.result(output, human_fn=_human_structured)
+# @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-return
 
 
 # @cpt-begin:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-merge-flat-dict
+def _flat_system_variables(system_vars: Dict[str, str]) -> Dict[str, str]:
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-no-kit-qualified
+    flat_variables: Dict[str, str] = {}
+    flat_variables.update(system_vars)
+    return flat_variables
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-no-kit-qualified
+
+
 def _merge_with_collision_tracking(
     system_vars: Dict[str, str],
     kit_vars: Dict[str, Dict[str, str]],
@@ -214,11 +240,9 @@ def _merge_with_collision_tracking(
 
     Returns (flat_dict, collisions_list).
     """
-    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-no-kit-qualified
-    flat: Dict[str, str] = dict(system_vars)
+    flat = _flat_system_variables(system_vars)
     # Kit slugs remain available in the structured `kits` output, but are not
     # valid placeholder prefixes in the flat variable map.
-    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-no-kit-qualified
 
     # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-unqualified-unique
     collisions: List[Dict[str, str]] = []
@@ -263,25 +287,17 @@ def _resolve_kit_variables(
             rel_path, aliases = _binding_rel_path_and_aliases(binding)
             if rel_path is None:
                 continue
-            # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
             resolved_path = (adapter_dir / rel_path).resolve().as_posix()
             result[identifier] = resolved_path
-            # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
-            # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
             _apply_binding_aliases(result, aliases, resolved_path)
-            # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
             # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
     elif kit_slug and install_mode == "register":
         # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
-        result.update(_resolve_registered_kit_bindings(adapter_dir, kit_slug))
+        registered_bindings = _resolve_registered_kit_bindings(adapter_dir, kit_slug)
+        result.update(registered_bindings)
         # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
 
-    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
     _merge_model_kit_variables(result, adapter_dir, core_kit, kit_slug)
-    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
-    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
-    # Alias merging is handled by _merge_model_kit_variables.
-    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
     return result
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
 
@@ -429,7 +445,7 @@ def _collect_all_variables(
     return result
     # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-return-structured
 
-
+# @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-return
 def _variable_counts(result: Dict[str, Any]) -> Dict[str, Any]:
     system = result.get("system", {})
     kits = result.get("kits", {})
@@ -463,6 +479,7 @@ def _variable_counts(result: Dict[str, Any]) -> Dict[str, Any]:
         "total_resolved": total_resolved,
     }
     return counts
+# @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-return
 
 
 # ---------------------------------------------------------------------------
@@ -589,14 +606,16 @@ def assemble_component(
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-deterministic-assembly:p1:inst-step1.2-apply-appends
     # Step 1.2: Apply section appends from pre-merged components
-    composed = apply_section_appends(composed, layers, component_id, component_type=component_type)
+    appended = apply_section_appends(composed, layers, component_id, component_type=component_type)
+    composed = appended
     # @cpt-end:cpt-studio-algo-project-extensibility-deterministic-assembly:p1:inst-step1.2-apply-appends
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-deterministic-assembly:p1:inst-step1.4-substitute
     # Step 1.4: Substitute {variable} references — use a regex-based replacer
     # that only touches known keys, leaving unknown keys and literal {{ / }}
     # (e.g. JSON or template content) intact.
-    composed = _apply_safe_vars(composed, variables)
+    substituted = _apply_safe_vars(composed, variables)
+    composed = substituted
     # @cpt-end:cpt-studio-algo-project-extensibility-deterministic-assembly:p1:inst-step1.4-substitute
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-deterministic-assembly:p1:inst-step1.6-return

@@ -242,6 +242,7 @@ def _resolve_tag_commit_sha(api_base: str, requested_ref: str) -> str:
     return commit_sha
 
 
+# @cpt-begin:cpt-studio-algo-version-config-github-authority:p1
 def _resolve_explicit_github_version(api_base: str, requested_ref: str) -> Dict[str, Any]:
     """Resolve an explicit selector through GitHub Release, tag, then ref fallback."""
     from studio_proxy.mirrors import apply_override
@@ -300,8 +301,10 @@ def _resolve_explicit_github_version(api_base: str, requested_ref: str) -> Dict[
         "verified": "unverified",
         "freshness": "unknown",
     }
+# @cpt-end:cpt-studio-algo-version-config-github-authority:p1
 
 
+# @cpt-begin:cpt-studio-algo-version-config-github-authority:p1
 def _last_known_offline_metadata(
     api_base: str,
     canonical_source: str,
@@ -325,6 +328,7 @@ def _last_known_offline_metadata(
     offline["effective_source"] = offline.get("effective_source") or api_base
     offline["offline_at"] = _utc_now_iso()
     return offline
+# @cpt-end:cpt-studio-algo-version-config-github-authority:p1
 
 
 def _cache_matches_authority(
@@ -574,6 +578,7 @@ def copy_from_local(
 # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 def _resolve_cache_sources(url: Optional[str]) -> Tuple[str, str]:
     from studio_proxy.mirrors import apply_override
 
@@ -678,6 +683,7 @@ def _cache_hit_metadata_changed(metadata: Dict[str, Any], asset_url: Optional[st
     })
     _write_cache_provenance(metadata)
     return True
+# @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 
 
 def _reuse_cached_download(
@@ -693,13 +699,18 @@ def _reuse_cached_download(
     cached_version = version_file.read_text(encoding="utf-8").strip()
     if cached_version != resolved_version:
         return None
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
     if not _cache_matches_authority(resolved_version, metadata):
         return None
     _cache_hit_metadata_changed(metadata, asset_url)
     _write_cache_version_toml(cache_dir, resolved_version, metadata)
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
     return True, f"Cache already up to date (version {resolved_version})"
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 def _download_archive(asset_url: str) -> Tuple[bool, bytes | str]:
     req = Request(asset_url, headers=_get_github_headers())
     try:
@@ -711,6 +722,7 @@ def _download_archive(asset_url: str) -> Tuple[bool, bytes | str]:
         return False, f"Download failed: {exc.reason}. Check network connectivity."
     except OSError as exc:
         return False, f"Download failed: {exc}. Check network connectivity."
+# @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 
 
 def _reset_cache_dir(cache_dir: Path) -> None:
@@ -723,6 +735,7 @@ def _reset_cache_dir(cache_dir: Path) -> None:
 
 def _extract_tar_archive(archive_data: bytes, cache_dir: Path) -> bool:
     try:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-tar-stripped
         buf = io.BytesIO(archive_data)
         if not tarfile.is_tarfile(buf):
             return False
@@ -731,6 +744,7 @@ def _extract_tar_archive(archive_data: bytes, cache_dir: Path) -> bool:
             members = tf.getmembers()
             prefix = _find_common_prefix(members)
             _extract_stripped(tf, members, prefix, cache_dir)
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-tar-stripped
         return True
     except (tarfile.TarError, OSError) as exc:
         _warn(f"unable to extract tar archive into {cache_dir}: {exc}")
@@ -739,11 +753,13 @@ def _extract_tar_archive(archive_data: bytes, cache_dir: Path) -> bool:
 
 def _extract_zip_archive(archive_data: bytes, cache_dir: Path) -> bool:
     try:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-zip-stripped
         buf = io.BytesIO(archive_data)
         with zipfile.ZipFile(buf) as zf:
             members = zf.namelist()
             prefix = _find_zip_prefix(members)
             _extract_zip_stripped(zf, members, prefix, cache_dir)
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-zip-stripped
         return True
     except (zipfile.BadZipFile, OSError) as exc:
         _warn(f"unable to extract zip archive into {cache_dir}: {exc}")
@@ -762,9 +778,11 @@ def _finalize_cached_download(
     api_base: str,
     metadata: Dict[str, Any],
 ) -> Tuple[bool, str]:
+    # @cpt-begin:cpt-studio-algo-version-config-github-authority:p1
     _patch_cached_version(cache_dir, resolved_version)
     _remove_non_github_whatsnew(cache_dir)
     _write_github_whatsnew(cache_dir, api_base)
+    # @cpt-end:cpt-studio-algo-version-config-github-authority:p1
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
     version_file.write_text(resolved_version, encoding="utf-8")
     metadata.update({
@@ -783,6 +801,7 @@ def _finalize_cached_download(
     # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-path-new
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
 def _prepare_download_payload(
     resolved_version: Optional[str],
     asset_url: Optional[str],
@@ -794,11 +813,16 @@ def _prepare_download_payload(
         return None, (False, f"No download URL found for version {resolved_version}")
 
     downloaded, archive_payload = _download_archive(asset_url)
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
     if not downloaded:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
         return None, (False, str(archive_payload))
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
     if not isinstance(archive_payload, bytes):
         return None, (False, "Download produced invalid archive data.")
     return archive_payload, None
+# @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
 
 def download_and_cache(
     version: Optional[str] = None,
@@ -827,15 +851,14 @@ def download_and_cache(
         cache_dir,
         version_file,
     )
-    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-resolve-version
     if early_result is not None:
         return early_result
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-resolve-version
 
     metadata.update({
         "canonical_source": canonical_source,
         "effective_source": api_base,
     })
-    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
     cached_result = _reuse_cached_download(
         force,
         version_file,
@@ -845,19 +868,12 @@ def download_and_cache(
         asset_url,
     )
     if cached_result is not None:
-        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
         return cached_result
-        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
-    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
     archive_data, archive_error = _prepare_download_payload(resolved_version, asset_url)
-    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
-    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
     if archive_error is not None:
-        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
         return archive_error
-        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
-    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
 
     _reset_cache_dir(cache_dir)
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-archive
@@ -892,6 +908,7 @@ def _extract_stripped(
 ) -> None:
     """Extract tar members, stripping the common prefix."""
     for member in members:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-tar-members
         if not member.name.startswith(prefix):
             continue
         rel = member.name[len(prefix):]
@@ -911,6 +928,7 @@ def _extract_stripped(
             f = tf.extractfile(member)
             if f is not None:
                 target.write_bytes(f.read())
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-tar-members
 
 def _find_zip_prefix(members: list) -> str:
     """Find common top-level directory prefix in zip members."""
@@ -930,6 +948,7 @@ def _extract_zip_stripped(
 ) -> None:
     """Extract zip members, stripping the common prefix."""
     for name in members:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-zip-members
         if not name.startswith(prefix):
             continue
         rel = name[len(prefix):]
@@ -943,4 +962,5 @@ def _extract_zip_stripped(
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(zf.read(name))
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-zip-members
 # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers

@@ -39,11 +39,10 @@ def cmd_validate_toc(argv: List[str]) -> int:
     args = p.parse_args(argv)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-args
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
     results = []
     total_errors = 0
     total_warnings = 0
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
     files_to_validate = [Path(f).resolve() for f in args.files]
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
 

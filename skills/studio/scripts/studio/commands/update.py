@@ -74,6 +74,7 @@ class _KitSourceResolution:
 
 def _parse_update_args(argv: List[str]) -> argparse.Namespace:
     """Build and parse the update CLI arguments."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-parse-update-args
     p = argparse.ArgumentParser(
         prog="update",
         description="Update Constructor Studio installation (refresh .core, regenerate .gen)",
@@ -98,8 +99,10 @@ def _parse_update_args(argv: List[str]) -> argparse.Namespace:
     )
     _add_legacy_migration_args(p)
     return p.parse_args(argv)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-parse-update-args
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-project
 def _no_project_root_result() -> Dict[str, Any]:
     return {"status": "ERROR", "message": "No project root found. Run 'cfs init' first."}
 
@@ -159,8 +162,10 @@ def _render_missing_cache(_data: Dict[str, Any]) -> tuple[None, None, None, None
         ui.hint("The proxy layer downloads the cache before forwarding to this command."),
         ui.hint("If running directly, ensure cache exists at the path above."),
     )
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-project
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-project
 @dataclass
 class _UpdateProjectResolution:
     rc: int
@@ -191,8 +196,10 @@ class _UpdateRunContext:
     config_dir: Path
     core_toml_path: Path
     kit_tracking: str
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-project
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-project
 def _failed_update_resolution(
     result: Optional[Dict[str, Any]] = None,
 ) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
@@ -235,9 +242,11 @@ def _resolve_existing_project_root(args: argparse.Namespace) -> Optional[Path]:
     from ..utils.files import find_project_root
     from .migrate_from_cypilot import resolve_cypilot_project_root
 
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-existing-project-root
     cwd = Path.cwd().resolve()
     project_root = Path(args.project_root).resolve() if args.project_root else find_project_root(cwd)
     return project_root or resolve_cypilot_project_root(args.project_root)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-existing-project-root
 
 
 def _missing_install_update_result(
@@ -245,6 +254,7 @@ def _missing_install_update_result(
     project_root: Path,
     legacy_rel: Optional[str],
 ) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-handle-missing-install
     if legacy_rel:
         return _handle_missing_install_update(args, project_root, legacy_rel)
     ui.result(
@@ -252,6 +262,7 @@ def _missing_install_update_result(
         human_fn=lambda _data: _render_not_initialized(project_root),
     )
     return _failed_update_resolution()
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-handle-missing-install
 
 
 def _resolve_update_project(
@@ -317,6 +328,7 @@ def _build_update_run_context(
         core_toml_path=core_toml_path,
         kit_tracking=_read_kit_tracking(core_toml_path, default="tracked"),
     )
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-project
 
 
 def _handle_missing_install_update(
@@ -331,6 +343,7 @@ def _handle_missing_install_update(
         _human_migrate_ok,
     )
 
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-handle-missing-install
     migrate = should_migrate_from_cypilot(
         args.migrate_from_cypilot,
         interactive=not args.no_interactive and not args.yes,
@@ -364,6 +377,7 @@ def _handle_missing_install_update(
     )
     result = None
     return rc, result, None, None, None, False
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-handle-missing-install
 
 
 def _handle_existing_install_legacy_migration(
@@ -378,6 +392,7 @@ def _handle_existing_install_legacy_migration(
         _human_migrate_ok,
     )
 
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-handle-existing-install-legacy-migration
     legacy_rel = args.from_dir or detect_legacy_cypilot_install(project_root)
     if not legacy_rel:
         return None
@@ -415,8 +430,10 @@ def _handle_existing_install_legacy_migration(
     )
     result = None
     return rc, result, None, None, None, False
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-handle-existing-install-legacy-migration
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 def _show_update_whatsnew(
     *,
     args: argparse.Namespace,
@@ -424,6 +441,7 @@ def _show_update_whatsnew(
     installed_whatsnew_path: Path,
 ) -> bool:
     """Show core whatsnew and report whether update should continue."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-show-update-whatsnew
     if args.dry_run or not _cache_allows_root_metadata(CACHE_DIR):
         return True
     cache_whatsnew = read_whatsnew(CACHE_DIR / "whatsnew.toml")
@@ -438,7 +456,9 @@ def _show_update_whatsnew(
     if ack:
         return True
     ui.result({"status": "ABORTED", "message": "Update aborted by user."})
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-show-update-whatsnew
     return False
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 
 
 def _copy_core_from_cache(
@@ -448,6 +468,7 @@ def _copy_core_from_cache(
     studio_dir: Path,
     core_dir: Path,
 ) -> Dict[str, str]:
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-copy-core-from-cache
     ui.step("Updating core files and install metadata from cache...")
     if not args.dry_run:
         studio_dir.mkdir(parents=True, exist_ok=True)
@@ -468,8 +489,10 @@ def _copy_core_from_cache(
     for name, action in copy_results.items():
         ui.file_action(name if name in COPY_ROOT_FILES else f".core/{name}/", action)
     return copy_results
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-copy-core-from-cache
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-layout-migration
 def _record_layout_migration(actions: Dict[str, Any], studio_dir: Path) -> None:
     from .kit import _detect_and_migrate_layout
 
@@ -480,8 +503,10 @@ def _record_layout_migration(actions: Dict[str, Any], studio_dir: Path) -> None:
     for slug, status in layout_migrated.items():
         ui.substep(f"{slug}: {status}")
     actions["layout_migration"] = layout_migrated
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-layout-migration
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-persist-post-update-metadata
 def _persist_post_update_metadata(
     *,
     context: _PostCoreUpdateContext,
@@ -504,15 +529,17 @@ def _persist_post_update_metadata(
         agent_tracking=agent_tracking,
         dry_run=False,
     )
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-persist-post-update-metadata
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-core-toml-migrations
 def _record_core_toml_migrations(actions: Dict[str, Any], config_dir: Path) -> None:
     # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     removed_system = _remove_system_from_core_toml(config_dir)
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     if removed_system:
         ui.step("Removed [system] section from core.toml (ADR-0014: system identity lives in artifacts.toml)")
         actions["core_toml_system_removed"] = True
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     deduped = _deduplicate_legacy_kits(config_dir)
     if deduped:
         ui.step("Deduplicating legacy kit slugs...")
@@ -522,16 +549,18 @@ def _record_core_toml_migrations(actions: Dict[str, Any], config_dir: Path) -> N
     # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-migrate-kit-sources
     migrated_kits = _migrate_kit_sources(config_dir)
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-kit-sources
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
     if not migrated_kits:
         return
     ui.step("Migrating kit sources to GitHub...")
     for slug, src in migrated_kits.items():
         ui.substep(f"{slug}: source -> {src}")
     actions["kit_source_migration"] = migrated_kits
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-kit-sources
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-core-toml-migrations
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-run-post-core-update-steps
 def _run_post_core_update_steps(
     *,
     args: argparse.Namespace,
@@ -546,19 +575,20 @@ def _run_post_core_update_steps(
         actions["core_toml_metadata"] = "dry_run"
         # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-config
         # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
+        # @cpt-begin:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
         actions["gitignore"] = "dry_run"
+        # @cpt-end:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
         return True
     # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-detect-layout-algo
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-detect-layout
     _record_layout_migration(actions, context.studio_dir)
+    _cleanup_legacy_blueprint_dirs(context.config_dir)
     # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-detect-layout
     # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-detect-layout-algo
-    _cleanup_legacy_blueprint_dirs(context.config_dir)
     # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-migrate-config
     _persist_post_update_metadata(context=context, actions=actions)
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-config
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
+    # @cpt-begin:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
     try:
         actions["gitignore"] = _write_gitignore_block(
             context.project_root,
@@ -570,10 +600,15 @@ def _run_post_core_update_steps(
     except (OSError, ValueError) as exc:
         errors.append({"path": ".gitignore", "error": str(exc)})
         return False
+    # @cpt-end:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-config
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
     _record_core_toml_migrations(actions, context.config_dir)
     return True
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-run-post-core-update-steps
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-render-update-result
 def _gitignore_failure_result(
     *,
     args: argparse.Namespace,
@@ -599,8 +634,10 @@ def _dry_run_github_kit_result(kit_slug: str) -> Dict[str, Any]:
         "gen": {"files_written": 0},
         "gen_rejected": [],
     }
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-render-update-result
 
 
+# @cpt-begin:cpt-studio-algo-version-config-github-authority:p1:inst-build-offline-github-authority
 def _cached_github_authority_metadata(  # pylint: disable=too-many-locals
     *,
     previous_provenance: Dict[str, Any],
@@ -631,6 +668,7 @@ def _cached_github_authority_metadata(  # pylint: disable=too-many-locals
         "verified": "stale",
         "freshness": "last_known",
     }
+# @cpt-end:cpt-studio-algo-version-config-github-authority:p1:inst-build-offline-github-authority
 
 
 def _resolve_github_update_source(
@@ -642,6 +680,7 @@ def _resolve_github_update_source(
 ) -> _KitSourceResolution:
     from .kit import _download_kit_from_github_with_authority, _parse_github_source
 
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-github-update-source
     owner = repo = version = ""
     try:
         owner, repo, version = _parse_github_source(source_str.removeprefix("github:"))
@@ -673,8 +712,10 @@ def _resolve_github_update_source(
         logger.warning("%s: download failed, using cached kit", kit_slug, exc_info=exc)
         ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
         return _KitSourceResolution(cache_kit, None, authority_metadata, None)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-github-update-source
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-update-kit-source
 def _resolve_update_kit_source(
     *,
     args: argparse.Namespace,
@@ -697,8 +738,10 @@ def _resolve_update_kit_source(
         if cache_kit.is_dir():
             return _KitSourceResolution(cache_kit, None, None, None)
     return _KitSourceResolution(None, None, None, None)
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-update-kit-source
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-manifest-migration-result
 def _record_manifest_migration_result(
     *,
     args: argparse.Namespace,
@@ -717,10 +760,10 @@ def _record_manifest_migration_result(
         migration = _maybe_migrate_legacy_to_manifest(
             kit_slug, kit_src, studio_dir, config_dir, interactive,
         )
-        # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
         if migration is None:
             return
         kit_result["manifest_migration"] = migration
+        # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
         migration_status = migration.get("status", "")
         if migration_status == "PASS":
             migrated_count = migration.get("migrated_count", 0)
@@ -741,6 +784,7 @@ def _record_manifest_migration_result(
         )
         errors.append({"path": kit_slug, "error": mig_error})
         logger.exception("%s: manifest migration raised unexpected exception", kit_slug)
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-manifest-migration-result
 
 
 def _report_updated_kit_progress(kit_slug: str, kit_result: Dict[str, Any]) -> None:  # pylint: disable=too-many-locals
@@ -783,6 +827,7 @@ def _aborted_kit_update_result(kit_slug: str) -> Dict[str, Any]:
     }
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-confirm-kit-update
 def _confirm_kit_update(
     *,
     args: argparse.Namespace,
@@ -802,8 +847,10 @@ def _confirm_kit_update(
         kit_slug,
         interactive=interactive and not args.yes,
     )
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-confirm-kit-update
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-perform-registered-kit-update
 def _perform_registered_kit_update(  # pylint: disable=too-many-arguments,too-many-locals
     *,
     args: argparse.Namespace,
@@ -843,8 +890,10 @@ def _perform_registered_kit_update(  # pylint: disable=too-many-arguments,too-ma
         kit_result=kit_result,
     )
     return kit_result
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-perform-registered-kit-update
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-single-registered-kit
 def _update_single_registered_kit(  # pylint: disable=too-many-arguments
     *,
     args: argparse.Namespace,
@@ -901,8 +950,10 @@ def _update_single_registered_kit(  # pylint: disable=too-many-arguments
     finally:
         if resolution.tmp_to_clean:
             shutil.rmtree(resolution.tmp_to_clean, ignore_errors=True)
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-single-registered-kit
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-registered-kits
 def _update_registered_kits(  # pylint: disable=too-many-locals
     *,
     args: argparse.Namespace,
@@ -951,8 +1002,10 @@ def _update_registered_kits(  # pylint: disable=too-many-locals
         )
     actions["kits"] = kit_results
     return kit_results
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-registered-kits
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-registered-kits
 def _skipped_kit_updates_action(core_toml_path: Path, kit_tracking: str) -> Dict[str, Any]:
     """Build the action payload for a run that skips kit updates."""
     return {
@@ -963,8 +1016,10 @@ def _skipped_kit_updates_action(core_toml_path: Path, kit_tracking: str) -> Dict
             "kits": _read_kit_tracking_state(core_toml_path, default=kit_tracking)[1],
         },
     }
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-registered-kits
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-record-single-kit-update
 def _record_single_kit_update(  # pylint: disable=too-many-locals
     *,
     args: argparse.Namespace,
@@ -982,8 +1037,11 @@ def _record_single_kit_update(  # pylint: disable=too-many-locals
     if kit_result.get("gen_errors"):
         errors.extend({"path": kit_slug, "error": error} for error in kit_result["gen_errors"])
     _report_updated_kit_progress(kit_slug, kit_result)
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-record-single-kit-update
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-scaffold-algo
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-ensure-scaffold
 def _ensure_update_scaffold(
     *,
     args: argparse.Namespace,
@@ -992,6 +1050,7 @@ def _ensure_update_scaffold(
     project_root: Path,
     install_rel: str,
 ) -> None:
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-ensure-update-scaffold
     ui.step("Ensuring config/ scaffold...")
     if args.dry_run:
         return
@@ -1013,8 +1072,13 @@ def _ensure_update_scaffold(
     )
     actions["root_agents"] = _inject_root_agents(project_root, install_rel)
     actions["root_claude"] = _inject_root_claude(project_root, install_rel)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-ensure-update-scaffold
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-ensure-scaffold
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-scaffold-algo
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-self-check
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-run-update-validation
 def _run_update_validation(
     *,
     args: argparse.Namespace,
@@ -1043,8 +1107,11 @@ def _run_update_validation(
     except (OSError, ValueError, KeyError) as exc:
         errors.append({"path": "validate-kits", "error": f"validate-kits failed to run: {exc}"})
         return None
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-run-update-validation
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-self-check
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-return-report
 def _ensure_core_toml_lock_sidecar(core_toml_path: Path) -> None:
     """Create the advisory lock sidecar expected by update filesystem contracts."""
     if not core_toml_path.is_file():
@@ -1091,8 +1158,10 @@ def _initialize_update_outcome(
         actions["migration"] = "declined"
         actions["migration_decline_action"] = "regular_update"
     return actions, [], []
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-return-report
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
 def _update_agent_regeneration_action(
     *,
     args: argparse.Namespace,
@@ -1109,8 +1178,10 @@ def _update_agent_regeneration_action(
     )
     if agents_regen:
         actions["agents_regenerated"] = agents_regen
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-render-update-result
 def _render_update_result(
     *,
     args: argparse.Namespace,
@@ -1130,8 +1201,11 @@ def _render_update_result(
         studio_dir=context.studio_dir,
         validate_kits_result=validate_kits_result,
     )
+    # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-update-complete
     ui.result(update_result, human_fn=_human_update_ok)
     return 1 if errors else 0
+    # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-update-complete
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-render-update-result
 
 
 def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
@@ -1143,13 +1217,13 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
     """
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-user-update
     args = _parse_update_args(argv)
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-user-update
 
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-resolve-project
     rc, _early_result, project_root, studio_dir, install_rel, legacy_migration_declined = _resolve_update_project(args)
     if rc or project_root is None or studio_dir is None or install_rel is None:
         return rc
     # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-resolve-project
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-user-update
 
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-whatsnew
     actions, errors, warnings = _initialize_update_outcome(legacy_migration_declined)
@@ -1175,8 +1249,6 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
         studio_dir=context.studio_dir,
         core_dir=context.core_dir,
     )
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-replace-core
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-replace-core-algo
 
     post_core_context = _PostCoreUpdateContext(
         project_root=context.project_root,
@@ -1203,6 +1275,8 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
             human_fn=_human_update_ok,
         )
         return 1
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-replace-core
+    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-replace-core-algo
 
     from .kit import regenerate_gen_aggregates
 
@@ -1226,8 +1300,6 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
     # Removed — no separate regen step; kit files are updated directly by update_kit.
     # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-regen-algo
 
-    # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-scaffold-algo
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-ensure-scaffold
     # ── Step 5: Ensure config/ scaffold (create only if missing) ─────────
     _ensure_update_scaffold(
         args=args,
@@ -1236,10 +1308,7 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
         project_root=context.project_root,
         install_rel=context.install_rel,
     )
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-ensure-scaffold
-    # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-scaffold-algo
 
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
     # ── Auto-regenerate agent integrations if real changes happened ────
     _update_agent_regeneration_action(
         args=args,
@@ -1248,9 +1317,7 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
         context=context,
         kit_results=kit_results,
     )
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
 
-    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-self-check
     # ── Run validate-kits to verify kit integrity after update ───────────
     validate_kits_result = _run_update_validation(
         args=args,
@@ -1259,12 +1326,11 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
         project_root=context.project_root,
         studio_dir=context.studio_dir,
     )
-    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-self-check
-    if not args.dry_run:
-        _ensure_core_toml_lock_sidecar(context.core_toml_path)
 
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-return-report
     # ── Report ───────────────────────────────────────────────────────────
+    if not args.dry_run:
+        _ensure_core_toml_lock_sidecar(context.core_toml_path)
     return _render_update_result(
         args=args,
         actions=actions,
@@ -1281,14 +1347,19 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
 # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 def _ensure_file(path: Path, content: str, actions: Dict, key: str) -> None:
     """Create file only if it doesn't exist."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-ensure-update-scaffold
     if path.is_file():
         actions[key] = "preserved"
     else:
         path.write_text(content, encoding="utf-8")
         actions[key] = "created"
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-ensure-update-scaffold
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 def _config_readme_content() -> str:
     """README.md content for config/ directory."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-ensure-update-scaffold
     return (
         _CONFIG_README_PREAMBLE +
         "- `core.toml` — project settings (kit references, version)\n"
@@ -1303,6 +1374,8 @@ def _config_readme_content() -> str:
         "\n"
         "**These files are never overwritten by `cfs update`.**\n"
     )
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-ensure-update-scaffold
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 
 
 # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-helper
@@ -1327,10 +1400,9 @@ def _maybe_migrate_legacy_to_manifest(
     from ..utils.manifest import load_manifest
     from .kit import migrate_legacy_kit_to_manifest, _read_kits_from_core_toml
 
+    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
     try:
-        # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
         manifest = load_manifest(kit_src)
-        # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
     except FileNotFoundError:
         logger.info("No manifest.toml found for kit '%s' at %s; skipping manifest migration", kit_slug, kit_src)
         return None
@@ -1345,31 +1417,21 @@ def _maybe_migrate_legacy_to_manifest(
 
     if manifest is None:
         return None
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-root
     kit_data = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
-    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-root
     if kit_data.get("resources"):
         return None  # Already has resource bindings
+    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-root
 
-    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-foreach-resource
-    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-compute-path
-    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-register-existing
-    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-prompt-new
-    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
-    # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-return
     return migrate_legacy_kit_to_manifest(
         kit_src, studio_dir, kit_slug, interactive=interactive,
     )
-    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-return
-    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
-    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-prompt-new
-    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-register-existing
-    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-compute-path
-    # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-foreach-resource
 # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-helper
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 def _maybe_regenerate_agents(
     copy_results: Dict[str, str],
     kit_results: Dict[str, Any],
@@ -1382,6 +1444,7 @@ def _maybe_regenerate_agents(
     Only regenerates agents whose skill output files already exist on disk.
     Returns list of agent names that were regenerated.
     """
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
     core_changed = any(v in ("updated", "created") for v in copy_results.values())
     kits_changed = any(
         isinstance(kr, dict)
@@ -1418,21 +1481,28 @@ def _maybe_regenerate_agents(
             ui.substep(f"{agent}: updated")
 
     return regenerated
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 
 
+# @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 def _count_agent_output_changes(result: Dict[str, Any]) -> int:
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
     total = 0
     for section_name in ("workflows", "skills", "subagents"):
         section = result.get(section_name, {})
         total += len(section.get("updated", []))
         total += len(section.get("created", []))
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-regenerate-agents
     return total
+# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 
 # ---------------------------------------------------------------------------
 # core.toml [system] removal migration (ADR-0014)
 # ---------------------------------------------------------------------------
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-run-post-core-update-steps
 def _cleanup_legacy_blueprint_dirs(config_dir: Path) -> None:
     """Remove leftover blueprints/ directories from config/kits/*/.
 
@@ -1449,8 +1519,10 @@ def _cleanup_legacy_blueprint_dirs(config_dir: Path) -> None:
         bp = kit_dir / "blueprints"
         if bp.is_dir():
             shutil.rmtree(bp, ignore_errors=True)
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-run-post-core-update-steps
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
 def _remove_system_from_core_toml(config_dir: Path) -> bool:
     """Remove the [system] section from core.toml if present.
 
@@ -1484,6 +1556,7 @@ def _remove_system_from_core_toml(config_dir: Path) -> bool:
         return False
 
     return True
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
 
 
 # ---------------------------------------------------------------------------
@@ -1496,6 +1569,7 @@ _LEGACY_SLUG_RENAMES: Dict[str, str] = {
 }
 
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-core-toml-migrations
 def _merge_duplicate_legacy_kit(
     kits: Dict[str, Any],
     renamed: Dict[str, str],
@@ -1596,6 +1670,7 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
         logger.warning("Legacy kit dedup write failed for %s: %s", core_toml, exc)
 
     return renamed
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-core-toml-migrations
 
 
 # Known bundled kits and their GitHub sources
@@ -1603,6 +1678,7 @@ _KNOWN_KIT_SOURCES: Dict[str, str] = {
     "sdlc": "github:constructorfabric/studio-kit-sdlc",
 }
 
+# @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
 def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
     """Add 'source' field to installed kits that lack one (metadata-only).
 
@@ -1652,11 +1728,11 @@ def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
         logger.warning("Kit source migration write failed for %s: %s", core_toml, exc)
 
     return migrated
+# @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
 
 
 # Re-exported from kit.py — tests import it from here
 from .kit import _read_conf_version  # noqa: F401  # pylint: disable=unused-import,wrong-import-position
-# @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 
 
 def _show_validate_kits_failures(vk_report: Dict[str, Any]) -> None:

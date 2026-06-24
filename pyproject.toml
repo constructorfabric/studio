@@ -30,6 +30,7 @@ persistent = false
 py-version = "3.11"
 init-hook = "import sys; sys.path[:0] = ['src', 'skills/studio/scripts', 'scripts']"
 load-plugins = [
+    "pylint_plugins.cpt_marker_columns",
     "pylint_plugins.error_surfaces",
     "pylint_plugins.import_boundaries",
     "pylint_plugins.output_channels",
@@ -168,6 +169,7 @@ enable = [
     "W9004",
     "W9005",
     "W9006",
+    "W9007",
     "W1113",
     "W1114",
     "W1115",

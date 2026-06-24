@@ -12,6 +12,7 @@ from .model import Edge, Node, Ref, phantom_id
 
 
 def _definition_maps(nodes: Sequence[Node]) -> Tuple[Dict[str, Node], Dict[str, Node]]:
+    # @cpt-begin:cpt-studio-algo-map-build-cpt-edges:p1:inst-definition-maps
     def_map: Dict[str, Node] = {}
     base_def_map: Dict[str, Node] = {}
     for node in nodes:
@@ -21,6 +22,7 @@ def _definition_maps(nodes: Sequence[Node]) -> Tuple[Dict[str, Node], Dict[str, 
             def_map.setdefault(definition, node)
             base_def_map.setdefault(definition.split(":")[0], node)
     return def_map, base_def_map
+    # @cpt-end:cpt-studio-algo-map-build-cpt-edges:p1:inst-definition-maps
 
 
 def _resolve_cpt_target(
@@ -30,6 +32,7 @@ def _resolve_cpt_target(
     base_def_map: Dict[str, Node],
     phantoms: Dict[str, Node],
 ):
+    # @cpt-begin:cpt-studio-algo-map-build-cpt-edges:p1:inst-resolve-cpt-target
     target = def_map.get(use.cpt_id) or base_def_map.get(use.cpt_id.split(":")[0])
     if target is None:
         phantom = phantoms.get(use.cpt_id)
@@ -52,6 +55,7 @@ def _resolve_cpt_target(
     if target.id == src.id:
         return None, False, False
     return target.id, False, src.source != target.source
+    # @cpt-end:cpt-studio-algo-map-build-cpt-edges:p1:inst-resolve-cpt-target
 
 
 def _append_cpt_edge(
@@ -64,6 +68,7 @@ def _append_cpt_edge(
     dangling: bool,
     cross_repo: bool,
 ) -> int:
+    # @cpt-begin:cpt-studio-algo-map-build-cpt-edges:p1:inst-append-cpt-edge
     edge_type = "cpt-doc" if src.kind == "markdown" else "cpt-impl"
     key = (src.id, to_id, use.cpt_id)
     ref = Ref(
@@ -89,6 +94,34 @@ def _append_cpt_edge(
     edges.append(new_edge)
     by_key[key] = new_edge
     return edge_id + 1
+    # @cpt-end:cpt-studio-algo-map-build-cpt-edges:p1:inst-append-cpt-edge
+
+
+def _iterate_cpt_uses(
+    nodes: Sequence[Node],
+    def_map: Dict[str, Node],
+    base_def_map: Dict[str, Node],
+    phantoms: Dict[str, Node],
+    edges: List[Edge],
+    by_key: Dict[Tuple[str, str, str], Edge],
+    edge_id: int,
+) -> int:
+    # @cpt-begin:cpt-studio-algo-map-cpt-edges:p1:inst-iterate-uses
+    for src in nodes:
+        if src.kind == "phantom-cpt":
+            continue
+        for use in src.cpt_uses:
+            if use.marker_kind == "md-def":
+                continue  # definitions are not uses
+            resolved = _resolve_cpt_target(src, use, def_map, base_def_map, phantoms)
+            if resolved[0] is None:
+                continue
+            to_id, dangling, cross_repo = resolved
+            edge_id = _append_cpt_edge(
+                edges, by_key, edge_id, src, use, to_id, dangling, cross_repo
+            )
+    return edge_id
+    # @cpt-end:cpt-studio-algo-map-cpt-edges:p1:inst-iterate-uses
 
 
 def build_cpt_edges(nodes: Sequence[Node]) -> Tuple[List[Edge], List[Node]]:
@@ -120,20 +153,8 @@ def build_cpt_edges(nodes: Sequence[Node]) -> Tuple[List[Edge], List[Node]]:
     edge_id = 0
     by_key: Dict[Tuple[str, str, str], Edge] = {}
 
-    # @cpt-begin:cpt-studio-algo-map-cpt-edges:p1:inst-iterate-uses
-    for src in nodes:
-        if src.kind == "phantom-cpt":
-            continue
-        for use in src.cpt_uses:
-            if use.marker_kind == "md-def":
-                continue  # definitions are not uses
-            resolved = _resolve_cpt_target(src, use, def_map, base_def_map, phantoms)
-            if resolved[0] is None:
-                continue
-            to_id, dangling, cross_repo = resolved
-            edge_id = _append_cpt_edge(
-                edges, by_key, edge_id, src, use, to_id, dangling, cross_repo
-            )
-    # @cpt-end:cpt-studio-algo-map-cpt-edges:p1:inst-iterate-uses
+    edge_id = _iterate_cpt_uses(
+        nodes, def_map, base_def_map, phantoms, edges, by_key, edge_id
+    )
     return edges, list(phantoms.values())
     # @cpt-end:cpt-studio-algo-map-cpt-edges:p1:inst-build-cpt-edges

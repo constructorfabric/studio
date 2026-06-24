@@ -240,6 +240,7 @@ def _build_chunk_records(
     staging_dir: Path,
     chunk_index: int,
 ) -> Tuple[List[Dict[str, object]], int]:
+    # @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-write-chunk-file
     chunk_records: List[Dict[str, object]] = []
     total_parts = len(ranges)
     for part_number, (start, end) in enumerate(ranges, start=1):
@@ -266,9 +267,11 @@ def _build_chunk_records(
         })
         chunk_index += 1
     return chunk_records, chunk_index
+    # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-write-chunk-file
 
 
 def _swap_chunk_output(output_dir: Path, staging_dir: Path) -> Tuple[Path | None, bool]:
+    # @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
     preserve_ok = True
     backup_dir: Path | None = None
     if output_dir.exists():
@@ -284,9 +287,11 @@ def _swap_chunk_output(output_dir: Path, staging_dir: Path) -> Tuple[Path | None
             preserve_ok = False
     staging_dir.replace(output_dir)
     return backup_dir, preserve_ok
+    # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
 
 
 def _cleanup_chunk_swap(backup_dir: Path | None, output_dir: Path, preserve_ok: bool, swap_succeeded: bool) -> None:
+    # @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
     if swap_succeeded and backup_dir is not None and backup_dir.exists():
         if preserve_ok:
             shutil.rmtree(backup_dir, ignore_errors=True)
@@ -301,9 +306,11 @@ def _cleanup_chunk_swap(backup_dir: Path | None, output_dir: Path, preserve_ok: 
             _warn_chunk_input(
                 f"failed to restore preserved files from {backup_dir} into {output_dir}: {exc}"
             )
+    # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
 
 
 def _parse_chunk_args(argv: List[str]):
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args
     parser = _ChunkInputArgumentParser(
         prog="chunk-input",
         description=(
@@ -352,15 +359,18 @@ def _parse_chunk_args(argv: List[str]):
         help="Compute input signature and source metadata without writing any files",
     )
     return parser.parse_args(argv)
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args
 
 
 def _load_chunk_sources(args):
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-read-sources
     sources = [_read_source(path_str, idx) for idx, path_str in enumerate(args.paths, start=1)]
     if args.paths and args.include_stdin:
         sources.insert(0, _read_stdin_source(args.stdin_label))
     elif not sources:
         sources = [_read_stdin_source(args.stdin_label)]
     return sources
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-read-sources
 
 
 def _chunk_count(source: Dict[str, object], max_lines: int) -> int:
@@ -386,6 +396,7 @@ def _dry_run_result(
     sources: Sequence[Dict[str, object]],
     total_lines: int,
 ) -> Dict[str, object]:
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-dry-run
     input_signature, _ = _build_input_signature(sources)
     return {
         "status": "OK",
@@ -399,6 +410,7 @@ def _dry_run_result(
         "plan_required": total_lines > args.threshold_lines,
         "sources": [_source_result(source, args.max_lines) for source in sources],
     }
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-dry-run
 
 
 def _written_chunk_result(
@@ -410,6 +422,7 @@ def _written_chunk_result(
     package_manifest: str,
     total_lines: int,
 ) -> Dict[str, object]:
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-return-result
     return {
         "status": "OK",
         "output_dir": output_dir.as_posix(),
@@ -432,6 +445,7 @@ def _written_chunk_result(
         "chunks": chunks,
         "sources": [_source_result(source, args.max_lines) for source in sources],
     }
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-return-result
 
 
 def _chunk_input_error(message: str) -> int:
@@ -440,17 +454,21 @@ def _chunk_input_error(message: str) -> int:
 
 
 def _validate_chunk_threshold_args(args) -> int | None:
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-evaluate-threshold
     if args.max_lines <= 0:
         return _chunk_input_error("--max-lines must be > 0")
     if args.threshold_lines <= 0:
         return _chunk_input_error("--threshold-lines must be > 0")
     return None
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-evaluate-threshold
 
 
 def _resolve_chunk_output_dir(output_dir: Path) -> int | None:
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-prepare-output
     if output_dir.exists() and not output_dir.is_dir():
         return _chunk_input_error(f"--output-dir path exists and is not a directory: {output_dir}")
     return None
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-prepare-output
 
 
 def _human_dry_chunk_result(data: Dict[str, object]) -> None:

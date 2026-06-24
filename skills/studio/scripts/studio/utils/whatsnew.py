@@ -5,6 +5,7 @@ Shared helpers for displaying whatsnew entries from whatsnew.toml files.
 Used by both `cfs update` (core) and `cfs kit update` (kit).
 """
 
+# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
 import logging
 import re
 import sys
@@ -14,7 +15,6 @@ from typing import Dict, Tuple
 from ._tomllib_compat import tomllib
 from .stderr_logging import emit_stderr_message
 
-# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
 logger = logging.getLogger(__name__)
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
 

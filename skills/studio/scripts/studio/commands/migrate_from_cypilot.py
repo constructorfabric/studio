@@ -135,6 +135,7 @@ def _resolve_migration_child_dir(
     label: str,
 ) -> tuple[Optional[Path], Optional[tuple[None, tuple[int, Dict[str, Any]]]]]:
     """Resolve a migration subdirectory or return the standard argument error."""
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
     child_dir, child_error = _resolve_project_child_dir(project_root, rel_value, flag)
     if child_error:
         return None, _missing_migration_dir_result(
@@ -144,8 +145,10 @@ def _resolve_migration_child_dir(
             message=child_error,
         )
     return child_dir, None
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
 def _resolve_migration_state(  # pylint: disable=too-many-locals
     *,
     project_root: Path,
@@ -162,6 +165,7 @@ def _resolve_migration_state(  # pylint: disable=too-many-locals
     if not legacy_rel:
         return _missing_legacy_install_result(resolved_project_root)
 
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-dirs
     legacy_rel = str(legacy_rel).strip()
     target_rel = str(to_dir).strip() or DEFAULT_INSTALL_DIR
     legacy_dir, legacy_dir_error = _resolve_migration_child_dir(
@@ -180,8 +184,18 @@ def _resolve_migration_state(  # pylint: disable=too-many-locals
     )
     if target_dir_error is not None:
         return target_dir_error
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-dirs
     assert legacy_dir is not None
     assert target_dir is not None
+    if not legacy_dir.is_dir():
+        return None, (
+            1,
+            {
+                "status": "ERROR",
+                "message": f"Cyber Pilot directory not found: {legacy_dir}",
+                "project_root": resolved_project_root.as_posix(),
+            },
+        )
     state = _MigrationState(
         project_root=resolved_project_root,
         legacy_rel=legacy_rel,
@@ -194,18 +208,11 @@ def _resolve_migration_state(  # pylint: disable=too-many-locals
         skip_update=skip_update,
         force_overwrite_root=force_overwrite_root,
     )
-    if not legacy_dir.is_dir():
-        return None, (
-            1,
-            {
-                "status": "ERROR",
-                "message": f"Cyber Pilot directory not found: {legacy_dir}",
-                "project_root": resolved_project_root.as_posix(),
-            },
-        )
     return state, None
+ # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
 def _validate_migration_target(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
     if state.legacy_dir == state.target_dir or not state.target_dir.exists():
         return None
@@ -217,8 +224,10 @@ def _validate_migration_target(state: _MigrationState) -> Optional[tuple[int, Di
         hint="Re-run with --force to replace it, or pass --to-dir to choose another directory.",
         actions={"target_dir": "exists"},
     )
+ # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
 def _check_root_file_cleanliness(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
     if state.dry_run or state.force_overwrite_root:
         return None
@@ -236,8 +245,10 @@ def _check_root_file_cleanliness(state: _MigrationState) -> Optional[tuple[int, 
         backups=state.backups,
         dirty=dirty,
     )
+ # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
 def _replace_target_dir(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
     backup_path = create_backup(state.target_dir)
     if backup_path is None:
@@ -271,8 +282,10 @@ def _replace_target_dir(state: _MigrationState) -> Optional[tuple[int, Dict[str,
         )
     state.actions["target_dir"] = "replaced"
     return None
+ # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
 def _create_target_dir(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
     state.actions["target_dir"] = "created"
     if state.dry_run:
@@ -304,32 +317,42 @@ def _create_target_dir(state: _MigrationState) -> Optional[tuple[int, Dict[str, 
             f"Failed to create target directory from legacy directory: {state.target_dir}",
             **extra,
         )
+ # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
 
 
 def _copy_into_target(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-reuse-target
     if state.legacy_dir == state.target_dir:
         state.actions["target_dir"] = "reused"
         return None
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-reuse-target
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
     if not state.target_dir.exists():
         return _create_target_dir(state)
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
     if state.dry_run:
         state.actions["target_dir"] = "replaced"
         return None
     return _replace_target_dir(state)
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
 
 
 def _record_dry_run_rewrites(actions: Dict[str, Any]) -> None:
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
     actions["core_toml"] = "dry_run"
     actions["artifacts_toml"] = "dry_run"
     actions["config_toml_template_vars"] = "dry_run"
     actions["config_markdown"] = "dry_run"
     actions["root_agents"] = "dry_run"
     actions["root_claude"] = "dry_run"
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
 
 
 def _run_followup_steps(state: _MigrationState) -> tuple[Optional[int], Optional[Any]]:
     update_rc: Optional[int] = None
     update_result: Optional[Any] = None
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
     if not state.skip_update and not state.dry_run:
         update_rc, update_result = _run_followup_update(state.project_root, yes=state.yes)
         state.actions["update"] = "PASS" if not update_rc else "FAIL"
@@ -340,6 +363,7 @@ def _run_followup_steps(state: _MigrationState) -> tuple[Optional[int], Optional
         if kit_update_rc:
             state.warnings.append("follow-up kit update failed")
         return update_rc, update_result
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
     suffix = "skipped" if state.skip_update else "dry_run"
     state.actions["update"] = suffix
     state.actions["kit_update"] = suffix
@@ -351,6 +375,7 @@ def _build_migration_result(
     update_rc: Optional[int],
     update_result: Optional[Any],
 ) -> tuple[int, Dict[str, Any]]:
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
     result: Dict[str, Any] = {
         "status": "PASS" if update_rc in (None, 0) else "WARN",
         "project_root": state.project_root.as_posix(),
@@ -366,8 +391,10 @@ def _build_migration_result(
     if state.warnings:
         result["warnings"] = state.warnings
     return 0 if update_rc in (None, 0) else update_rc, result
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
 
 
+ # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-migration-phases
 def _run_migration_phases(state: _MigrationState) -> Optional[tuple[int, Dict[str, Any]]]:
     target_error = _validate_migration_target(state)
     if target_error is not None:
@@ -378,9 +405,11 @@ def _run_migration_phases(state: _MigrationState) -> Optional[tuple[int, Dict[st
     copy_error = _copy_into_target(state)
     if copy_error is not None:
         return copy_error
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
     if state.dry_run:
         _record_dry_run_rewrites(state.actions)
         return None
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
     rewrite_error = _run_post_copy_rewrites(
         project_root=state.project_root,
         legacy_rel=state.legacy_rel,
@@ -393,6 +422,7 @@ def _run_migration_phases(state: _MigrationState) -> Optional[tuple[int, Dict[st
     if rewrite_error is not None:
         return 1, rewrite_error
     return None
+ # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-migration-phases
 
 
 def migrate_from_cypilot(
@@ -419,7 +449,6 @@ def migrate_from_cypilot(
     Set ``force_overwrite_root`` to skip the AGENTS.md / CLAUDE.md
     uncommitted-changes probe and rewrite their managed blocks anyway.
     """
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-dirs
     state, state_error = _resolve_migration_state(
         project_root=project_root,
         from_dir=from_dir,
@@ -430,55 +459,26 @@ def migrate_from_cypilot(
         skip_update=skip_update,
         force_overwrite_root=force_overwrite_root,
     )
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-dirs
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
     if state_error is not None:
         return state_error
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
     assert state is not None
 
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
-    # existing-target rejection is resolved inside _resolve_migration_state/_run_migration_phases
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
-    # root-file dirty probing happens inside the phase runner before rewrites
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-reuse-target
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-post-copy-rewrites
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
     phase_error = _run_migration_phases(state)
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-post-copy-rewrites
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-create-target
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-reuse-target
     if phase_error is not None:
         return phase_error
 
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
     update_rc, update_result = _run_followup_steps(state)
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
     return _build_migration_result(state, update_rc, update_result)
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
 
 
 def detect_legacy_cypilot_install(project_root: Path) -> Optional[str]:
     """Return the legacy Cyber Pilot install dir relative to *project_root*, if any."""
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-detect-legacy
     return _read_legacy_install_dir(project_root)
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-detect-legacy
 
 
 def resolve_cypilot_project_root(project_root_arg: Optional[str]) -> Optional[Path]:
     """Resolve a project root that may contain either Constructor Studio or Cyber Pilot markers."""
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-project-root
     return _resolve_project_root(project_root_arg)
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-resolve-project-root
 
 
 def should_migrate_from_cypilot(
@@ -833,6 +833,7 @@ def _run_followup_kit_update(*, project_root: Path, yes: bool) -> int:
     """
     from .kit import cmd_kit_update
 
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
     args: List[str] = ["--project-root", project_root.as_posix()]
     if yes:
         args.append("--yes")
@@ -841,6 +842,7 @@ def _run_followup_kit_update(*, project_root: Path, yes: bool) -> int:
     sink = io.StringIO()
     with contextlib.redirect_stdout(sink):
         return cmd_kit_update(args)
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
 
 
 def _run_followup_update(project_root: Path, *, yes: bool) -> tuple[int, Optional[Any]]:
@@ -890,7 +892,8 @@ def _restore_target_backup_after_replace_failure(backup_path: Path, target_dir: 
     return "restored", None
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-restore-target
 
-
+#
+# @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-backup-root-files
 def _backup_migration_markdown_files(  # pylint: disable=too-many-locals
     *,
     project_root: Path,
@@ -923,6 +926,7 @@ def _backup_migration_markdown_files(  # pylint: disable=too-many-locals
             backups.append(backup.as_posix())
             actions.setdefault("config_md_backup", {})[name] = "created"
     return config_md_backups, config_md_paths, root_backups
+# @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-backup-root-files
 
 
 def _post_copy_rewrites(
@@ -933,6 +937,7 @@ def _post_copy_rewrites(
     warnings: List[str],
 ) -> List[tuple[str, Callable[[], Any]]]:
     """Build the ordered rewrite steps for migration after the directory copy."""
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-rewrite-steps
     return [
         ("core_toml", lambda: _migrate_core_toml(target_dir / "config" / "core.toml", warnings=warnings)),
         (
@@ -948,6 +953,7 @@ def _post_copy_rewrites(
         ("root_claude", lambda: _replace_root_block_with_warnings(project_root / "CLAUDE.md", target_rel, warnings)),
         ("host_integrations", lambda: _cleanup_legacy_host_integrations(project_root, warnings, studio_dir=target_dir)),
     ]
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-rewrite-steps
 
 
 def _restore_rewrite_backups(
@@ -959,6 +965,7 @@ def _restore_rewrite_backups(
     root_backups: Dict[str, Optional[Path]],
 ) -> None:
     """Best-effort restore of root/config markdown files after a rewrite failure."""
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-rewrite-steps
     restore_actions: Dict[str, str] = {}
     for label, backup_path, dest_path in (
         ("root_agents", root_backups["root_agents"], project_root / "AGENTS.md"),
@@ -985,6 +992,7 @@ def _restore_rewrite_backups(
         except (OSError, shutil.Error) as restore_exc:
             md_restore_actions[md_name] = f"restore_failed: {restore_exc}"
     actions["config_md_restore"] = md_restore_actions
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-rewrite-steps
 
 
 def _run_post_copy_rewrites(
@@ -997,14 +1005,13 @@ def _run_post_copy_rewrites(
     backups: List[str],
     warnings: List[str],
 ) -> Optional[Dict[str, Any]]:
-    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-backup-root-files
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-post-copy-rewrites
     config_md_backups, config_md_paths, root_backups = _backup_migration_markdown_files(
         project_root=project_root,
         target_dir=target_dir,
         backups=backups,
         actions=actions,
     )
-    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-backup-root-files
 
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-rewrite-steps
     for rewrite_step, rewrite in _post_copy_rewrites(
@@ -1040,6 +1047,7 @@ def _run_post_copy_rewrites(
             result["actions"] = dict(actions)
             return result
     return None
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-post-copy-rewrites
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-rewrite-steps
 
 
@@ -1080,6 +1088,7 @@ def _resolve_project_child_dir(project_root: Path, rel_path: str, option_name: s
 
 
 def _read_legacy_install_dir(project_root: Path) -> Optional[str]:
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-detect-legacy
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-read-legacy-install
     content = ""
     agents_file = project_root / "AGENTS.md"
@@ -1111,6 +1120,7 @@ def _read_legacy_install_dir(project_root: Path) -> Optional[str]:
             return candidate
     return None
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-read-legacy-install
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-detect-legacy
 
 
 def _probe_root_files_dirty(project_root: Path, paths: List[Path]) -> List[str]:
@@ -1285,6 +1295,7 @@ def _migrate_core_toml(core_toml: Path, warnings: Optional[List[str]] = None) ->
 
 def _rewrite_legacy_kit_entry(kit_data: Dict[str, Any]) -> bool:
     """Rewrite one legacy kit entry in-place and report whether it changed."""
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-core-toml
     changed = False
     had_legacy_kit_signal = (
         kit_data.get("path") == LEGACY_KIT_PATH
@@ -1304,6 +1315,7 @@ def _rewrite_legacy_kit_entry(kit_data: Dict[str, Any]) -> bool:
         kit_data["version"] = CONSTRUCTOR_KIT_VERSION
         changed = True
     return changed
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-core-toml
 
 
 def _migrate_artifacts_toml(
@@ -1342,6 +1354,7 @@ def _migrate_artifacts_toml(
 
 
 def _migrate_system_kit_refs(system: Any) -> bool:
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-artifacts-toml
     changed = False
     if not isinstance(system, dict):
         return False
@@ -1353,6 +1366,7 @@ def _migrate_system_kit_refs(system: Any) -> bool:
         if _migrate_system_kit_refs(child):
             changed = True
     return changed
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-artifacts-toml
 
 
 def _migrate_config_toml_template_vars(config_dir: Path) -> List[str]:  # pylint: disable=too-many-locals
@@ -1516,6 +1530,7 @@ def _cleanup_legacy_agent(
     cleanup_skill_dirs,
 ) -> List[str]:
     """Remove legacy integration artifacts for one agent and return removed paths."""
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-cleanup-legacy-host-sweep
     removed = list(cleanup_subagents(agent, project_root, dry_run=False, remove_cypilot=True))
     removed.extend(cleanup_markers(agent, project_root, dry_run=False, remove_cypilot=True))
     removed.extend(cleanup_skill_dirs(agent, project_root, dry_run=False, remove_cypilot=True))
@@ -1532,6 +1547,7 @@ def _cleanup_legacy_agent(
         except OSError as exc:
             _warn_migrate_from_cypilot(f"failed to remove legacy generated file {legacy_file}: {exc}")
     return removed
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-cleanup-legacy-host-sweep
 
 
 def _human_migrate_ok(data: Dict[str, Any]) -> None:  # pyright: ignore

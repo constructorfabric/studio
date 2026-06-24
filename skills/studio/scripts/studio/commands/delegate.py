@@ -29,6 +29,7 @@ def _build_delegate_parser() -> argparse.ArgumentParser:
         "plan_dir",
         help="Path to the Studio plan directory containing plan.toml",
     )
+    # @cpt-begin:cpt-studio-flow-ralphex-delegation-execute:p1:inst-determine-mode
     parser.add_argument(
         "--mode",
         choices=["execute", "tasks-only", "review"],
@@ -54,6 +55,7 @@ def _build_delegate_parser() -> argparse.ArgumentParser:
         help="Disable dashboard serving",
     )
     parser.set_defaults(serve=True)
+    # @cpt-end:cpt-studio-flow-ralphex-delegation-execute:p1:inst-determine-mode
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -86,6 +88,7 @@ def _emit_delegate_error(message: str) -> int:
 
 
 def _resolve_delegate_paths(args) -> tuple[Path, Path] | None:
+    # @cpt-begin:cpt-studio-flow-ralphex-delegation-execute:p1:inst-resolve-plan-paths
     project_root = Path(args.root).resolve()
     if not project_root.is_dir():
         _emit_delegate_error(f"Project root not found or not a directory: {project_root}")
@@ -99,9 +102,11 @@ def _resolve_delegate_paths(args) -> tuple[Path, Path] | None:
         _emit_delegate_error(f"plan.toml not found in {plan_dir}")
         return None
     return project_root, plan_dir
+    # @cpt-end:cpt-studio-flow-ralphex-delegation-execute:p1:inst-resolve-plan-paths
 
 
 def _run_delegate(args, project_root: Path, plan_dir: Path, json_was_enabled: bool) -> dict:
+    # @cpt-begin:cpt-studio-flow-ralphex-delegation-execute:p1:inst-build-delegation-request
     from ._core_config import find_core_toml, load_core_config
     from ..ralphex_export import run_delegation
 
@@ -122,9 +127,9 @@ def _run_delegate(args, project_root: Path, plan_dir: Path, json_was_enabled: bo
         plans_dir_override=args.plans_dir,
         stream_output=not json_was_enabled,
     )
+    # @cpt-end:cpt-studio-flow-ralphex-delegation-execute:p1:inst-build-delegation-request
 
 
-# @cpt-begin:cpt-studio-flow-ralphex-delegation-execute:p1:inst-invoke-execute
 def cmd_delegate(argv: List[str]) -> int:
     """Run ralphex delegation from a Studio plan."""
     json_was_enabled = is_json_mode()
@@ -134,6 +139,8 @@ def cmd_delegate(argv: List[str]) -> int:
         if resolved is None:
             return 1
         project_root, plan_dir = resolved
+
+        # @cpt-begin:cpt-studio-flow-ralphex-delegation-execute:p1:inst-invoke-execute
         result = _run_delegate(args, project_root, plan_dir, json_was_enabled)
 
         if json_was_enabled:
@@ -149,22 +156,22 @@ def cmd_delegate(argv: List[str]) -> int:
             result,
             human_fn=_print_human,
         )
-
+        # @cpt-end:cpt-studio-flow-ralphex-delegation-execute:p1:inst-invoke-execute
         return exit_code
     finally:
         if json_was_enabled:
             set_json_mode(True)
-# @cpt-end:cpt-studio-flow-ralphex-delegation-execute:p1:inst-invoke-execute
 
 
-# @cpt-begin:cpt-studio-dod-ralphex-delegation-modes:p1:inst-determine-mode
 def _result_to_exit_code(result: dict) -> int:
     """Map delegation result status to CLI exit code."""
+    # @cpt-begin:cpt-studio-dod-ralphex-delegation-modes:p1:inst-map-status-to-exit
     status = result.get("status", "error")
     if status in ("ready", "delegated"):
         return 0
     # error status
     return 2
+    # @cpt-end:cpt-studio-dod-ralphex-delegation-modes:p1:inst-map-status-to-exit
 
 
 def _print_human(result: dict) -> None:
@@ -172,6 +179,7 @@ def _print_human(result: dict) -> None:
     status = result.get("status", "error")
     dashboard_url = result.get("dashboard_url")
 
+    # @cpt-begin:cpt-studio-flow-ralphex-delegation-handoff:p1:inst-report-handoff
     if status == "error":
         ui.error(f"Delegation failed: {result.get('error', 'unknown error')}")
         return
@@ -200,4 +208,4 @@ def _print_human(result: dict) -> None:
         if dashboard_url:
             ui.info(f"  Dashboard: {dashboard_url}")
         ui.info(f"  Lifecycle: {result.get('lifecycle_state', 'unknown')}")
-# @cpt-end:cpt-studio-dod-ralphex-delegation-modes:p1:inst-determine-mode
+    # @cpt-end:cpt-studio-flow-ralphex-delegation-handoff:p1:inst-report-handoff

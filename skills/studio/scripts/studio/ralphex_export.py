@@ -73,12 +73,9 @@ def compile_delegation_plan(plan_dir: str) -> str:
 
     # @cpt-begin:inst-resolve-paths
     plan_content = _resolve_paths(plan_content, plan_dir)
-    # @cpt-end:inst-resolve-paths
-
-    # @cpt-begin:inst-return-plan
     logger.info("Compiled plan: %d chars, %d task blocks", len(plan_content), len(task_blocks))
     return plan_content
-    # @cpt-end:inst-return-plan
+    # @cpt-end:inst-resolve-paths
 
 
 def _load_plan_manifest(plan_dir: str) -> tuple[Path, dict, dict, list[dict]]:
@@ -212,11 +209,10 @@ def map_phase_to_task(
     lines.append("- Any compiled-plan summary text if it conflicts with the original phase file.")
     lines.append("")
 
+    # @cpt-begin:inst-return-task
     _append_dependencies(lines, phase_meta)
     _append_declared_scope(lines, phase_meta)
     _append_expected_deliverables(lines, phase_meta)
-
-    # @cpt-begin:inst-return-task
     return "\n".join(lines).rstrip()
     # @cpt-end:inst-return-task
 

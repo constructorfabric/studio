@@ -169,8 +169,16 @@ The following quality domains are not applicable to this feature:
 9. [x] - `p1` - Add source entry to config - `inst-add-source`
 10. [x] - `p1` - Save updated config - `inst-add-save`
 11. [x] - `p1` - **RETURN** JSON: `{status: ADDED, source}` (exit 0) - `inst-add-return-ok`
-12. [x] - `p1` - Implementation: inline source addition to core.toml - `inst-add-inline-impl`
-13. [x] - `p1` - Human-friendly formatter for workspace add output - `inst-add-human-fmt`
+12. [x] - `p1` - Validate CLI argument combinations and accepted URL schemes before any config access - `inst-add-validate-args`
+13. [x] - `p1` - Validate source name against workspace naming rules - `inst-add-validate-name`
+14. [x] - `p1` - Build emitted result payload with redacted URL and optional adapter/branch fields - `inst-add-build-result`
+15. [x] - `p1` - **IF** explicit `--inline`: load current workspace config and reject standalone-vs-inline mode conflict before writing - `inst-add-inline-check-mode`
+16. [x] - `p1` - Implementation: load inline `core.toml`, normalize `[workspace]` table, and reject malformed external-reference forms - `inst-add-inline-load-workspace`
+17. [x] - `p1` - Implementation: build inline source entry from path, role, adapter, and optional branch - `inst-add-inline-build-source`
+18. [x] - `p1` - Implementation: write updated inline workspace to `core.toml` and surface write failures - `inst-add-inline-write`
+19. [x] - `p1` - Human-friendly formatter for workspace add output - `inst-add-human-fmt`
+20. [x] - `p1` - Implementation: parse `workspace-add` CLI flags, including the mutually-exclusive `--path` / `--url` source selection and optional mode flags - `inst-add-parse-args`
+21. [x] - `p1` - Implementation: route the resolved workspace config to inline or standalone add handling, rejecting URL sources when auto-detected config mode is inline - `inst-add-route-config`
 
 ### Workspace Info Display
 
@@ -237,7 +245,13 @@ The following quality domains are not applicable to this feature:
 10. [x] - `p1` - **IF** `--dry-run` **RETURN** DRY_RUN status listing sources that would be synced (exit 0) - `inst-sync-if-dry-run`
 11. [x] - `p1` - **FOR EACH** Git URL source: algorithm `cpt-studio-algo-workspace-sync-git-source`, collect per-source result - `inst-sync-foreach-source`
 12. [x] - `p1` - **RETURN** JSON: `{status: OK, synced, failed, results: [{name, status, error?}]}` (exit 0, or exit 2 if all failed) - `inst-sync-return-ok`
-13. [x] - `p1` - Human-friendly formatter for workspace sync output - `inst-sync-human-fmt`
+13. [x] - `p1` - Parse sync CLI flags for source selection, dry-run mode, and force-reset behavior - `inst-sync-parse-args`
+14. [x] - `p1` - Build the base directory for sync resolution from `resolution_base`, workspace file parent, or project root - `inst-sync-resolve-base`
+15. [x] - `p1` - Load project root and workspace config through shared workspace helpers - `inst-sync-load-config`
+16. [x] - `p1` - Build dry-run source payload with redacted URLs and effective branches - `inst-sync-build-dry-run`
+17. [x] - `p1` - Aggregate per-source sync results into synced/failed counters - `inst-sync-aggregate-results`
+18. [x] - `p1` - Emit final sync result payload and return exit 2 only when every attempted sync failed - `inst-sync-emit-result`
+19. [x] - `p1` - Human-friendly formatter for workspace sync output - `inst-sync-human-fmt`
 
 ## 3. Processes / Business Logic (CDSL)
 

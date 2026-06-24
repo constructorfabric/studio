@@ -237,6 +237,9 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 **Supporting**:
 - [x] - `p1` - Include resolution helpers: max depth constant and component path rewrite helper for included manifests - `inst-includes-helpers`
 - [x] - `p1` - Initialize include resolution collections: seed include chain/order/trusted root and mutable merge state - `inst-init-collections`
+- [x] - `p1` - Collect component identifiers from parsed manifests by section to detect includer/includee shadowing and collisions - `inst-manifest-component-ids`
+- [x] - `p1` - Filter rewritten include components that are intentionally shadowed by the including manifest before merge - `inst-filter-shadowed-components`
+- [x] - `p1` - Hold mutable include-resolution state for merged lists, includer ids, and accumulated includee ids - `inst-include-resolution-state`
 
 ### Merge Components
 
@@ -475,25 +478,25 @@ The system **MUST** walk up the filesystem from repo root, detecting the master 
 
 ### Inner-Scope-Wins Merging
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-inner-scope-wins`
+- [x] `p1` - **ID**: `cpt-studio-dod-project-extensibility-inner-scope-wins`
 
 The system **MUST** merge components from all layers using last-writer-wins semantics where innermost scope (Repo) wins over outermost (Core). Components with the same ID at different layers result in the innermost definition winning. Components from `includes` at the same layer **MUST** error on ID collision (not silently override).
 
 **Implements**:
 - `cpt-studio-algo-project-extensibility-merge-components`
 
-**Touches**: `agents.py`
+**Touches**: `manifest.py`, `agents.py`
 
 ### Section Appending
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-section-appending`
+- [x] `p1` - **ID**: `cpt-studio-dod-project-extensibility-section-appending`
 
 The system **MUST** support an `append` field on component definitions that appends content to the generated output for that component. Appends from multiple layers stack in resolution order (outermost first). This is the MVP template composition mechanism. Full block-based composition (replace, prepend, delete, insert_after, insert_before with `<!-- @block:NAME -->` markers) is deferred to a follow-up.
 
 **Implements**:
 - `cpt-studio-algo-project-extensibility-section-appending`
 
-**Touches**: `agents.py`
+**Touches**: `manifest.py`, `agents.py`
 
 ### Skills Generation
 

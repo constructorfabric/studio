@@ -1172,11 +1172,11 @@ def load_artifacts_meta(
 
         # @cpt-end:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-parse-merge
 
+        # @cpt-begin:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-return
         # @cpt-begin:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-build-meta
         meta = ArtifactsMeta.from_dict(data)
-        # @cpt-end:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-build-meta
-        # @cpt-begin:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-return
         return meta, None
+        # @cpt-end:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-build-meta
         # @cpt-end:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-return
     except (OSError, ValueError, KeyError) as e:
         return None, f"Failed to load artifacts registry {path}: {e}"

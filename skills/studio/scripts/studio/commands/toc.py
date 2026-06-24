@@ -19,6 +19,24 @@ from studio.utils.toc import (
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-imports
 
+
+def _process_toc_file(
+    filepath_str: str,
+    *,
+    max_level: int,
+    dry_run: bool,
+    indent_size: int,
+) -> dict:
+    # @cpt-begin:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-process
+    filepath = Path(filepath_str).resolve()
+    return _process_file(
+        filepath,
+        max_level=max_level,
+        dry_run=dry_run,
+        indent_size=indent_size,
+    )
+    # @cpt-end:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-process
+
 def cmd_toc(argv: List[str]) -> int:
     """Generate/update Table of Contents in markdown files."""
     # @cpt-begin:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-parse-args
@@ -56,14 +74,12 @@ def cmd_toc(argv: List[str]) -> int:
     validation_errors = 0
     for filepath_str in args.files:
         filepath = Path(filepath_str).resolve()
-        # @cpt-begin:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-process
-        result = _process_file(
-            filepath,
+        result = _process_toc_file(
+            filepath_str,
             max_level=args.max_level,
             dry_run=args.dry_run,
             indent_size=args.indent,
         )
-        # @cpt-end:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-process
 
         # @cpt-begin:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-validate
         # Auto-validate after generation (unless skipped or dry-run)

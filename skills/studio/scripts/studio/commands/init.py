@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
 from ..utils._tomllib_compat import tomllib
-from ..utils.artifacts_meta import create_backup, generate_default_registry, generate_slug
+from ..utils.artifacts_meta import create_backup, generate_default_registry
 from ..utils.files import read_root_agents_marked_text
 from ..utils.stderr_logging import emit_stderr_message
 from ..utils import toml_utils
@@ -569,6 +569,7 @@ class _InitRunState:
     backups: List[str] = field(default_factory=list)
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
 def _parse_init_args(
     argv: List[str],
 ) -> Tuple[argparse.Namespace, _InitTrackingOptions]:
@@ -629,6 +630,7 @@ def _parse_init_args(
         runtime_tracking=runtime_tracking,
         agent_tracking=agent_tracking,
     )
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
 
 
 def _show_init_welcome(interactive: bool) -> None:
@@ -673,9 +675,7 @@ def _build_init_state(
 ) -> _InitState:
     default_install_dir = existing_install_rel or DEFAULT_INSTALL_DIR
     install_rel = (args.install_dir or default_install_dir).strip() or default_install_dir
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
     root_system = _define_root_system(project_root)
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
     project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
     return _InitState(
         project_root=project_root,
@@ -1035,11 +1035,13 @@ def _rewrite_managed_block_content(
     validate_order: bool = False,
 ) -> Tuple[str, Optional[str]]:
     """Return the action and rewritten content for a managed text block."""
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-markers-exist
     has_start = marker_start in content
     has_end = marker_end in content
     if malformed_label and has_start != has_end:
         raise ValueError(f"{malformed_label} contains a malformed Constructor Studio managed block")
     if has_start and has_end:
+        # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-replace-block
         start_idx = content.index(marker_start)
         end_idx = content.index(marker_end)
         if validate_order and end_idx < start_idx:
@@ -1047,13 +1049,23 @@ def _rewrite_managed_block_content(
         end_idx += len(marker_end)
         current_block = content[start_idx:end_idx]
         if current_block == expected_block:
-            return "unchanged", None
-        return "updated", content[:start_idx] + expected_block + content[end_idx:]
+            result = ("unchanged", None)
+        else:
+            result = ("updated", content[:start_idx] + expected_block + content[end_idx:])
+        # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-replace-block
+        return result
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-markers-exist
     if insert_mode == "append":
+        # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
         prefix = content.rstrip("\n")
-        return "updated", (prefix + "\n\n" if prefix else "") + expected_block + "\n"
+        result = ("updated", (prefix + "\n\n" if prefix else "") + expected_block + "\n")
+        # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
+        return result
     if insert_mode == "prepend":
-        return "updated", expected_block + "\n\n" + content
+        # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
+        result = ("updated", expected_block + "\n\n" + content)
+        # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
+        return result
     raise ValueError(f"unsupported managed block insert mode: {insert_mode}")
 
 
@@ -1069,11 +1081,18 @@ def _write_managed_block_file(
     validate_order: bool = False,
 ) -> str:
     """Create or update a file that contains a managed Constructor Studio block."""
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-no-agents
     if not target_file.is_file():
+        # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-create-agents-file
+        # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
         if not dry_run:
             target_file.write_text(expected_block + "\n", encoding="utf-8")
+        # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
+        # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-create-agents-file
         return "created"
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-no-agents
 
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-read-existing
     content = target_file.read_text(encoding="utf-8")
     action, new_content = _rewrite_managed_block_content(
         content,
@@ -1084,10 +1103,13 @@ def _write_managed_block_file(
         malformed_label=malformed_label,
         validate_order=validate_order,
     )
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-read-existing
     if action == "unchanged":
         return action
+    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
     if not dry_run and new_content is not None:
         target_file.write_text(new_content, encoding="utf-8")
+    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
     return action
 
 
@@ -1351,11 +1373,24 @@ def _resolve_user_path(raw: str, base: Path) -> Path:
         p = base / p
     return p.resolve()
 
+
+def _derive_project_slug(name: str) -> str:
+    """Convert a project directory name into the canonical system slug."""
+    # @cpt-begin:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-slug
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    slug = re.sub(r"-+", "-", slug)
+    return slug if slug else "unnamed"
+    # @cpt-end:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-slug
+
+
 def _slug_to_pascal_case(slug: str) -> str:
     """Convert a slug like 'my-app' to PascalCase like 'MyApp'."""
+    # @cpt-begin:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-name
     return "".join(word.capitalize() for word in slug.split("-")) if slug else "Unnamed"
+    # @cpt-end:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-name
 # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-helpers
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
 def _define_root_system(project_root: Path) -> Dict[str, str]:
     """
     Define root system from project directory.
@@ -1366,17 +1401,14 @@ def _define_root_system(project_root: Path) -> Dict[str, str]:
     basename = project_root.name
     # @cpt-end:cpt-studio-algo-core-infra-define-root-system:p1:inst-extract-basename
 
-    # @cpt-begin:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-slug
-    slug = generate_slug(basename)
-    # @cpt-end:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-slug
+    slug = _derive_project_slug(basename)
 
-    # @cpt-begin:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-name
     name = _slug_to_pascal_case(slug)
-    # @cpt-end:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-name
 
     # @cpt-begin:cpt-studio-algo-core-infra-define-root-system:p1:inst-return-system-def
     return {"name": name, "slug": slug}
     # @cpt-end:cpt-studio-algo-core-infra-define-root-system:p1:inst-return-system-def
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
 
 _TOML_FENCE_RE = re.compile(r"```toml\s*\n(.*?)```", re.DOTALL)
 MARKER_START = "<!-- @cf:root-agents -->"
@@ -1384,6 +1416,7 @@ MARKER_END = "<!-- /@cf:root-agents -->"
 _AGENTS_FILENAME = "AGENTS.md"
 _README_FILENAME = "README.md"
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-detect-existing
 def _read_existing_install(project_root: Path) -> Optional[str]:
     """
@@ -1410,6 +1443,7 @@ def _read_existing_install(project_root: Path) -> Optional[str]:
             continue
     return None
 # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-detect-existing
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
 
 def _compute_managed_block(install_dir: str) -> str:
     # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-compute-block
@@ -1440,13 +1474,6 @@ def _inject_managed_block(
             raise ValueError(f"Refusing to write outside project root: {resolved_target}")
     # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-validate-path
     expected_block = _compute_managed_block(install_dir)
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-no-agents
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-create-agents-file
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-read-existing
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-markers-exist
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-replace-block
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
-    # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
     action = _write_managed_block_file(
         target_file,
         expected_block,
@@ -1455,13 +1482,6 @@ def _inject_managed_block(
         insert_mode="prepend",
         dry_run=dry_run,
     )
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-write-agents
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-insert-block
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-replace-block
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-markers-exist
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-read-existing
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-create-agents-file
-    # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-if-no-agents
     # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-return-agents-path
     return action
     # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-return-agents-path
@@ -1493,6 +1513,7 @@ def _prompt_kit_install_flag(interactive: bool) -> bool:
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-kit
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-default-kit-actions
 def _record_default_kit_actions(
     *,
     actions: Dict[str, str],
@@ -1509,8 +1530,10 @@ def _record_default_kit_actions(
         ui.warn(f"Kit '{kit_slug}' installed with warnings")
     elif kit_status and kit_status != "PASS":
         ui.warn(f"Kit '{kit_slug}' installed with status: {kit_status}")
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-default-kit-actions
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-download-default-kit
 def _download_default_kit_bundle() -> tuple[str, str, Optional[str], Path]:
     from .kit import _download_kit_from_github, _parse_github_source
 
@@ -1519,8 +1542,10 @@ def _download_default_kit_bundle() -> tuple[str, str, Optional[str], Path]:
     kit_source_dir, resolved_version = _download_kit_from_github(owner, repo, version)
     github_source = f"github:{owner}/{repo}"
     return github_source, resolved_version, version, kit_source_dir
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-download-default-kit
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-summarize-default-kit
 def _build_default_kit_summary(studio_dir: Path, kit_result: Dict[str, Any]) -> Dict[str, Any]:
     art_dir = studio_dir / "config" / "kits" / "sdlc" / "artifacts"
     artifact_kinds = (
@@ -1532,8 +1557,10 @@ def _build_default_kit_summary(studio_dir: Path, kit_result: Dict[str, Any]) -> 
         "errors": kit_result.get("errors", []),
         "artifact_kinds": artifact_kinds,
     }
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-summarize-default-kit
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
 def _install_default_kit(
     studio_dir: Path,
     interactive: bool,
@@ -1544,7 +1571,6 @@ def _install_default_kit(
     from .kit import _InstallContext, install_kit
 
     kit_results: Dict[str, Any] = {}
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
     tmp_to_clean: Optional[Path] = None
     try:
         github_source, resolved_version, _version, kit_source_dir = _download_default_kit_bundle()
@@ -1575,8 +1601,8 @@ def _install_default_kit(
     finally:
         if tmp_to_clean is not None:
             shutil.rmtree(tmp_to_clean, ignore_errors=True)
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
     return kit_results
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
 
 
 def _inject_root_agents(project_root: Path, install_dir: str, dry_run: bool = False) -> str:
@@ -1590,6 +1616,7 @@ def _inject_root_claude(project_root: Path, install_dir: str, dry_run: bool = Fa
 # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-inject-claude
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-generated-surfaces
 def _ensure_repair_config_files(
     *,
     config_dir: Path,
@@ -1615,6 +1642,7 @@ def _ensure_repair_config_files(
             encoding="utf-8",
         )
         actions["config_skill"] = "created"
+# @cpt-end:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-generated-surfaces
 
 
 def _emit_missing_cache_error(project_root: Path, *, studio_dir: Optional[Path] = None) -> int:
@@ -1642,6 +1670,7 @@ def _emit_missing_cache_error(project_root: Path, *, studio_dir: Optional[Path] 
     return 1
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
 def _prepare_init_layout(studio_dir: Path, args: argparse.Namespace, actions: Dict[str, str]) -> _InitLayout:
     # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-config
     if not args.dry_run:
@@ -1670,8 +1699,10 @@ def _prepare_init_layout(studio_dir: Path, args: argparse.Namespace, actions: Di
         core_toml_path=(config_dir / "core.toml").resolve(),
         config_agents_path=(config_dir / _AGENTS_FILENAME).resolve(),
     )
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
 def _write_init_core_toml(
     *,
     layout: _InitLayout,
@@ -1699,8 +1730,11 @@ def _write_init_core_toml(
         toml_utils.dump(desired_core, layout.core_toml_path, header_comment="Constructor Studio project configuration")
     actions["core_toml"] = "updated" if core_toml_existed else "created"
     # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-write-core-toml
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
+# @cpt-begin:cpt-studio-algo-core-infra-create-config-agents:p1:inst-gen-when-rules
 def _ensure_init_config_agents(
     *,
     layout: _InitLayout,
@@ -1724,8 +1758,11 @@ def _ensure_init_config_agents(
         actions["config_agents"] = "unchanged" if config_agents_existed else "created"
     actions["config_agents_path"] = layout.config_agents_path.as_posix()
     # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-write-config-agents
+# @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-gen-when-rules
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-error-result
 def _emit_init_error(
     *,
     project_root: Path,
@@ -1746,8 +1783,10 @@ def _emit_init_error(
         err_result["backups"] = backups
     ui.result(err_result, human_fn=_human_init_error)
     return 1
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-error-result
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-init-repair:p1:inst-repair-load-tracking
 def _load_install_tracking_settings(
     core_toml_path: Path,
     default_kit_tracking: str,
@@ -1765,6 +1804,7 @@ def _load_install_tracking_settings(
             default="ignored",
         ),
     )
+# @cpt-end:cpt-studio-flow-core-infra-init-repair:p1:inst-repair-load-tracking
 
 
 def _maybe_install_default_kit_for_init(
@@ -1804,6 +1844,7 @@ def _maybe_install_default_kit_for_init(
     return kit_results, None
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-finalize-init-surfaces
 def _finalize_init_files(
     *,
     args: argparse.Namespace,
@@ -1867,8 +1908,10 @@ def _finalize_init_files(
         state.default_kit_tracking,
         dry_run=args.dry_run,
     )
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-finalize-init-surfaces
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-build-init-result
 def _build_init_result(
     *,
     args: argparse.Namespace,
@@ -1897,6 +1940,7 @@ def _build_init_result(
     if backups:
         result["backups"] = backups
     return result
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-build-init-result
 
 
 def _repair_existing_install(
@@ -1921,6 +1965,7 @@ def _repair_existing_install(
     try:
         from .kit import regenerate_gen_aggregates
 
+        # @cpt-begin:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-runtime-surfaces
         if not dry_run:
             studio_dir.mkdir(parents=True, exist_ok=True)
             copy_results = _copy_from_cache(CACHE_DIR, studio_dir, force=True)
@@ -1940,14 +1985,17 @@ def _repair_existing_install(
             agent_tracking=tracking.agent_tracking,
             dry_run=dry_run,
         )
+        # @cpt-end:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-runtime-surfaces
 
+        # @cpt-begin:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-generated-surfaces
         if not dry_run:
             actions.update(regenerate_gen_aggregates(studio_dir))
             _ensure_repair_config_files(config_dir=config_dir, actions=actions)
+        # @cpt-end:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-generated-surfaces
 
+        # @cpt-begin:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-gitignore
         actions["root_agents"] = _inject_root_agents(project_root, install_rel, dry_run=dry_run)
         actions["root_claude"] = _inject_root_claude(project_root, install_rel, dry_run=dry_run)
-        # @cpt-begin:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-gitignore
         actions["gitignore"] = _write_gitignore_block(
             project_root,
             install_rel,
@@ -1974,6 +2022,7 @@ def _repair_existing_install(
         )
         return 1
 
+    # @cpt-begin:cpt-studio-flow-core-infra-init-repair:p1:inst-return-repair-result
     ui.result(
         {
             "status": "REPAIRED",
@@ -2002,6 +2051,7 @@ def _repair_existing_install(
         ),
     )
     return 0
+    # @cpt-end:cpt-studio-flow-core-infra-init-repair:p1:inst-return-repair-result
 
 
 def _prepare_init_state(
@@ -2013,9 +2063,7 @@ def _prepare_init_state(
     interactive = not args.yes
     _show_init_welcome(interactive)
     project_root = _resolve_init_project_root(args, cwd, interactive)
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
     existing_install_rel = _read_existing_install(project_root)
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-existing-repair-mode
     if existing_install_rel is not None and not args.force:
         # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-exists
@@ -2064,14 +2112,11 @@ def _prepare_init_state(
     return None, project_root, interactive, state
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
 def cmd_init(argv: List[str]) -> int:
     """Run the init command."""
     # @cpt-dod:cpt-studio-dod-core-infra-init-config:p1
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
     args, tracking = _parse_init_args(argv)
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
 
     early_rc, project_root, interactive, state = _prepare_init_state(
         args=args,
@@ -2105,34 +2150,24 @@ def cmd_init(argv: List[str]) -> int:
         if backup_path:
             run_state.backups.append(backup_path.as_posix())
 
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
     layout = _prepare_init_layout(studio_dir, args, run_state.actions)
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
 
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
     _write_init_core_toml(
         layout=layout,
         args=args,
         state=state,
         actions=run_state.actions,
     )
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config
 
     # Write user-editable AGENTS.md to config/ (preserve existing)
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
-    # @cpt-begin:cpt-studio-algo-core-infra-create-config-agents:p1:inst-gen-when-rules
     _ensure_init_config_agents(
         layout=layout,
         args=args,
         actions=run_state.actions,
     )
-    # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-gen-when-rules
     # @cpt-begin:cpt-studio-algo-core-infra-create-config-agents:p1:inst-return-config-agents-path
     # (path reported in final JSON output)
     # @cpt-end:cpt-studio-algo-core-infra-create-config-agents:p1:inst-return-config-agents-path
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
 
     # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-validate-schemas
     # Stub: schema validation deferred to p2
@@ -2207,6 +2242,7 @@ def cmd_init(argv: List[str]) -> int:
     return 0
     # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-init-complete
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-return-init-ok
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
 
 # ---------------------------------------------------------------------------
 # Human-friendly formatters

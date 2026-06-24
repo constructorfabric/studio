@@ -310,6 +310,7 @@ def _resolve_heading_match(
     return matched_id, next_lvl2_id
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-match-loop
 def _match_heading_ids_by_line(
     headings: Sequence[Dict[str, object]],
     idx_by_level: Dict[int, List[int]],
@@ -333,6 +334,7 @@ def _match_heading_ids_by_line(
         if matched_id:
             matched_ids_by_line[line_no] = matched_id
     return matched_ids_by_line
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-match-loop
 
 
 def _build_heading_events_by_line(
@@ -392,14 +394,12 @@ def heading_constraint_ids_by_line(path: Path, heading_constraints: Sequence[Hea
     wildcard_lvl3_by_parent_lvl2_id = _build_wildcard_lvl3_map(compiled, idx_by_level)
     # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-init
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-match-loop
     matched_ids_by_line = _match_heading_ids_by_line(
         headings,
         idx_by_level,
         compiled,
         wildcard_lvl3_by_parent_lvl2_id,
     )
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-match-loop
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-stack
     # Convert heading events into a per-line active stack.
@@ -460,6 +460,7 @@ def parse_cpt(
 # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt-fn
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt
 def _split_cpt_remainder(cpt: str, system: str) -> Tuple[Optional[str], List[str]]:
     remainder = cpt[len(f"cpt-{system}-"):]
     if not remainder:
@@ -508,6 +509,7 @@ def _parse_composite_cpt_match(
         return None
     slug = remainder[idx + len(sep):]
     return ParsedStudioId(system=system, kind=expected_kind, slug=slug)
+# @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt
 
 
 def _find_kind_marker(remainder: str, kind_tokens: Iterable[str]) -> Optional[str]:
@@ -564,6 +566,7 @@ def _extract_kind_from_cpt(
     composite_nested_by_base: Dict[str, set[str]],
 ) -> Optional[str]:
     # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-extract-kind
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-extract-kind
     if not cpt.lower().startswith("cpt-") or system is None:
         return None
     prefix = f"cpt-{system}-"
@@ -575,17 +578,20 @@ def _extract_kind_from_cpt(
 
     base = parts[0].strip().lower()
     nested_kinds = composite_nested_by_base.get(base)
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-composite-nested
     if nested_kinds and len(parts) >= 4:
         for part in reversed(parts[2:]):
             candidate = part.strip().lower()
             if candidate in nested_kinds and candidate != base:
                 return candidate
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-composite-nested
 
     normalized_kind_tokens = {str(k).strip().lower() for k in kind_tokens if str(k).strip()}
     if base in normalized_kind_tokens:
         return base
 
     return _find_kind_marker(remainder, normalized_kind_tokens) or base
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-extract-kind
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-extract-kind
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-structure-datamodel
@@ -810,6 +816,7 @@ def _build_defs_index(defs: Sequence[Dict[str, object]]) -> Dict[str, Dict[str, 
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-build-defs-index
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-desc
 def _build_heading_descriptions(constraints: ArtifactKindConstraints) -> Dict[str, str]:
     heading_desc_by_id: Dict[str, str] = {}
     for hc in (getattr(constraints, "headings", None) or []):
@@ -820,6 +827,7 @@ def _build_heading_descriptions(constraints: ArtifactKindConstraints) -> Dict[st
         if desc:
             heading_desc_by_id[hid] = desc
     return heading_desc_by_id
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-desc
 
 
 def _resolve_heading_scope_map(
@@ -906,6 +914,7 @@ def _validate_cdsl_parent_child_state(
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
 def _resolve_scoped_parent_task(
     parent: Dict[str, object],
     *,
@@ -1055,8 +1064,10 @@ def _validate_parent_task_state(
             kind,
             artifact_path,
         )
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-ids-helpers
 def _build_definition_validation_context(
     *,
     hit: Dict[str, object],
@@ -1111,8 +1122,10 @@ def _build_artifact_identifier_rules(
         headings_at=_resolve_heading_scope_map(artifact_path, constraints),
         heading_desc_by_id=_build_heading_descriptions(constraints),
     )
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-ids-helpers
 
-
+#
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-ids
 def _build_artifact_identifier_phase_context(
     *,
     artifact_path: Path,
@@ -1138,8 +1151,10 @@ def _build_artifact_identifier_phase_context(
             registered_systems=registered_systems,
         ),
     )
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-ids
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
 def _validate_artifact_toc(
     artifact_path: Path,
     errors: List[Dict[str, object]],
@@ -1158,6 +1173,7 @@ def _validate_artifact_toc(
     )
     errors.extend(toc_result.get("errors", []))
     warnings.extend(toc_result.get("warnings", []))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-mismatch
 def _validate_unchecked_cdsl_steps(
@@ -1183,7 +1199,7 @@ def _validate_unchecked_cdsl_steps(
             continue
         inst_s = str(hit.get("inst") or "").strip()
         # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-emit-cdsl-error
-        errors.append(error(
+        error_record = error(
             "structure",
             (
                 f"CDSL step `{pid}`{(' inst ' + inst_s) if inst_s else ''} is "
@@ -1194,11 +1210,13 @@ def _validate_unchecked_cdsl_steps(
             line=int(hit.get("line", 1) or 1),
             id=pid,
             inst=inst_s or None,
-        ))
+        )
+        errors.append(error_record)
         # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-emit-cdsl-error
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-mismatch
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
 def _validate_artifact_heading_phase(
     *,
     artifact_path: Path,
@@ -1224,6 +1242,7 @@ def _validate_artifact_heading_phase(
     errors.extend(rep.get("errors", []))
     warnings.extend(rep.get("warnings", []))
     return not bool(rep.get("errors"))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
 
 
 def _id_kind_hint(c: Optional[IdConstraint]) -> str:
@@ -1270,16 +1289,12 @@ def _validate_definition_hits(
             ))
             continue
         # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-match-system
-        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-extract-kind
-        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-composite-nested
         id_kind = _extract_kind_from_cpt(
             hid,
             system,
             rules.all_kind_tokens,
             rules.composite_nested_by_base,
         )
-        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-composite-nested
-        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-extract-kind
         if not id_kind:
             continue
         defs_by_kind.setdefault(id_kind, []).append(hit)
@@ -1315,9 +1330,7 @@ def _validate_definition_hits(
             artifact_path=rules.artifact_path,
         )
         _validate_task_priority_constraints(ctx, hit, errors)
-        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-desc
         _validate_id_heading_constraint(ctx, rules.headings_at, rules.heading_desc_by_id, errors)
-        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-desc
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-defs-loop
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-format
 
@@ -1375,7 +1388,6 @@ def _validate_artifact_identifier_phase(
 ) -> None:
     from .document import scan_cpt_ids, scan_cdsl_instructions
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-ids
     context = _build_artifact_identifier_phase_context(
         artifact_path=artifact_path,
         constraints=constraints,
@@ -1383,10 +1395,8 @@ def _validate_artifact_identifier_phase(
         registered_systems=registered_systems,
         scan_cpt_ids=scan_cpt_ids,
     )
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-ids
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-cdsl
     cdsl_hits = scan_cdsl_instructions(artifact_path)
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-cdsl
     _validate_unchecked_cdsl_steps(
         cdsl_hits=cdsl_hits,
         defs_by_id=context.defs_by_id,
@@ -1394,6 +1404,7 @@ def _validate_artifact_identifier_phase(
         artifact_path=artifact_path,
         errors=errors,
     )
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-cdsl
     _validate_cdsl_parent_child_state(
         defs=context.defs,
         refs=context.refs,
@@ -1494,6 +1505,7 @@ def _id_kind_rule_metadata(ic: object) -> Dict[str, object]:
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-datamodel
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 def _validate_required_reference_coverage(
     *,
     errors: List[Dict[str, object]],
@@ -1708,6 +1720,7 @@ def _validate_reference_rule(
         prio_rule=getattr(rule, "priority", None),
         ctx=ctx,
     )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-build-constraints-index
 def _build_cross_constraint_indexes(
@@ -1816,6 +1829,7 @@ def _headings_info_for_kind(
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-headings-info
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 def _scan_cross_artifact_hit(
     *,
     hit: Dict[str, object],
@@ -1853,6 +1867,7 @@ def _scan_cross_artifact_hit(
         "id_kind": id_kind,
         "headings": active_headings,
     }, system, hid
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 def _scan_cross_artifact_rows(
@@ -1908,6 +1923,7 @@ def _scan_cross_artifact_rows(
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 def _cross_artifact_headings_at(
     art: ArtifactRecord,
     headings_cache: Dict[str, List[List[str]]],
@@ -1921,8 +1937,10 @@ def _cross_artifact_headings_at(
             if heading_constraints else headings_by_line(art.path)
         )
     return headings_cache[hkey]
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 def _record_cross_artifact_hit(
     scanned_hit: Optional[Tuple[str, Dict[str, object], Optional[str], str]],
     *,
@@ -1946,6 +1964,7 @@ def _record_cross_artifact_hit(
     present_kinds_by_system.setdefault(system, set()).add(artifact_kind)
     if hit_type == "reference":
         refs_by_system_kind.setdefault(system, {}).setdefault(artifact_kind, []).append(row)
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-duplicate-defs
 def _validate_duplicate_definitions(
@@ -2076,6 +2095,7 @@ def _validate_definition_completion_consistency(
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-def
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 def _defs_in_artifact_file(
     art: ArtifactRecord,
     defs_by_id: Dict[str, List[Dict[str, object]]],
@@ -2086,8 +2106,10 @@ def _defs_in_artifact_file(
         for drow in rows
         if str(drow.get("artifact_path")) == str(art.path) and drow.get("system") is not None
     ]
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 def _validate_artifact_definitions_against_constraints(
     *,
     art: ArtifactRecord,
@@ -2126,8 +2148,10 @@ def _validate_artifact_definitions_against_constraints(
             heading_desc_by_kind=heading_desc_by_kind,
             errors=errors,
         )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 def _validate_artifact_required_id_kind(
     *,
     art: ArtifactRecord,
@@ -2193,8 +2217,10 @@ def _validate_artifact_required_id_kind(
             id_kind_description=str(getattr(id_constraint, "description", "") or "").strip() or None,
             id_kind_template=str(getattr(id_constraint, "template", "") or "").strip() or None,
         ))
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 def _validate_cross_artifact_coverage(
     *,
     artifacts: Sequence[ArtifactRecord],
@@ -2216,8 +2242,10 @@ def _validate_cross_artifact_coverage(
             heading_desc_by_kind=heading_desc_by_kind,
             errors=errors,
         )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 def _allowed_heading_context(
     target_kind: str,
     rule: ReferenceRule,
@@ -2230,8 +2258,10 @@ def _allowed_heading_context(
         sorted_ids=sorted_ids,
         info=_headings_info_for_kind(target_kind, sorted_ids, heading_desc_by_kind),
     )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 def _validate_id_constraint_reference_rules(
     artifact_kind: str,
     id_kind: str,
@@ -2278,6 +2308,7 @@ def _validate_id_constraint_reference_rules(
                         state.heading_desc_by_kind,
                     ),
                 )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 def _validate_cross_reference_coverage_rules(
@@ -3088,6 +3119,7 @@ def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[st
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
 def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstraints], List[str]]:
     """Load constraints files."""
     loaded: List[KitConstraints] = []
@@ -3108,6 +3140,7 @@ def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstrain
 def load_constraints_toml(kit_root: Path) -> Tuple[Optional[KitConstraints], List[str]]:
     """Load constraints toml."""
     return load_constraints_file((kit_root / "constraints.toml").resolve())
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-headings-datamodel
@@ -3135,6 +3168,7 @@ _HEADING_NUMBER_PREFIX_RE = re.compile(r"^(?P<prefix>\d+(?:\.\d+)*)(?:\.)?\s+(?P
 # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-headings-datamodel
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
 def _parse_heading_numbering(
     raw_title: str,
     path: Path,
@@ -3166,7 +3200,6 @@ def _parse_heading_numbering(
 
 
 def _scan_headings(path: Path) -> List[Dict[str, object]]:
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
     from .document import read_text_safe
 
     lines = read_text_safe(path)
@@ -3197,7 +3230,7 @@ def _scan_headings(path: Path) -> List[Dict[str, object]]:
             "number_parts": number_parts,
         })
     return out
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
 
 
 def _heading_constraint_label(hc: HeadingConstraint) -> str:
@@ -3316,6 +3349,7 @@ def _check_heading_numbering_sequence(
     last_child_by_key: Dict[Tuple[int, Tuple[Tuple[int, ...], int]], int] = {}
     last_prefix_by_key: Dict[Tuple[int, Tuple[Tuple[int, ...], int]], str] = {}
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering
     for heading in headings:
         numbering_state = _heading_numbering_state(heading)
         if numbering_state is None:
@@ -3345,6 +3379,7 @@ def _check_heading_numbering_sequence(
 
         last_child_by_key[key] = child
         last_prefix_by_key[key] = prefix
+    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering
 # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering-fn
 
 
@@ -3400,9 +3435,6 @@ def _match_scope_for_constraint(
         scope_end = _scope_end_for_parent_heading(headings, parent_idx, level)
         break
     return hc_level, scope_start, scope_end
-# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-scope
-
-
 def _find_heading_matches_in_scope(
     *,
     headings: Sequence[Dict[str, object]],
@@ -3422,6 +3454,7 @@ def _find_heading_matches_in_scope(
             matches.append(headings[next_idx])
             next_idx += 1
     return matches, match_idx, next_idx
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-scope
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-hc-helpers
@@ -3564,6 +3597,7 @@ def _validate_heading_matches(
         errors=errors,
     )
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
     # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-loop
     for idx, heading_constraint in enumerate(heading_constraints):
         cursor = _validate_single_heading_match(
@@ -3575,8 +3609,10 @@ def _validate_heading_matches(
             last_match_idx_by_level=last_match_idx_by_level,
         )
     # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-loop
+    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
 # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
 def _validate_single_heading_match(
     *,
     heading_ctx: HeadingValidationContext,
@@ -3659,6 +3695,7 @@ def _update_heading_match_state(
         if level > hc_level:
             del last_match_idx_by_level[level]
     return cursor
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-headings-entry
@@ -3692,16 +3729,13 @@ def validate_headings_contract(
     headings = _scan_headings(path)
     # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-init
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering
     _check_heading_numbering_sequence(
         headings=headings,
         artifact_kind=str(artifact_kind).strip().upper(),
         path=path,
         errors=errors,
     )
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
     _validate_heading_matches(
         headings=headings,
         heading_constraints=heading_constraints,
@@ -3712,5 +3746,4 @@ def validate_headings_contract(
         kit_id=kit_id,
         errors=errors,
     )
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
     return {"errors": errors, "warnings": warnings}

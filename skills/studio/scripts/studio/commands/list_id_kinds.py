@@ -52,7 +52,8 @@ def _infer_kinds(
     kind_tokens = _split_registered_kind_tokens(cpt_id, registered_systems, known_kinds)
     return [kind_tokens[index] for index in range(0, len(kind_tokens), 2)]
 
-
+# @cpt-algo:cpt-studio-algo-traceability-validation-list-id-kinds:p1
+# @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-scan-ids
 def _collect_kind_maps(
     artifacts_to_scan: List[Tuple[Path, str]],
     registered_systems: Set[str],
@@ -70,12 +71,14 @@ def _collect_kind_maps(
             cpt_id = str(hit.get("id") or "").strip()
             if not cpt_id:
                 continue
+            # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
             for kind_name in _infer_kinds(cpt_id, registered_systems, known_kinds):
                 kind_to_templates.setdefault(kind_name, set()).add(artifact_type)
                 template_to_kinds.setdefault(artifact_type, set()).add(kind_name)
                 kind_counts[kind_name] = kind_counts.get(kind_name, 0) + 1
-
+            # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
     return template_to_kinds, kind_to_templates, kind_counts
+# @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-scan-ids
 
 
 def _emit_kind_result(
@@ -152,20 +155,16 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
     known_kinds = _collect_known_kinds(ctx)
     # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-build-known
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-scan-ids
-    # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
     template_to_kinds, kind_to_templates, kind_counts = _collect_kind_maps(
         artifacts_to_scan,
         registered_systems,
         known_kinds,
     )
-    # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
-    # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-scan-ids
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-return
     _emit_kind_result(args, artifacts_to_scan, template_to_kinds, kind_to_templates, kind_counts)
-    # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-return
     return 0
+    # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-return
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-format

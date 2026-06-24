@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 def _emit_code_content(args: argparse.Namespace) -> int:
     """Resolve and print scoped content for a code file."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-get-content
     code_path = Path(args.code).resolve()
     if not code_path.is_file():
         ui.result({"status": "ERROR", "message": f"Code file not found: {code_path}"})
@@ -36,10 +37,12 @@ def _emit_code_content(args: argparse.Namespace) -> int:
 
     ui.result({"status": "FOUND", "id": args.id, "inst": args.inst, "text": content}, human_fn=_human_get_content)
     return 0
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-get-content
 
 
 def _emit_artifact_content(args: argparse.Namespace) -> int:
     """Resolve and print scoped content for a registered artifact."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-get-content
     resolved = _resolve_registered_artifact_scan(
         args.artifact,
         init_message="Constructor Studio not initialized",
@@ -87,16 +90,19 @@ def _emit_artifact_content(args: argparse.Namespace) -> int:
         "traceability": getattr(_artifact_meta, "traceability", None),
     }, human_fn=_human_get_content)
     return 0
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-get-content
 
 # @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
 def cmd_get_content(argv: List[str]) -> int:
     """Get best-effort content block for a specific Studio ID."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-user-query
     p = argparse.ArgumentParser(prog="get-content", description="Get content block for a specific Studio ID")
     p.add_argument("--artifact", default=None, help="Path to Studio artifact file")
     p.add_argument("--code", default=None, help="Path to code file (alternative to --artifact)")
     p.add_argument("--id", required=True, help="Studio ID to retrieve content for")
     p.add_argument("--inst", default=None, help="Instruction ID for code blocks (e.g., 'inst-validate-input')")
     args = p.parse_args(argv)
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-user-query
 
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-get-content
     # Handle code file path

@@ -329,6 +329,7 @@ def _split_md_cpt(path: Path) -> Tuple[List[str], List[CptUse]]:
 # Source scanning
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-scan-sources
 def _resolve_registry_path_for_root(root: Path) -> Optional[Path]:
     """Resolve the artifacts registry path via the canonical adapter_dir helper.
 
@@ -383,7 +384,6 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     Returns empty list if artifacts.toml is absent or broken (defensive).
     DOCS-ONLY systems contribute no source nodes.
     """
-    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-scan-sources
     registry_path = _resolve_registry_path_for_root(root)
     if registry_path is None:
         return []
@@ -433,10 +433,9 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     return nodes
     # @cpt-end:cpt-studio-algo-map-scan:p1:inst-scan-sources
 
-
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-load-registry
 def _load_registry(registry_path: Path):
     """Load ArtifactsMeta directly from an artifacts.toml at the given path."""
-    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-load-registry
     from studio.utils._tomllib_compat import tomllib
     from studio.utils.artifacts_meta import ArtifactsMeta
 
@@ -447,10 +446,9 @@ def _load_registry(registry_path: Path):
     return ArtifactsMeta.from_dict(data)
     # @cpt-end:cpt-studio-algo-map-scan:p1:inst-load-registry
 
-
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-walk-source-dir
 def _walk_source_dir(cb_dir: Path, ext_set: Set[str], skip_dirs: Set[str]) -> List[Path]:
     """Walk a codebase directory, yielding files matching the given extensions."""
-    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-walk-source-dir
     result: List[Path] = []
     for dirpath, dirnames, filenames in os.walk(cb_dir):
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
@@ -461,7 +459,7 @@ def _walk_source_dir(cb_dir: Path, ext_set: Set[str], skip_dirs: Set[str]) -> Li
     return result
     # @cpt-end:cpt-studio-algo-map-scan:p1:inst-walk-source-dir
 
-
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-make-source-node
 def _source_lines(path: Path) -> List[str]:
     try:
         return path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -481,6 +479,7 @@ def _code_snippet(src_lines: List[str], lo: int, hi: int) -> str:
 
 
 def _scope_marker_uses(scope_markers, src_lines: List[str]) -> List[CptUse]:
+    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
     return [
         CptUse(
             cpt_id=f"{scope_marker.id}:p{scope_marker.phase}",
@@ -490,9 +489,11 @@ def _scope_marker_uses(scope_markers, src_lines: List[str]) -> List[CptUse]:
         )
         for scope_marker in scope_markers
     ]
+    # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
 
 
 def _block_marker_uses(block_markers, src_lines: List[str]) -> List[CptUse]:
+    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
     cpt_uses: List[CptUse] = []
     for block_marker in block_markers:
         cpt_id = f"{block_marker.id}:p{block_marker.phase}"
@@ -518,11 +519,10 @@ def _block_marker_uses(block_markers, src_lines: List[str]) -> List[CptUse]:
             ),
         ])
     return cpt_uses
-
+    # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
 
 def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node]:
     """Parse a source file with CodeFile.from_path and build a Node."""
-    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-make-source-node
     from studio.utils.codebase import CodeFile
     from studio.utils.document import to_relative_posix
 
@@ -538,13 +538,11 @@ def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node
     if cf is not None:
         # Scope markers → marker_kind="scope"; embed 3 lines after the marker
         # so the surrounding code is visible.
-        # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
-        cpt_uses.extend(_scope_marker_uses(cf.scope_markers, src_lines))
-        # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
+        scope_uses = _scope_marker_uses(cf.scope_markers, src_lines)
+        cpt_uses.extend(scope_uses)
         # Block markers → begin + end with the inner body included for begin.
-        # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
-        cpt_uses.extend(_block_marker_uses(cf.block_markers, src_lines))
-        # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
+        block_uses = _block_marker_uses(cf.block_markers, src_lines)
+        cpt_uses.extend(block_uses)
 
     return Node(
         id=node_id(source_name, rel),
@@ -559,7 +557,6 @@ def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node
         cpt_defs=[],
         cpt_uses=cpt_uses,
     )
-    # @cpt-end:cpt-studio-algo-map-scan:p1:inst-make-source-node
 
 
 # ---------------------------------------------------------------------------
@@ -576,3 +573,4 @@ def _count_lines(path: Path) -> int:
     except OSError as exc:  # pragma: no cover
         _warn_optional_discovery(f"failed to count lines for {path}", exc)
         return 0
+    # @cpt-end:cpt-studio-algo-map-scan:p1:inst-make-source-node
