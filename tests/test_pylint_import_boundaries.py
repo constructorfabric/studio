@@ -52,11 +52,17 @@ class TestImportBoundariesChecker(unittest.TestCase):
         module = load_plugin_module("import_boundaries")
         proxy_import = set_root(Import([("studio.utils.files", None)]), r"src\studio_proxy\resolve.py")
         studio_import = set_root(ImportFrom("studio_proxy.resolve"), "skills/studio/scripts/studio/commands/sample.py")
+        absolute_proxy_import = set_root(
+            Import([("studio_proxy.stderr", None)]),
+            "/tmp/some-worktree/src/studio_proxy/resolve.py",
+        )
 
         self.assertEqual(module._module_path(proxy_import), "src/studio_proxy/resolve.py")
         self.assertTrue(module._is_proxy_module(proxy_import))
         self.assertFalse(module._is_studio_module(proxy_import))
         self.assertTrue(module._is_studio_module(studio_import))
+        self.assertTrue(module._is_proxy_module(absolute_proxy_import))
+        self.assertFalse(module._is_studio_module(absolute_proxy_import))
         self.assertEqual(module._import_name(proxy_import), "studio.utils.files")
         self.assertEqual(module._import_name(studio_import), "studio_proxy.resolve")
         self.assertIsNone(module._import_name(Import([])))

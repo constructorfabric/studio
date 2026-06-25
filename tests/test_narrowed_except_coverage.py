@@ -129,7 +129,7 @@ class TestMigrateKitSourcesErrors(unittest.TestCase):
             self.assertTrue(any("Cannot parse" in message for message in logs.output))
             self.assertTrue(any("migrating kit sources" in message for message in logs.output))
 
-    def test_write_failure_still_returns_migrated(self):
+    def test_write_failure_returns_empty(self):
         from studio.commands.update import _migrate_kit_sources
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -139,7 +139,7 @@ class TestMigrateKitSourcesErrors(unittest.TestCase):
             with self.assertLogs("studio.commands.update", level="WARNING") as logs, \
                  patch("studio.utils.toml_utils.dump", side_effect=OSError("no space")):
                 result = _migrate_kit_sources(config)
-            self.assertIn("sdlc", result)
+            self.assertEqual(result, {})
             self.assertTrue(any("Kit source migration write failed" in message for message in logs.output))
 
 

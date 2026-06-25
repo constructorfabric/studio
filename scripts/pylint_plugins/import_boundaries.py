@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 from astroid import nodes
 from pylint.checkers import BaseChecker
 
-_PROXY_PATH_PREFIXES = (
-    "src/studio_proxy/",
-    "studio_proxy/",
+_PROXY_PATH_SEQUENCES = (
+    ("src", "studio_proxy"),
+    ("studio_proxy",),
 )
-_STUDIO_PATH_PREFIXES = (
-    "skills/studio/scripts/studio/",
-    "studio/",
+_STUDIO_PATH_SEQUENCES = (
+    ("skills", "studio", "scripts", "studio"),
+    ("studio",),
 )
 
 
@@ -21,14 +23,20 @@ def _module_path(node: nodes.NodeNG) -> str:
     return str(file_path or "").replace("\\", "/")
 
 
+def _path_has_sequence(path: str, sequence: tuple[str, ...]) -> bool:
+    parts = PurePosixPath(path).parts
+    window = len(sequence)
+    return any(parts[index:index + window] == sequence for index in range(len(parts) - window + 1))
+
+
 def _is_proxy_module(node: nodes.NodeNG) -> bool:
     path = _module_path(node)
-    return any(prefix in path for prefix in _PROXY_PATH_PREFIXES)
+    return any(_path_has_sequence(path, sequence) for sequence in _PROXY_PATH_SEQUENCES)
 
 
 def _is_studio_module(node: nodes.NodeNG) -> bool:
     path = _module_path(node)
-    return any(prefix in path for prefix in _STUDIO_PATH_PREFIXES)
+    return any(_path_has_sequence(path, sequence) for sequence in _STUDIO_PATH_SEQUENCES)
 
 
 def _import_name(node: nodes.NodeNG) -> str | None:
