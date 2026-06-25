@@ -9,10 +9,14 @@ from pylint.checkers import BaseChecker
 
 _PROXY_PATH_SEQUENCES = (
     ("src", "studio_proxy"),
+)
+_PROXY_RELATIVE_ROOTS = (
     ("studio_proxy",),
 )
 _STUDIO_PATH_SEQUENCES = (
     ("skills", "studio", "scripts", "studio"),
+)
+_STUDIO_RELATIVE_ROOTS = (
     ("studio",),
 )
 
@@ -29,14 +33,25 @@ def _path_has_sequence(path: str, sequence: tuple[str, ...]) -> bool:
     return any(parts[index:index + window] == sequence for index in range(len(parts) - window + 1))
 
 
+def _path_starts_with_sequence(path: str, sequence: tuple[str, ...]) -> bool:
+    parts = PurePosixPath(path).parts
+    return parts[:len(sequence)] == sequence
+
+
 def _is_proxy_module(node: nodes.NodeNG) -> bool:
     path = _module_path(node)
-    return any(_path_has_sequence(path, sequence) for sequence in _PROXY_PATH_SEQUENCES)
+    return (
+        any(_path_has_sequence(path, sequence) for sequence in _PROXY_PATH_SEQUENCES)
+        or any(_path_starts_with_sequence(path, sequence) for sequence in _PROXY_RELATIVE_ROOTS)
+    )
 
 
 def _is_studio_module(node: nodes.NodeNG) -> bool:
     path = _module_path(node)
-    return any(_path_has_sequence(path, sequence) for sequence in _STUDIO_PATH_SEQUENCES)
+    return (
+        any(_path_has_sequence(path, sequence) for sequence in _STUDIO_PATH_SEQUENCES)
+        or any(_path_starts_with_sequence(path, sequence) for sequence in _STUDIO_RELATIVE_ROOTS)
+    )
 
 
 def _import_name(node: nodes.NodeNG) -> str | None:
