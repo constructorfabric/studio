@@ -2690,6 +2690,7 @@ def _install_manifest_copy_mode(  # pylint: disable=too-many-arguments
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-install-flow
+# pylint: disable-next=too-many-locals
 def _register_manifest_install_in_place(
     kit_source: Path,
     studio_dir: Path,
@@ -2711,6 +2712,16 @@ def _register_manifest_install_in_place(
         return _install_result_fail(
             kit_slug,
             containment_errors,
+            install_mode=install_context.install_mode,
+        )
+    subagent_source_error = _validate_manifest_public_subagent_sources(
+        kit_source,
+        artifacts.extra_subagent_sources,
+    )
+    if subagent_source_error:
+        return _install_result_fail(
+            kit_slug,
+            [subagent_source_error],
             install_mode=install_context.install_mode,
         )
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place

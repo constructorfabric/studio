@@ -8,9 +8,12 @@ from typing import List
 from ..utils import error_codes as EC
 from ..utils.ui import ui
 logger = logging.getLogger(__name__)
+_DIAGNOSTIC_LOGGER = logging.getLogger(f"{__name__}.diagnostics")
+_DIAGNOSTIC_LOGGER.addHandler(logging.NullHandler())
+_DIAGNOSTIC_LOGGER.propagate = False
 # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-imports
 
-
+# @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-parse-args
 def _build_language_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="check-language",
@@ -48,18 +51,23 @@ def _build_language_parser() -> argparse.ArgumentParser:
              "Can be repeated. Also reads ignore_paths from workspace config.",
     )
     return parser
+# @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-parse-args
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-languages
-def _resolve_allowed_languages(args, supported_languages: List[str]) -> List[str]:
-    if args.languages is None:
-        return _read_config_languages()
-    raw_langs = [lang_code.strip().lower() for lang_code in args.languages.split(",") if lang_code.strip()]
-    unknown = [lang_code for lang_code in raw_langs if lang_code not in supported_languages]
+def _normalize_allowed_languages(raw_langs: List[str], supported_languages: List[str]) -> List[str]:
+    normalized = [lang_code.strip().lower() for lang_code in raw_langs if lang_code.strip()]
+    unknown = [lang_code for lang_code in normalized if lang_code not in supported_languages]
     if unknown:
         supported = ", ".join(supported_languages)
         raise ValueError(f"Unknown language code(s): {', '.join(unknown)}. Supported: {supported}")
-    return raw_langs
+    return normalized
+
+
+def _resolve_allowed_languages(args, supported_languages: List[str]) -> List[str]:
+    if args.languages is None:
+        return _normalize_allowed_languages(_read_config_languages(), supported_languages)
+    return _normalize_allowed_languages(args.languages.split(","), supported_languages)
 # @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-languages
 
 
@@ -149,15 +157,14 @@ def cmd_check_language(argv: List[str]) -> int:
             args, SUPPORTED_LANGUAGES
         )
         # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-run-scan
-    except ValueError as exc:
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.warning("check-language failed: %s", exc)
+    except ValueError as exc:  # pylint: disable=user-facing-error-without-log
+        _DIAGNOSTIC_LOGGER.warning("check-language failed: %s", exc, exc_info=True)
         ui.result({"status": "ERROR", "message": str(exc)})
         return 1
     # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-error
 
+    # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-pass
     if not violations:
-        # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-pass
         # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output
         result = {
             "status": "PASS",
@@ -165,10 +172,10 @@ def cmd_check_language(argv: List[str]) -> int:
             "files_scanned": files_scanned,
             "violation_count": 0,
         }
-        # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-pass
         ui.result(result, human_fn=lambda d: _human_result(d, quiet=args.quiet))
         return 0
         # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output
+    # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-pass
 
     # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-fail
     # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-human-output

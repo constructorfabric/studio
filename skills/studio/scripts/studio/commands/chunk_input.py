@@ -284,14 +284,15 @@ def _swap_chunk_output(output_dir: Path, staging_dir: Path) -> Tuple[Path | None
             _warn_chunk_input(
                 f"failed to preserve non-generated files from {backup_dir} into {staging_dir}: {exc}"
             )
+            backup_dir.replace(output_dir)
             preserve_ok = False
+            return backup_dir, preserve_ok
     staging_dir.replace(output_dir)
     return backup_dir, preserve_ok
     # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
 
-
+# @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
 def _cleanup_chunk_swap(backup_dir: Path | None, output_dir: Path, preserve_ok: bool, swap_succeeded: bool) -> None:
-    # @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
     if swap_succeeded and backup_dir is not None and backup_dir.exists():
         if preserve_ok:
             shutil.rmtree(backup_dir, ignore_errors=True)
@@ -303,9 +304,9 @@ def _cleanup_chunk_swap(backup_dir: Path | None, output_dir: Path, preserve_ok: 
             _preserve_non_generated(backup_dir, output_dir)
             shutil.rmtree(backup_dir, ignore_errors=True)
         except OSError as exc:
-            _warn_chunk_input(
+            raise OSError(
                 f"failed to restore preserved files from {backup_dir} into {output_dir}: {exc}"
-            )
+            ) from exc
     # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
 
 
@@ -521,6 +522,8 @@ def _write_chunks(
             chunks.extend(chunk_records)
         input_signature = _write_package_manifest(sources, chunks, staging_dir, max_lines)
         backup_dir, preserve_ok = _swap_chunk_output(output_dir, staging_dir)
+        if not preserve_ok:
+            raise OSError("failed to preserve non-generated files")
         _finalize_written_paths(sources, chunks, output_dir)
         swap_succeeded = True
         return chunks, input_signature, (output_dir / PACKAGE_MANIFEST_FILE).as_posix()

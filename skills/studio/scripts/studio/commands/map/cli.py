@@ -180,7 +180,10 @@ def _build_map_graph(primary_root: Path, args, sources: List[dict], override):
     filtered_nodes = _apply_override_filter(all_nodes, override)
     template_vars = _load_template_vars(primary_root)
     file_edges = extract_file_links(
-        filtered_nodes, project_root=primary_root, template_vars=template_vars,
+        filtered_nodes,
+        project_root=primary_root,
+        project_root_by_source=project_root_by_source,
+        template_vars=template_vars,
     )
     cpt_edges, phantoms = build_cpt_edges(filtered_nodes)
     nodes_all, edges = _apply_phantom_override(

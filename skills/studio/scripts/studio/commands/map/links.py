@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from .model import Edge, Node, Ref
 
@@ -34,14 +34,19 @@ def _link_edge_targets(content: str, src: Node, known: set[str], template_vars: 
     # @cpt-end:cpt-studio-algo-map-file-links:p1:inst-link-edge-targets
 
 
+# pylint: disable-next=too-many-locals
 def extract_file_links(nodes: Sequence[Node],
                        project_root: Optional[Union[Path, str]] = None,
+                       project_root_by_source: Optional[Dict[str, Union[Path, str]]] = None,
                        template_vars: Optional[Dict[str, str]] = None) -> List[Edge]:
     """Return markdown→markdown file-link edges. Source nodes are ignored.
 
     Args:
         nodes: Sequence of Node objects from scan_repo.
         project_root: Project root path. If not provided, returns empty list.
+        project_root_by_source: Optional per-source project roots. When set, markdown
+            content is loaded from the node source's own root and same-source link
+            resolution is preferred before falling back to a unique cross-source match.
         template_vars: Optional map of template variable names to project-root-relative
             paths (e.g. {"cf-path": ".bootstrap/config",
             "adr_template": ".bootstrap/config/config/kits/sdlc/artifacts/ADR/template.md"}).
@@ -52,9 +57,19 @@ def extract_file_links(nodes: Sequence[Node],
         return []
 
     project_root = Path(project_root)
+    source_roots = {
+        source: Path(root)
+        for source, root in (project_root_by_source or {}).items()
+    }
     template_vars = template_vars or {}
     md_nodes = [n for n in nodes if n.kind == "markdown"]
-    by_rel: Dict[str, Node] = {n.rel_path: n for n in md_nodes if n.rel_path}
+    by_source_rel: Dict[Tuple[Optional[str], str], Node] = {}
+    by_rel: Dict[str, List[Node]] = {}
+    for node in md_nodes:
+        if not node.rel_path:
+            continue
+        by_source_rel[(node.source, node.rel_path)] = node
+        by_rel.setdefault(node.rel_path, []).append(node)
     known = set(by_rel.keys())
 
     # @cpt-begin:cpt-studio-algo-map-file-links:p1:inst-extract-file-links
@@ -64,7 +79,8 @@ def extract_file_links(nodes: Sequence[Node],
         if not src.rel_path:
             continue
 
-        content = _load_markdown_content(project_root, src.rel_path)
+        content_root = source_roots.get(src.source or "", project_root)
+        content = _load_markdown_content(content_root, src.rel_path)
         if not content:
             continue
 
@@ -72,17 +88,27 @@ def extract_file_links(nodes: Sequence[Node],
 
         for match, resolved in _link_edge_targets(content, src, known, template_vars):
             edge_id = _append_file_link_edge(
-                edges, edge_id, by_rel, src, resolved, targets_seen, content, match.start()
+                edges,
+                edge_id,
+                by_source_rel,
+                by_rel,
+                src,
+                resolved,
+                targets_seen,
+                content,
+                match.start(),
             )
 
     return edges
     # @cpt-end:cpt-studio-algo-map-file-links:p1:inst-extract-file-links
 
 
+# pylint: disable-next=too-many-arguments
 def _append_file_link_edge(
     edges: List[Edge],
     edge_id: int,
-    by_rel: Dict[str, Node],
+    by_source_rel: Dict[Tuple[Optional[str], str], Node],
+    by_rel: Dict[str, List[Node]],
     src: Node,
     resolved: Optional[str],
     targets_seen: set[str],
@@ -93,7 +119,10 @@ def _append_file_link_edge(
     # @cpt-begin:cpt-studio-algo-map-file-links:p1:inst-append-file-link-edge
     if resolved is None or resolved == src.rel_path or resolved in targets_seen:
         return edge_id
-    tgt = by_rel.get(resolved)
+    tgt = by_source_rel.get((src.source, resolved))
+    if tgt is None:
+        candidates = by_rel.get(resolved, [])
+        tgt = candidates[0] if len(candidates) == 1 else None
     if tgt is None:
         return edge_id
     targets_seen.add(resolved)

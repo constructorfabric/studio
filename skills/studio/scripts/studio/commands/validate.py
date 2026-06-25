@@ -330,7 +330,11 @@ def _build_validate_session(args: argparse.Namespace) -> Tuple[Optional[_Validat
         ws_ctx=ws_ctx,
         meta=ctx.meta,
         project_root=project_root,
-        registered_systems=ctx.registered_systems,
+        registered_systems=(
+            ws_ctx.get_all_registered_systems()
+            if ws_ctx is not None and not args.local_only
+            else ctx.registered_systems
+        ),
         known_kinds=known_kinds,
         ctx_errors=ctx_errors,
     ), None
@@ -929,6 +933,7 @@ def _run_reference_coverage(
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-reference-coverage
     if not all_artifacts_for_cross:
         return
+    code_references_available = not session.args.skip_code
     present_kinds, refs_by_id = _build_reference_index(all_artifacts_for_cross)
     validated_paths = {str(path) for path, _, _, _, _ in session.artifacts_to_validate}
     traceability_by_path = _build_traceability_by_path(session.artifacts_to_validate)
@@ -940,6 +945,7 @@ def _run_reference_coverage(
             validated_paths=validated_paths,
             traceability_by_path=traceability_by_path,
             code_ids_found=results.code_ids_found,
+            code_references_available=code_references_available,
             results=results,
             verbose=bool(session.args.verbose),
         )
@@ -970,6 +976,7 @@ def _build_reference_index(
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-traceability-index
 
 
+# pylint: disable-next=too-many-arguments,too-many-locals
 def _apply_reference_coverage_for_artifact(
     artifact: ArtifactRecord,
     *,
@@ -978,6 +985,7 @@ def _apply_reference_coverage_for_artifact(
     validated_paths: Set[str],
     traceability_by_path: Dict[str, str],
     code_ids_found: Set[str],
+    code_references_available: bool,
     results: _ValidateResults,
     verbose: bool,
 ) -> None:
@@ -1002,12 +1010,14 @@ def _apply_reference_coverage_for_artifact(
             refs_by_id=refs_by_id,
             art_traceability=art_traceability,
             code_ids_found=code_ids_found,
+            code_references_available=code_references_available,
             results=results,
             verbose=verbose,
         )
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-reference-coverage
 
 
+# pylint: disable-next=too-many-arguments
 def _apply_reference_coverage_for_definition(
     *,
     artifact: ArtifactRecord,
@@ -1016,6 +1026,7 @@ def _apply_reference_coverage_for_definition(
     refs_by_id: Dict[str, Set[str]],
     art_traceability: str,
     code_ids_found: Set[str],
+    code_references_available: bool,
     results: _ValidateResults,
     verbose: bool,
 ) -> None:
@@ -1039,7 +1050,11 @@ def _apply_reference_coverage_for_definition(
         return
     kind = str(getattr(artifact, "artifact_kind", "") or "")
     referenced_kinds = sorted(candidate for candidate in refs_by_id.get(defined_id, set()) if candidate != kind)
-    if referenced_kinds or (art_traceability == "FULL" and defined_id in code_ids_found):
+    if referenced_kinds or (
+        art_traceability == "FULL"
+        and code_references_available
+        and defined_id in code_ids_found
+    ):
         return
     error = constraints_error(
         "structure",

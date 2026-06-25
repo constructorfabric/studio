@@ -16,16 +16,25 @@ import logging
 from pathlib import Path
 from typing import Callable, List, Optional
 
+_CLI_STDERR_HANDLER_NAME = "studio-cli-stderr"
+
 
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 def _configure_studio_logging() -> None:
     """Route studio diagnostics to stderr with a stable handler."""
     studio_logger = logging.getLogger("studio")
-    for handler in studio_logger.handlers:
+    managed_handlers = [
+        handler
+        for handler in studio_logger.handlers
+        if getattr(handler, "name", "") == _CLI_STDERR_HANDLER_NAME
+    ]
+    for handler in managed_handlers:
+        studio_logger.removeHandler(handler)
         handler.close()
     handler = logging.StreamHandler(sys.stderr)
+    handler.set_name(_CLI_STDERR_HANDLER_NAME)
     handler.setFormatter(logging.Formatter("%(message)s"))
-    studio_logger.handlers = [handler]
+    studio_logger.addHandler(handler)
     studio_logger.setLevel(logging.WARNING)
     studio_logger.propagate = False
 

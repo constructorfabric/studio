@@ -35,11 +35,9 @@ def _collect_artifacts_to_scan(args: argparse.Namespace) -> Optional[Tuple[objec
     if ctx is None:
         return None
 
-    artifacts_to_scan = [
-        ((ctx.project_root / artifact_meta.path).resolve(), str(artifact_meta.kind))
-        for artifact_meta, _system_node in ctx.meta.iter_all_artifacts()
-        if (ctx.project_root / artifact_meta.path).resolve().exists()
-    ]
+    from ..utils.context import collect_artifacts_to_scan
+
+    artifacts_to_scan, _path_to_source = collect_artifacts_to_scan(ctx)
     return ctx, artifacts_to_scan
 
 

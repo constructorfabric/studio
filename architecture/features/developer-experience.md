@@ -225,7 +225,7 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 **Output**: Docs-first rollout scope for the initial architectural refactor tranche
 
 **Rules**:
-1. - `p2` - Treat Phase 0 as an architecture note only: no code changes and no `pyproject.toml` enablement changes yet - `inst-pylint-phase-0-docs-only`
+1. - `p2` - Treat Phase 0 as the planning and advisory baseline for the rollout: document the target backlog ordering first, then stage code cleanup and plugin wiring without enabling the deferred message set in `pyproject.toml` yet - `inst-pylint-phase-0-docs-only`
 2. - `p2` - Scope the first rollout tranche to the first half of the prioritized backlog: `R0911`, `R0914`, `R0801`, `R0912`, `R0915`, and `R0913` - `inst-pylint-phase-0-first-half`
 3. - `p2` - Keep the remaining backlog deferred for later rollout phases, starting with `R0917`, `R0902`, `C0302`, `C0415`, `R0401`, and `C0301` - `inst-pylint-phase-0-deferred-half`
 4. - `p2` - Keep the rollout aligned with `cpt-studio-nfr-zero-harm`: stage advisory cleanup before enabling additional checks - `inst-pylint-phase-0-zero-harm`

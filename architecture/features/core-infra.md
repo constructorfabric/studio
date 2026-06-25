@@ -584,7 +584,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - `result` JSON branch: serialize result dict as JSON to stdout in `--json` mode - `inst-ui-result-json`
 - [x] - `p1` - `result` human branch: invoke `human_fn` or generic status/message fallback to stderr - `inst-ui-result-human`
 - [x] - `p1` - Create a temporary stderr-bound logger handler with plain-message formatting for UI diagnostics - `inst-ui-stderr-handler`
-- [x] - `p1` - Emit one logger-backed stderr message at the requested level, then close the handler - `inst-ui-stderr-emit`
+- [x] - `p1` - Emit one plain-text stderr message through the dedicated helper, allowing a logger-backed implementation internally, then close the handler - `inst-ui-stderr-emit`
 - [x] - `p1` - `relpath`: convert absolute path to cwd-relative path with fallback - `inst-ui-relpath`
 - [x] - `p1` - `_UI` singleton class exposing all helpers as static methods via `ui` module attribute - `inst-ui-singleton`
 

@@ -1131,7 +1131,7 @@ def _build_update_result(
     studio_dir: Path,
     validate_kits_result: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    status = "PASS" if not errors and not warnings else "WARN"
+    status = "ERROR" if errors else "WARN" if warnings else "PASS"
     update_result: Dict[str, Any] = {
         "status": status,
         "project_root": project_root.as_posix(),
@@ -1726,6 +1726,7 @@ def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
             )
     except (OSError, ValueError, TypeError) as exc:
         logger.warning("Kit source migration write failed for %s: %s", core_toml, exc)
+        return {}
 
     return migrated
 # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo

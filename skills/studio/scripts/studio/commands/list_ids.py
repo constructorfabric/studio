@@ -145,9 +145,12 @@ def _resolve_registered_artifact_scan(
 def _load_active_context(init_message: str) -> Optional[object]:
     """Load the active Studio context from the current working directory."""
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
-    from ..utils.context import get_context
+    from ..utils.context import ensure_context, get_context
 
     ctx = get_context()
+    if ctx:
+        return ctx
+    ctx = ensure_context(Path.cwd())
     if ctx:
         return ctx
     ui.result({"status": "ERROR", "message": init_message})

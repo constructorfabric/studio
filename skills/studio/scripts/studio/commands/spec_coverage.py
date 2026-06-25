@@ -226,7 +226,7 @@ def _check_min_file_coverage(
     if args.min_file_coverage is None:
         return failed
     for file_coverage in report.per_file:
-        if not file_coverage.total_lines or file_coverage.coverage_pct >= args.min_file_coverage:
+        if not file_coverage.effective_lines or file_coverage.coverage_pct >= args.min_file_coverage:
             continue
         failed = True
         rel = _rel_path(file_coverage.path, project_root)
