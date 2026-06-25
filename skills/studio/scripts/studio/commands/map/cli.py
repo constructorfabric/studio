@@ -7,15 +7,14 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from studio.utils._tomllib_compat import tomllib
 
+from ..resolve_vars import load_resolved_variables
 from .categorize import (
     CategorizeOptions, OverrideCategory, OverrideConfig, categorize_nodes,
 )
@@ -348,7 +347,7 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
 def _load_template_vars(primary_root: Path) -> Dict[str, str]:
     """Flatten ``resolve-vars`` output into a {name: project-root-relative-path} map.
 
-    Calls the studio CLI in JSON mode. Returns an empty dict on any failure —
+    Loads resolve-vars data in-process. Returns an empty dict on any failure —
     template-variable expansion is best-effort enrichment, never a hard dep.
 
     Output shape: ``{"system": {...}, "kits": {<slug>: {...}}}`` with absolute
@@ -357,42 +356,15 @@ def _load_template_vars(primary_root: Path) -> Dict[str, str]:
     ``studio_path``) are exposed at the top level.
     """
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-load-template-vars
-    candidates = [
-        ["cfs", "--json", "resolve-vars"],
-        [sys.executable, "-m", "studio.cli", "--json", "resolve-vars"],
-    ]
-    data = None
-    errors: list[str] = []
-    for cmd in candidates:
-        try:
-            out = subprocess.run(
-                cmd, cwd=primary_root, capture_output=True, text=True, check=False, timeout=15,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            errors.append(f"{' '.join(cmd)} failed to run ({type(exc).__name__}: {exc})")
-            continue
-        if out.returncode:
-            stderr = out.stderr.strip()
-            detail = f"exit {out.returncode}"
-            if stderr:
-                detail = f"{detail}: {stderr}"
-            errors.append(f"{' '.join(cmd)} {detail}")
-            continue
-        if not out.stdout.strip():
-            errors.append(f"{' '.join(cmd)} returned no output")
-            continue
-        try:
-            data = json.loads(out.stdout)
-            break
-        except json.JSONDecodeError as exc:
-            errors.append(f"{' '.join(cmd)} returned invalid JSON ({exc})")
-            continue
-    if data is None:
-        if errors:
-            _emit_stderr(
-                "map: warning: template variable discovery failed; continuing without template vars: "
-                + "; ".join(errors)
-            )
+    try:
+        data, context_error = load_resolved_variables(primary_root)
+    except (ValueError, OSError) as exc:
+        _emit_stderr(
+            "map: warning: template variable discovery failed; continuing without template vars: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return {}
+    if context_error is not None or data is None:
         return {}
     return _flatten_vars(data, primary_root)
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-load-template-vars

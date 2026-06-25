@@ -445,6 +445,38 @@ def _collect_all_variables(
     return result
     # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-return-structured
 
+
+def load_resolved_variables(
+    start_path: Path,
+) -> Tuple[Optional[Dict[str, Any]], Optional[dict]]:
+    """Load resolve-vars data for in-process callers.
+
+    Returns ``(result, context_error)``. Context absence is not exceptional so
+    callers can degrade gracefully without shelling out through the CLI.
+    """
+    start_path = start_path.resolve()
+
+    # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-discover
+    project_root, adapter_dir, context_error = _project_context_result(start_path)
+    if context_error is not None:
+        return None, context_error
+    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-discover
+
+    # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-load-core
+    core_data, core_load_error, core_path = _load_core_data_with_error(adapter_dir)
+    if core_load_error and core_path:
+        logger.warning("failed to parse %s: %s", core_path, core_load_error)
+    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-load-core
+
+    # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-merge
+    result = _collect_all_variables(project_root, adapter_dir, core_data)
+    if core_load_error:
+        result["core_load_error"] = core_load_error
+    _add_discovered_layer_variables(result, project_root, adapter_dir)
+    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-merge
+
+    return result, None
+
 # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-return
 def _variable_counts(result: Dict[str, Any]) -> Dict[str, Any]:
     system = result.get("system", {})
@@ -651,38 +683,19 @@ def cmd_resolve_vars(argv: list[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-discover
     # -- Discover project --
-    project_root, adapter_dir, context_error = _project_context_result(start_path)
-    if context_error is not None:
-        ui.result(context_error)
-        return 1
-    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-discover
-
-    # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-load-core
-    # -- Load core.toml --
-    core_data, core_load_error, core_path = _load_core_data_with_error(adapter_dir)
-    if core_load_error and core_path:
-        logger.warning("failed to parse %s: %s", core_path, core_load_error)
-    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-load-core
-
-    # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-merge
-    # -- Resolve variables --
     try:
-        result = _collect_all_variables(project_root, adapter_dir, core_data)
+        result, context_error = load_resolved_variables(start_path)
     except ValueError as exc:
-        logger.exception("failed to resolve variables for %s", adapter_dir)
-        # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-return
+        logger.exception("failed to resolve variables from %s", start_path)
         ui.result({
             "status": "ERROR",
             "message": str(exc),
         })
         return 1
-        # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-return
-    if core_load_error:
-        result["core_load_error"] = core_load_error
-
-    # -- Enrich with layer variables (base_dir, master_repo, repo) --
-    _add_discovered_layer_variables(result, project_root, adapter_dir)
-    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-merge
+    if context_error is not None:
+        ui.result(context_error)
+        return 1
+    # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-discover
 
     # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-filter-kit
     # -- Filter by kit if requested --

@@ -50,34 +50,31 @@ def test_discover_sources_includes_reachable_remote(tmp_path):
     assert by_name["remote"]["role"] == "artifacts"
 
 
-def test_load_template_vars_subprocess_all_failures(monkeypatch, tmp_path):
-    """When every subprocess attempt fails / times out, return {} gracefully."""
+def test_load_template_vars_resolution_failures(monkeypatch, tmp_path):
+    """When resolve-vars loading fails, return {} gracefully."""
     def raise_oserror(*_a, **_k):
         raise OSError("no executable")
 
-    import subprocess
-    monkeypatch.setattr(subprocess, "run", raise_oserror)
+    monkeypatch.setattr(map_cli, "load_resolved_variables", raise_oserror)
     result = map_cli._load_template_vars(tmp_path)
     assert result == {}
 
 
-def test_load_template_vars_returncode_nonzero(monkeypatch, tmp_path):
-    """Subprocess returning non-zero rc with no stdout → empty dict."""
-    def fake_run(*_a, **_k):
-        return SimpleNamespace(returncode=1, stdout="", stderr="error")
+def test_load_template_vars_context_unavailable(monkeypatch, tmp_path):
+    """Missing project/studio context is a silent best-effort miss."""
+    def fake_load(*_a, **_k):
+        return None, {"status": "ERROR", "message": "No project root found"}
 
-    import subprocess
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(map_cli, "load_resolved_variables", fake_load)
     assert map_cli._load_template_vars(tmp_path) == {}
 
 
-def test_load_template_vars_invalid_json(monkeypatch, tmp_path):
-    """Subprocess returning invalid JSON → empty dict."""
-    def fake_run(*_a, **_k):
-        return SimpleNamespace(returncode=0, stdout="{invalid", stderr="")
+def test_load_template_vars_missing_data(monkeypatch, tmp_path):
+    """A loader that returns no data still yields an empty template-var map."""
+    def fake_load(*_a, **_k):
+        return None, None
 
-    import subprocess
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(map_cli, "load_resolved_variables", fake_load)
     assert map_cli._load_template_vars(tmp_path) == {}
 
 
