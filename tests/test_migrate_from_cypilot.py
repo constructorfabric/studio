@@ -954,6 +954,29 @@ def test_internal_migration_target_exists_error_precedes_dirty_root_probe(tmp_pa
     assert "force" in out["hint"]
 
 
+def test_internal_migration_warnings_force_warn_status(tmp_path):
+    from studio.commands.migrate_from_cypilot import _MigrationState, _build_migration_result
+
+    state = _MigrationState(
+        project_root=tmp_path,
+        legacy_rel=".cypilot",
+        target_rel=".cf-studio",
+        legacy_dir=tmp_path / ".cypilot",
+        target_dir=tmp_path / ".cf-studio",
+        dry_run=False,
+        force=False,
+        yes=False,
+        skip_update=False,
+        force_overwrite_root=False,
+        actions={},
+        warnings=["follow-up update failed"],
+    )
+
+    rc, out = _build_migration_result(state, 0, {"status": "PASS"})
+    assert rc == 0
+    assert out["status"] == "WARN"
+
+
 def test_init_migrate_yes_migrates_without_prompt(tmp_path, capsys, monkeypatch, followup_update_ok):
     from studio.cli import main
 

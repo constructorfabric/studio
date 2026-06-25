@@ -14,11 +14,16 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from studio_proxy.stderr import write_stderr_warning
 
 
 _DEFAULT_TTL_SECONDS = 6 * 60 * 60
 _ALLOWED_SKILL_ENTRYPOINTS = {"studio.py", "cypilot.py"}
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
+
+
+def _warn(message: str) -> None:
+    write_stderr_warning(message)
 
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
@@ -35,7 +40,8 @@ def read_cached_update_check() -> Optional[Dict[str, Any]]:
     path = update_check_file()
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        _warn(f"unable to read cached update check from {path}: {exc}")
         return None
 
 
@@ -101,14 +107,22 @@ def check_proxy() -> Dict[str, Any]:
     """Check whether the installed proxy package has an update."""
     current = _proxy_current_version()
     result: Dict[str, Any] = {
-        "component": "constructor-studio-proxy",
+        "component": "constructor-studio",
         "current_version": current,
         "command": "pipx upgrade constructor-studio",
         "action": "current",
     }
     try:
         latest = _proxy_latest_version()
-    except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except HTTPError as exc:
+        message = (
+            "constructor-studio is not published on PyPI"
+            if exc.code == 404
+            else str(exc)
+        )
+        result.update({"action": "unknown", "message": message})
+        return result
+    except (URLError, OSError, ValueError, json.JSONDecodeError) as exc:
         result.update({"action": "unknown", "message": str(exc)})
         return result
     result["latest_version"] = latest
@@ -192,8 +206,9 @@ def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, 
         return result
     try:
         payload = json.loads(proc.stdout or "{}")
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         result["message"] = (proc.stderr or proc.stdout or "kit check failed").strip()
+        result["error"] = str(exc)
         return result
     result.update({
         "action": "update_available" if int(payload.get("updates_available", 0) or 0) else "current",

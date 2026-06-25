@@ -2172,8 +2172,9 @@ class TestHumanUpdateOk(unittest.TestCase):
 
     def test_basic_pass(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2181,13 +2182,14 @@ class TestHumanUpdateOk(unittest.TestCase):
                 "dry_run": False,
                 "actions": {},
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("Update complete", out)
+        self.assertEqual("", stderr.getvalue())
 
     def test_dry_run(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2195,13 +2197,13 @@ class TestHumanUpdateOk(unittest.TestCase):
                 "dry_run": True,
                 "actions": {},
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("dry-run", out.lower())
 
     def test_with_errors_and_warnings(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "WARN",
                 "project_root": "/tmp/proj",
@@ -2211,15 +2213,15 @@ class TestHumanUpdateOk(unittest.TestCase):
                 "errors": [{"path": "kit.py", "error": "bad"}, "plain error"],
                 "warnings": ["warn1"],
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("bad", out)
         self.assertIn("warn1", out)
         self.assertIn("warnings", out.lower())
 
     def test_with_kits_data(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2236,14 +2238,14 @@ class TestHumanUpdateOk(unittest.TestCase):
                     },
                 },
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("sdlc", out)
         self.assertIn("Kits", out)
 
     def test_with_kits_skipped_tracking_summary(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2260,15 +2262,15 @@ class TestHumanUpdateOk(unittest.TestCase):
                     },
                 },
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("Kits: skipped", out)
         self.assertIn("--with-kits not enabled", out)
         self.assertIn("kit_tracking=", out)
 
     def test_with_core_update(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2281,15 +2283,15 @@ class TestHumanUpdateOk(unittest.TestCase):
                     "keep.md": "unchanged",
                 },
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("Core", out)
         self.assertIn("Created", out)
         self.assertIn("Updated", out)
 
     def test_with_agents_regenerated(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2299,13 +2301,13 @@ class TestHumanUpdateOk(unittest.TestCase):
                     "agents_regenerated": ["cursor", "windsurf"],
                 },
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("cursor", out)
 
     def test_with_dict_and_list_actions(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2316,7 +2318,7 @@ class TestHumanUpdateOk(unittest.TestCase):
                     "extra_list": ["item1", "item2"],
                 },
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("layout_migration", out)
         self.assertIn("sdlc", out)
         self.assertIn("extra_list", out)
@@ -2480,8 +2482,8 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
 
     def test_kit_updated_status(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2497,15 +2499,15 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
                     },
                 },
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("updated", out)
         self.assertIn("a.md", out)
         self.assertIn("c.md", out)
 
     def test_kit_partial_status(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "WARN",
                 "project_root": "/tmp/proj",
@@ -2522,14 +2524,14 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
                 },
                 "warnings": ["some warning"],
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("partial", out)
         self.assertIn("declined", out)
 
     def test_dry_run_output(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2537,13 +2539,13 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
                 "dry_run": True,
                 "actions": {},
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("Dry run", out)
 
     def test_nested_dict_action(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "PASS",
                 "project_root": "/tmp/proj",
@@ -2555,14 +2557,14 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
                     "nested_complex": {"sub": {"deep": True}},
                 },
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("layout_migration", out)
         self.assertIn("some_list", out)
 
     def test_errors_in_output(self):
         from studio.commands.update import _human_update_ok
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             _human_update_ok({
                 "status": "WARN",
                 "project_root": "/tmp/proj",
@@ -2575,7 +2577,7 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
                 ],
                 "warnings": ["w1"],
             })
-        out = buf.getvalue()
+        out = stdout.getvalue()
         self.assertIn("download failed", out)
         self.assertIn("plain error string", out)
 

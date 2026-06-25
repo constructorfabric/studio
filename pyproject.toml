@@ -28,6 +28,14 @@ local_scheme = "no-local-version"
 jobs = 0
 persistent = false
 py-version = "3.11"
+init-hook = "import sys; sys.path[:0] = ['src', 'skills/studio/scripts', 'scripts']"
+load-plugins = [
+    "pylint_plugins.cpt_marker_columns",
+    "pylint_plugins.error_surfaces",
+    "pylint_plugins.import_boundaries",
+    "pylint_plugins.output_channels",
+    "pylint_plugins.silent_exceptions",
+]
 ignore-paths = [
     "^\\.bootstrap/",
     "^examples/",
@@ -52,6 +60,7 @@ disable = [
     "all",
 ]
 enable = [
+    "C0301",
     "C0303",
     "C0305",
     "C0325",
@@ -66,14 +75,20 @@ enable = [
     "C1805",
     "E",
     "F",
+    "R0801",
     "R0903",
-    "R1716",
+    "R0911",
+    "R0912",
+    "R0913",
+    "R0914",
+    "R0915",
+    "R0916",
     "R1702",
     "R1705",
+    "R1716",
     "R1721",
     "R1724",
     "R1732",
-    "R0916",
     "W0101",
     "W0102",
     "W0104",
@@ -202,19 +217,20 @@ enable = [
     "W4904",
     "W4905",
     "W4906",
+    "W9001",
+    "W9002",
+    "W9003",
+    "W9004",
+    "W9005",
+    "W9006",
+    "W9007",
 ]
 
 # Pylint rollout backlog, ordered by priority: useful/simple first,
-# noisy/architectural last. Keep commented until the rule is clean and enabled.
-# 01. R0911 - too many return statements (47 findings, refactor risk)
-# 02. R0914 - too many local variables (123 findings, extraction risk)
-# 03. R0801 - duplicate code (39 findings, ownership/refactor risk)
-# 04. R0912 - too many branches (84 findings, high refactor risk)
-# 05. R0915 - too many statements (52 findings, high refactor risk)
-# 06. R0913 - too many arguments (9 findings, API churn risk)
+# noisy/architectural last. Active tranche: 01-06. Keep remaining backlog
+# deferred/commented until the rule is clean and enabled.
 # 07. R0917 - too many positional arguments (5 findings, API churn risk)
 # 08. R0902 - too many instance attributes (18 findings, data model risk)
 # 09. C0302 - too many lines in module (13 findings, module split risk)
 # 10. C0415 - import outside top-level (240 findings, lazy import risk)
 # 11. R0401 - cyclic imports (16 findings, architecture risk)
-# 12. C0301 - line too long (221 findings, noisy formatting pass)

@@ -6,12 +6,29 @@
 from __future__ import annotations
 
 import fnmatch
+import logging
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Sequence
 
 from .model import Node
+
+def _emit_warning(message: str) -> None:
+    """Emit a warning to stderr via a dedicated logger handler."""
+    # @cpt-begin:cpt-studio-algo-map-categorize:p1:inst-emit-warning
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(logging.Formatter("%(message)s"))
+    category_logger = logging.getLogger(f"{__name__}.category_warning")
+    category_logger.handlers = [stderr_handler]
+    category_logger.setLevel(logging.WARNING)
+    category_logger.propagate = False
+    try:
+        category_logger.warning("%s", message.rstrip("\n"))
+    finally:
+        stderr_handler.close()
+    # @cpt-end:cpt-studio-algo-map-categorize:p1:inst-emit-warning
 
 
 @dataclass(frozen=True)
@@ -47,7 +64,6 @@ class CategorizeOptions:
 def categorize_nodes(nodes: Sequence[Node], opts: CategorizeOptions) -> None:
     """Mutate nodes in place, filling .category and .category_origin."""
     # Build per-source registry indices (primary + any federated sources).
-    # @cpt-begin:cpt-studio-algo-map-categorize:p1:inst-categorize-nodes
     source_roots: dict = dict(opts.source_roots or {})
     # Always include primary root under "local" (and as default).
     primary_index = _build_registry_index(opts.project_root)
@@ -56,29 +72,26 @@ def categorize_nodes(nodes: Sequence[Node], opts: CategorizeOptions) -> None:
         if src_name != "local":
             per_source_index[src_name] = _build_registry_index(src_root)
 
-    for n in nodes:
-        if n.kind == "phantom-cpt":
-            n.category = "_undefined"
-            n.category_origin = "phantom"
+    # @cpt-begin:cpt-studio-algo-map-categorize:p1:inst-categorize-nodes
+    for node in nodes:
+        if node.kind == "phantom-cpt":
+            node.category = "_undefined"
+            node.category_origin = "phantom"
             continue
-        # (1) Override
-        if opts.override is not None:
-            cat = _match_override(n.rel_path or "", opts.override)
-            if cat is not None:
-                n.category = cat
-                n.category_origin = "override"
-                continue
-        # (2) Registry — use per-source index when available, else primary.
-        if n.rel_path:
-            registry_index = per_source_index.get(n.source or "local", primary_index)
-            cat = _match_registry(n.rel_path, registry_index)
-            if cat is not None:
-                n.category = cat
-                n.category_origin = "registry"
-                continue
-        # (3) Parent dir
-        n.category = _parent_dir_category(n.rel_path or "")
-        n.category_origin = "parent-dir"
+        rel_path = node.rel_path or ""
+        override_category = _match_override(rel_path, opts.override) if opts.override is not None else None
+        if override_category is not None:
+            node.category = override_category
+            node.category_origin = "override"
+            continue
+        registry_index = per_source_index.get(node.source or "local", primary_index)
+        registry_category = _match_registry(rel_path, registry_index) if rel_path else None
+        if registry_category is not None:
+            node.category = registry_category
+            node.category_origin = "registry"
+            continue
+        node.category = _parent_dir_category(rel_path)
+        node.category_origin = "parent-dir"
     # @cpt-end:cpt-studio-algo-map-categorize:p1:inst-categorize-nodes
 
 
@@ -137,6 +150,24 @@ def _node_slug_path(system_node) -> str:
     # @cpt-end:cpt-studio-algo-map-categorize:p1:inst-node-slug-path
 
 
+def _load_registry_meta(project_root: Path):
+    # @cpt-begin:cpt-studio-algo-map-categorize-chain:p1:inst-load-registry-meta
+    from studio.utils.files import find_studio_directory, find_project_root, load_artifacts_registry
+    from studio.utils.artifacts_meta import ArtifactsMeta
+
+    detected_root = find_project_root(project_root)
+    adapter_dir = (
+        find_studio_directory(project_root) or project_root
+        if detected_root is not None and detected_root.resolve() == project_root.resolve()
+        else project_root
+    )
+    cfg, _err = load_artifacts_registry(adapter_dir)
+    if cfg is None:
+        return None
+    return ArtifactsMeta.from_dict(cfg)
+    # @cpt-end:cpt-studio-algo-map-categorize-chain:p1:inst-load-registry-meta
+
+
 def _build_registry_index(project_root: Path) -> List[_RegistryEntry]:
     """Walk artifacts.toml and emit (path_prefix → category) entries, longest-first."""
     # @cpt-begin:cpt-studio-algo-map-categorize:p1:inst-build-registry-index
@@ -144,34 +175,24 @@ def _build_registry_index(project_root: Path) -> List[_RegistryEntry]:
     # root; fall back to the flat layout for fixture sub-directories so the
     # parent project's adapter is not picked up.
     try:
-        from studio.utils.files import find_studio_directory, find_project_root, load_artifacts_registry
-        from studio.utils.artifacts_meta import ArtifactsMeta
-        detected_root = find_project_root(project_root)
-        if detected_root is not None and detected_root.resolve() == project_root.resolve():
-            adapter_dir = find_studio_directory(project_root) or project_root
-        else:
-            adapter_dir = project_root
-        cfg, _err = load_artifacts_registry(adapter_dir)
-        if cfg is None:
+        meta = _load_registry_meta(project_root)
+        if meta is None:
             return []
-        meta = ArtifactsMeta.from_dict(cfg)
-    except Exception:  # pylint: disable=broad-exception-caught  # registry is optional; categorize must not raise
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # registry is optional; categorize must not raise
+        _emit_warning(
+            f"map: warning: registry category discovery failed for {project_root}: "
+            f"{type(exc).__name__}: {exc}"
+        )
         return []
 
     entries: List[_RegistryEntry] = []
-
-    for art, sys_node in meta.iter_all_artifacts():
-        slug = _node_slug_path(sys_node)
-        if art.path:
-            # Normalize path: strip leading ./
-            path = art.path.lstrip("./") if art.path.startswith("./") else art.path
-            entries.append(_RegistryEntry(path_prefix=path, category=slug))
-
-    for cb, sys_node in meta.iter_all_codebase():
-        slug = _node_slug_path(sys_node)
-        if cb.path:
-            path = cb.path.lstrip("./") if cb.path.startswith("./") else cb.path
-            entries.append(_RegistryEntry(path_prefix=path, category=slug))
+    for collection in (meta.iter_all_artifacts(), meta.iter_all_codebase()):
+        for item, sys_node in collection:
+            item_path = getattr(item, "path", "")
+            if not item_path:
+                continue
+            path = item_path.lstrip("./") if item_path.startswith("./") else item_path
+            entries.append(_RegistryEntry(path_prefix=path, category=_node_slug_path(sys_node)))
 
     # Longest prefix first so more-specific entries win
     entries.sort(key=lambda e: -len(e.path_prefix))

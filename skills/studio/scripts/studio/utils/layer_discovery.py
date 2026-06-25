@@ -23,6 +23,49 @@ logger = logging.getLogger(__name__)
 
 _MANIFEST_TOML = "manifest.toml"
 
+
+def _resolve_registered_kit_path(
+    studio_root: Path,
+    trusted_root: Path,
+    kit_path_raw: object,
+) -> Optional[Path]:
+    """Resolve a kit registration path using adapter-first semantics."""
+    raw_path = Path(str(kit_path_raw))
+    if raw_path.is_absolute():
+        return raw_path.resolve()
+
+    kit_path = (studio_root / raw_path).resolve()
+    project_relative_path = (trusted_root / raw_path).resolve()
+    if not kit_path.is_dir() and project_relative_path.is_dir():
+        kit_path = project_relative_path
+    if not kit_path.is_relative_to(trusted_root):
+        logger.warning(
+            "Kit path '%s' resolves outside project root, skipping",
+            kit_path_raw,
+        )
+        return None
+    return kit_path
+
+
+def _load_manifest_layer(scope: str, manifest_path: Path) -> ManifestLayer:
+    """Load a manifest layer, preserving parse errors as layer state."""
+    try:
+        manifest = parse_manifest_v2(manifest_path)
+        return ManifestLayer(
+            scope=scope,
+            path=manifest_path,
+            manifest=manifest,
+            state=ManifestLayerState.LOADED,
+        )
+    except (ValueError, OSError) as exc:
+        logger.warning("Failed to parse manifest layer %s: %s", manifest_path, exc)
+        return ManifestLayer(
+            scope=scope,
+            path=manifest_path,
+            manifest=None,
+            state=ManifestLayerState.PARSE_ERROR,
+        )
+
 # ---------------------------------------------------------------------------
 # Boundary Detection
 # ---------------------------------------------------------------------------
@@ -121,7 +164,8 @@ def _load_kit_layers(studio_root: Path, project_root: Optional[Path] = None) -> 
     try:
         with open(core_toml, "rb") as f:
             data = tomllib.load(f)
-    except (tomllib.TOMLDecodeError, OSError):
+    except (tomllib.TOMLDecodeError, OSError) as exc:
+        logger.warning("Failed to read core manifest layer config %s: %s", core_toml, exc)
         return []
 
     kits_section = data.get("kits")
@@ -136,24 +180,8 @@ def _load_kit_layers(studio_root: Path, project_root: Optional[Path] = None) -> 
         if not kit_path_raw:
             continue
 
-        kit_path_raw_obj = Path(str(kit_path_raw))
-        # Resolve relative paths using registered-kit semantics: adapter
-        # relative first, with a project-root fallback for register-mode kits.
-        if not kit_path_raw_obj.is_absolute():
-            kit_path = (studio_root / kit_path_raw_obj).resolve()
-            project_relative_path = (trusted_root / kit_path_raw_obj).resolve()
-            if not kit_path.is_dir() and project_relative_path.is_dir():
-                kit_path = project_relative_path
-        else:
-            kit_path = kit_path_raw_obj.resolve()
-
-        # Post-resolve containment check for relative paths. Absolute paths are
-        # explicitly authored; relative paths must stay inside the project.
-        if not kit_path_raw_obj.is_absolute() and not kit_path.is_relative_to(trusted_root):
-            logger.warning(
-                "Kit path '%s' resolves outside project root, skipping",
-                kit_path_raw,
-            )
+        kit_path = _resolve_registered_kit_path(studio_root, trusted_root, kit_path_raw)
+        if kit_path is None:
             continue
 
         manifest_path = kit_path / _MANIFEST_TOML
@@ -161,21 +189,7 @@ def _load_kit_layers(studio_root: Path, project_root: Optional[Path] = None) -> 
             # Silently omit kits without a manifest
             continue
 
-        try:
-            manifest = parse_manifest_v2(manifest_path)
-            layers.append(ManifestLayer(
-                scope="kit",
-                path=manifest_path,
-                manifest=manifest,
-                state=ManifestLayerState.LOADED,
-            ))
-        except (ValueError, OSError):
-            layers.append(ManifestLayer(
-                scope="kit",
-                path=manifest_path,
-                manifest=None,
-                state=ManifestLayerState.PARSE_ERROR,
-            ))
+        layers.append(_load_manifest_layer("kit", manifest_path))
 
     return layers
 # @cpt-end:cpt-studio-algo-project-extensibility-walk-up-discovery:p1:inst-load-kit-layers

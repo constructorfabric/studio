@@ -11,6 +11,7 @@
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
   - [Kit Install CLI](#kit-install-cli)
   - [Kit Update CLI](#kit-update-cli)
+  - [Kit Check Updates CLI](#kit-check-updates-cli)
   - [Kit Validate CLI](#kit-validate-cli)
   - [Kit Normalize CLI](#kit-normalize-cli)
   - [Kit CLI Dispatcher](#kit-cli-dispatcher)
@@ -19,9 +20,11 @@
   - [GitHub Kit Version Authority](#github-kit-version-authority)
   - [Kit Content Management](#kit-content-management)
   - [Gen Aggregation](#gen-aggregation)
+  - [Persisted Path and Binding Helpers](#persisted-path-and-binding-helpers)
   - [Kit Installation](#kit-installation)
   - [Kit Update](#kit-update)
   - [File-Level Kit Update](#file-level-kit-update)
+  - [Kit Update Target Resolution](#kit-update-target-resolution)
   - [Kit File Enumeration](#kit-file-enumeration)
   - [Kit File Classification](#kit-file-classification)
   - [Kit Interactive Review](#kit-interactive-review)
@@ -116,22 +119,29 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Parse CLI arguments (including positional `path/...` alias for local sources, `--path`, --force, --dry-run) - `inst-parse-args`
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
-3. [x] - `p1` - Read kit slug from `.cf-studio-kit.toml` when present; otherwise use legacy metadata (`manifest.toml`, `conf.toml`, or layout adapter) and read `conf.toml version` only as optional local metadata, never as GitHub release authority - `inst-read-slug-version`
-4. [x] - `p1` - **IF** `.cf-studio-kit.toml` declares multiple kits: select kits from `--kit <slug>` / repeated `--kit` / `--kit all`; in interactive mode prompt for number, slug, comma-separated list, or `all`; in non-interactive mode fail with available slugs when omitted - `inst-install-select-kit`
-5. [x] - `p1` - **IF** installing from GitHub: resolve requested GitHub ref to authoritative GitHub metadata via `cpt-studio-algo-kit-github-version-authority`; set `core.toml [kits.<slug>].version` from GitHub release/ref metadata, not from `conf.toml` - `inst-resolve-github-authority`
-6. [x] - `p1` - **IF** installing from `--path`: mark resolver mode as local/path, do not apply GitHub authority, and reject GitHub selector flags or `owner/repo[@ref]` selectors mixed with local/path mode - `inst-validate-source-mode`
-7. [x] - `p1` - Resolve project root and studio directory via `_resolve_studio_dir` - `inst-resolve-project`
-8. [x] - `p1` - Check if kit already installed; fail if exists without --force - `inst-check-existing`
-9. [x] - `p1` - **IF** --dry-run: return preview and STOP - `inst-dry-run`
-10. [x] - `p1` - Load the source through `cpt-studio-algo-kit-model-normalize`, with precedence `.cf-studio-kit.toml` > legacy `manifest.toml` v2/v1 > `conf.toml + layout` > `core.toml` resources-only - `inst-load-kit-model`
-11. [x] - `p1` - **IF** installing from `--path`: resolve install mode through `cpt-studio-algo-kit-local-path-install-mode`; interactive mode must ask copy vs register, non-interactive mode requires `--install-mode` - `inst-resolve-local-install-mode`
-12. [x] - `p1` - **IF** canonical or legacy manifest input is present: delegate to manifest-driven installation via `cpt-studio-algo-kit-manifest-install` using the normalized `KitModel` - `inst-manifest-install`
-13. [x] - `p1` - **ELSE**: delegate to `install_kit()` for legacy installation - `inst-delegate-install`
-14. [x] - `p1` - Regenerate `.gen/` aggregates via `regenerate_gen_aggregates` - `inst-regen-gen`
-15. [x] - `p1` - Format and output result JSON - `inst-output-result`
+3. [x] - `p1` - Normalize the install source into a concrete source state for local path, GitHub, or generic Git installs, including authority metadata and cleanup handles for temporary materializations - `inst-resolve-install-source`
+4. [x] - `p1` - Read kit slug from `.cf-studio-kit.toml` when present; otherwise use legacy metadata (`manifest.toml`, `conf.toml`, or layout adapter) and read `conf.toml version` only as optional local metadata, never as GitHub release authority - `inst-read-slug-version`
+5. [x] - `p1` - **IF** `.cf-studio-kit.toml` declares multiple kits: select kits from `--kit <slug>` / repeated `--kit` / `--kit all`; in interactive mode prompt for number, slug, comma-separated list, or `all`; in non-interactive mode fail with available slugs when omitted - `inst-install-select-kit`
+6. [x] - `p1` - **IF** installing from GitHub: resolve requested GitHub ref to authoritative GitHub metadata via `cpt-studio-algo-kit-github-version-authority`; set `core.toml [kits.<slug>].version` from GitHub release/ref metadata, not from `conf.toml` - `inst-resolve-github-authority`
+7. [x] - `p1` - **IF** installing from `--path`: mark resolver mode as local/path, do not apply GitHub authority, and reject GitHub selector flags or `owner/repo[@ref]` selectors mixed with local/path mode - `inst-validate-source-mode`
+8. [x] - `p1` - Resolve project root and studio directory via `_resolve_studio_dir` - `inst-resolve-project`
+9. [x] - `p1` - Check if kit already installed; fail if exists without --force - `inst-check-existing`
+10. [x] - `p1` - **IF** --dry-run: return preview and STOP - `inst-dry-run`
+11. [x] - `p1` - Load the source through `cpt-studio-algo-kit-model-normalize`, with precedence `.cf-studio-kit.toml` > legacy `manifest.toml` v2/v1 > `conf.toml + layout` > `core.toml` resources-only - `inst-load-kit-model`
+12. [x] - `p1` - **IF** installing from `--path`: resolve install mode through `cpt-studio-algo-kit-local-path-install-mode`; interactive mode must ask copy vs register, non-interactive mode requires `--install-mode` - `inst-resolve-local-install-mode`
+13. [x] - `p1` - **IF** canonical or legacy manifest input is present: delegate to manifest-driven installation via `cpt-studio-algo-kit-manifest-install` using the normalized `KitModel` - `inst-manifest-install`
+14. [x] - `p1` - **ELSE**: delegate to `install_kit()` for legacy installation - `inst-delegate-install`
+15. [x] - `p1` - Regenerate `.gen/` aggregates via `regenerate_gen_aggregates` - `inst-regen-gen`
+16. [x] - `p1` - Format and output result JSON - `inst-output-result`
 
 **Supporting**:
+- [x] - `p1` - Define install CLI argument schema, including local-path aliases, install-mode flags, overwrite approvals, and tool-risk approvals - `inst-install-cli-options`
+- [x] - `p1` - Validate install CLI source arguments, local-path alias normalization, and install-mode constraints before source resolution begins - `inst-install-arg-validation`
+- [x] - `p1` - Select effective install kit specs from explicit `--kit` selectors or authority-provided kit identity before dispatching single-kit vs multi-kit install - `inst-install-select-specs`
+- [x] - `p1` - Build install execution context: resolve Studio/config roots, effective local install mode, and optional git tracking choice for copied installs - `inst-install-execution-context`
+- [x] - `p1` - Execute a single selected install target end-to-end: existing-install checks, dry-run preview, install delegation, optional git tracking, `.gen` regeneration, and result emission - `inst-run-single-install`
 - [x] - `p1` - Resolve GitHub source: parse owner/repo and requested ref, resolve canonical/effective source, requested_ref, resolved_ref, commit_sha/content identity, version display value, verified/freshness state, then download tarball and extract to temp dir - `inst-resolve-github-source`
+- [x] - `p1` - Resolve generic Git source: parse the git selector, materialize the selected package, validate optional kit identity, and return the same source-state shape as GitHub/local installs - `inst-resolve-git-source`
 - [x] - `p1` - Cleanup temporary download directory in finally block - `inst-cleanup-tmp`
 - [x] - `p1` - Human-friendly output formatter for install results - `inst-human-output`
 
@@ -146,7 +156,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Parse CLI arguments (including positional `path/...` alias for local sources, `--path`, --force, --dry-run, --no-interactive, -y) - `inst-parse-args`
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
-2a. [x] - `p1` - Validate source mode: registered GitHub-backed updates use GitHub authority; local `--path` updates are outside GitHub authority and conflict with GitHub selector flags - `inst-validate-source-mode`
+2. [x] - `p1` - Validate source mode: registered GitHub-backed updates use GitHub authority; local `--path` updates are outside GitHub authority and conflict with GitHub selector flags - `inst-validate-source-mode`
 3. [x] - `p1` - Read slug from canonical `.cf-studio-kit.toml` when present; otherwise use legacy source metadata - `inst-read-slug`
 4. [x] - `p1` - Resolve project root and studio directory - `inst-resolve-project`
 5. [x] - `p1` - **IF** kit source contains `whatsnew.toml`: display whatsnew entries via `cpt-studio-algo-kit-whatsnew-display`; in interactive mode prompt to continue or abort - `inst-show-whatsnew`
@@ -159,9 +169,35 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 
 **Supporting**:
+- [x] - `p1` - Define update CLI argument schema, including local-path aliases, prune flags, overwrite approvals, and tool-risk approvals - `inst-update-cli-options`
+- [x] - `p1` - Resolve update project/context roots from CLI args before target resolution and command completion - `inst-update-project-context`
+- [x] - `p1` - Orchestrate the in-process kit update pipeline after dry-run checks: build runtime context, short-circuit manifest-backed/current-version paths, and fall through to nonregistered update execution - `inst-update-run-pipeline`
+- [x] - `p1` - Iterate normalized update targets, surface whatsnew acknowledgements, delegate to update execution, collect failures, and clean temporary materializations - `inst-update-target-loop`
+- [x] - `p1` - Normalize source-resolution failures into update result rows before per-target execution begins - `inst-normalize-source-failures`
+- [x] - `p1` - Merge thrown per-kit update exceptions and returned per-kit errors into command-level failure reporting - `inst-merge-update-failures`
+- [x] - `p1` - Summarize aggregate update results into command status, partial reasons, and final machine output payload - `inst-update-output-summary`
+- [x] - `p1` - Build the final update summary payload, including PASS/WARN/FAIL status, partial reasons, and the all-current message - `inst-build-update-summary-payload`
+- [x] - `p1` - Finalize update command exit status from formatted output, including partial-success handling for interactive runs - `inst-update-complete-status`
 - [x] - `p1` - Resolve GitHub update targets from registered kit metadata; online resolution refreshes requested_ref, resolved_ref, commit_sha/content identity, canonical/effective source, verified/freshness state, and display version; offline fallback uses the last-known persisted state only and MUST NOT infer authority from local kit files - `inst-resolve-github-targets`
+- [x] - `p1` - Resolve generic Git update targets from registered kit metadata; reuse registered requested-ref provenance when present, materialize the selected package, and return canonical source plus authority metadata in the same target shape used by GitHub-backed updates - `inst-resolve-git-targets`
 - [x] - `p1` - Build normalized update result dict from kit update output - `inst-build-update-result`
+- [x] - `p1` - Render per-kit human update summaries, authority details, and partial-reason warnings from command results - `inst-update-human-summary`
 - [x] - `p1` - Human-friendly output formatter for update results - `inst-human-output`
+
+### Kit Check Updates CLI
+
+- [x] `p1` - **ID**: `cpt-studio-flow-kit-check-updates-cli`
+
+**Actor**: `cpt-studio-actor-user`
+
+**Trigger**: User runs `cfs kit check-updates [slug] [--project-root <dir>]`
+
+**Steps**:
+1. [x] - `p1` - Parse CLI arguments and resolve Studio/config roots - `inst-check-parse-args`
+2. [x] - `p1` - Load registered kits, optionally narrow to one slug, and fail on missing registry or unknown slug - `inst-check-load-kits`
+3. [x] - `p1` - Resolve remote authorities through `cpt-studio-algo-kit-update-target-resolution` and compare installed refs/commits against the latest authority without writing kit files - `inst-check-compare-authority`
+4. [x] - `p1` - Build machine/human result entries with `update_available`, `current`, or `failed` status plus suggested update commands - `inst-check-build-output`
+5. [x] - `p1` - Emit the final result and return a failing exit code only when authority comparison failed - `inst-check-return`
 
 ### Kit Validate CLI
 
@@ -194,8 +230,18 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - Validate source directory or installed resource binding source exists - `inst-normalize-validate-source`
 3. [x] - `p1` - **IF** canonical `.cf-studio-kit.toml` declares multiple kits: normalize all kits by default, or select a subset from repeated/comma-separated `--kit <slug>` / `--kit all`; reject unknown selections with available slugs - `inst-normalize-select-kit`
 4. [x] - `p1` - Load the selected source kit or kits through `cpt-studio-algo-kit-manifest-normalize`, using the shared `KitModel` normalization pipeline - `inst-normalize-load-source`
-5. [x] - `p1` - **IF** --dry-run: output migration report and proposed `.cf-studio-kit.toml` without writing - `inst-normalize-dry-run`
-6. [x] - `p1` - **ELSE**: write canonical `.cf-studio-kit.toml` to the selected output path and output migration report - `inst-normalize-write-output`
+5. [x] - `p1` - Build the normalize result report/payload from the selected normalized models, preserving per-kit warnings and public-component previews for multi-kit output - `inst-normalize-build-payload`
+6. [x] - `p1` - **IF** --dry-run: output migration report and proposed `.cf-studio-kit.toml` without writing - `inst-normalize-dry-run`
+7. [x] - `p1` - **ELSE**: write canonical `.cf-studio-kit.toml` to the selected output path and output migration report - `inst-normalize-write-output`
+
+**Implementation Notes**:
+- `inst-normalize-parse-args` is not just flag wiring: implementation keeps repeated/comma-separated `--kit` input available for the shared selector path and rejects incompatible output modes before any normalization work starts.
+- `inst-normalize-select-kit` owns the multi-kit safety boundary. Implementation loads canonical models when available, preserves declaration order while de-duplicating selected slugs, and refuses to overwrite the source manifest with only a selected subset unless the caller explicitly chose `--stdout`, `--dry-run`, or a different `--output`.
+- `inst-normalize-build-payload` is the compatibility serialization boundary. Single-kit output collapses to the legacy report shape, while multi-kit output preserves aggregate counts plus per-kit nested reports and generated-name previews so callers can inspect ambiguity without re-normalizing the source.
+
+**Supporting**:
+- [x] - `p1` - Generate public preview names for normalized subagents while preserving prefix and explicit as-is modes - `inst-normalize-subagent-previews`
+- [x] - `p1` - Render human normalize output for single-kit or multi-kit reports, including warnings and dry-run manifest preview - `inst-normalize-human-output`
 
 ### Kit CLI Dispatcher
 
@@ -210,6 +256,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - Route to appropriate handler; error on unknown subcommand - `inst-route`
 
 **Supporting**:
+- [x] - `p1` - Render kit dispatcher help/usage lines for all supported subcommands and argument variants - `inst-render-help`
 - [x] - `p1` - Deprecated `migrate` subcommand handler with deprecation notice - `inst-migrate-deprecated`
 
 ---
@@ -233,6 +280,14 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Supporting**:
 - [x] - `p1` - Module imports and dependencies for kit management commands - `inst-kit-imports`
+- [x] - `p1` - Derive commit identity from extracted GitHub tarball root naming convention - `inst-authority-derive-commit`
+- [x] - `p1` - Enrich resolved GitHub authority metadata with commit identity and stable content identity string - `inst-authority-enrich-commit`
+- [x] - `p1` - Reduce full authority metadata to reportable result fields - `inst-authority-summary`
+- [x] - `p1` - Detect whether authoritative commit identity changed relative to the installed registration - `inst-authority-commit-changed`
+- [x] - `p1` - Validate GitHub tar archive member count, containment, and expansion ratio before extraction - `inst-validate-tar-archive`
+- [x] - `p1` - Render GitHub release notes into whatsnew TOML entries - `inst-render-whatsnew`
+- [x] - `p1` - Fetch GitHub releases and write `whatsnew.toml` when release-note content exists - `inst-fetch-whatsnew`
+- [x] - `p1` - Best-effort whatsnew generation wrapper that downgrades generation failures to warnings - `inst-best-effort-whatsnew`
 
 ### GitHub Kit Version Authority
 
@@ -266,6 +321,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Supporting**:
 - [x] - `p1` - Wrapper function for metadata collection from installed kit directory - `inst-collect-metadata-fn`
 - [x] - `p1` - Kit content directory/file constants and config extension definitions - `inst-content-constants`
+- [x] - `p1` - Resolve which installed directory actually owns canonical metadata files by checking kit roots first and then explicit resource bindings - `inst-resolve-metadata-target`
+- [x] - `p1` - Resolve registered metadata resources for copy and register installs into a normalized binding map - `inst-collect-metadata-resources`
+- [x] - `p1` - Infer metadata resource kind from explicit binding metadata or canonical filenames - `inst-collect-metadata-kind`
 
 ### Gen Aggregation
 
@@ -286,6 +344,22 @@ Enables users to install, update, and validate kit packages with interactive fil
 - [x] - `p1` - Top-level `regenerate_gen_aggregates` function orchestrating all gen steps - `inst-regen-fn`
 - [x] - `p1` - Helper to read project name from `config/artifacts.toml` registry - `inst-read-project-name-fn`
 
+### Persisted Path and Binding Helpers
+
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-config-helpers`
+
+**Supporting**:
+- [x] - `p1` - Normalize persisted path strings and detect absolute-path forms across operating systems - `inst-path-normalization-helpers`
+- [x] - `p1` - Resolve persisted registered-kit paths and metadata targets relative to the active project/adapter - `inst-path-resolution-helpers`
+- [x] - `p1` - Serialize manifest binding paths and public component metadata for `core.toml` persistence - `inst-binding-serialization-helpers`
+- [x] - `p1` - Validate persisted core.toml paths against project-relative and allowed-absolute portability rules - `inst-core-path-validation-helpers`
+- [x] - `p1` - Match a local kit source path back to exactly one registered kit slug when possible - `inst-path-match-registered-slug`
+
+**Implementation Notes**:
+- `inst-read-kits-core` is effectively a registration snapshot loader: implementation re-reads `core.toml`, tolerates missing `[kits]`, preserves per-kit dict payloads, and lets later flows degrade on malformed or partial kit entries instead of rewriting them blindly.
+- `inst-register-core` is a staged persistence pipeline rather than a single assignment: implementation loads current registration data, normalizes persisted kit roots, preserves equivalent existing path forms when safe, merges install-mode/source/authority metadata, validates each persisted path for portability, then writes the updated document with warning aggregation.
+- `inst-register-core` also rebuilds authoritative `source_provenance` structure from resolved metadata. The persisted payload includes source type, requested/resolved ref, commit SHA, effective source URL, freshness, and verification state so later `info`/`update` paths do not need to infer those fields ad hoc from CLI arguments.
+
 ### Kit Installation
 
 - [x] `p1` - **ID**: `cpt-studio-algo-kit-install`
@@ -296,13 +370,14 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Steps**:
 1. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
-2. [x] - `p1` - **IF** normalized kit model is manifest-backed: delegate to `install_kit_with_manifest` and **RETURN** its result - `inst-manifest-install`
-3. [x] - `p1` - Copy kit content to `config/kits/{slug}/` via `_copy_kit_content` (legacy path) - `inst-copy-content`
-4. [x] - `p1` - **IF** GitHub authority metadata is absent: read version from source `conf.toml` only as optional local/path metadata; **ELSE** ignore `conf.toml version` for authoritative registration - `inst-read-version`
-5. [x] - `p1` - Seed config files from kit's scripts/ directory - `inst-seed-configs`
-6. [x] - `p1` - Register kit in `core.toml` with path, source mode, display/backcompat version, and structured authority metadata when GitHub-backed - `inst-register-core`
-7. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-meta`
-8. [x] - `p1` - **RETURN** result with status, files_copied, actions, skill_nav, agents_content - `inst-return-result`
+2. [x] - `p1` - Resolve the effective installed kit root and detect whether the source should run through the manifest-backed pipeline before any writes occur - `inst-prepare-install-state`
+3. [x] - `p1` - **IF** normalized kit model is manifest-backed: delegate to `install_kit_with_manifest` and **RETURN** its result - `inst-manifest-install`
+4. [x] - `p1` - Copy kit content to `config/kits/{slug}/` via `_copy_kit_content` (legacy path) - `inst-copy-content`
+5. [x] - `p1` - **IF** GitHub authority metadata is absent: read version from source `conf.toml` only as optional local/path metadata; **ELSE** ignore `conf.toml version` for authoritative registration - `inst-read-version`
+6. [x] - `p1` - Seed config files from kit's scripts/ directory - `inst-seed-configs`
+7. [x] - `p1` - Register kit in `core.toml` with path, source mode, display/backcompat version, and structured authority metadata when GitHub-backed - `inst-register-core`
+8. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-meta`
+9. [x] - `p1` - **RETURN** result with status, files_copied, actions, skill_nav, agents_content - `inst-return-result`
 
 ### Kit Update
 
@@ -325,9 +400,31 @@ Enables users to install, update, and validate kit packages with interactive fil
 10. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-metadata`
 11. [x] - `p1` - **RETURN** result with kit, version, gen, accepted/declined files - `inst-return-result`
 
+**Implementation Notes**:
+- The update path has a distinct “already current, but registration drifted” branch. Even when authoritative version/content identity did not change, implementation may still re-run manifest migration, rebuild effective resource bindings, refresh authority metadata, and rewrite `core.toml` when persisted registration state is stale.
+- `inst-legacy-manifest-migration` therefore is not only a first-install compatibility shim. During update it is re-entered when an existing manifest-backed install still lacks resource bindings, so older installs are upgraded in place before normal diff/update logic proceeds.
+- `inst-resolve-resource-bindings` is broader than a manifest lookup. Implementation pre-seeds bindings from normalized manifest resources, reconstructs register-mode effective paths from manifest root plus source mapping, and only then hands control to file-level diff so target-path identity is stable for copy and register flows.
+- `inst-first-install` is a real branch, not a shallow shortcut. Implementation chooses between manifest-backed install and legacy copy-first install, then normalizes the result into the update result schema (`created` vs `failed`, files written, forwarded actions/errors) so later reporting does not need to special-case first-install recovery.
+- `inst-file-level-diff` includes more than the diff engine call. After the interactive/auto-approved file pass, implementation derives partial-vs-updated status, records declined prunes, merges manifest resource bindings back into persisted registration state, and only writes updated core metadata when the accepted change set is safe to record.
+- `inst-sync-manifest-bindings` also reconstructs the effective manifest root when earlier bindings already point at relocated resources. Implementation strips declared install-path suffixes from existing binding paths when possible, falls back to the manifest-declared root template when not, and then re-emits per-resource binding entries against that derived root so updates preserve user-chosen destinations instead of collapsing back to defaults.
+- `inst-refresh-authority-metadata` is intentionally separate from file diff. When authoritative content is still current but provenance becomes fresher, implementation writes refreshed authority metadata back to `core.toml` without forcing a content update.
+- `inst-preseed-manifest-bindings` repairs missing manifest-backed `resources` state before normal diff/binding resolution so later phases do not misclassify the install as drifted or deleted.
+- `inst-build-manifest-update-bindings` constructs the effective update-time binding context from source-to-resource mapping, resolved persisted bindings, and nested subagent resource augmentation before file-level diff runs.
+- `inst-read-source-version` is a precedence algorithm, not a raw file read: GitHub authority metadata wins over local files, installed-version fallback still preserves local `conf.toml` as compatibility metadata, and only path/local installs may treat `conf.toml version` as the effective display version.
+- `inst-update-path-load-kitmodel` spans both manifest adapter loading and risk-model normalization. The update-by-path flow first proves the source is manifest-driven through the same normalized loader used by install, then conditionally loads a full `KitModel` only when manifest-backed risk validation is actually needed.
+
 **Supporting**:
 - [x] - `p1` - First-install helper: copy content, seed configs, register in core.toml when config dir does not exist - `inst-perform-first-install`
 - [x] - `p1` - Sync manifest resource bindings: merge new manifest resources into existing core.toml bindings - `inst-sync-manifest-bindings`
+- [x] - `p1` - Refresh authoritative metadata in `core.toml` when content is already current but provenance becomes fresher - `inst-refresh-authority-metadata`
+- [x] - `p1` - Pre-seed missing manifest-backed resource bindings before diff resolution so update state stays stable - `inst-preseed-manifest-bindings`
+- [x] - `p1` - Build the update-time manifest binding context from source mapping, persisted bindings, and subagent augmentation - `inst-build-manifest-update-bindings`
+- [x] - `p1` - Resolve manifest-backed update context: source/display version, normalized manifest/risk model, registered root, and local metadata needed for later update branches - `inst-resolve-manifest-update-context`
+- [x] - `p1` - Re-read registered metadata resources after update branches and append `skill_nav` / `agents_content` surfaces onto the result payload - `inst-append-registered-metadata`
+- [x] - `p1` - Merge explicit update flags into the effective update context and normalize source/studio paths before branching - `inst-merge-update-context`
+- [x] - `p1` - Prepare the update run context and surface config/manifest resolution failures before any mutation path runs - `inst-prepare-update-run`
+- [x] - `p1` - Short-circuit register-mode manifest updates through the re-read/rebind path before generic diff handling - `inst-handle-registered-manifest-update`
+- [x] - `p1` - Short-circuit already-current kits after authority and binding refresh logic before falling back to generic update execution - `inst-finalize-current-version`
 
 ### File-Level Kit Update
 
@@ -354,6 +451,22 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Supporting**:
 - [x] - `p1` - Result list initialization and changed file aggregation helpers - `inst-update-datamodel`
+
+### Kit Update Target Resolution
+
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-update-target-resolution`
+
+**Input**: Update CLI args or registered kits map, optional requested ref override, project/studio/config roots
+
+**Output**: Normalized update target objects plus structured source-resolution failures
+
+**Steps**:
+1. [x] - `p1` - In local-path mode, validate the source directory and derive the effective kit slug from explicit CLI slug, registered path match, manifest metadata, or directory name - `inst-target-local-path`
+2. [x] - `p1` - For registered updates, iterate source entries, classify no-source or unsupported local registrations, and resolve generic Git targets using persisted requested-ref provenance when available - `inst-target-registered-sources`
+3. [x] - `p1` - For GitHub-backed registrations, parse the registered source, download the authoritative package, and return tmp-dir-backed targets with refreshed authority metadata - `inst-target-github-download`
+4. [x] - `p1` - When GitHub download fails, refresh authority metadata best-effort and downgrade the result to `current` only when last-known authority still matches the installed registration; otherwise return a failure - `inst-target-github-last-known`
+5. [x] - `p1` - If no actionable update targets remain, emit either a current-only success result or a hard source-resolution failure based on the accumulated failure set - `inst-target-empty-set`
+6. [x] - `p1` - Normalize raw target tuples into command update target objects carrying slug, source dir, tmp dir, and authority metadata - `inst-target-build-context`
 
 ### Kit File Enumeration
 
@@ -382,6 +495,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Steps**:
 1. [x] - `p1` - Union all paths from source and user, classify each as added/removed/modified/unchanged by content comparison - `inst-classify`
+
+**Supporting**:
+- [x] - `p1` - Resolve one relative path into the added/removed/modified/unchanged bucket by checking source/user membership and byte equality - `inst-classify-state`
 
 ### Kit Interactive Review
 
@@ -547,10 +663,11 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: Source mode decision or validation error
 
 **Steps**:
-1. [x] - `p1` - Classify mode as `github` when using `owner/repo[@ref]` or registered `github:` source; classify as `local_path` when using `--path` - `inst-classify-source-mode`
-2. [x] - `p1` - Reject invocations that combine local/path mode with GitHub selector flags or GitHub ref syntax - `inst-reject-mode-conflicts`
-3. [x] - `p1` - For local/path mode, skip GitHub authority resolution and treat `conf.toml version` as optional local metadata only - `inst-local-path-outside-authority`
-4. [x] - `p1` - For GitHub mode, require persisted source metadata to be refreshed from GitHub when online or reused as last-known state when offline - `inst-github-mode-authority`
+1. [x] - `p1` - Normalize positional `path/...` and `path:...` aliases into `--path` local source state before later mode checks run - `inst-normalize-local-path-alias`
+2. [x] - `p1` - Classify mode as `github` when using `owner/repo[@ref]` or registered `github:` source; classify as `local_path` when using `--path` - `inst-classify-source-mode`
+3. [x] - `p1` - Reject invocations that combine local/path mode with GitHub selector flags or GitHub ref syntax - `inst-reject-mode-conflicts`
+4. [x] - `p1` - For local/path mode, skip GitHub authority resolution and treat `conf.toml version` as optional local metadata only - `inst-local-path-outside-authority`
+5. [x] - `p1` - For GitHub mode, require persisted source metadata to be refreshed from GitHub when online or reused as last-known state when offline - `inst-github-mode-authority`
 
 ### Universal Kit Model Normalization
 
@@ -612,6 +729,10 @@ Enables users to install, update, and validate kit packages with interactive fil
 7. [x] - `p1` - Never silently overwrite `user_modifiable` resources during copy install or copy update; require interactive acceptance or explicit non-interactive approval for each changed effective path - `inst-local-copy-no-silent-overwrite`
 8. [x] - `p1` - Never use `register` for GitHub or generic Git installs; remote sources use copied/managed artifacts - `inst-local-register-local-only`
 
+**Implementation Notes**:
+- The local-path install path includes a concrete canonical-kit selection sub-algorithm under `inst-install-select-kit`: split repeated/comma-separated selectors, validate them against loaded canonical kit models, preserve declaration order while de-duplicating repeated choices, and fall back to an interactive numbered prompt only when multiple kits are declared and the caller did not provide an explicit selection.
+- Selection failure is structured, not ad hoc: unknown slugs, out-of-range numeric selections, and empty interactive answers produce a machine-readable `FAIL` payload with `available_kits` and a remediation hint so CLI and automation can surface the same decision boundary consistently.
+
 ### Kit Info Model Output
 
 - [x] `p1` - **ID**: `cpt-studio-algo-kit-info-model-output`
@@ -632,8 +753,17 @@ Enables users to install, update, and validate kit packages with interactive fil
 9. [x] - `p1` - Convert normalized resources plus effective bindings into `cfs info` resource rows, including `binding_path` when present - `inst-info-resource-to-info`
 10. [x] - `p1` - Resolve effective binding paths for drift/containment checks, rejecting cross-OS absolute paths that cannot exist locally - `inst-info-resolve-binding-path`
 11. [x] - `p1` - Check whether resolved binding paths stay inside the adapter root when computing containment drift - `inst-info-is-relative-to`
-12. [x] - `p1` - Parse markdown frontmatter `type` fields so legacy workflow compatibility output can distinguish workflow files from other markdown - `inst-info-frontmatter-type`
-13. [x] - `p1` - Treat a markdown file as a legacy workflow only when its frontmatter declares `type = "workflow"` - `inst-info-is-workflow-frontmatter`
+12. [x] - `p1` - Iterate effective bindings during drift detection and collect missing resources plus containment violations per resource - `inst-info-drift-resource-scan`
+13. [x] - `p1` - Reduce containment-violation counts into `contained` / `external` / `mixed` drift status for info output - `inst-info-drift-containment-status`
+14. [x] - `p1` - Parse markdown frontmatter `type` fields so legacy workflow compatibility output can distinguish workflow files from other markdown - `inst-info-frontmatter-type`
+15. [x] - `p1` - Treat a markdown file as a legacy workflow only when its frontmatter declares `type = "workflow"` - `inst-info-is-workflow-frontmatter`
+16. [x] - `p1` - Enumerate registered kit entries from `core.toml` and collect `kit_models` with legacy fallback on per-kit load failure - `inst-info-collect-kit-info`
+17. [x] - `p1` - Enumerate compatibility-only legacy content directories and artifact kinds from recognized installed kit folders - `inst-info-legacy-content-shape`
+18. [x] - `p1` - Merge deprecated workflow IDs from legacy resource bindings and workflow frontmatter files into compatibility output - `inst-info-legacy-workflows`
+19. [x] - `p1` - Build fallback legacy `kit_details` by layering conf metadata, compatibility content shape, deprecated workflows, and effective resource bindings - `inst-info-legacy-detail-build`
+
+**Supporting**:
+- [x] - `p1` - Normalize registered `core.toml` kit entries into dict-form before iterating info output - `inst-info-collect-kit-entries`
 
 ### Public Component Generation
 
@@ -649,6 +779,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 3. [x] - `p1` - Project-level `.cf-studio-kit.toml` files contribute public components only after explicit install/register; the system must not recursively scan arbitrary manifests, legacy `manifest.toml` files, or unregistered `config/kits/*/workflows` directories - `inst-public-explicit-install`
 4. [x] - `p1` - Generated public skill and subagent names use `cf-{kit-slug}-{name}` with no double prefixing - `inst-public-prefix`
 5. [x] - `p1` - A legacy workflow source renders as a skill entry point and may retain a compatibility alias only when the target supports it - `inst-public-legacy-workflow-alias`
+6. [x] - `p1` - Collect final generated public names from both top-level public components and nested public subagents using the same prefixing semantics that installation and generation will publish - `inst-public-collect-names`
+7. [x] - `p1` - Reject duplicate generated public names both within the installing kit and against already registered kits before installation or generation continues - `inst-public-detect-conflicts`
 
 ### Kit Variable Resolution
 
@@ -721,6 +853,11 @@ Enables users to install, update, and validate kit packages with interactive fil
 5. [x] - `p1` - Add update, prune, drift, hash, and risk-fingerprint behavior - `inst-rollout-update-drift`
 6. [x] - `p1` - Add docs, warnings, and deprecation messaging for legacy `manifest.toml`, legacy workflow resources, and layout-only kits - `inst-rollout-docs-deprecation`
 
+**Supporting**:
+- [x] - `p1` - Preserve unique legacy resource IDs while normalizing manifest resources and fail on duplicates instead of silently merging them - `inst-normalize-unique-resource-ids`
+- [x] - `p1` - Append optional legacy component resources with associated warnings and deprecation notices during normalization - `inst-normalize-append-components`
+- [x] - `p1` - Merge installed `core.toml` bindings with richer source-derived metadata while preserving authoritative installed paths, hashes, and persisted manifest-source identity - `inst-normalize-merge-core-authority`
+
 ### Manifest-Driven Installation
 
 - [x] `p1` - **ID**: `cpt-studio-algo-kit-manifest-install`
@@ -731,25 +868,31 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Steps**:
 1. [x] - `p1` - Read and validate canonical `.cf-studio-kit.toml` or normalize a legacy `manifest.toml`/layout into `KitModel`; when a canonical or legacy manifest exists, its declared resources are the exclusive source file set and layout scanning is disabled - `inst-manifest-read`
-2. [x] - `p1` - Resolve effective install mode (`copy` or `register`) and effective resource destinations - `inst-manifest-resolve-install-mode`
-3. [x] - `p1` - Resolve the effective installed kit root from an explicit registered path or manifest root template - `inst-manifest-root-prompt`
-4. [x] - `p1` - Persist no absolute paths anywhere in `core.toml`; every persisted kit path, manifest root, or resource destination MUST be project-relative and remain inside the current project, otherwise the install/update is invalid and must fail with remediation instead of storing non-portable state - `inst-manifest-persist-relative-only`
-4. [x] - `p1` - **FOR EACH** resource declared in `KitModel.resources` - `inst-manifest-foreach-resource`
+2. [x] - `p1` - Load the normalized manifest-backed `KitModel`, derive the resource set and any public subagent prompt sources, and apply tool-risk approval gates before install planning continues - `inst-manifest-load-artifacts`
+3. [x] - `p1` - Resolve effective install mode (`copy` or `register`) and dispatch into the corresponding manifest install execution path - `inst-manifest-resolve-install-mode`
+4. [x] - `p1` - Resolve the effective installed kit root from an explicit registered path or manifest root template - `inst-manifest-root-prompt`
+5. [x] - `p1` - In copy mode, render the manifest install plan, allow interactive edits to the kit root or user-modifiable resource targets, and snapshot the final relative binding plan before writes - `inst-manifest-plan-review`
+6. [x] - `p1` - Persist no absolute paths anywhere in `core.toml`; every persisted kit path, manifest root, or resource destination MUST be project-relative and remain inside the current project, otherwise the install/update is invalid and must fail with remediation instead of storing non-portable state - `inst-manifest-persist-relative-only`
+7. [x] - `p1` - **FOR EACH** resource declared in `KitModel.resources` - `inst-manifest-foreach-resource`
    1. [x] - `p1` - **IF** `install_path` is user-modifiable in copy mode: prompt user for destination path (offering the manifest default) - `inst-manifest-prompt-path`
    2. [x] - `p1` - Resolve each resource target from its effective default or user-selected path - `inst-manifest-default-path`
-5. [x] - `p1` - Before writing files, registering resources, or generating public entry points, reject installation/generation when any public component or nested subagent `generated_name` conflicts with another public component in the installing kit, an already registered kit, or another generation input - `inst-public-name-conflict`
-6. [x] - `p1` - Manifest preview and `cf-kit` approval reports show final generated names for public skills, agents, rules, and nested subagents, including whether each name is default-prefixed or `prefix_generated_name = false` as-is; workflow-skill folder naming in generated outputs is owned by [architecture/features/project-extensibility.md](/Volumes/CaseSensitive/coding/cf-work/workspace-sources/constructorfabric/studio.worktrees/dev01/architecture/features/project-extensibility.md) rather than this feature - `inst-public-name-preview`
+8. [x] - `p1` - Before writing files, registering resources, or generating public entry points, reject installation/generation when any public component or nested subagent `generated_name` conflicts with another public component in the installing kit, an already registered kit, or another generation input - `inst-public-name-conflict`
+9. [x] - `p1` - Manifest preview and `cf-kit` approval reports show final generated names for public skills, agents, rules, and nested subagents, including whether each name is default-prefixed or `prefix_generated_name = false` as-is; workflow-skill folder naming in generated outputs is owned by [architecture/features/project-extensibility.md](/Volumes/CaseSensitive/coding/cf-work/workspace-sources/constructorfabric/studio.worktrees/dev01/architecture/features/project-extensibility.md) rather than this feature - `inst-public-name-preview`
    3. [x] - `p1` - **IF** copy mode: copy resource from source to resolved path, preserving directory structure within directory resources - `inst-manifest-copy-resource`
    4. [x] - `p1` - **IF** register mode: leave files in place after containment validation and register only manifest-root state needed to re-derive resource locations from the manifest; do not persist per-resource bindings in `core.toml` - `inst-manifest-register-resource-in-place`
-5. [x] - `p1` - Preserve `{identifier}` template variables in copied kit source files; expose effective bindings for read-time resolution by consumers - `inst-manifest-resolve-vars`
-6. [x] - `p1` - Register effective resource paths for non-register modes, plus install mode, hashes, generated names, provenance, and warnings in `core.toml`; in all modes persist only project-relative paths and fail the operation when any path would be absolute, out-of-project, or otherwise non-portable - `inst-manifest-register-bindings`
-7. [x] - `p1` - Collect public component metadata for `.gen/` aggregation from registered manifest resources only: public `rule` resources are injected into `.gen/AGENTS.md`, public `skill` resources are emitted only through agent integration files, and undeclared root `AGENTS.md`/`SKILL.md` files are ignored - `inst-manifest-collect-meta`
-8. [x] - `p1` - Generate target-specific agent integration files only for public `agent` resources and nested subagents; public `rule` resources never generate per-agent rule/config files - `inst-manifest-public-rule-gen-boundary`
-9. [x] - `p1` - **RETURN** result with status, install_mode, resource_bindings, files_copied, files_registered, generated_names, warnings, and risk fingerprint - `inst-manifest-return`
+10. [x] - `p1` - Preserve `{identifier}` template variables in copied kit source files; expose effective bindings for read-time resolution by consumers - `inst-manifest-resolve-vars`
+11. [x] - `p1` - Register effective resource paths for non-register modes, plus install mode, hashes, generated names, provenance, and warnings in `core.toml`; in all modes persist only project-relative paths and fail the operation when any path would be absolute, out-of-project, or otherwise non-portable - `inst-manifest-register-bindings`
+12. [x] - `p1` - Collect public component metadata for `.gen/` aggregation from registered manifest resources only: public `rule` resources are injected into `.gen/AGENTS.md`, public `skill` resources are emitted only through agent integration files, and undeclared root `AGENTS.md`/`SKILL.md` files are ignored - `inst-manifest-collect-meta`
+13. [x] - `p1` - Generate target-specific agent integration files only for public `agent` resources and nested subagents; public `rule` resources never generate per-agent rule/config files - `inst-manifest-public-rule-gen-boundary`
+14. [x] - `p1` - **RETURN** result with status, install_mode, resource_bindings, files_copied, files_registered, generated_names, warnings, and risk fingerprint - `inst-manifest-return`
 
 **Supporting**:
 - [x] - `p1` - Manifest/KitModel dataclass definitions (`KitModel`, `KitResource`, public component view, provenance, drift, risk) and imports - `inst-manifest-datamodel`
 - [x] - `p1` - Validate parsed manifest against kit source (unique IDs, source paths exist, type matches, path containment for register mode) - `inst-manifest-validate`
+- [x] - `p1` - Run the legacy copy-based install flow: copy content, seed configs, register core metadata, and assemble the compatibility result payload - `inst-install-legacy-copy-flow`
+- [x] - `p1` - Run the manifest copy-mode install flow: resolve plan, gate overwrites, validate subagent prompt sources, copy payload, and finalize registration - `inst-manifest-copy-install-flow`
+- [x] - `p1` - Run the manifest register-mode install flow: validate containment, derive in-place bindings, register compact core state, and emit the zero-copy result - `inst-manifest-register-install-flow`
+- [x] - `p1` - Finalize manifest copy installs by seeding configs, registering bindings, and emitting the registered metadata result payload - `inst-manifest-copy-finalize`
 - [x] - `p1` - Copy a single manifest resource (file or directory) from source to target path - `inst-copy-manifest-resource`
 - [x] - `p1` - Preserve `{identifier}` template variables in copied kit files; resolve variables only through registered bindings at read time - `inst-resolve-template-vars`
 
@@ -764,12 +907,13 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Read canonical manifest or normalize legacy manifest/layout from kit source - `inst-legacy-read-manifest`
 2. [x] - `p1` - Read existing kit root path from `core.toml` - `inst-legacy-read-root`
-3. [x] - `p1` - **FOR EACH** resource declared in manifest - `inst-legacy-foreach-resource`
+3. [x] - `p1` - Resolve the authoritative installed kit root from the current registration and fail when persisted cross-OS absolute state is not accessible locally - `inst-legacy-resolve-root`
+4. [x] - `p1` - **FOR EACH** resource declared in manifest - `inst-legacy-foreach-resource`
    1. [x] - `p1` - Compute expected path from existing kit root plus normalized manifest default `install_path`/legacy `default_path` - `inst-legacy-compute-path`
    2. [x] - `p1` - **IF** file/directory exists at computed path: register silently in `core.toml` - `inst-legacy-register-existing`
    3. [x] - `p1` - **ELSE** (truly new resource not on disk): prompt user for destination path, copy from source, register - `inst-legacy-prompt-new`
-4. [x] - `p1` - Write all resource bindings to `core.toml` under `[kits.{slug}.resources]` - `inst-legacy-write-bindings`
-5. [x] - `p1` - **RETURN** migration result with registered paths count - `inst-legacy-return`
+5. [x] - `p1` - Write all resource bindings to `core.toml` under `[kits.{slug}.resources]` - `inst-legacy-write-bindings`
+6. [x] - `p1` - **RETURN** migration result with registered paths count - `inst-legacy-return`
 
 ### Manifest Resource Resolution
 
@@ -784,6 +928,13 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - **IF** install mode is `register`: load the registered manifest root, re-read the canonical or normalized manifest, and derive each effective resource path from manifest `source` entries plus `cpt-studio-algo-kit-manifest-source-mapping`; `[kits.{slug}.resources]` is intentionally absent in this mode - `inst-resolve-register-from-manifest`
 3. [x] - `p1` - **ELSE FOR EACH** non-register binding: resolve the persisted relative path against the project root or `{cf-studio-path}` anchor to an absolute path; absolute persisted paths are invalid state and MUST be rejected rather than normalized silently - `inst-resolve-to-absolute`
 4. [x] - `p1` - **RETURN** identifier → absolute path dict - `inst-resolve-return`
+
+**Supporting**:
+- [x] - `p1` - Resolve effective project root from parsed `core.toml`, preserving absolute roots and studio-relative roots while allowing parent fallback only when explicitly requested - `inst-resolve-project-root-from-core`
+- [x] - `p1` - Resolve one persisted binding path to an OS-accessible absolute path while enforcing portability/containment rules - `inst-resolve-binding-path`
+- [x] - `p1` - Load and parse `core.toml` binding configuration, preserving parse/read errors for the caller - `inst-resolve-binding-config`
+- [x] - `p1` - Extract binding path text from string or table resource-binding syntax - `inst-resolve-binding-extract`
+- [x] - `p1` - Resolve non-register declared resource bindings while preserving valid entries and collecting per-binding errors - `inst-resolve-declared-bindings`
 
 ### Manifest Source Path Mapping
 
@@ -804,6 +955,11 @@ Manifest-backed file diff treats the manifest `source` path and the installed re
 4. [x] - `p1` - **FOR EACH** directory resource: recursively enumerate all files under `source` path, map each file's full relative path (e.g., `artifacts/ADR/template.md`) to the resource id - `inst-expand-directories`
 5. [x] - `p1` - Treat all mapped manifest sources as project-relative-to-manifest-root inputs; any absolute source path or path escaping the current project is invalid for canonical install/update/register behavior and must be rejected during load/migration - `inst-source-mapping-relative-only`
 6. [x] - `p1` - **RETURN** (source_to_resource_id, resource_info) - `inst-return-mapping`
+
+**Supporting**:
+- [x] - `p1` - Resolve a resource source path relative to the kit root and reject absolute or escaping paths - `inst-resolve-source-within-kit`
+- [x] - `p1` - Expand directory resources by recording every file under the declared source directory - `inst-record-directory-files`
+- [x] - `p1` - Add synthetic resource mappings for declared subagent source files - `inst-record-subagent-sources`
 
 **Note**: When resolving target path for a file inside a directory resource, compute `relative_path_within_directory = source_rel_path.removeprefix(resource_info[resource_id]["source_base"] + "/")`, then target is `resource_bindings[resource_id] / relative_path_within_directory`.
 
@@ -911,7 +1067,7 @@ Manifest-backed file diff treats the manifest `source` path and the installed re
 |--------|----------------------|
 | `skills/studio/scripts/studio/commands/kit.py` | `cpt-studio-algo-kit-github-helpers`, `cpt-studio-algo-kit-content-mgmt`, `cpt-studio-algo-kit-regen-gen`, `cpt-studio-algo-kit-install`, `cpt-studio-algo-kit-update`, `cpt-studio-algo-kit-config-helpers`, `cpt-studio-algo-kit-manifest-install`, `cpt-studio-algo-kit-manifest-legacy-migration`, `cpt-studio-algo-kit-local-path-install-mode`, `cpt-studio-flow-kit-install-cli`, `cpt-studio-flow-kit-update-cli`, `cpt-studio-flow-kit-dispatch` |
 | `skills/studio/scripts/studio/utils/kit_model.py` | `cpt-studio-algo-kit-model-normalize`, `cpt-studio-algo-kit-canonical-manifest`, `cpt-studio-algo-kit-public-component-generation`, `cpt-studio-algo-kit-tool-permission-risk`, `cpt-studio-algo-kit-manifest-normalize` |
-| `skills/studio/scripts/studio/utils/manifest.py` | legacy manifest adapter, `cpt-studio-algo-kit-manifest-resolve`, `cpt-studio-algo-kit-manifest-source-mapping`, `cpt-studio-algo-kit-variable-resolution` |
+| `skills/studio/scripts/studio/utils/manifest.py` | legacy manifest adapter, `cpt-studio-algo-kit-manifest-resolve`, `cpt-studio-algo-kit-manifest-source-mapping` |
 | `skills/studio/scripts/studio/utils/diff_engine.py` | `cpt-studio-algo-kit-file-update`, `cpt-studio-algo-kit-file-enumerate`, `cpt-studio-algo-kit-file-classify`, `cpt-studio-algo-kit-interactive-review`, `cpt-studio-algo-kit-diff-display`, `cpt-studio-algo-kit-conflict-merge`, `cpt-studio-algo-kit-toc-handling`, `cpt-studio-algo-kit-snapshot` |
 | `skills/studio/scripts/studio/commands/validate_kits.py`, `skills/studio/scripts/studio/commands/self_check.py` | `cpt-studio-algo-kit-validate`, `cpt-studio-algo-kit-validate-by-path`, `cpt-studio-flow-kit-validate-cli` |
 | `skills/studio/scripts/studio/commands/adapter_info.py` | `cpt-studio-algo-kit-info-model-output` |

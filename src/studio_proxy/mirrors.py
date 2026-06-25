@@ -55,6 +55,7 @@ import os
 import tomllib
 from pathlib import Path
 from typing import Dict, List, Tuple
+from studio_proxy.stderr import write_stderr_warning
 
 
 # ---------------------------------------------------------------------------
@@ -77,13 +78,23 @@ def brand_home_path() -> Path:
 # File I/O
 # ---------------------------------------------------------------------------
 
+def _read_mirror_data(path: Path) -> dict:
+    """Read and parse a mirrors TOML file, returning an empty dict on failure."""
+    if not path.is_file():
+        return {}
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+        data = tomllib.loads(raw_text)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        write_stderr_warning(f"unable to read mirror overrides from {path}: {exc}")
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _load_file(path: Path) -> List[Tuple[str, str]]:
     """Load mirrors from a single TOML file. Returns [(from, to)]."""
-    if not path.is_file():
-        return []
-    try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
+    data = _read_mirror_data(path)
+    if not data:
         return []
     entries: List[Tuple[str, str]] = []
     for item in data.get("mirror", []):

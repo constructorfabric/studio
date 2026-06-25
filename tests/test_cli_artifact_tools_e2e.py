@@ -386,7 +386,7 @@ class TestCLIArtifactToolsE2E(unittest.TestCase):
             after = _snapshot_tree(project_root)
 
             self.assertEqual(exit_code, 1)
-            self.assertEqual(stderr, "")
+            self.assertIn("outside project root", stderr)
             self.assertEqual(after, baseline)
             payload = json.loads(stdout)
             self.assertEqual(payload["status"], "ERROR")
@@ -496,10 +496,10 @@ class TestCLIArtifactToolsE2E(unittest.TestCase):
             after = _snapshot_tree(root)
 
             self.assertEqual(exit_code, 1)
-            self.assertEqual(stdout, "")
             self.assertEqual(after, before)
-            self.assertIn("WARNING: 'generate-resources' is deprecated.", stderr)
-            self.assertIn("use 'cfs kit update <path>' instead", stderr.lower())
+            self.assertIn("'generate-resources' is deprecated.", stdout)
+            self.assertIn("use 'cfs kit update <path>' instead", stdout.lower())
+            self.assertEqual(stderr, "")
 
 
 if __name__ == "__main__":

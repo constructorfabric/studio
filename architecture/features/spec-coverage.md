@@ -84,7 +84,16 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for spec-coverage command - `inst-coverage-imports`
-- [x] - `p1` - Helper functions: relative path formatting, output routing, range formatting, human-friendly report display - `inst-coverage-helpers`
+- [x] - `p1` - Build CLI parser for threshold, system, verbosity, and output flags - `inst-build-parser`
+- [x] - `p1` - Collect known system slugs from nested system tree for selector validation - `inst-collect-system-slugs`
+- [x] - `p1` - Collect codebase file paths from registered entries and recurse into child systems - `inst-collect-codebase-files`
+- [x] - `p1` - Validate selected `--system` values and build unknown-system failure payloads - `inst-validate-systems`
+- [x] - `p1` - Filter ignored and out-of-root files before scanning - `inst-filter-ignored-files`
+- [x] - `p1` - Build empty coverage result when registry yields no code files - `inst-empty-report`
+- [x] - `p1` - Apply per-report threshold checks and accumulate failure messages - `inst-apply-thresholds`
+- [x] - `p1` - Resolve paths relative to project root for human-readable output - `inst-rel-path`
+- [x] - `p1` - Route JSON report to file or terminal UI - `inst-output-report`
+- [x] - `p1` - Format uncovered ranges and render human-friendly per-file/status sections - `inst-human-report-helpers`
 
 ## 3. Processes / Business Logic (CDSL)
 

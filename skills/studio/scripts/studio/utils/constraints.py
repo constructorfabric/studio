@@ -1,14 +1,19 @@
 """Constraint models and validators for Studio traceability artifacts."""
 
+# @cpt-state:cpt-studio-state-traceability-validation-report:p1
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-structure-datamodel
 from __future__ import annotations
 
 import re
+import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from . import error_codes as EC
+
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ReferenceRule:
@@ -82,8 +87,69 @@ class KitConstraints:
 
     by_kind: Dict[str, ArtifactKindConstraints]
 
-def error(kind: str, message: str, *, path: Path | str, line: int = 1, code: Optional[str] = None, **extra) -> Dict[str, object]:
+
+@dataclass(frozen=True)
+class ArtifactDefinitionValidationRules:
+    """Shared rule context for per-definition artifact validation."""
+
+    kind: str
+    artifact_path: Path
+    systems_set: set[str]
+    all_kind_tokens: set[str]
+    composite_nested_by_base: Dict[str, set[str]]
+    allowed_defs: set[str]
+    constraint_by_kind: Dict[str, IdConstraint]
+    headings_at: Sequence[Sequence[str]]
+    heading_desc_by_id: Dict[str, str]
+
+
+@dataclass(frozen=True)
+class ArtifactIdentifierPhaseContext:
+    """Context bundle for definition/reference extraction within one artifact."""
+
+    defs: List[Dict[str, object]]
+    refs: List[Dict[str, object]]
+    defs_by_id: Dict[str, Dict[str, object]]
+    heading_ctx_for_line: Callable[[int], Tuple[List[str], Optional[int]]]
+    scope_end_for_heading_idx: Callable[[Optional[int]], int]
+    rules: ArtifactDefinitionValidationRules
+
+
+@dataclass(frozen=True)
+class HeadingErrorContext:
+    """Inputs needed to report one heading-validation error."""
+
+    heading_constraint: HeadingConstraint
+    idx: int
+    artifact_kind: str
+    path: Path
+    constraints_path: Optional[Path]
+    kit_id: Optional[str]
+
+
+@dataclass(frozen=True)
+class HeadingValidationContext:
+    """Shared state for validating one artifact's heading constraints."""
+
+    heading_constraints: Sequence[HeadingConstraint]
+    by_id: Dict[str, HeadingConstraint]
+    artifact_kind: str
+    path: Path
+    constraints_path: Optional[Path]
+    kit_id: Optional[str]
+    errors: List[Dict[str, object]]
+
+def error(
+    kind: str,
+    message: str,
+    *,
+    path: Path | str,
+    line: int = 1,
+    code: Optional[str] = None,
+    **extra,
+) -> Dict[str, object]:
     """Build a structured constraint validation error."""
+    # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-error
     out: Dict[str, object] = {"type": kind, "message": message, "line": int(line)}
     if code:
         out["code"] = code
@@ -93,6 +159,7 @@ def error(kind: str, message: str, *, path: Path | str, line: int = 1, code: Opt
     extra = {k: v for k, v in extra.items() if v is not None}
     out.update(extra)
     return out
+    # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-error
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-structure-datamodel
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-helpers
@@ -118,7 +185,8 @@ def _compile_heading_patterns(
             continue
         try:
             compiled.append((hc, re.compile(pat_s, flags=re.IGNORECASE)))
-        except re.error:
+        except re.error as exc:
+            logger.warning("Invalid heading regex %r: %s", pat_s, exc)
             compiled.append((hc, re.compile(r"$^")))
     return compiled
 
@@ -195,6 +263,110 @@ def _pick_best_heading_match(
         return None
     candidates.sort(key=lambda i: (0 if getattr(compiled[i][0], "pattern", None) else 1, i))
     return candidates[0]
+
+
+def _index_heading_constraints_by_level(
+    compiled: Sequence[Tuple[HeadingConstraint, Optional[re.Pattern[str]]]],
+) -> Dict[int, List[int]]:
+    idx_by_level: Dict[int, List[int]] = {}
+    for idx, (hc, _) in enumerate(compiled):
+        idx_by_level.setdefault(int(getattr(hc, "level", 0) or 0), []).append(idx)
+    return idx_by_level
+
+
+def _heading_constraint_id(
+    compiled: Sequence[Tuple[HeadingConstraint, Optional[re.Pattern[str]]]],
+    idx: Optional[int],
+) -> Optional[str]:
+    if idx is None:
+        return None
+    return str(getattr(compiled[idx][0], "id", "") or "").strip() or None
+
+
+def _resolve_heading_match(
+    heading: Dict[str, object],
+    current_lvl2_id: Optional[str],
+    idx_by_level: Dict[int, List[int]],
+    compiled: Sequence[Tuple[HeadingConstraint, Optional[re.Pattern[str]]]],
+    wildcard_lvl3_by_parent_lvl2_id: Dict[str, str],
+) -> Tuple[Optional[str], Optional[str]]:
+    lvl = int(heading.get("level", 0) or 0)
+    title = str(heading.get("title_text") or "")
+    next_lvl2_id = current_lvl2_id
+
+    if lvl == 3:
+        idx = _pick_best_heading_match(3, title, idx_by_level, list(compiled), include_wildcards=False)
+        matched_id = _heading_constraint_id(compiled, idx)
+        if matched_id is None and current_lvl2_id:
+            matched_id = wildcard_lvl3_by_parent_lvl2_id.get(current_lvl2_id)
+        return matched_id, next_lvl2_id
+
+    idx = _pick_best_heading_match(lvl, title, idx_by_level, list(compiled))
+    matched_id = _heading_constraint_id(compiled, idx)
+    if lvl == 1:
+        next_lvl2_id = None
+    elif lvl == 2:
+        next_lvl2_id = matched_id
+    return matched_id, next_lvl2_id
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-match-loop
+def _match_heading_ids_by_line(
+    headings: Sequence[Dict[str, object]],
+    idx_by_level: Dict[int, List[int]],
+    compiled: Sequence[Tuple[HeadingConstraint, Optional[re.Pattern[str]]]],
+    wildcard_lvl3_by_parent_lvl2_id: Dict[str, str],
+) -> Dict[int, str]:
+    matched_ids_by_line: Dict[int, str] = {}
+    current_lvl2_id: Optional[str] = None
+    for heading in headings:
+        line_no = int(heading.get("line", 0) or 0)
+        level = int(heading.get("level", 0) or 0)
+        if line_no <= 0 or level <= 0:
+            continue
+        matched_id, current_lvl2_id = _resolve_heading_match(
+            heading,
+            current_lvl2_id,
+            idx_by_level,
+            compiled,
+            wildcard_lvl3_by_parent_lvl2_id,
+        )
+        if matched_id:
+            matched_ids_by_line[line_no] = matched_id
+    return matched_ids_by_line
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-match-loop
+
+
+def _build_heading_events_by_line(
+    headings: Sequence[Dict[str, object]],
+    matched_ids_by_line: Dict[int, str],
+) -> Dict[int, Tuple[int, Optional[str]]]:
+    events_by_line: Dict[int, Tuple[int, Optional[str]]] = {}
+    for heading in headings:
+        line_no = int(heading.get("line", 0) or 0)
+        level = int(heading.get("level", 0) or 0)
+        if line_no <= 0 or level <= 0:
+            continue
+        events_by_line[line_no] = (level, matched_ids_by_line.get(line_no))
+    return events_by_line
+
+
+def _heading_ids_for_lines(
+    line_count: int,
+    events_by_line: Dict[int, Tuple[int, Optional[str]]],
+) -> List[List[str]]:
+    out: List[List[str]] = [[] for _ in range(line_count + 1)]
+    stack: List[Tuple[int, str]] = []
+    for line_no in range(1, line_count + 1):
+        event = events_by_line.get(line_no)
+        if event is not None:
+            level, heading_id = event
+            while stack and stack[-1][0] >= level:
+                stack.pop()
+            if heading_id:
+                stack.append((level, heading_id))
+        out[line_no] = [heading_id for _, heading_id in stack]
+    return out
 # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-helpers
 
 
@@ -216,74 +388,23 @@ def heading_constraint_ids_by_line(path: Path, heading_constraints: Sequence[Hea
     if lines is None:
         return [[]]
 
-    headings = _scan_headings(path)
-
-    matched_ids_by_line: Dict[int, str] = {}
-
     compiled = _compile_heading_patterns(heading_constraints)
-
-    idx_by_level: Dict[int, List[int]] = {}
-    for idx, (hc, _) in enumerate(compiled):
-        idx_by_level.setdefault(int(getattr(hc, "level", 0) or 0), []).append(idx)
-
+    headings = _scan_headings(path)
+    idx_by_level = _index_heading_constraints_by_level(compiled)
     wildcard_lvl3_by_parent_lvl2_id = _build_wildcard_lvl3_map(compiled, idx_by_level)
     # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-init
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-match-loop
-    current_lvl2_id: Optional[str] = None
-    for h in headings:
-        lvl = int(h.get("level", 0) or 0)
-        title = str(h.get("title_text") or "")
-        ln = int(h.get("line", 0) or 0)
-        if ln <= 0 or lvl <= 0:
-            continue
-
-        matched_id: Optional[str] = None
-        if lvl == 3:
-            # Do not allow global wildcard matching for level-3 headings.
-            # Otherwise, the first wildcard constraint (e.g. feature-actor-flow)
-            # will match all level-3 headings across the document.
-            idx = _pick_best_heading_match(3, title, idx_by_level, compiled, include_wildcards=False)
-            if idx is not None:
-                matched_id = str(getattr(compiled[idx][0], "id", "") or "").strip() or None
-            elif current_lvl2_id:
-                matched_id = wildcard_lvl3_by_parent_lvl2_id.get(current_lvl2_id)
-        else:
-            idx = _pick_best_heading_match(lvl, title, idx_by_level, compiled)
-            if idx is not None:
-                matched_id = str(getattr(compiled[idx][0], "id", "") or "").strip() or None
-            if lvl == 1:
-                current_lvl2_id = None
-            elif lvl == 2:
-                current_lvl2_id = matched_id if matched_id else None
-
-        if matched_id:
-            matched_ids_by_line[ln] = matched_id
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-match-loop
+    matched_ids_by_line = _match_heading_ids_by_line(
+        headings,
+        idx_by_level,
+        compiled,
+        wildcard_lvl3_by_parent_lvl2_id,
+    )
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-stack
     # Convert heading events into a per-line active stack.
-    events_by_line: Dict[int, Tuple[int, Optional[str]]] = {}
-    for h in headings:
-        ln = int(h.get("line", 0) or 0)
-        lvl = int(h.get("level", 0) or 0)
-        if ln <= 0 or lvl <= 0:
-            continue
-        events_by_line[ln] = (lvl, matched_ids_by_line.get(ln))
-
-    out: List[List[str]] = [[] for _ in range(len(lines) + 1)]
-    stack: List[Tuple[int, str]] = []
-    for idx0 in range(len(lines)):
-        line_no = idx0 + 1
-        ev = events_by_line.get(line_no)
-        if ev is not None:
-            lvl, hid = ev
-            while stack and stack[-1][0] >= lvl:
-                stack.pop()
-            if hid:
-                stack.append((lvl, hid))
-        out[line_no] = [hid for _, hid in stack]
-    return out
+    events_by_line = _build_heading_events_by_line(headings, matched_ids_by_line)
+    return _heading_ids_for_lines(len(lines), events_by_line)
     # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope-stack
     # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-resolve-scope
 
@@ -307,60 +428,171 @@ def parse_cpt(
 ) -> Optional[ParsedStudioId]:
     """Parse a Studio cpt identifier for an expected kind."""
     # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt
-    if not cpt or not str(cpt).lower().startswith("cpt-"):
-        return None
-
     cpt = str(cpt)
     expected_kind = str(expected_kind)
-    parts = cpt.split("-")
-    if len(parts) < 3:
+    if not cpt or not cpt.lower().startswith("cpt-") or len(cpt.split("-")) < 3:
         return None
 
-    systems = sorted({str(s) for s in registered_systems if str(s).strip()}, key=len, reverse=True)
-    system: Optional[str] = None
-    for s in systems:
-        prefix = f"cpt-{s}-"
-        if cpt.lower().startswith(prefix.lower()):
-            system = s
-            break
+    system = _find_registered_system(cpt, registered_systems)
     if system is None:
         return None
 
-    remainder = cpt[len(f"cpt-{system}-"):]
-    if not remainder:
+    remainder, rem_parts = _split_cpt_remainder(cpt, system)
+    if remainder is None:
         return None
 
-    rem_parts = [p for p in remainder.split("-") if p]
-    if not rem_parts:
-        return None
-
-    first_kind = rem_parts[0]
-
-    kinds_set: Optional[set[str]] = None
-    if known_kinds is not None:
-        kinds_set = {str(k).strip().lower() for k in known_kinds if str(k).strip()}
+    kinds_set = _known_kind_set(known_kinds)
 
     if kinds_set is not None and expected_kind.strip().lower() not in kinds_set:
         return None
 
-    if first_kind.lower() == expected_kind.lower():
-        slug = "-".join(rem_parts[1:]) if len(rem_parts) > 1 else ""
-        return ParsedStudioId(system=system, kind=expected_kind, slug=slug)
+    parsed = _parse_direct_cpt_match(system, rem_parts, expected_kind)
+    if parsed is not None:
+        return parsed
 
-    # Composite ID support: look for `-{expected_kind}-` separator.
+    return _parse_composite_cpt_match(
+        system=system,
+        remainder=remainder,
+        expected_kind=expected_kind,
+        where_defined=where_defined,
+    )
+    # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt
+# @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt-fn
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt
+def _split_cpt_remainder(cpt: str, system: str) -> Tuple[Optional[str], List[str]]:
+    remainder = cpt[len(f"cpt-{system}-"):]
+    if not remainder:
+        return None, []
+    rem_parts = [part for part in remainder.split("-") if part]
+    if not rem_parts:
+        return None, []
+    return remainder, rem_parts
+
+
+def _known_kind_set(known_kinds: Optional[Iterable[str]]) -> Optional[set[str]]:
+    if known_kinds is None:
+        return None
+    return {str(kind).strip().lower() for kind in known_kinds if str(kind).strip()}
+
+
+def _find_registered_system(cpt: str, registered_systems: Iterable[str]) -> Optional[str]:
+    systems = sorted({str(system) for system in registered_systems if str(system).strip()}, key=len, reverse=True)
+    return next((system for system in systems if cpt.lower().startswith(f"cpt-{system}-".lower())), None)
+
+
+def _parse_direct_cpt_match(
+    system: str,
+    rem_parts: Sequence[str],
+    expected_kind: str,
+) -> Optional[ParsedStudioId]:
+    if rem_parts[0].lower() != expected_kind.lower():
+        return None
+    slug = "-".join(rem_parts[1:]) if len(rem_parts) > 1 else ""
+    return ParsedStudioId(system=system, kind=expected_kind, slug=slug)
+
+
+def _parse_composite_cpt_match(
+    *,
+    system: str,
+    remainder: str,
+    expected_kind: str,
+    where_defined: Optional[callable],
+) -> Optional[ParsedStudioId]:
     sep = f"-{expected_kind}-"
     idx = remainder.lower().find(sep.lower())
     if idx == -1:
         return None
-
     left = f"cpt-{system}-" + remainder[:idx]
-    slug = remainder[idx + len(sep):]
     if where_defined is not None and not where_defined(left):
         return None
-
+    slug = remainder[idx + len(sep):]
     return ParsedStudioId(system=system, kind=expected_kind, slug=slug)
-    # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt
-# @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt-fn
+# @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt
+
+
+def _find_kind_marker(remainder: str, kind_tokens: Iterable[str]) -> Optional[str]:
+    rem_l = remainder.lower()
+    best_pos: Optional[int] = None
+    best_kind: Optional[str] = None
+    for kt in kind_tokens:
+        marker = f"-{kt}-"
+        idx = rem_l.find(marker)
+        if idx > 0 and (best_pos is None or idx < best_pos):
+            best_pos = idx
+            best_kind = kt
+    return best_kind
+
+
+def _match_registered_system(cpt: str, systems_set: set[str]) -> Optional[str]:
+    matched: Optional[str] = None
+    for sys in systems_set:
+        prefix = f"cpt-{sys}-"
+        if cpt.lower().startswith(prefix):
+            if matched is None or len(sys) > len(matched):
+                matched = sys
+    return matched
+
+
+def _infer_system_from_kind_tokens(cpt: str, kind_tokens: Iterable[str]) -> Optional[str]:
+    remainder = cpt[4:]
+    best_pos: Optional[int] = None
+    for kt in kind_tokens:
+        marker = f"-{kt}-"
+        idx = remainder.find(marker)
+        if idx > 0 and (best_pos is None or idx > best_pos):
+            best_pos = idx
+    if best_pos is not None:
+        return remainder[:best_pos].lower()
+    parts = cpt.split("-")
+    return parts[1].lower() if len(parts) >= 3 else None
+
+
+def _match_system_from_id(cpt: str, systems_set: set[str], kind_tokens: Iterable[str]) -> Optional[str]:
+    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-match-system
+    if not cpt.lower().startswith("cpt-"):
+        return None
+    if systems_set:
+        return _match_registered_system(cpt, systems_set)
+    return _infer_system_from_kind_tokens(cpt, kind_tokens)
+    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-match-system
+
+
+def _extract_kind_from_cpt(
+    cpt: str,
+    system: Optional[str],
+    kind_tokens: Iterable[str],
+    composite_nested_by_base: Dict[str, set[str]],
+) -> Optional[str]:
+    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-extract-kind
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-extract-kind
+    if not cpt.lower().startswith("cpt-") or system is None:
+        return None
+    prefix = f"cpt-{system}-"
+    if not cpt.lower().startswith(prefix.lower()):
+        return None
+    remainder, parts = _split_cpt_remainder(cpt, system)
+    if remainder is None:
+        return None
+
+    base = parts[0].strip().lower()
+    nested_kinds = composite_nested_by_base.get(base)
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-composite-nested
+    if nested_kinds and len(parts) >= 4:
+        for part in reversed(parts[2:]):
+            candidate = part.strip().lower()
+            if candidate in nested_kinds and candidate != base:
+                return candidate
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-composite-nested
+
+    normalized_kind_tokens = {str(k).strip().lower() for k in kind_tokens if str(k).strip()}
+    if base in normalized_kind_tokens:
+        return base
+
+    return _find_kind_marker(remainder, normalized_kind_tokens) or base
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-extract-kind
+    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-extract-kind
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-structure-datamodel
 @dataclass(frozen=True)
@@ -370,6 +602,88 @@ class ArtifactRecord:
     path: Path
     artifact_kind: str
     constraints: Optional[ArtifactKindConstraints] = None
+
+
+@dataclass(frozen=True)
+class DefinitionValidationContext:
+    """Shared validation context for a definition hit."""
+
+    hid: str
+    id_kind: str
+    constraint: IdConstraint
+    line: int
+    artifact_kind: str
+    artifact_path: Path
+    id_kind_name: Optional[str]
+    id_kind_description: Optional[str]
+    id_kind_template: Optional[str]
+
+    def base_fields(self) -> Dict[str, object]:
+        """Return common error payload fields for definition validation."""
+        return {
+            "path": self.artifact_path,
+            "line": self.line,
+            "artifact_kind": self.artifact_kind,
+            "id_kind": self.id_kind,
+            "id": self.hid,
+            "section": "defined-id",
+            "id_kind_name": self.id_kind_name,
+            "id_kind_description": self.id_kind_description,
+            "id_kind_template": self.id_kind_template,
+        }
+
+
+@dataclass(frozen=True)
+class ReferenceCheckContext:
+    """Shared validation context for one definition/reference rule pair."""
+
+    did: str
+    artifact_kind: str
+    target_kind: str
+    id_kind: str
+    id_meta: Dict[str, object]
+
+    def error_fields(self) -> Dict[str, object]:
+        """Return common error payload fields for reference validation."""
+        return {
+            "id": self.did,
+            "artifact_kind": self.artifact_kind,
+            "target_kind": self.target_kind,
+            "id_kind": self.id_kind,
+            **self.id_meta,
+        }
+
+
+@dataclass(frozen=True)
+class AllowedHeadingContext:
+    """Normalized allowed-heading data for one validation rule."""
+
+    heading_ids: set[str]
+    sorted_ids: List[str]
+    info: List[Dict[str, object]]
+
+
+@dataclass(frozen=True)
+class CrossReferenceCoverageState:
+    """Shared state for cross-artifact reference coverage validation."""
+
+    defs_by_id: Dict[str, List[Dict[str, object]]]
+    present_kinds_by_system: Dict[str, set[str]]
+    refs_by_system_kind: Dict[str, Dict[str, List[Dict[str, object]]]]
+    heading_desc_by_kind: Dict[str, Dict[str, str]]
+    errors: List[Dict[str, object]]
+    warnings: List[Dict[str, object]]
+
+
+@dataclass
+class CrossArtifactScanIndexes:
+    """Indexed scan data reused across cross-artifact validation passes."""
+
+    defs_by_id: Dict[str, List[Dict[str, object]]]
+    refs_by_id: Dict[str, List[Dict[str, object]]]
+    present_kinds_by_system: Dict[str, set[str]]
+    refs_by_system_kind: Dict[str, Dict[str, List[Dict[str, object]]]]
+    headings_cache: Dict[str, List[List[str]]]
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-structure-datamodel
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-ids-helpers
@@ -402,67 +716,71 @@ def _normalize_heading_identifiers(values: object) -> List[str]:
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-task-priority
 def _validate_task_priority_constraints(
-    hid: str,
-    id_kind: str,
-    c: "IdConstraint",
-    h: Dict[str, object],
-    kind: str,
-    artifact_path: Path,
+    ctx: DefinitionValidationContext,
+    hit: Dict[str, object],
     errors: List[Dict[str, object]],
-    id_kind_name: Optional[str],
-    id_kind_description: Optional[str],
-    id_kind_template: Optional[str],
 ) -> None:
-    line = int(h.get("line", 1) or 1)
-    has_task = bool(h.get("has_task", False))
-    has_priority = bool(h.get("has_priority", False))
-    tk = getattr(c, "task", None)
-    pr = getattr(c, "priority", None)
-
-    hint = _constraint_hint(c)
-
-    base = {"path": artifact_path, "line": line, "artifact_kind": kind, "id_kind": id_kind, "id": hid,
-            "section": "defined-id", "id_kind_name": id_kind_name, "id_kind_description": id_kind_description,
-            "id_kind_template": id_kind_template}
+    has_task = bool(hit.get("has_task", False))
+    has_priority = bool(hit.get("has_priority", False))
+    tk = getattr(ctx.constraint, "task", None)
+    pr = getattr(ctx.constraint, "priority", None)
+    hint = _constraint_hint(ctx.constraint)
+    base = ctx.base_fields()
 
     if tk is True and not has_task:
-        errors.append(error("constraints",
-            f"`{hid}` (kind `{id_kind}`) in {kind} artifact is missing required task checkbox `- [ ]`{hint}",
-            code=EC.DEF_MISSING_TASK, **base))
+        errors.append(error(
+            "constraints",
+            (
+                f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact "
+                f"is missing required task checkbox `- [ ]`{hint}"
+            ),
+            code=EC.DEF_MISSING_TASK,
+            **base,
+        ))
     if tk is False and has_task:
-        errors.append(error("constraints",
-            f"`{hid}` (kind `{id_kind}`) in {kind} artifact has task checkbox but kind `{id_kind}` prohibits task tracking{hint}",
-            code=EC.DEF_PROHIBITED_TASK, **base))
+        errors.append(error(
+            "constraints",
+            (
+                f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact has "
+                f"task checkbox but kind `{ctx.id_kind}` prohibits task tracking{hint}"
+            ),
+            code=EC.DEF_PROHIBITED_TASK,
+            **base,
+        ))
     if pr is True and not has_priority:
-        errors.append(error("constraints",
-            f"`{hid}` (kind `{id_kind}`) in {kind} artifact is missing required priority marker{hint}",
-            code=EC.DEF_MISSING_PRIORITY, **base))
+        errors.append(error(
+            "constraints",
+            (
+                f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact "
+                f"is missing required priority marker{hint}"
+            ),
+            code=EC.DEF_MISSING_PRIORITY,
+            **base,
+        ))
     if pr is False and has_priority:
-        errors.append(error("constraints",
-            f"`{hid}` (kind `{id_kind}`) in {kind} artifact has priority marker but kind `{id_kind}` prohibits priority{hint}",
-            code=EC.DEF_PROHIBITED_PRIORITY, **base))
+        errors.append(error(
+            "constraints",
+            (
+                f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact has "
+                f"priority marker but kind `{ctx.id_kind}` prohibits priority{hint}"
+            ),
+            code=EC.DEF_PROHIBITED_PRIORITY,
+            **base,
+        ))
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-task-priority
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-constraint
 def _validate_id_heading_constraint(
-    hid: str,
-    id_kind: str,
-    c: "IdConstraint",
-    line: int,
-    kind: str,
-    artifact_path: Path,
+    ctx: DefinitionValidationContext,
     headings_at: List[List[str]],
     heading_desc_by_id: Dict[str, str],
     errors: List[Dict[str, object]],
-    id_kind_name: Optional[str],
-    id_kind_description: Optional[str],
-    id_kind_template: Optional[str],
 ) -> None:
-    allowed_headings = _normalize_heading_identifiers(getattr(c, "headings", None) or [])
+    allowed_headings = _normalize_heading_identifiers(getattr(ctx.constraint, "headings", None) or [])
     if not allowed_headings:
         return
     allowed_norm = set(allowed_headings)
-    active_raw = headings_at[line] if 0 <= line < len(headings_at) else []
+    active_raw = headings_at[ctx.line] if 0 <= ctx.line < len(headings_at) else []
     active_norm = _normalize_heading_identifiers(active_raw)
     if any(a in allowed_norm for a in active_norm):
         return
@@ -473,23 +791,644 @@ def _validate_id_heading_constraint(
 
     errors.append(error(
         "constraints",
-        f"`{hid}` (kind `{id_kind}`) in {kind} artifact is under {active_raw} but must be under one of {allowed_headings}{_constraint_hint(c)}",
+        (
+            f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact is under "
+            f"{active_raw} but must be under one of {allowed_headings}"
+            f"{_constraint_hint(ctx.constraint)}"
+        ),
         code=EC.DEF_WRONG_HEADINGS,
-        path=artifact_path,
-        line=line,
-        artifact_kind=kind,
-        id_kind=id_kind,
-        id=hid,
-        section="defined-id",
+        **ctx.base_fields(),
         headings=allowed_headings,
         headings_info=allowed_info,
         found_headings=active_raw,
-        id_kind_name=id_kind_name,
-        id_kind_description=id_kind_description,
-        id_kind_template=id_kind_template,
     ))
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-constraint
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-ids-helpers
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-build-defs-index
+def _build_defs_index(defs: Sequence[Dict[str, object]]) -> Dict[str, Dict[str, object]]:
+    defs_by_id: Dict[str, Dict[str, object]] = {}
+    for definition in defs:
+        did = str(definition.get("id") or "").strip()
+        if did and did not in defs_by_id:
+            defs_by_id[did] = definition
+    return defs_by_id
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-build-defs-index
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-desc
+def _build_heading_descriptions(constraints: ArtifactKindConstraints) -> Dict[str, str]:
+    heading_desc_by_id: Dict[str, str] = {}
+    for hc in (getattr(constraints, "headings", None) or []):
+        hid = _normalize_heading_identifier(getattr(hc, "id", "") or "")
+        if not hid:
+            continue
+        desc = str(getattr(hc, "description", "") or "").strip()
+        if desc:
+            heading_desc_by_id[hid] = desc
+    return heading_desc_by_id
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-desc
+
+
+def _resolve_heading_scope_map(
+    artifact_path: Path,
+    constraints: ArtifactKindConstraints,
+) -> List[List[str]]:
+    from .document import headings_by_line
+
+    heading_constraints = getattr(constraints, "headings", None)
+    if heading_constraints:
+        return heading_constraint_ids_by_line(artifact_path, heading_constraints)
+    return headings_by_line(artifact_path)
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-cdsl-heading-ctx
+def _build_heading_context_helpers(
+    artifact_path: Path,
+) -> Tuple[List[Dict[str, object]], callable, callable]:
+    headings_scanned = _scan_headings(artifact_path)
+
+    def heading_ctx_for_line(ln: int) -> Tuple[int, Optional[int]]:
+        last_idx: Optional[int] = None
+        for idx, heading in enumerate(headings_scanned):
+            if int(heading.get("line", 0) or 0) <= ln:
+                last_idx = idx
+                continue
+            break
+        if last_idx is None:
+            return 0, None
+        level = int(headings_scanned[last_idx].get("level", 0) or 0)
+        return level, last_idx
+
+    def scope_end_for_heading_idx(hidx: int) -> int:
+        if hidx < 0 or hidx >= len(headings_scanned):
+            return 10**9
+        level = int(headings_scanned[hidx].get("level", 0) or 0)
+        for idx in range(hidx + 1, len(headings_scanned)):
+            next_level = int(headings_scanned[idx].get("level", 0) or 0)
+            if next_level <= level:
+                return int(headings_scanned[idx].get("line", 1) or 1) - 1
+        return 10**9
+
+    return headings_scanned, heading_ctx_for_line, scope_end_for_heading_idx
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-cdsl-heading-ctx
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
+def _validate_cdsl_parent_child_state(
+    *,
+    defs: Sequence[Dict[str, object]],
+    refs: Sequence[Dict[str, object]],
+    kind: str,
+    artifact_path: Path,
+    errors: List[Dict[str, object]],
+    heading_ctx_for_line: callable,
+    scope_end_for_heading_idx: callable,
+) -> None:
+    defs_sorted = sorted(defs, key=lambda d: int(d.get("line", 0) or 0))
+    refs_task_sorted = sorted(
+        [ref for ref in refs if bool(ref.get("has_task", False))],
+        key=lambda ref: int(ref.get("line", 0) or 0),
+    )
+    for parent in defs_sorted:
+        scoped_parent = _resolve_scoped_parent_task(
+            parent,
+            defs_sorted=defs_sorted,
+            refs_task_sorted=refs_task_sorted,
+            heading_ctx_for_line=heading_ctx_for_line,
+            scope_end_for_heading_idx=scope_end_for_heading_idx,
+        )
+        if scoped_parent is None:
+            continue
+        parent_id, children, ref_children = scoped_parent
+        if not children and not ref_children:
+            continue
+        _validate_parent_task_state(
+            parent=parent,
+            parent_id=parent_id,
+            kind=kind,
+            artifact_path=artifact_path,
+            errors=errors,
+            children=children,
+            ref_children=ref_children,
+        )
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
+def _resolve_scoped_parent_task(
+    parent: Dict[str, object],
+    *,
+    defs_sorted: Sequence[Dict[str, object]],
+    refs_task_sorted: Sequence[Dict[str, object]],
+    heading_ctx_for_line: callable,
+    scope_end_for_heading_idx: callable,
+) -> Optional[Tuple[str, List[Dict[str, object]], List[Dict[str, object]]]]:
+    if not bool(parent.get("has_task", False)):
+        return None
+    parent_line = int(parent.get("line", 0) or 0)
+    if parent_line <= 0:
+        return None
+    parent_id = str(parent.get("id") or "").strip()
+    if not parent_id:
+        return None
+    parent_lvl, parent_hidx = heading_ctx_for_line(parent_line)
+    if parent_hidx is None:
+        return None
+    scope_end = scope_end_for_heading_idx(parent_hidx)
+    children = _task_children_in_scope(
+        defs_sorted,
+        parent_line,
+        scope_end,
+        parent_lvl,
+        heading_ctx_for_line,
+    )
+    ref_children = _refs_in_scope(refs_task_sorted, parent_line, scope_end)
+    return parent_id, children, ref_children
+
+
+def _task_children_in_scope(
+    defs_sorted: Sequence[Dict[str, object]],
+    parent_line: int,
+    scope_end: int,
+    parent_lvl: int,
+    heading_ctx_for_line: callable,
+) -> List[Dict[str, object]]:
+    return [
+        child
+        for child in defs_sorted
+        if parent_line < int(child.get("line", 0) or 0) <= scope_end
+        and bool(child.get("has_task", False))
+        and heading_ctx_for_line(int(child.get("line", 0) or 0))[0] > parent_lvl
+    ]
+
+
+def _refs_in_scope(
+    refs_task_sorted: Sequence[Dict[str, object]],
+    parent_line: int,
+    scope_end: int,
+) -> List[Dict[str, object]]:
+    return [
+        ref for ref in refs_task_sorted
+        if parent_line < int(ref.get("line", 0) or 0) <= scope_end
+    ]
+
+
+def _checked_state(items: Sequence[Dict[str, object]]) -> Tuple[bool, bool]:
+    checked = [bool(item.get("checked", False)) for item in items]
+    return all(checked), any(not value for value in checked)
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-all-done-parent-not
+def _append_parent_all_done_error(
+    errors: List[Dict[str, object]],
+    parent_id: str,
+    child_count: int,
+    kind: str,
+    artifact_path: Path,
+    parent_line: int,
+) -> None:
+    errors.append(error(
+        "structure",
+        (
+            f"Parent `{parent_id}` is unchecked but all {child_count} nested "
+            f"task-tracked items are checked in {kind} artifact"
+        ),
+        code=EC.PARENT_UNCHECKED_ALL_DONE,
+        path=artifact_path,
+        line=parent_line,
+        id=parent_id,
+    ))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-all-done-parent-not
+
+
+def _first_unchecked_item(
+    children: Sequence[Dict[str, object]],
+    ref_children: Sequence[Dict[str, object]],
+    parent: Dict[str, object],
+) -> Dict[str, object]:
+    for item in list(children) + list(ref_children):
+        if not bool(item.get("checked", False)):
+            return item
+    return parent
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-parent-done-child-not
+def _append_parent_nested_unchecked_error(
+    errors: List[Dict[str, object]],
+    parent_id: str,
+    first: Dict[str, object],
+    kind: str,
+    artifact_path: Path,
+) -> None:
+    first_id = str(first.get("id") or "") or parent_id
+    errors.append(error(
+        "structure",
+        (
+            f"Parent `{parent_id}` is checked but nested item `{first_id}` "
+            f"(and possibly others) is still unchecked in {kind} artifact"
+        ),
+        code=EC.PARENT_CHECKED_NESTED_UNCHECKED,
+        path=artifact_path,
+        line=int(first.get("line", 1) or 1),
+        id=first_id,
+        parent_id=parent_id,
+    ))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-parent-done-child-not
+
+
+def _validate_parent_task_state(
+    *,
+    parent: Dict[str, object],
+    parent_id: str,
+    kind: str,
+    artifact_path: Path,
+    errors: List[Dict[str, object]],
+    children: Sequence[Dict[str, object]],
+    ref_children: Sequence[Dict[str, object]],
+) -> None:
+    parent_checked = bool(parent.get("checked", False))
+    all_children_checked, any_child_unchecked = _checked_state(children)
+    all_ref_children_checked, any_ref_child_unchecked = _checked_state(ref_children)
+    if all_children_checked and all_ref_children_checked and not parent_checked:
+        _append_parent_all_done_error(
+            errors,
+            parent_id,
+            len(children) + len(ref_children),
+            kind,
+            artifact_path,
+            int(parent.get("line", 0) or 0),
+        )
+    if parent_checked and (any_child_unchecked or any_ref_child_unchecked):
+        _append_parent_nested_unchecked_error(
+            errors,
+            parent_id,
+            _first_unchecked_item(children, ref_children, parent),
+            kind,
+            artifact_path,
+        )
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-ids-helpers
+def _build_definition_validation_context(
+    *,
+    hit: Dict[str, object],
+    id_kind: str,
+    constraint: IdConstraint,
+    kind: str,
+    artifact_path: Path,
+) -> DefinitionValidationContext:
+    return DefinitionValidationContext(
+        hid=str(hit.get("id") or "").strip(),
+        id_kind=id_kind,
+        constraint=constraint,
+        line=int(hit.get("line", 1) or 1),
+        artifact_kind=kind,
+        artifact_path=artifact_path,
+        id_kind_name=str(getattr(constraint, "name", "") or "").strip() or None,
+        id_kind_description=str(getattr(constraint, "description", "") or "").strip() or None,
+        id_kind_template=str(getattr(constraint, "template", "") or "").strip() or None,
+    )
+
+
+def _build_artifact_identifier_rules(
+    *,
+    artifact_path: Path,
+    constraints: ArtifactKindConstraints,
+    kind: str,
+    registered_systems: Optional[Iterable[str]],
+) -> ArtifactDefinitionValidationRules:
+    allowed_defs = {constraint.kind.strip().lower() for constraint in (constraints.defined_id or [])}
+    constraint_by_kind = {
+        constraint.kind.strip().lower(): constraint
+        for constraint in (constraints.defined_id or [])
+        if isinstance(getattr(constraint, "kind", None), str)
+    }
+    nested = {
+        str(getattr(id_constraint, "kind", "") or "").strip().lower()
+        for id_constraint in (constraints.defined_id or [])
+        if str(getattr(id_constraint, "kind", "") or "").strip()
+    }
+    return ArtifactDefinitionValidationRules(
+        kind=kind,
+        artifact_path=artifact_path,
+        systems_set={
+            str(system).strip().lower()
+            for system in (registered_systems or [])
+            if str(system).strip()
+        },
+        all_kind_tokens=set(allowed_defs),
+        composite_nested_by_base={kind.strip().lower(): nested} if nested else {},
+        allowed_defs=allowed_defs,
+        constraint_by_kind=constraint_by_kind,
+        headings_at=_resolve_heading_scope_map(artifact_path, constraints),
+        heading_desc_by_id=_build_heading_descriptions(constraints),
+    )
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-ids-helpers
+
+#
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-ids
+def _build_artifact_identifier_phase_context(
+    *,
+    artifact_path: Path,
+    constraints: ArtifactKindConstraints,
+    kind: str,
+    registered_systems: Optional[Iterable[str]],
+    scan_cpt_ids,
+) -> ArtifactIdentifierPhaseContext:
+    hits = scan_cpt_ids(artifact_path)
+    defs = [hit for hit in hits if str(hit.get("type")) == "definition"]
+    refs = [hit for hit in hits if str(hit.get("type")) == "reference"]
+    _, heading_ctx_for_line, scope_end_for_heading_idx = _build_heading_context_helpers(artifact_path)
+    return ArtifactIdentifierPhaseContext(
+        defs=defs,
+        refs=refs,
+        defs_by_id=_build_defs_index(defs),
+        heading_ctx_for_line=heading_ctx_for_line,
+        scope_end_for_heading_idx=scope_end_for_heading_idx,
+        rules=_build_artifact_identifier_rules(
+            artifact_path=artifact_path,
+            constraints=constraints,
+            kind=kind,
+            registered_systems=registered_systems,
+        ),
+    )
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-ids
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
+def _validate_artifact_toc(
+    artifact_path: Path,
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+) -> None:
+    from .document import read_text_safe as _read_text_safe
+    from .toc import validate_toc as _validate_toc
+
+    toc_lines = _read_text_safe(artifact_path)
+    if toc_lines is None:
+        return
+    toc_result = _validate_toc(
+        "\n".join(toc_lines),
+        artifact_path=artifact_path,
+        max_heading_level=3,
+    )
+    errors.extend(toc_result.get("errors", []))
+    warnings.extend(toc_result.get("warnings", []))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-mismatch
+def _validate_unchecked_cdsl_steps(
+    *,
+    cdsl_hits: Sequence[Dict[str, object]],
+    defs_by_id: Dict[str, Dict[str, object]],
+    kind: str,
+    artifact_path: Path,
+    errors: List[Dict[str, object]],
+) -> None:
+    for hit in cdsl_hits:
+        if bool(hit.get("checked", False)):
+            continue
+        pid = str(hit.get("parent_id") or "").strip()
+        if not pid:
+            continue
+        parent_def = defs_by_id.get(pid)
+        if not parent_def:
+            continue
+        if not bool(parent_def.get("has_task", False)):
+            continue
+        if not bool(parent_def.get("checked", False)):
+            continue
+        inst_s = str(hit.get("inst") or "").strip()
+        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-emit-cdsl-error
+        error_record = error(
+            "structure",
+            (
+                f"CDSL step `{pid}`{(' inst ' + inst_s) if inst_s else ''} is "
+                f"unchecked but parent ID is already checked in {kind} artifact"
+            ),
+            code=EC.CDSL_STEP_UNCHECKED,
+            path=artifact_path,
+            line=int(hit.get("line", 1) or 1),
+            id=pid,
+            inst=inst_s or None,
+        )
+        errors.append(error_record)
+        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-emit-cdsl-error
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-mismatch
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
+def _validate_artifact_heading_phase(
+    *,
+    artifact_path: Path,
+    constraints: ArtifactKindConstraints,
+    registered_systems: Optional[Iterable[str]],
+    kind: str,
+    constraints_path: Optional[Path],
+    kit_id: Optional[str],
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+) -> bool:
+    """Run heading validation and return whether later ID validation may continue."""
+    if not getattr(constraints, "headings", None):
+        return True
+    rep = validate_headings_contract(
+        path=artifact_path,
+        constraints=constraints,
+        registered_systems=registered_systems,
+        artifact_kind=kind,
+        constraints_path=constraints_path,
+        kit_id=kit_id,
+    )
+    errors.extend(rep.get("errors", []))
+    warnings.extend(rep.get("warnings", []))
+    return not bool(rep.get("errors"))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
+
+
+def _id_kind_hint(c: Optional[IdConstraint]) -> str:
+    if c is None:
+        return ""
+    nm = str(getattr(c, "name", "") or "").strip()
+    tpl = str(getattr(c, "template", "") or "").strip()
+    desc = str(getattr(c, "description", "") or "").strip()
+    parts: List[str] = []
+    if nm:
+        parts.append(nm)
+    if tpl:
+        parts.append(f"template={tpl}")
+    if desc:
+        parts.append(desc)
+    return (" (" + "; ".join(parts) + ")") if parts else ""
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-format
+def _validate_definition_hits(
+    *,
+    defs: Sequence[Dict[str, object]],
+    rules: ArtifactDefinitionValidationRules,
+    defs_by_kind: Dict[str, List[Dict[str, object]]],
+    errors: List[Dict[str, object]],
+) -> None:
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-defs-loop
+    for hit in defs:
+        hid = str(hit.get("id") or "").strip()
+        if not hid:
+            continue
+        line = int(hit.get("line", 1) or 1)
+        system = _match_system_from_id(hid, rules.systems_set, rules.all_kind_tokens)
+        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-match-system
+        if system is None and rules.systems_set and hid.lower().startswith("cpt-"):
+            errors.append(error(
+                "constraints",
+                f"`{hid}` has unrecognized system prefix (registered: {sorted(rules.systems_set)})",
+                code=EC.ID_SYSTEM_UNRECOGNIZED,
+                path=rules.artifact_path,
+                line=line,
+                artifact_kind=rules.kind,
+                id=hid,
+                registered_systems=sorted(rules.systems_set),
+            ))
+            continue
+        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-match-system
+        id_kind = _extract_kind_from_cpt(
+            hid,
+            system,
+            rules.all_kind_tokens,
+            rules.composite_nested_by_base,
+        )
+        if not id_kind:
+            continue
+        defs_by_kind.setdefault(id_kind, []).append(hit)
+
+        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-kind-hint
+        if id_kind not in rules.allowed_defs:
+            hint = _id_kind_hint(rules.constraint_by_kind.get(id_kind))
+            errors.append(error(
+                "constraints",
+                (
+                    f"`{hid}` uses kind `{id_kind}` not allowed in {rules.kind} artifact "
+                    f"(allowed: {sorted(rules.allowed_defs)}){hint}"
+                ),
+                code=EC.ID_KIND_NOT_ALLOWED,
+                path=rules.artifact_path,
+                line=line,
+                artifact_kind=rules.kind,
+                id_kind=id_kind,
+                id=hid,
+                section="defined-id",
+                allowed=sorted(rules.allowed_defs),
+            ))
+        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-kind-hint
+
+        constraint = rules.constraint_by_kind.get(id_kind)
+        if constraint is None:
+            continue
+        ctx = _build_definition_validation_context(
+            hit=hit,
+            id_kind=id_kind,
+            constraint=constraint,
+            kind=rules.kind,
+            artifact_path=rules.artifact_path,
+        )
+        _validate_task_priority_constraints(ctx, hit, errors)
+        _validate_id_heading_constraint(ctx, rules.headings_at, rules.heading_desc_by_id, errors)
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-defs-loop
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-format
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-required-check
+def _validate_required_defined_ids(
+    *,
+    kind: str,
+    constraints: ArtifactKindConstraints,
+    defs_by_kind: Dict[str, List[Dict[str, object]]],
+    heading_desc_by_id: Dict[str, str],
+    artifact_path: Path,
+    errors: List[Dict[str, object]],
+) -> None:
+    for constraint in constraints.defined_id:
+        id_kind = str(getattr(constraint, "kind", "") or "").strip().lower()
+        if not id_kind:
+            continue
+        if not bool(getattr(constraint, "required", True)):
+            continue
+        if id_kind in defs_by_kind and defs_by_kind[id_kind]:
+            continue
+        id_headings = [
+            heading
+            for heading in (getattr(constraint, "headings", None) or [])
+            if isinstance(heading, str) and heading.strip()
+        ]
+        id_headings_info = [
+            {"id": heading, "description": heading_desc_by_id.get(heading)}
+            for heading in id_headings
+        ] if id_headings else None
+        errors.append(error(
+            "constraints",
+            f"{kind} artifact has no `{id_kind}` IDs but at least one is required{_id_kind_hint(constraint)}",
+            code=EC.REQUIRED_ID_KIND_MISSING,
+            path=artifact_path,
+            line=1,
+            artifact_kind=kind,
+            id_kind=id_kind,
+            id_kind_name=str(getattr(constraint, "name", "") or "").strip() or None,
+            id_kind_description=str(getattr(constraint, "description", "") or "").strip() or None,
+            id_kind_template=str(getattr(constraint, "template", "") or "").strip() or None,
+            target_headings=id_headings if id_headings else None,
+            target_headings_info=id_headings_info,
+        ))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-required-check
+
+
+def _validate_artifact_identifier_phase(
+    *,
+    artifact_path: Path,
+    constraints: ArtifactKindConstraints,
+    kind: str,
+    registered_systems: Optional[Iterable[str]],
+    errors: List[Dict[str, object]],
+) -> None:
+    from .document import scan_cpt_ids, scan_cdsl_instructions
+
+    context = _build_artifact_identifier_phase_context(
+        artifact_path=artifact_path,
+        constraints=constraints,
+        kind=kind,
+        registered_systems=registered_systems,
+        scan_cpt_ids=scan_cpt_ids,
+    )
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-cdsl
+    cdsl_hits = scan_cdsl_instructions(artifact_path)
+    _validate_unchecked_cdsl_steps(
+        cdsl_hits=cdsl_hits,
+        defs_by_id=context.defs_by_id,
+        kind=kind,
+        artifact_path=artifact_path,
+        errors=errors,
+    )
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-cdsl
+    _validate_cdsl_parent_child_state(
+        defs=context.defs,
+        refs=context.refs,
+        kind=kind,
+        artifact_path=artifact_path,
+        errors=errors,
+        heading_ctx_for_line=context.heading_ctx_for_line,
+        scope_end_for_heading_idx=context.scope_end_for_heading_idx,
+    )
+    defs_by_kind: Dict[str, List[Dict[str, object]]] = {}
+    _validate_definition_hits(
+        defs=context.defs,
+        rules=context.rules,
+        defs_by_kind=defs_by_kind,
+        errors=errors,
+    )
+    _validate_required_defined_ids(
+        kind=kind,
+        constraints=constraints,
+        defs_by_kind=defs_by_kind,
+        heading_desc_by_id=context.rules.heading_desc_by_id,
+        artifact_path=artifact_path,
+        errors=errors,
+    )
 
 
 # @cpt-algo:cpt-studio-algo-traceability-validation-validate-structure:p1
@@ -504,8 +1443,6 @@ def validate_artifact_file(
     kit_id: Optional[str] = None,
 ) -> Dict[str, List[Dict[str, object]]]:
     """Validate one artifact file against structural constraints."""
-    from .document import headings_by_line, scan_cpt_ids, scan_cdsl_instructions
-
     errors: List[Dict[str, object]] = []
     warnings: List[Dict[str, object]] = []
 
@@ -517,420 +1454,43 @@ def validate_artifact_file(
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
     # Phase 1: headings contract
-    if getattr(constraints, "headings", None):
-        rep = validate_headings_contract(
-            path=artifact_path,
-            constraints=constraints,
-            registered_systems=registered_systems,
-            artifact_kind=kind,
-            constraints_path=constraints_path,
-            kit_id=kit_id,
-        )
-        errors.extend(rep.get("errors", []))
-        warnings.extend(rep.get("warnings", []))
-
-        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-headings-fail
-        # Stop here: IDs are validated only after outline contract is satisfied.
-        if rep.get("errors"):
-            return {"errors": errors, "warnings": warnings}
-        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-headings-fail
+    can_continue = _validate_artifact_heading_phase(
+        artifact_path=artifact_path,
+        constraints=constraints,
+        registered_systems=registered_systems,
+        kind=kind,
+        constraints_path=constraints_path,
+        kit_id=kit_id,
+        errors=errors,
+        warnings=warnings,
+    )
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-headings-fail
+    # Stop here: IDs are validated only after outline contract is satisfied.
+    if not can_continue:
+        # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-fail
+        return {"errors": errors, "warnings": warnings}
+        # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-fail
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-headings-fail
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
     # Phase 1b: TOC validation (only when toc=true in constraints)
     if getattr(constraints, "toc", True):
-        from .toc import validate_toc as _validate_toc
-        from .document import read_text_safe as _read_text_safe
-
-        _toc_lines = _read_text_safe(artifact_path)
-        if _toc_lines is not None:
-            _toc_content = "\n".join(_toc_lines)
-            _max_hl = 3
-            _toc_result = _validate_toc(
-                _toc_content,
-                artifact_path=artifact_path,
-                max_heading_level=_max_hl,
-            )
-            errors.extend(_toc_result.get("errors", []))
-            warnings.extend(_toc_result.get("warnings", []))
+        _validate_artifact_toc(artifact_path, errors, warnings)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-ids
-    # Phase 2: identifier/content validation
-    hits = scan_cpt_ids(artifact_path)
-    defs = [h for h in hits if str(h.get("type")) == "definition"]
-    refs = [h for h in hits if str(h.get("type")) == "reference"]
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-ids
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-build-defs-index
-    defs_by_id: Dict[str, Dict[str, object]] = {}
-    for d in defs:
-        did = str(d.get("id") or "").strip()
-        if did and did not in defs_by_id:
-            defs_by_id[did] = d
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-build-defs-index
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-cdsl
-    cdsl_hits = scan_cdsl_instructions(artifact_path)
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-cdsl
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-mismatch
-    for ch in cdsl_hits:
-        if bool(ch.get("checked", False)):
-            continue
-        pid = str(ch.get("parent_id") or "").strip()
-        if not pid:
-            continue
-        parent_def = defs_by_id.get(pid)
-        if not parent_def:
-            continue
-        if not bool(parent_def.get("has_task", False)):
-            continue
-        if not bool(parent_def.get("checked", False)):
-            continue
-        inst_s = str(ch.get("inst") or "").strip()
-        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-emit-cdsl-error
-        errors.append(error(
-            "structure",
-            f"CDSL step `{pid}`{(' inst ' + inst_s) if inst_s else ''} is unchecked but parent ID is already checked in {kind} artifact",
-            code=EC.CDSL_STEP_UNCHECKED,
-            path=artifact_path,
-            line=int(ch.get("line", 1) or 1),
-            id=pid,
-            inst=inst_s or None,
-        ))
-        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-emit-cdsl-error
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-mismatch
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-cdsl-heading-ctx
-    headings_scanned = _scan_headings(artifact_path)
-
-    def _heading_ctx_for_line(ln: int) -> Tuple[int, Optional[int]]:
-        last_idx: Optional[int] = None
-        for i, h in enumerate(headings_scanned):
-            if int(h.get("line", 0) or 0) <= ln:
-                last_idx = i
-                continue
-            break
-        if last_idx is None:
-            return 0, None
-        lvl = int(headings_scanned[last_idx].get("level", 0) or 0)
-        return lvl, last_idx
-
-    def _scope_end_for_heading_idx(hidx: int) -> int:
-        if hidx < 0 or hidx >= len(headings_scanned):
-            return 10**9
-        lvl = int(headings_scanned[hidx].get("level", 0) or 0)
-        for j in range(hidx + 1, len(headings_scanned)):
-            jlvl = int(headings_scanned[j].get("level", 0) or 0)
-            if jlvl <= lvl:
-                return int(headings_scanned[j].get("line", 1) or 1) - 1
-        return 10**9
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-cdsl-heading-ctx
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
-    defs_sorted = sorted(defs, key=lambda d: int(d.get("line", 0) or 0))
-    refs_task_sorted = sorted(
-        [r for r in refs if bool(r.get("has_task", False))],
-        key=lambda r: int(r.get("line", 0) or 0),
+    _validate_artifact_identifier_phase(
+        artifact_path=artifact_path,
+        constraints=constraints,
+        kind=kind,
+        registered_systems=registered_systems,
+        errors=errors,
     )
-    for parent in defs_sorted:
-        if not bool(parent.get("has_task", False)):
-            continue
-        parent_line = int(parent.get("line", 0) or 0)
-        if parent_line <= 0:
-            continue
-        parent_id = str(parent.get("id") or "").strip()
-        if not parent_id:
-            continue
-
-        parent_lvl, parent_hidx = _heading_ctx_for_line(parent_line)
-        if parent_hidx is None:
-            continue
-        scope_end = _scope_end_for_heading_idx(parent_hidx)
-
-        children: List[Dict[str, object]] = []
-        for child in defs_sorted:
-            child_line = int(child.get("line", 0) or 0)
-            if child_line <= parent_line or child_line > scope_end:
-                continue
-            if not bool(child.get("has_task", False)):
-                continue
-            child_lvl, _child_hidx = _heading_ctx_for_line(child_line)
-            if child_lvl <= parent_lvl:
-                continue
-            children.append(child)
-
-        ref_children: List[Dict[str, object]] = []
-        for rr in refs_task_sorted:
-            rline = int(rr.get("line", 0) or 0)
-            if rline <= parent_line or rline > scope_end:
-                continue
-            ref_children.append(rr)
-
-        if (not children) and (not ref_children):
-            continue
-
-        parent_checked = bool(parent.get("checked", False))
-        all_children_checked = all(bool(c.get("checked", False)) for c in children)
-        any_child_unchecked = any(not bool(c.get("checked", False)) for c in children)
-        all_ref_children_checked = all(bool(r.get("checked", False)) for r in ref_children)
-        any_ref_child_unchecked = any(not bool(r.get("checked", False)) for r in ref_children)
-
-        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-all-done-parent-not
-        if all_children_checked and all_ref_children_checked and (not parent_checked):
-            errors.append(error(
-                "structure",
-                f"Parent `{parent_id}` is unchecked but all {len(children) + len(ref_children)} nested task-tracked items are checked in {kind} artifact",
-                code=EC.PARENT_UNCHECKED_ALL_DONE,
-                path=artifact_path,
-                line=parent_line,
-                id=parent_id,
-            ))
-        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-all-done-parent-not
-
-        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-parent-done-child-not
-        if parent_checked and (any_child_unchecked or any_ref_child_unchecked):
-            first_unchecked = next((c for c in children if not bool(c.get("checked", False))), None)
-            first_ref_unchecked = next((r for r in ref_children if not bool(r.get("checked", False))), None)
-            first = first_unchecked or first_ref_unchecked or parent
-            first_id = str(first.get("id") or "") or parent_id
-            errors.append(error(
-                "structure",
-                f"Parent `{parent_id}` is checked but nested item `{first_id}` (and possibly others) is still unchecked in {kind} artifact",
-                code=EC.PARENT_CHECKED_NESTED_UNCHECKED,
-                path=artifact_path,
-                line=int(first.get("line", 1) or 1),
-                id=first_id,
-                parent_id=parent_id,
-            ))
-        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-parent-done-child-not
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-parent-child
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-format
-    allowed_defs = {c.kind.strip().lower() for c in (constraints.defined_id or [])}
-    constraint_by_kind = {c.kind.strip().lower(): c for c in (constraints.defined_id or []) if isinstance(getattr(c, "kind", None), str)}
-    # All known kind tokens for system boundary detection.
-    _all_kind_tokens: set[str] = set(allowed_defs)
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-kind-hint
-    def _id_kind_hint(c: Optional[IdConstraint]) -> str:
-        if c is None:
-            return ""
-        nm = str(getattr(c, "name", "") or "").strip()
-        tpl = str(getattr(c, "template", "") or "").strip()
-        desc = str(getattr(c, "description", "") or "").strip()
-        parts: List[str] = []
-        if nm:
-            parts.append(nm)
-        if tpl:
-            parts.append(f"template={tpl}")
-        if desc:
-            parts.append(desc)
-        return (" (" + "; ".join(parts) + ")") if parts else ""
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-kind-hint
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-desc
-    heading_desc_by_id: Dict[str, str] = {}
-    for hc in (getattr(constraints, "headings", None) or []):
-        hid = _normalize_heading_identifier(getattr(hc, "id", "") or "")
-        if not hid:
-            continue
-        desc = str(getattr(hc, "description", "") or "").strip()
-        if desc:
-            heading_desc_by_id[hid] = desc
-
-    # Heading scope cache
-    heading_constraints = getattr(constraints, "headings", None)
-    if heading_constraints:
-        headings_at = heading_constraint_ids_by_line(artifact_path, heading_constraints)
-    else:
-        headings_at = headings_by_line(artifact_path)
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-desc
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-match-system
-    # Use registered systems to extract id kind
-    systems_set: set[str] = set()
-    if registered_systems is not None:
-        systems_set = {str(s).lower() for s in registered_systems}
-
-    def match_system(cpt: str) -> Optional[str]:
-        if not cpt.lower().startswith("cpt-"):
-            return None
-        matched: Optional[str] = None
-        for sys in systems_set:
-            prefix = f"cpt-{sys}-"
-            if cpt.lower().startswith(prefix):
-                if matched is None or len(sys) > len(matched):
-                    matched = sys
-        if matched is not None:
-            return matched
-        if not systems_set:
-            # No registered systems (kit examples) — use kind tokens to
-            # find the system boundary.  Prefer the RIGHTMOST kind-token
-            # split (longest system) so that system names containing kind
-            # tokens (e.g. "task-flow" with kind "flow") are not truncated.
-            remainder = cpt[4:]  # strip "cpt-"
-            best_pos: Optional[int] = None
-            for kt in _all_kind_tokens:
-                marker = f"-{kt}-"
-                idx = remainder.find(marker)
-                if idx > 0 and (best_pos is None or idx > best_pos):
-                    best_pos = idx
-            if best_pos is not None:
-                return remainder[:best_pos].lower()
-            parts = cpt.split("-")
-            return parts[1].lower() if len(parts) >= 3 else None
-        return None
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-match-system
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-composite-nested
-    composite_nested_by_base: Dict[str, set[str]] = {}
-    base_kind = kind.strip().lower()
-    nested = {str(getattr(ic, "kind", "") or "").strip().lower() for ic in (constraints.defined_id or []) if str(getattr(ic, "kind", "") or "").strip()}
-    if nested:
-        composite_nested_by_base[base_kind] = nested
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-composite-nested
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-extract-kind
-    def extract_kind_from_id(cpt: str, system: Optional[str]) -> Optional[str]:
-        if not cpt.lower().startswith("cpt-"):
-            return None
-        if system is None:
-            return None
-        prefix = f"cpt-{system}-"
-        if not cpt.lower().startswith(prefix.lower()):
-            return None
-        remainder = cpt[len(prefix):]
-        if not remainder:
-            return None
-        parts = [p for p in remainder.split("-") if p]
-        if not parts:
-            return None
-        base = parts[0].strip().lower()
-        nested_kinds = composite_nested_by_base.get(base)
-        if nested_kinds and len(parts) >= 4:
-            for p in reversed(parts[2:]):
-                pp = p.strip().lower()
-                if pp in nested_kinds and pp != base:
-                    return pp
-
-        # Standard IDs are cpt-{system}-{kind}-{slug}. In practice, when a
-        # registered root system is used (e.g. "cf"), authors may include a
-        # hyphenated subsystem segment before kind (e.g. "cf-errors").
-        # In that case, the first token in remainder is not the kind.
-        # Prefer explicit kind-token markers in remainder.
-        kind_tokens = {str(k).strip().lower() for k in _all_kind_tokens if str(k).strip()}
-        if base in kind_tokens:
-            return base
-
-        rem_l = remainder.lower()
-        best_pos: Optional[int] = None
-        best_kind: Optional[str] = None
-        for kt in kind_tokens:
-            marker = f"-{kt}-"
-            idx = rem_l.find(marker)
-            if idx > 0 and (best_pos is None or idx < best_pos):
-                best_pos = idx
-                best_kind = kt
-
-        if best_kind is not None:
-            return best_kind
-        return base
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-extract-kind
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-defs-loop
-    defs_by_kind: Dict[str, List[Dict[str, object]]] = {}
-    for h in defs:
-        hid = str(h.get("id") or "").strip()
-        if not hid:
-            continue
-        line = int(h.get("line", 1) or 1)
-        system = match_system(hid)
-        if system is None and systems_set and hid.lower().startswith("cpt-"):
-            errors.append(error(
-                "constraints",
-                f"`{hid}` has unrecognized system prefix (registered: {sorted(systems_set)})",
-                code=EC.ID_SYSTEM_UNRECOGNIZED,
-                path=artifact_path,
-                line=line,
-                artifact_kind=kind,
-                id=hid,
-                registered_systems=sorted(systems_set),
-            ))
-            continue
-        id_kind = extract_kind_from_id(hid, system)
-        if not id_kind:
-            continue
-        defs_by_kind.setdefault(id_kind, []).append(h)
-
-        if id_kind not in allowed_defs:
-            hint = _id_kind_hint(constraint_by_kind.get(id_kind))
-            errors.append(error(
-                "constraints",
-                f"`{hid}` uses kind `{id_kind}` not allowed in {kind} artifact (allowed: {sorted(allowed_defs)}){hint}",
-                code=EC.ID_KIND_NOT_ALLOWED,
-                path=artifact_path,
-                line=line,
-                artifact_kind=kind,
-                id_kind=id_kind,
-                id=hid,
-                section="defined-id",
-                allowed=sorted(allowed_defs),
-            ))
-
-        c = constraint_by_kind.get(id_kind)
-        if c is None:
-            continue
-        id_kind_name = str(getattr(c, "name", "") or "").strip() or None
-        id_kind_description = str(getattr(c, "description", "") or "").strip() or None
-        id_kind_template = str(getattr(c, "template", "") or "").strip() or None
-
-        _validate_task_priority_constraints(
-            hid, id_kind, c, h, kind, artifact_path, errors,
-            id_kind_name, id_kind_description, id_kind_template,
-        )
-        _validate_id_heading_constraint(
-            hid, id_kind, c, line, kind, artifact_path,
-            headings_at, heading_desc_by_id, errors,
-            id_kind_name, id_kind_description, id_kind_template,
-        )
-
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-defs-loop
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-required-check
-    for c in constraints.defined_id:
-        k = str(getattr(c, "kind", "") or "").strip().lower()
-        if not k:
-            continue
-        is_required = bool(getattr(c, "required", True))
-        if not is_required:
-            continue
-        if k in defs_by_kind and defs_by_kind[k]:
-            continue
-        id_headings = [h for h in (getattr(c, "headings", None) or []) if isinstance(h, str) and h.strip()]
-        id_headings_info = [
-            {"id": hid, "description": heading_desc_by_id.get(hid)}
-            for hid in id_headings
-        ] if id_headings else None
-        errors.append(error(
-            "constraints",
-            f"{kind} artifact has no `{k}` IDs but at least one is required{_id_kind_hint(c)}",
-            code=EC.REQUIRED_ID_KIND_MISSING,
-            path=artifact_path,
-            line=1,
-            artifact_kind=kind,
-            id_kind=k,
-            id_kind_name=str(getattr(c, "name", "") or "").strip() or None,
-            id_kind_description=str(getattr(c, "description", "") or "").strip() or None,
-            id_kind_template=str(getattr(c, "template", "") or "").strip() or None,
-            target_headings=id_headings if id_headings else None,
-            target_headings_info=id_headings_info,
-        ))
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-required-check
-    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-format
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-return-structure
+    # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-pass
     return {"errors": errors, "warnings": warnings}
+    # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-pass
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-return-structure
 
 # @cpt-algo:cpt-studio-algo-traceability-validation-cross-validate:p1
@@ -942,26 +1502,10 @@ def _id_kind_rule_metadata(ic: object) -> Dict[str, object]:
         "id_kind_description": str(getattr(ic, "description", "") or "").strip() or None,
         "id_kind_template": str(getattr(ic, "template", "") or "").strip() or None,
     }
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-datamodel
 
 
-def _common_ref_error_fields(
-    *,
-    did: str,
-    ak: str,
-    tk: str,
-    id_kind: str,
-    id_meta: Dict[str, object],
-) -> Dict[str, object]:
-    """Return common fields for reference rule validation errors."""
-    return {
-        "id": did,
-        "artifact_kind": ak,
-        "target_kind": tk,
-        "id_kind": id_kind,
-        **id_meta,
-    }
-
-
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 def _validate_required_reference_coverage(
     *,
     errors: List[Dict[str, object]],
@@ -969,58 +1513,63 @@ def _validate_required_reference_coverage(
     drow: Dict[str, object],
     refs_in_kind: List[Dict[str, object]],
     system_present_kinds: Iterable[str],
-    did: str,
-    ak: str,
-    tk: str,
-    id_kind: str,
-    id_meta: Dict[str, object],
-    allowed_headings: Iterable[str],
-    allowed_headings_sorted: List[str],
-    allowed_headings_info: List[Dict[str, object]],
+    ctx: ReferenceCheckContext,
+    allowed_headings: AllowedHeadingContext,
 ) -> bool:
     """Validate required reference coverage and return whether to skip later checks."""
+    tk = ctx.target_kind
     if bool(drow.get("has_task", False)) and not bool(drow.get("checked", False)):
         return True
     if tk not in system_present_kinds:
         warnings.append(error(
             "constraints",
-            f"`{did}` (defined in {ak}) requires reference in `{tk}` artifact but no `{tk}` artifact exists in scope",
+            (
+                f"`{ctx.did}` (defined in {ctx.artifact_kind}) requires reference in "
+                f"`{tk}` artifact but no `{tk}` artifact exists in scope"
+            ),
             code=EC.REF_TARGET_NOT_IN_SCOPE,
             path=drow.get("artifact_path"),
             line=int(drow.get("line", 1) or 1),
-            id=did,
-            artifact_kind=ak,
+            id=ctx.did,
+            artifact_kind=ctx.artifact_kind,
             target_kind=tk,
         ))
         return True
     if not refs_in_kind:
         errors.append(error(
             "constraints",
-            f"`{did}` (defined in {ak}, kind `{id_kind}`) is not referenced from any `{tk}` artifact",
+            (
+                f"`{ctx.did}` (defined in {ctx.artifact_kind}, kind `{ctx.id_kind}`) "
+                f"is not referenced from any `{tk}` artifact"
+            ),
             code=EC.REF_MISSING_FROM_KIND,
             path=drow.get("artifact_path"),
             line=int(drow.get("line", 1) or 1),
-            target_headings=allowed_headings_sorted if allowed_headings else None,
-            target_headings_info=allowed_headings_info if allowed_headings else None,
-            **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+            target_headings=allowed_headings.sorted_ids if allowed_headings.heading_ids else None,
+            target_headings_info=allowed_headings.info if allowed_headings.heading_ids else None,
+            **ctx.error_fields(),
         ))
         return True
-    if not allowed_headings:
+    if not allowed_headings.heading_ids:
         return False
-    if any(any(h in allowed_headings for h in (rr.get("headings") or [])) for rr in refs_in_kind):
+    if any(any(h in allowed_headings.heading_ids for h in (rr.get("headings") or [])) for rr in refs_in_kind):
         return False
 
     first = refs_in_kind[0]
     errors.append(error(
         "constraints",
-        f"Reference to `{did}` in `{tk}` artifact is under {first.get('headings') or []} but must be under one of {allowed_headings_sorted}",
+        (
+            f"Reference to `{ctx.did}` in `{tk}` artifact is under "
+            f"{first.get('headings') or []} but must be under one of "
+            f"{allowed_headings.sorted_ids}"
+        ),
         code=EC.REF_WRONG_HEADINGS,
         path=first.get("artifact_path"),
         line=int(first.get("line", 1) or 1),
-        headings=allowed_headings_sorted,
-        headings_info=allowed_headings_info,
+        headings=allowed_headings.sorted_ids,
+        headings_info=allowed_headings.info,
         found_headings=first.get("headings") or [],
-        **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+        **ctx.error_fields(),
     ))
     return False
 
@@ -1029,11 +1578,7 @@ def _validate_prohibited_reference_coverage(
     *,
     errors: List[Dict[str, object]],
     refs_in_kind: List[Dict[str, object]],
-    did: str,
-    ak: str,
-    tk: str,
-    id_kind: str,
-    id_meta: Dict[str, object],
+    ctx: ReferenceCheckContext,
 ) -> bool:
     """Validate prohibited reference coverage and return whether it matched."""
     if not refs_in_kind:
@@ -1041,11 +1586,15 @@ def _validate_prohibited_reference_coverage(
     first = refs_in_kind[0]
     errors.append(error(
         "constraints",
-        f"`{did}` is referenced in `{tk}` artifact but references from `{tk}` are prohibited for {ak} IDs",
+        (
+            f"`{ctx.did}` is referenced in `{ctx.target_kind}` artifact but "
+            f"references from `{ctx.target_kind}` are prohibited for "
+            f"{ctx.artifact_kind} IDs"
+        ),
         code=EC.REF_FROM_PROHIBITED_KIND,
         path=first.get("artifact_path"),
         line=int(first.get("line", 1) or 1),
-        **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+        **ctx.error_fields(),
     ))
     return True
 
@@ -1055,11 +1604,7 @@ def _validate_reference_task_rule(
     errors: List[Dict[str, object]],
     refs_in_kind: List[Dict[str, object]],
     task_rule: Optional[bool],
-    did: str,
-    ak: str,
-    tk: str,
-    id_kind: str,
-    id_meta: Dict[str, object],
+    ctx: ReferenceCheckContext,
 ) -> None:
     """Validate reference task checkbox requirements."""
     if task_rule is True:
@@ -1067,11 +1612,11 @@ def _validate_reference_task_rule(
         if rr is not None:
             errors.append(error(
                 "constraints",
-                f"Reference to `{did}` in `{tk}` artifact is missing required task checkbox `- [ ]`",
+                f"Reference to `{ctx.did}` in `{ctx.target_kind}` artifact is missing required task checkbox `- [ ]`",
                 code=EC.REF_MISSING_TASK,
                 path=rr.get("artifact_path"),
                 line=int(rr.get("line", 1) or 1),
-                **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+                **ctx.error_fields(),
             ))
         return
     if task_rule is False:
@@ -1079,11 +1624,14 @@ def _validate_reference_task_rule(
         if rr is not None:
             errors.append(error(
                 "constraints",
-                f"Reference to `{did}` in `{tk}` artifact has task checkbox but task tracking is prohibited",
+                (
+                    f"Reference to `{ctx.did}` in `{ctx.target_kind}` artifact has "
+                    "task checkbox but task tracking is prohibited"
+                ),
                 code=EC.REF_PROHIBITED_TASK,
                 path=rr.get("artifact_path"),
                 line=int(rr.get("line", 1) or 1),
-                **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+                **ctx.error_fields(),
             ))
 
 
@@ -1092,11 +1640,7 @@ def _validate_reference_priority_rule(
     errors: List[Dict[str, object]],
     refs_in_kind: List[Dict[str, object]],
     prio_rule: Optional[bool],
-    did: str,
-    ak: str,
-    tk: str,
-    id_kind: str,
-    id_meta: Dict[str, object],
+    ctx: ReferenceCheckContext,
 ) -> None:
     """Validate reference priority marker requirements."""
     if prio_rule is True:
@@ -1104,11 +1648,11 @@ def _validate_reference_priority_rule(
         if rr is not None:
             errors.append(error(
                 "constraints",
-                f"Reference to `{did}` in `{tk}` artifact is missing required priority marker",
+                f"Reference to `{ctx.did}` in `{ctx.target_kind}` artifact is missing required priority marker",
                 code=EC.REF_MISSING_PRIORITY,
                 path=rr.get("artifact_path"),
                 line=int(rr.get("line", 1) or 1),
-                **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+                **ctx.error_fields(),
             ))
         return
     if prio_rule is False:
@@ -1116,11 +1660,14 @@ def _validate_reference_priority_rule(
         if rr is not None:
             errors.append(error(
                 "constraints",
-                f"Reference to `{did}` in `{tk}` artifact has priority marker but priority is prohibited",
+                (
+                    f"Reference to `{ctx.did}` in `{ctx.target_kind}` artifact has "
+                    "priority marker but priority is prohibited"
+                ),
                 code=EC.REF_PROHIBITED_PRIORITY,
                 path=rr.get("artifact_path"),
                 line=int(rr.get("line", 1) or 1),
-                **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+                **ctx.error_fields(),
             ))
 
 
@@ -1131,15 +1678,9 @@ def _validate_reference_rule(
     drow: Dict[str, object],
     refs_in_kind: List[Dict[str, object]],
     system_present_kinds: Iterable[str],
-    did: str,
-    ak: str,
-    tk: str,
-    id_kind: str,
-    id_meta: Dict[str, object],
+    ctx: ReferenceCheckContext,
     rule: ReferenceRule,
-    allowed_headings: Iterable[str],
-    allowed_headings_sorted: List[str],
-    allowed_headings_info: List[Dict[str, object]],
+    allowed_headings: AllowedHeadingContext,
 ) -> None:
     """Validate one reference rule for a definition row."""
     cov = getattr(rule, "coverage", None)
@@ -1150,14 +1691,8 @@ def _validate_reference_rule(
             drow=drow,
             refs_in_kind=refs_in_kind,
             system_present_kinds=system_present_kinds,
-            did=did,
-            ak=ak,
-            tk=tk,
-            id_kind=id_kind,
-            id_meta=id_meta,
+            ctx=ctx,
             allowed_headings=allowed_headings,
-            allowed_headings_sorted=allowed_headings_sorted,
-            allowed_headings_info=allowed_headings_info,
         )
         if skip_rest:
             return
@@ -1166,11 +1701,7 @@ def _validate_reference_rule(
         matched = _validate_prohibited_reference_coverage(
             errors=errors,
             refs_in_kind=refs_in_kind,
-            did=did,
-            ak=ak,
-            tk=tk,
-            id_kind=id_kind,
-            id_meta=id_meta,
+            ctx=ctx,
         )
         if matched:
             return
@@ -1181,64 +1712,54 @@ def _validate_reference_rule(
         errors=errors,
         refs_in_kind=refs_in_kind,
         task_rule=getattr(rule, "task", None),
-        did=did,
-        ak=ak,
-        tk=tk,
-        id_kind=id_kind,
-        id_meta=id_meta,
+        ctx=ctx,
     )
     _validate_reference_priority_rule(
         errors=errors,
         refs_in_kind=refs_in_kind,
         prio_rule=getattr(rule, "priority", None),
-        did=did,
-        ak=ak,
-        tk=tk,
-        id_kind=id_kind,
-        id_meta=id_meta,
+        ctx=ctx,
     )
-def cross_validate_artifacts(
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-build-constraints-index
+def _build_cross_constraint_indexes(
     artifacts: Sequence[ArtifactRecord],
-    registered_systems: Optional[Iterable[str]] = None,
-    known_kinds: Optional[Iterable[str]] = None,
-) -> Dict[str, List[Dict[str, object]]]:
-    """Cross-validate references between artifact records."""
-    from .document import headings_by_line, scan_cpt_ids
-
-    _ = known_kinds
-    errors: List[Dict[str, object]] = []
-    warnings: List[Dict[str, object]] = []
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-build-constraints-index
+    errors: List[Dict[str, object]],
+) -> Tuple[
+    Dict[str, ArtifactKindConstraints],
+    Dict[str, set[str]],
+    Dict[str, Dict[str, str]],
+]:
     constraints_by_artifact_kind: Dict[str, ArtifactKindConstraints] = {}
     missing_constraints_kinds: set[str] = set()
     composite_nested_kinds_by_base_kind: Dict[str, set[str]] = {}
     heading_desc_by_kind: Dict[str, Dict[str, str]] = {}
 
     for art in artifacts:
-        ak = str(art.artifact_kind).strip().upper()
-        c = art.constraints
-        if c is None:
-            missing_constraints_kinds.add(ak)
+        artifact_kind = str(art.artifact_kind).strip().upper()
+        constraint = art.constraints
+        if constraint is None:
+            missing_constraints_kinds.add(artifact_kind)
             continue
-        constraints_by_artifact_kind[ak] = c
+        constraints_by_artifact_kind[artifact_kind] = constraint
 
         hdesc: Dict[str, str] = {}
-        for hc in (getattr(c, "headings", None) or []):
-            hid = _normalize_heading_identifier(getattr(hc, "id", "") or "")
+        for heading_constraint in (getattr(constraint, "headings", None) or []):
+            hid = _normalize_heading_identifier(getattr(heading_constraint, "id", "") or "")
             if not hid:
                 continue
-            d = str(getattr(hc, "description", "") or "").strip()
-            if d:
-                hdesc[hid] = d
-        heading_desc_by_kind[ak] = hdesc
+            desc = str(getattr(heading_constraint, "description", "") or "").strip()
+            if desc:
+                hdesc[hid] = desc
+        heading_desc_by_kind[artifact_kind] = hdesc
 
-    for ak, c in constraints_by_artifact_kind.items():
-        base_kind = str(ak).strip().lower()
+    for artifact_kind, constraint in constraints_by_artifact_kind.items():
+        base_kind = str(artifact_kind).strip().lower()
         nested = {
-            str(getattr(ic, "kind", "")).strip().lower()
-            for ic in getattr(c, "defined_id", []) or []
-            if str(getattr(ic, "kind", "")).strip()
+            str(getattr(id_constraint, "kind", "")).strip().lower()
+            for id_constraint in getattr(constraint, "defined_id", []) or []
+            if str(getattr(id_constraint, "kind", "")).strip()
         }
         if nested:
             composite_nested_kinds_by_base_kind[base_kind] = nested
@@ -1246,432 +1767,639 @@ def cross_validate_artifacts(
     if missing_constraints_kinds:
         errors.append(error(
             "constraints",
-            f"No constraints defined for artifact kinds: {sorted(missing_constraints_kinds)} — add them to constraints.toml",
+            (
+                "No constraints defined for artifact kinds: "
+                f"{sorted(missing_constraints_kinds)} — add them to constraints.toml"
+            ),
             code=EC.MISSING_CONSTRAINTS,
             path=Path("<constraints.toml>"),
             line=1,
             kinds=sorted(missing_constraints_kinds),
         ))
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-build-constraints-index
+    return (
+        constraints_by_artifact_kind,
+        composite_nested_kinds_by_base_kind,
+        heading_desc_by_kind,
+    )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-build-constraints-index
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-collect-kind-tokens
-    systems_set: set[str] = set()
-    if registered_systems is not None:
-        systems_set = {str(s).lower() for s in registered_systems}
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-collect-kind-tokens
+def _collect_cross_all_kind_tokens(
+    constraints_by_artifact_kind: Dict[str, ArtifactKindConstraints],
+) -> set[str]:
+    all_kind_tokens: set[str] = set()
+    for constraint in constraints_by_artifact_kind.values():
+        for id_constraint in (getattr(constraint, "defined_id", None) or []):
+            kind = str(getattr(id_constraint, "kind", "") or "").strip().lower()
+            if kind:
+                all_kind_tokens.add(kind)
+        for id_constraint in (getattr(constraint, "referenced_id", None) or []):
+            kind = str(getattr(id_constraint, "kind", "") or "").strip().lower()
+            if kind:
+                all_kind_tokens.add(kind)
+    return all_kind_tokens
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-collect-kind-tokens
 
-    # Collect ALL known kind tokens across all artifact constraints for
-    # system boundary detection when no registered systems are available.
-    _cross_all_kind_tokens: set[str] = set()
-    for _c in constraints_by_artifact_kind.values():
-        for _ic in (getattr(_c, "defined_id", None) or []):
-            _k = str(getattr(_ic, "kind", "") or "").strip().lower()
-            if _k:
-                _cross_all_kind_tokens.add(_k)
-        for _ic in (getattr(_c, "referenced_id", None) or []):
-            _k = str(getattr(_ic, "kind", "") or "").strip().lower()
-            if _k:
-                _cross_all_kind_tokens.add(_k)
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-collect-kind-tokens
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-match-system
-    def match_system_from_id(cpt: str) -> Optional[str]:
-        if not cpt.lower().startswith("cpt-"):
-            return None
-        if not systems_set:
-            # No registered systems — use rightmost kind-token split
-            # (longest system) to handle system names containing kind tokens.
-            remainder = cpt[4:]  # strip "cpt-"
-            best_pos: Optional[int] = None
-            for kt in _cross_all_kind_tokens:
-                marker = f"-{kt}-"
-                idx = remainder.find(marker)
-                if idx > 0 and (best_pos is None or idx > best_pos):
-                    best_pos = idx
-            if best_pos is not None:
-                return remainder[:best_pos].lower()
-            parts = cpt.split("-")
-            return parts[1].lower() if len(parts) >= 3 else None
-        matched: Optional[str] = None
-        for sys in systems_set:
-            prefix = f"cpt-{sys}-"
-            if cpt.lower().startswith(prefix):
-                if matched is None or len(sys) > len(matched):
-                    matched = sys
-        return matched
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-match-system
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-extract-kind
-    def extract_kind_from_id(cpt: str, system: Optional[str]) -> Optional[str]:
-        if not cpt.lower().startswith("cpt-"):
-            return None
-        if system is None:
-            return None
-        prefix = f"cpt-{system}-"
-        if not cpt.lower().startswith(prefix.lower()):
-            return None
-        remainder = cpt[len(prefix):]
-        if not remainder:
-            return None
-        parts = [p for p in remainder.split("-") if p]
-        if not parts:
-            return None
-
-        base = parts[0].strip().lower()
-        nested_kinds = composite_nested_kinds_by_base_kind.get(base)
-        if nested_kinds and len(parts) >= 4:
-            for p in reversed(parts[2:]):
-                pp = p.strip().lower()
-                if pp in nested_kinds and pp != base:
-                    return pp
-
-        # Handle IDs like cpt-cf-errors-actor-ci-pipeline where "cf" is the
-        # registered system and "errors" is a subsystem segment.
-        kind_tokens = {str(k).strip().lower() for k in _cross_all_kind_tokens if str(k).strip()}
-        if base in kind_tokens:
-            return base
-
-        rem_l = remainder.lower()
-        best_pos: Optional[int] = None
-        best_kind: Optional[str] = None
-        for kt in kind_tokens:
-            marker = f"-{kt}-"
-            idx = rem_l.find(marker)
-            if idx > 0 and (best_pos is None or idx < best_pos):
-                best_pos = idx
-                best_kind = kt
-
-        if best_kind is not None:
-            return best_kind
-        return base
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-extract-kind
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-external-ref
-    def is_external_system_ref(cpt: str) -> bool:
-        if not systems_set:
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-external-ref
+def _is_external_system_ref(cpt: str, systems_set: set[str]) -> bool:
+    if not systems_set:
+        return False
+    if not cpt.lower().startswith("cpt-"):
+        return False
+    for system in systems_set:
+        if cpt.lower().startswith(f"cpt-{system}-"):
             return False
-        if not cpt.lower().startswith("cpt-"):
-            return False
-        for sys in systems_set:
-            prefix = f"cpt-{sys}-"
-            if cpt.lower().startswith(prefix):
-                return False
-        return True
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-external-ref
+    return True
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-external-ref
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-headings-info
-    def headings_info_for_kind(kind: str, heading_ids: Sequence[str]) -> List[Dict[str, object]]:
-        km = heading_desc_by_kind.get(str(kind).strip().upper(), {})
-        out: List[Dict[str, object]] = []
-        for hid in heading_ids:
-            hs = _normalize_heading_identifier(hid)
-            if not hs:
-                continue
-            out.append({"id": hs, "description": km.get(hs)})
-        return out
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-headings-info
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-datamodel
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-headings-info
+def _headings_info_for_kind(
+    kind: str,
+    heading_ids: Sequence[str],
+    heading_desc_by_kind: Dict[str, Dict[str, str]],
+) -> List[Dict[str, object]]:
+    kind_map = heading_desc_by_kind.get(str(kind).strip().upper(), {})
+    out: List[Dict[str, object]] = []
+    for hid in heading_ids:
+        normalized = _normalize_heading_identifier(hid)
+        if not normalized:
+            continue
+        out.append({"id": normalized, "description": kind_map.get(normalized)})
+    return out
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-headings-info
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
-    # Index scan results
-    defs_by_id: Dict[str, List[Dict[str, object]]] = {}
-    refs_by_id: Dict[str, List[Dict[str, object]]] = {}
-    present_kinds_by_system: Dict[str, set[str]] = {}
-    refs_by_system_kind: Dict[str, Dict[str, List[Dict[str, object]]]] = {}
 
-    headings_cache: Dict[str, List[List[str]]] = {}
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
+def _scan_cross_artifact_hit(
+    *,
+    hit: Dict[str, object],
+    artifact_kind: str,
+    artifact_path: Path,
+    headings_at: Sequence[Sequence[str]],
+    systems_set: set[str],
+    all_kind_tokens: set[str],
+    composite_nested_kinds_by_base_kind: Dict[str, set[str]],
+) -> Optional[Tuple[str, Dict[str, object], Optional[str], str]]:
+    hid = str(hit.get("id", "")).strip()
+    if not hid:
+        return None
+    line = int(hit.get("line", 1) or 1)
+    system = _match_system_from_id(hid, systems_set, all_kind_tokens)
+    id_kind = _extract_kind_from_cpt(
+        hid,
+        system,
+        all_kind_tokens,
+        composite_nested_kinds_by_base_kind,
+    )
+    active_headings = _normalize_heading_identifiers(
+        headings_at[line] if 0 <= line < len(headings_at) else []
+    )
+    return str(hit.get("type")), {
+        "id": hid,
+        "line": line,
+        "checked": bool(hit.get("checked", False)),
+        "priority": hit.get("priority"),
+        "has_task": bool(hit.get("has_task", False)),
+        "has_priority": bool(hit.get("has_priority", False)),
+        "artifact_kind": artifact_kind,
+        "artifact_path": artifact_path,
+        "system": system,
+        "id_kind": id_kind,
+        "headings": active_headings,
+    }, system, hid
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
+def _scan_cross_artifact_rows(
+    *,
+    artifacts: Sequence[ArtifactRecord],
+    systems_set: set[str],
+    all_kind_tokens: set[str],
+    composite_nested_kinds_by_base_kind: Dict[str, set[str]],
+) -> Tuple[
+    Dict[str, List[Dict[str, object]]],
+    Dict[str, List[Dict[str, object]]],
+    Dict[str, set[str]],
+    Dict[str, Dict[str, List[Dict[str, object]]]],
+]:
+    from .document import headings_by_line, scan_cpt_ids
+
+    indexes = CrossArtifactScanIndexes(
+        defs_by_id={},
+        refs_by_id={},
+        present_kinds_by_system={},
+        refs_by_system_kind={},
+        headings_cache={},
+    )
+
     for art in artifacts:
-        ak = str(art.artifact_kind).strip().upper()
-        hits = scan_cpt_ids(art.path)
-        hkey = str(art.path)
-        if hkey not in headings_cache:
-            # Prefer constraint heading ids when available; else fallback to raw titles.
-            hc = getattr(getattr(art, "constraints", None), "headings", None)
-            if hc:
-                headings_cache[hkey] = heading_constraint_ids_by_line(art.path, hc)
-            else:
-                headings_cache[hkey] = headings_by_line(art.path)
-        headings_at = headings_cache[hkey]
-
-        for h in hits:
-            hid = str(h.get("id", "")).strip()
-            if not hid:
-                continue
-            line = int(h.get("line", 1) or 1)
-            checked = bool(h.get("checked", False))
-            system = match_system_from_id(hid)
-            id_kind = extract_kind_from_id(hid, system)
-            active_headings = _normalize_heading_identifiers(
-                headings_at[line] if 0 <= line < len(headings_at) else []
+        artifact_kind = str(art.artifact_kind).strip().upper()
+        headings_at = _cross_artifact_headings_at(art, indexes.headings_cache, headings_by_line)
+        for hit in scan_cpt_ids(art.path):
+            scanned_hit = _scan_cross_artifact_hit(
+                hit=hit,
+                artifact_kind=artifact_kind,
+                artifact_path=art.path,
+                headings_at=headings_at,
+                systems_set=systems_set,
+                all_kind_tokens=all_kind_tokens,
+                composite_nested_kinds_by_base_kind=composite_nested_kinds_by_base_kind,
+            )
+            _record_cross_artifact_hit(
+                scanned_hit,
+                artifact_kind=artifact_kind,
+                defs_by_id=indexes.defs_by_id,
+                refs_by_id=indexes.refs_by_id,
+                present_kinds_by_system=indexes.present_kinds_by_system,
+                refs_by_system_kind=indexes.refs_by_system_kind,
             )
 
-            row = {
-                "id": hid,
-                "line": line,
-                "checked": checked,
-                "priority": h.get("priority"),
-                "has_task": bool(h.get("has_task", False)),
-                "has_priority": bool(h.get("has_priority", False)),
-                "artifact_kind": ak,
-                "artifact_path": art.path,
-                "system": system,
-                "id_kind": id_kind,
-                "headings": active_headings,
-            }
+    return (
+        indexes.defs_by_id,
+        indexes.refs_by_id,
+        indexes.present_kinds_by_system,
+        indexes.refs_by_system_kind,
+    )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 
-            if str(h.get("type")) == "definition":
-                defs_by_id.setdefault(hid, []).append(row)
-                if system:
-                    present_kinds_by_system.setdefault(system, set()).add(ak)
-            elif str(h.get("type")) == "reference":
-                refs_by_id.setdefault(hid, []).append(row)
-                if system:
-                    present_kinds_by_system.setdefault(system, set()).add(ak)
-                    refs_by_system_kind.setdefault(system, {}).setdefault(ak, []).append(row)
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-duplicate-defs
-    # Detect duplicate ID definitions across different artifact files
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
+def _cross_artifact_headings_at(
+    art: ArtifactRecord,
+    headings_cache: Dict[str, List[List[str]]],
+    headings_by_line: callable,
+) -> List[List[str]]:
+    hkey = str(art.path)
+    if hkey not in headings_cache:
+        heading_constraints = getattr(getattr(art, "constraints", None), "headings", None)
+        headings_cache[hkey] = (
+            heading_constraint_ids_by_line(art.path, heading_constraints)
+            if heading_constraints else headings_by_line(art.path)
+        )
+    return headings_cache[hkey]
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
+def _record_cross_artifact_hit(
+    scanned_hit: Optional[Tuple[str, Dict[str, object], Optional[str], str]],
+    *,
+    artifact_kind: str,
+    defs_by_id: Dict[str, List[Dict[str, object]]],
+    refs_by_id: Dict[str, List[Dict[str, object]]],
+    present_kinds_by_system: Dict[str, set[str]],
+    refs_by_system_kind: Dict[str, Dict[str, List[Dict[str, object]]]],
+) -> None:
+    if scanned_hit is None:
+        return
+    hit_type, row, system, hid = scanned_hit
+    if hit_type == "definition":
+        defs_by_id.setdefault(hid, []).append(row)
+    elif hit_type == "reference":
+        refs_by_id.setdefault(hid, []).append(row)
+    else:
+        return
+    if not system:
+        return
+    present_kinds_by_system.setdefault(system, set()).add(artifact_kind)
+    if hit_type == "reference":
+        refs_by_system_kind.setdefault(system, {}).setdefault(artifact_kind, []).append(row)
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-build-index
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-duplicate-defs
+def _validate_duplicate_definitions(
+    defs_by_id: Dict[str, List[Dict[str, object]]],
+    errors: List[Dict[str, object]],
+) -> None:
     for did, drows in defs_by_id.items():
         if len(drows) < 2:
             continue
-        # Group by artifact path — same ID in the same file is not a cross-file collision
-        paths = {str(d.get("artifact_path", "")) for d in drows}
+        paths = {str(drow.get("artifact_path", "")) for drow in drows}
         if len(paths) < 2:
             continue
         sorted_paths = sorted(paths)
-        for d in drows:
-            other_paths = [p for p in sorted_paths if p != str(d.get("artifact_path", ""))]
+        for drow in drows:
+            other_paths = [path for path in sorted_paths if path != str(drow.get("artifact_path", ""))]
             errors.append(error(
                 "structure",
                 f"Duplicate definition of `{did}` — also defined in: {', '.join(other_paths)}",
                 code=EC.DUPLICATE_DEFINITION,
-                path=d.get("artifact_path"),
-                line=int(d.get("line", 1) or 1),
+                path=drow.get("artifact_path"),
+                line=int(drow.get("line", 1) or 1),
                 id=did,
             ))
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-duplicate-defs
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-duplicate-defs
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-ref
-    # Definition existence for internal systems
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-ref
+def _validate_reference_definitions_exist(
+    *,
+    refs_by_id: Dict[str, List[Dict[str, object]]],
+    defs_by_id: Dict[str, List[Dict[str, object]]],
+    systems_set: set[str],
+    errors: List[Dict[str, object]],
+) -> None:
     for rid, rows in refs_by_id.items():
-        if is_external_system_ref(rid):
+        if _is_external_system_ref(rid, systems_set):
             continue
         if rid in defs_by_id:
             continue
-        for r in rows:
-            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-no-def
+        # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-no-def
+        for row in rows:
             errors.append(error(
                 "structure",
                 f"Reference to `{rid}` has no matching definition in any artifact",
                 code=EC.REF_NO_DEFINITION,
-                path=r.get("artifact_path"),
-                line=int(r.get("line", 1) or 1),
+                path=row.get("artifact_path"),
+                line=int(row.get("line", 1) or 1),
                 id=rid,
             ))
-            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-no-def
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-ref
+        # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-no-def
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-ref
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-ref
-    # Done status consistency
-    for rid, rrows in refs_by_id.items():
-        for r in rrows:
-            if not bool(r.get("has_task", False)):
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-ref
+def _validate_checked_reference_consistency(
+    *,
+    refs_by_id: Dict[str, List[Dict[str, object]]],
+    defs_by_id: Dict[str, List[Dict[str, object]]],
+    errors: List[Dict[str, object]],
+) -> None:
+    for rid, rows in refs_by_id.items():
+        defs = defs_by_id.get(rid, [])
+        for row in rows:
+            if not bool(row.get("has_task", False)):
                 continue
-            if not bool(r.get("checked", False)):
+            if not bool(row.get("checked", False)):
                 continue
-            defs = defs_by_id.get(rid, [])
-            for d in defs:
-                if not bool(d.get("has_task", False)):
+            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-ref-done-def-not
+            for drow in defs:
+                if not bool(drow.get("has_task", False)):
                     continue
-                if bool(d.get("checked", False)):
+                if bool(drow.get("checked", False)):
                     continue
-                # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-ref-done-def-not
                 errors.append(error(
                     "structure",
                     f"Reference to `{rid}` is checked [x] but its definition is still unchecked",
                     code=EC.REF_DONE_DEF_NOT_DONE,
-                    path=r.get("artifact_path"),
-                    line=int(r.get("line", 1) or 1),
+                    path=row.get("artifact_path"),
+                    line=int(row.get("line", 1) or 1),
                     id=rid,
                 ))
-                # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-ref-done-def-not
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-ref
+            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-ref-done-def-not
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-ref
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-def
-    # Reverse: definition checked but reference unchecked
-    for rid, rrows in refs_by_id.items():
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-def
+def _validate_definition_completion_consistency(
+    *,
+    refs_by_id: Dict[str, List[Dict[str, object]]],
+    defs_by_id: Dict[str, List[Dict[str, object]]],
+    errors: List[Dict[str, object]],
+) -> None:
+    for rid, rows in refs_by_id.items():
         defs = defs_by_id.get(rid, [])
         if not defs:
             continue
-        # Check if ALL definitions with tasks are checked
-        defs_with_task = [d for d in defs if bool(d.get("has_task", False))]
-        if not defs_with_task:
+        # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-def-done-ref-not
+        defs_with_task = [drow for drow in defs if bool(drow.get("has_task", False))]
+        if defs_with_task and all(bool(drow.get("checked", False)) for drow in defs_with_task):
+            for row in rows:
+                if not bool(row.get("has_task", False)):
+                    continue
+                if bool(row.get("checked", False)):
+                    continue
+                errors.append(error(
+                    "structure",
+                    (
+                        f"Definition of `{rid}` is checked [x] but reference in "
+                        f"{row.get('artifact_kind', '?')} artifact is still unchecked"
+                    ),
+                    code=EC.DEF_DONE_REF_NOT_DONE,
+                    path=row.get("artifact_path"),
+                    line=int(row.get("line", 1) or 1),
+                    id=rid,
+                    def_artifact_kind=defs_with_task[0].get("artifact_kind"),
+                ))
+        # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-def-done-ref-not
+        if any(bool(drow.get("has_task", False)) for drow in defs):
             continue
-        if not all(bool(d.get("checked", False)) for d in defs_with_task):
-            continue
-        # Definition is done — flag any task-tracked reference that is NOT done
-        for r in rrows:
-            if not bool(r.get("has_task", False)):
-                continue
-            if bool(r.get("checked", False)):
-                continue
-            errors.append(error(
-                "structure",
-                f"Definition of `{rid}` is checked [x] but reference in {r.get('artifact_kind', '?')} artifact is still unchecked",
-                code=EC.DEF_DONE_REF_NOT_DONE,
-                path=r.get("artifact_path"),
-                line=int(r.get("line", 1) or 1),
-                id=rid,
-                def_artifact_kind=defs_with_task[0].get("artifact_kind"),
-            ))
-            # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-def-done-ref-not
-            # (error emitted above)
-            # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-def-done-ref-not
-
-    for rid, rrows in refs_by_id.items():
-        defs = defs_by_id.get(rid, [])
-        if not defs:
-            continue
-        for r in rrows:
-            if not bool(r.get("has_task", False)):
-                continue
-            if any(bool(d.get("has_task", False)) for d in defs):
+        for row in rows:
+            if not bool(row.get("has_task", False)):
                 continue
             errors.append(error(
                 "structure",
                 f"Reference to `{rid}` has task checkbox but its definition has no task tracking",
                 code=EC.REF_TASK_DEF_NO_TASK,
-                path=r.get("artifact_path"),
-                line=int(r.get("line", 1) or 1),
+                path=row.get("artifact_path"),
+                line=int(row.get("line", 1) or 1),
                 id=rid,
             ))
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-def
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-def
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
-    # Per-artifact kind required ID kind presence and headings
-    for art in artifacts:
-        ak = str(art.artifact_kind).strip().upper()
-        c = constraints_by_artifact_kind.get(ak)
-        if c is None:
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
+def _defs_in_artifact_file(
+    art: ArtifactRecord,
+    defs_by_id: Dict[str, List[Dict[str, object]]],
+) -> List[Dict[str, object]]:
+    return [
+        drow
+        for rows in defs_by_id.values()
+        for drow in rows
+        if str(drow.get("artifact_path")) == str(art.path) and drow.get("system") is not None
+    ]
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
+def _validate_artifact_definitions_against_constraints(
+    *,
+    art: ArtifactRecord,
+    constraint: ArtifactKindConstraints,
+    defs_in_file: Sequence[Dict[str, object]],
+    heading_desc_by_kind: Dict[str, Dict[str, str]],
+    errors: List[Dict[str, object]],
+) -> None:
+    artifact_kind = str(art.artifact_kind).strip().upper()
+    allowed_kinds = {
+        str(getattr(id_constraint, "kind", "")).strip().lower()
+        for id_constraint in getattr(constraint, "defined_id", []) or []
+    }
+    for drow in defs_in_file:
+        id_kind = str(drow.get("id_kind") or "").lower()
+        if not id_kind:
             continue
+        if allowed_kinds and id_kind not in allowed_kinds:
+            errors.append(error(
+                "constraints",
+                f"`{drow.get('id')}` uses kind `{id_kind}` not allowed in {artifact_kind} artifact",
+                code=EC.ID_KIND_NOT_ALLOWED,
+                path=art.path,
+                line=int(drow.get("line", 1) or 1),
+                artifact_kind=artifact_kind,
+                id_kind=id_kind,
+                id=str(drow.get("id")),
+            ))
 
-        defs_in_file = [
-            d for rows in defs_by_id.values() for d in rows
-            if str(d.get("artifact_path")) == str(art.path) and d.get("system") is not None
-        ]
+    for id_constraint in getattr(constraint, "defined_id", []) or []:
+        _validate_artifact_required_id_kind(
+            art=art,
+            artifact_kind=artifact_kind,
+            id_constraint=id_constraint,
+            defs_in_file=defs_in_file,
+            heading_desc_by_kind=heading_desc_by_kind,
+            errors=errors,
+        )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 
-        allowed_kinds = {str(getattr(ic, "kind", "")).strip().lower() for ic in getattr(c, "defined_id", []) or []}
-        for d in defs_in_file:
-            k = str(d.get("id_kind") or "").lower()
-            if not k:
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
+def _validate_artifact_required_id_kind(
+    *,
+    art: ArtifactRecord,
+    artifact_kind: str,
+    id_constraint: IdConstraint,
+    defs_in_file: Sequence[Dict[str, object]],
+    heading_desc_by_kind: Dict[str, Dict[str, str]],
+    errors: List[Dict[str, object]],
+) -> None:
+    id_kind = str(getattr(id_constraint, "kind", "")).strip().lower()
+    is_required = bool(getattr(id_constraint, "required", True))
+    defs_of_kind = [drow for drow in defs_in_file if str(drow.get("id_kind") or "").lower() == id_kind]
+    if is_required and id_kind and not defs_of_kind:
+        id_headings = _normalize_heading_identifiers(getattr(id_constraint, "headings", None) or [])
+        errors.append(error(
+            "constraints",
+            f"{artifact_kind} artifact has no `{id_kind}` IDs but at least one is required",
+            code=EC.REQUIRED_ID_KIND_MISSING,
+            path=art.path,
+            line=1,
+            artifact_kind=artifact_kind,
+            id_kind=id_kind,
+            id_kind_name=str(getattr(id_constraint, "name", "") or "").strip() or None,
+            id_kind_description=str(getattr(id_constraint, "description", "") or "").strip() or None,
+            id_kind_template=str(getattr(id_constraint, "template", "") or "").strip() or None,
+            target_headings=id_headings if id_headings else None,
+            target_headings_info=(
+                _headings_info_for_kind(artifact_kind, id_headings, heading_desc_by_kind)
+                if id_headings else None
+            ),
+        ))
+        return
+
+    allowed_headings = set(_normalize_heading_identifiers(getattr(id_constraint, "headings", None) or []))
+    if not allowed_headings or not defs_of_kind:
+        return
+    allowed_sorted = sorted(allowed_headings)
+    for drow in defs_of_kind:
+        active = drow.get("headings") or []
+        if any(heading in allowed_headings for heading in active):
+            continue
+        errors.append(error(
+            "constraints",
+            (
+                f"`{drow.get('id')}` (kind `{id_kind}`) in {artifact_kind} artifact "
+                f"is under {drow.get('headings') or []} but must be under one of "
+                f"{allowed_sorted}"
+            ),
+            code=EC.DEF_WRONG_HEADINGS,
+            path=art.path,
+            line=int(drow.get("line", 1) or 1),
+            artifact_kind=artifact_kind,
+            id_kind=id_kind,
+            id=str(drow.get("id")),
+            headings=allowed_sorted,
+            headings_info=_headings_info_for_kind(
+                artifact_kind,
+                allowed_sorted,
+                heading_desc_by_kind,
+            ),
+            found_headings=active,
+            id_kind_name=str(getattr(id_constraint, "name", "") or "").strip() or None,
+            id_kind_description=str(getattr(id_constraint, "description", "") or "").strip() or None,
+            id_kind_template=str(getattr(id_constraint, "template", "") or "").strip() or None,
+        ))
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
+def _validate_cross_artifact_coverage(
+    *,
+    artifacts: Sequence[ArtifactRecord],
+    constraints_by_artifact_kind: Dict[str, ArtifactKindConstraints],
+    defs_by_id: Dict[str, List[Dict[str, object]]],
+    heading_desc_by_kind: Dict[str, Dict[str, str]],
+    errors: List[Dict[str, object]],
+) -> None:
+    for art in artifacts:
+        artifact_kind = str(art.artifact_kind).strip().upper()
+        constraint = constraints_by_artifact_kind.get(artifact_kind)
+        if constraint is None:
+            continue
+        defs_in_file = _defs_in_artifact_file(art, defs_by_id)
+        _validate_artifact_definitions_against_constraints(
+            art=art,
+            constraint=constraint,
+            defs_in_file=defs_in_file,
+            heading_desc_by_kind=heading_desc_by_kind,
+            errors=errors,
+        )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
+def _allowed_heading_context(
+    target_kind: str,
+    rule: ReferenceRule,
+    heading_desc_by_kind: Dict[str, Dict[str, str]],
+) -> AllowedHeadingContext:
+    heading_ids = set(_normalize_heading_identifiers(getattr(rule, "headings", None) or []))
+    sorted_ids = sorted(heading_ids)
+    return AllowedHeadingContext(
+        heading_ids=heading_ids,
+        sorted_ids=sorted_ids,
+        info=_headings_info_for_kind(target_kind, sorted_ids, heading_desc_by_kind),
+    )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
+def _validate_id_constraint_reference_rules(
+    artifact_kind: str,
+    id_kind: str,
+    id_meta: Dict[str, object],
+    refs_rules: Dict[str, ReferenceRule],
+    state: CrossReferenceCoverageState,
+) -> None:
+    for did, drows in state.defs_by_id.items():
+        for drow in drows:
+            if str(drow.get("artifact_kind")) != artifact_kind:
                 continue
-            if allowed_kinds and k not in allowed_kinds:
-                errors.append(error(
-                    "constraints",
-                    f"`{d.get('id')}` uses kind `{k}` not allowed in {ak} artifact",
-                    code=EC.ID_KIND_NOT_ALLOWED,
-                    path=art.path,
-                    line=int(d.get("line", 1) or 1),
-                    artifact_kind=ak,
-                    id_kind=k,
-                    id=str(d.get("id")),
-                ))
-
-        for ic in getattr(c, "defined_id", []) or []:
-            k = str(getattr(ic, "kind", "")).strip().lower()
-            is_required = bool(getattr(ic, "required", True))
-            defs_of_kind = [d for d in defs_in_file if str(d.get("id_kind") or "").lower() == k]
-            if is_required and k and not defs_of_kind:
-                id_headings = _normalize_heading_identifiers(getattr(ic, "headings", None) or [])
-                id_headings_info = headings_info_for_kind(ak, id_headings) if id_headings else None
-                errors.append(error(
-                    "constraints",
-                    f"{ak} artifact has no `{k}` IDs but at least one is required",
-                    code=EC.REQUIRED_ID_KIND_MISSING,
-                    path=art.path,
-                    line=1,
-                    artifact_kind=ak,
-                    id_kind=k,
-                    id_kind_name=str(getattr(ic, "name", "") or "").strip() or None,
-                    id_kind_description=str(getattr(ic, "description", "") or "").strip() or None,
-                    id_kind_template=str(getattr(ic, "template", "") or "").strip() or None,
-                    target_headings=id_headings if id_headings else None,
-                    target_headings_info=id_headings_info,
-                ))
+            if str(drow.get("id_kind") or "").lower() != id_kind:
+                continue
+            system = drow.get("system")
+            if system is None:
                 continue
 
-            allowed_headings = set(_normalize_heading_identifiers(getattr(ic, "headings", None) or []))
-            if allowed_headings and defs_of_kind:
-                allowed_sorted = sorted(allowed_headings)
-                allowed_info = headings_info_for_kind(ak, allowed_sorted)
-                for d in defs_of_kind:
-                    active = d.get("headings") or []
-                    if any(h in allowed_headings for h in active):
-                        continue
-                    errors.append(error(
-                        "constraints",
-                        f"`{d.get('id')}` (kind `{k}`) in {ak} artifact is under {d.get('headings') or []} but must be under one of {allowed_sorted}",
-                        code=EC.DEF_WRONG_HEADINGS,
-                        path=art.path,
-                        line=int(d.get("line", 1) or 1),
-                        artifact_kind=ak,
-                        id_kind=k,
-                        id=str(d.get("id")),
-                        headings=allowed_sorted,
-                        headings_info=allowed_info,
-                        found_headings=active,
-                        id_kind_name=str(getattr(ic, "name", "") or "").strip() or None,
-                        id_kind_description=str(getattr(ic, "description", "") or "").strip() or None,
-                        id_kind_template=str(getattr(ic, "template", "") or "").strip() or None,
-                    ))
+            system_present_kinds = state.present_kinds_by_system.get(system, set())
+            system_refs_by_kind = state.refs_by_system_kind.get(system, {})
+            for target_kind, rule in refs_rules.items():
+                target_kind_s = str(target_kind).strip().upper()
+                refs_in_kind = [
+                    row
+                    for row in system_refs_by_kind.get(target_kind_s, [])
+                    if str(row.get("id")) == did
+                ]
+                _validate_reference_rule(
+                    errors=state.errors,
+                    warnings=state.warnings,
+                    drow=drow,
+                    refs_in_kind=refs_in_kind,
+                    system_present_kinds=system_present_kinds,
+                    ctx=ReferenceCheckContext(
+                        did=did,
+                        artifact_kind=artifact_kind,
+                        target_kind=target_kind_s,
+                        id_kind=id_kind,
+                        id_meta=id_meta,
+                    ),
+                    rule=rule,
+                    allowed_headings=_allowed_heading_context(
+                        target_kind_s,
+                        rule,
+                        state.heading_desc_by_kind,
+                    ),
+                )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
-    # Reference coverage rules
-    for ak, c in constraints_by_artifact_kind.items():
-        for ic in getattr(c, "defined_id", []) or []:
-            id_kind = str(getattr(ic, "kind", "")).strip().lower()
-            id_meta = _id_kind_rule_metadata(ic)
-            refs_rules = getattr(ic, "references", None) or {}
+# @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
+def _validate_cross_reference_coverage_rules(
+    *,
+    constraints_by_artifact_kind: Dict[str, ArtifactKindConstraints],
+    defs_by_id: Dict[str, List[Dict[str, object]]],
+    present_kinds_by_system: Dict[str, set[str]],
+    refs_by_system_kind: Dict[str, Dict[str, List[Dict[str, object]]]],
+    heading_desc_by_kind: Dict[str, Dict[str, str]],
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+) -> None:
+    state = CrossReferenceCoverageState(
+        defs_by_id=defs_by_id,
+        present_kinds_by_system=present_kinds_by_system,
+        refs_by_system_kind=refs_by_system_kind,
+        heading_desc_by_kind=heading_desc_by_kind,
+        errors=errors,
+        warnings=warnings,
+    )
+    for artifact_kind, constraint in constraints_by_artifact_kind.items():
+        for id_constraint in getattr(constraint, "defined_id", []) or []:
+            id_kind = str(getattr(id_constraint, "kind", "")).strip().lower()
+            id_meta = _id_kind_rule_metadata(id_constraint)
+            refs_rules = getattr(id_constraint, "references", None) or {}
             if not isinstance(refs_rules, dict):
                 continue
+            _validate_id_constraint_reference_rules(
+                artifact_kind,
+                id_kind,
+                id_meta,
+                refs_rules,
+                state,
+            )
+# @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
 
-            for did, drows in defs_by_id.items():
-                for drow in drows:
-                    if str(drow.get("artifact_kind")) != ak:
-                        continue
-                    if str(drow.get("id_kind") or "").lower() != id_kind:
-                        continue
-                    system = drow.get("system")
-                    if system is None:
-                        continue
 
-                    system_present_kinds = present_kinds_by_system.get(system, set())
-                    system_refs_by_kind = refs_by_system_kind.get(system, {})
-
-                    for target_kind, rule in refs_rules.items():
-                        tk = str(target_kind).strip().upper()
-                        allowed_headings = set(_normalize_heading_identifiers(getattr(rule, "headings", None) or []))
-                        allowed_headings_sorted = sorted(allowed_headings)
-                        allowed_headings_info = headings_info_for_kind(tk, allowed_headings_sorted)
-
-                        refs_in_kind = [r for r in system_refs_by_kind.get(tk, []) if str(r.get("id")) == did]
-                        _validate_reference_rule(
-                            errors=errors,
-                            warnings=warnings,
-                            drow=drow,
-                            refs_in_kind=refs_in_kind,
-                            system_present_kinds=system_present_kinds,
-                            did=did,
-                            ak=ak,
-                            tk=tk,
-                            id_kind=id_kind,
-                            id_meta=id_meta,
-                            rule=rule,
-                            allowed_headings=allowed_headings,
-                            allowed_headings_sorted=allowed_headings_sorted,
-                            allowed_headings_info=allowed_headings_info,
-                        )
-    # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
+def cross_validate_artifacts(
+    artifacts: Sequence[ArtifactRecord],
+    registered_systems: Optional[Iterable[str]] = None,
+    known_kinds: Optional[Iterable[str]] = None,
+) -> Dict[str, List[Dict[str, object]]]:
+    """Cross-validate references between artifact records."""
+    _ = known_kinds
+    errors: List[Dict[str, object]] = []
+    warnings: List[Dict[str, object]] = []
+    constraints_by_artifact_kind, composite_nested_kinds_by_base_kind, heading_desc_by_kind = (
+        _build_cross_constraint_indexes(artifacts, errors)
+    )
+    systems_set = {str(system).lower() for system in registered_systems} if registered_systems is not None else set()
+    _cross_all_kind_tokens = _collect_cross_all_kind_tokens(constraints_by_artifact_kind)
+    defs_by_id, refs_by_id, present_kinds_by_system, refs_by_system_kind = _scan_cross_artifact_rows(
+        artifacts=artifacts,
+        systems_set=systems_set,
+        all_kind_tokens=_cross_all_kind_tokens,
+        composite_nested_kinds_by_base_kind=composite_nested_kinds_by_base_kind,
+    )
+    # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
+    _validate_duplicate_definitions(defs_by_id, errors)
+    _validate_reference_definitions_exist(
+        refs_by_id=refs_by_id,
+        defs_by_id=defs_by_id,
+        systems_set=systems_set,
+        errors=errors,
+    )
+    _validate_checked_reference_consistency(
+        refs_by_id=refs_by_id,
+        defs_by_id=defs_by_id,
+        errors=errors,
+    )
+    _validate_definition_completion_consistency(
+        refs_by_id=refs_by_id,
+        defs_by_id=defs_by_id,
+        errors=errors,
+    )
+    _validate_cross_artifact_coverage(
+        artifacts=artifacts,
+        constraints_by_artifact_kind=constraints_by_artifact_kind,
+        defs_by_id=defs_by_id,
+        heading_desc_by_kind=heading_desc_by_kind,
+        errors=errors,
+    )
+    _validate_cross_reference_coverage_rules(
+        constraints_by_artifact_kind=constraints_by_artifact_kind,
+        defs_by_id=defs_by_id,
+        present_kinds_by_system=present_kinds_by_system,
+        refs_by_system_kind=refs_by_system_kind,
+        heading_desc_by_kind=heading_desc_by_kind,
+        errors=errors,
+        warnings=warnings,
+    )
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-return-cross
@@ -1726,69 +2454,327 @@ def _parse_required_bool_field(obj: dict, field: str) -> Tuple[bool, Optional[st
     return True, f"Constraint field '{field}' must be boolean"
 
 
-def _parse_heading_constraint(obj: object, *, pointer: Optional[str] = None) -> Tuple[Optional[HeadingConstraint], Optional[str]]:
+def _parse_optional_string_field(
+    obj: Dict[str, object],
+    field: str,
+    error_prefix: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    value = obj.get(field)
+    if value is not None and not isinstance(value, str):
+        return None, f"{error_prefix} field '{field}' must be string"
+    return value, None
+
+
+def _normalize_optional_text(value: Optional[str]) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _parse_optional_bool_constraint(
+    obj: Dict[str, object],
+    field: str,
+    error_prefix: str,
+) -> Tuple[Optional[bool], Optional[str]]:
+    value, parse_err = _parse_optional_bool(obj.get(field), field)
+    if parse_err:
+        return None, f"{error_prefix}: {parse_err}"
+    return value, None
+
+
+def _parse_optional_heading_ids(
+    obj: Dict[str, object],
+    field: str,
+    error_message: str,
+) -> Tuple[Optional[List[str]], Optional[str]]:
+    headings_raw = obj.get(field)
+    if headings_raw is None:
+        return None, None
+    if not isinstance(headings_raw, list) or any(not isinstance(heading, str) for heading in headings_raw):
+        return None, error_message
+    return _normalize_heading_identifiers(headings_raw), None
+
+
+def _parse_direct_bool_field(
+    obj: Dict[str, object],
+    field: str,
+    error_message: str,
+) -> Tuple[Optional[bool], Optional[str]]:
+    value = obj.get(field)
+    if value is not None and not isinstance(value, bool):
+        return None, error_message
+    return value, None
+
+
+def _collect_optional_string_fields(
+    obj: Dict[str, object],
+    fields: Sequence[str],
+    error_prefix: str,
+) -> Tuple[Optional[Dict[str, Optional[str]]], Optional[str]]:
+    values: Dict[str, Optional[str]] = {}
+    for field in fields:
+        value, err = _parse_optional_string_field(obj, field, error_prefix)
+        if err:
+            return None, err
+        values[field] = value
+    return values, None
+
+
+def _validate_heading_constraint_pattern(pattern: Optional[str]) -> Optional[str]:
+    pattern_s = _normalize_optional_text(pattern)
+    if not pattern_s:
+        return None
+    try:
+        re.compile(pattern_s)
+    except re.error as exc:
+        return f"Heading constraint 'pattern' invalid regex: {exc}"
+    return None
+
+
+def _collect_heading_constraint_options(  # pylint: disable=too-many-locals
+    obj: Dict[str, object],
+) -> Tuple[Optional[Tuple[bool, Optional[bool], Optional[bool]]], Optional[str]]:
+    """Parse the boolean-only heading options for one heading constraint."""
+    required_bool, req_err = _parse_required_bool_field(obj, "required")
+    if req_err:
+        return None, "Heading constraint field 'required' must be boolean"
+    multiple, err = _parse_optional_bool_constraint(obj, "multiple", "Heading constraint")
+    if err:
+        return None, err
+    numbered, err = _parse_optional_bool_constraint(obj, "numbered", "Heading constraint")
+    if err:
+        return None, err
+    return (bool(required_bool), multiple, numbered), None
+
+
+def _parse_id_constraint_scalar_fields(
+    obj: Dict[str, object],
+) -> Tuple[Optional[Dict[str, object]], Optional[str]]:
+    """Parse the non-reference fields for a single ID constraint object."""
+    required_bool, req_err = _parse_required_bool_field(obj, "required")
+    string_values, string_err = _collect_optional_string_fields(
+        obj,
+        ("name", "description", "template"),
+        "Constraint",
+    )
+    examples, examples_err = _parse_examples(obj.get("examples"))
+    option_values, option_err = _parse_id_constraint_option_fields(obj)
+    first_error = _first_constraint_parse_error(
+        "Constraint field 'required' must be boolean" if req_err else None,
+        string_err,
+        examples_err,
+        option_err,
+    )
+    if first_error:
+        return None, first_error
+    assert string_values is not None
+    assert option_values is not None
+    return {
+        "required": required_bool,
+        "name": string_values["name"],
+        "description": string_values["description"],
+        "template": _normalize_optional_text(string_values["template"]),
+        "examples": examples,
+        **option_values,
+    }, None
+
+
+def _first_constraint_parse_error(*messages: Optional[str]) -> Optional[str]:
+    """Return the first non-empty parse error message."""
+    for message in messages:
+        if message:
+            return message
+    return None
+
+
+def _parse_id_constraint_option_fields(
+    obj: Dict[str, object],
+) -> Tuple[Optional[Dict[str, object]], Optional[str]]:
+    """Parse optional boolean/list fields attached to an ID constraint."""
+    task, task_err = _parse_optional_bool(obj.get("task"), "task")
+    priority, priority_err = _parse_optional_bool(obj.get("priority"), "priority")
+    to_code, to_code_err = _parse_direct_bool_field(
+        obj,
+        "to_code",
+        "Constraint field 'to_code' must be boolean",
+    )
+    headings, headings_err = _parse_optional_heading_ids(
+        obj,
+        "headings",
+        "Constraint field 'headings' must be list[str]",
+    )
+    first_error = _first_constraint_parse_error(
+        task_err,
+        priority_err,
+        to_code_err,
+        headings_err,
+    )
+    if first_error:
+        return None, first_error
+    return {
+        "task": task,
+        "priority": priority,
+        "to_code": to_code,
+        "headings": headings,
+    }, None
+
+
+def _collect_id_constraint_fields(
+    obj: Dict[str, object],
+) -> Tuple[Optional[Dict[str, object]], Optional[str]]:
+    fields, field_err = _parse_id_constraint_scalar_fields(obj)
+    if field_err:
+        return None, field_err
+    references, ref_err = _parse_references(obj.get("references"))
+    if ref_err:
+        return None, ref_err
+    assert fields is not None
+    return {**fields, "references": references}, None
+
+
+def _validate_artifact_constraint_text_fields(
+    kind: str,
+    raw: Dict[str, object],
+    errors: List[str],
+) -> Optional[Dict[str, Optional[str]]]:
+    text_fields = {
+        "name": raw.get("name"),
+        "description": raw.get("description"),
+    }
+    for field_name, value in text_fields.items():
+        if value is not None and not isinstance(value, str):
+            errors.append(f"constraints for {kind} field '{field_name}' must be string")
+            return None
+    return {
+        "name": text_fields["name"] if isinstance(text_fields["name"], str) else None,
+        "description": (
+            text_fields["description"]
+            if isinstance(text_fields["description"], str) else None
+        ),
+    }
+
+
+def _parse_artifact_kind_constraints(
+    kind: str,
+    raw: Dict[str, object],
+    errors: List[str],
+) -> Optional[ArtifactKindConstraints]:
+    parsed = _parse_artifact_kind_constraint_parts(kind, raw, errors)
+    if parsed is None:
+        return None
+    text_fields, headings, defined_id, toc_val = parsed
+
+    return ArtifactKindConstraints(
+        name=text_fields["name"],
+        description=text_fields["description"],
+        defined_id=defined_id,
+        headings=headings,
+        toc=toc_val,
+    )
+
+
+def _parse_artifact_kind_constraint_parts(
+    kind: str,
+    raw: Dict[str, object],
+    errors: List[str],
+) -> Optional[Tuple[Dict[str, Optional[str]], Optional[List[HeadingConstraint]], List[IdConstraint], bool]]:
+    parsed: Optional[Tuple[Dict[str, Optional[str]], Optional[List[HeadingConstraint]], List[IdConstraint], bool]]
+    parsed = None
+    if "identifiers" not in raw:
+        errors.append(f"constraints for {kind} must include 'identifiers'")
+    else:
+        text_fields = _validate_artifact_constraint_text_fields(kind, raw, errors)
+        if text_fields is not None:
+            headings = _parse_kind_headings(kind, raw.get("headings"), errors)
+            if headings is not False:
+                defined_id, ok = _parse_identifiers_block(raw.get("identifiers"), kind, errors)
+                if ok and defined_id is not None:
+                    toc_val = _parse_kind_toc(kind, raw.get("toc"), errors)
+                    if toc_val is not None:
+                        parsed = text_fields, headings, defined_id, toc_val
+                elif ok:
+                    errors.append(f"constraints for {kind}: identifiers block returned no data")
+    return parsed
+
+
+def _parse_kind_headings(
+    kind: str,
+    headings_raw: object,
+    errors: List[str],
+) -> Optional[List[HeadingConstraint]] | bool:
+    if headings_raw is None:
+        return None
+    if not isinstance(headings_raw, list):
+        errors.append(f"constraints for {kind} field 'headings' must be a list")
+        return False
+    parsed_headings: List[HeadingConstraint] = []
+    for idx, heading_raw in enumerate(headings_raw):
+        pointer = f"/{kind.strip().upper()}/headings/{idx}"
+        heading_constraint, heading_err = _parse_heading_constraint(heading_raw, pointer=pointer)
+        if heading_err:
+            errors.append(f"constraints for {kind} headings[{idx}]: {heading_err}")
+            continue
+        if heading_constraint is not None:
+            parsed_headings.append(heading_constraint)
+    return _normalize_heading_ids(parsed_headings, kind, errors)
+
+
+def _parse_kind_toc(
+    kind: str,
+    toc_raw: object,
+    errors: List[str],
+) -> Optional[bool]:
+    if toc_raw is None:
+        return True
+    if not isinstance(toc_raw, bool):
+        errors.append(f"constraints for {kind} field 'toc' must be boolean")
+        return None
+    return toc_raw
+
+
+def _parse_heading_constraint(
+    obj: object,
+    *,
+    pointer: Optional[str] = None,
+) -> Tuple[Optional[HeadingConstraint], Optional[str]]:
     # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-heading
     if not isinstance(obj, dict):
         return None, "Heading constraint must be an object"
 
-    hid = obj.get("id")
-    if hid is not None and not isinstance(hid, str):
-        return None, "Heading constraint field 'id' must be string"
-    hid_s = _normalize_heading_identifier(hid) or None
-
-    prev = obj.get("prev")
-    if prev is not None and not isinstance(prev, str):
-        return None, "Heading constraint field 'prev' must be string"
-    prev_s = _normalize_heading_identifier(prev) or None
-
-    nxt = obj.get("next")
-    if nxt is not None and not isinstance(nxt, str):
-        return None, "Heading constraint field 'next' must be string"
-    next_s = _normalize_heading_identifier(nxt) or None
+    string_values, err = _collect_optional_string_fields(
+        obj,
+        ("id", "prev", "next", "pattern", "description"),
+        "Heading constraint",
+    )
+    if err:
+        return None, err
 
     level = obj.get("level")
     if not isinstance(level, int) or not 1 <= level <= 6:
         return None, "Heading constraint field 'level' must be integer 1-6"
 
-    pattern = obj.get("pattern")
-    if pattern is not None and not isinstance(pattern, str):
-        return None, "Heading constraint field 'pattern' must be string"
+    options, err = _collect_heading_constraint_options(obj)
+    if err or options is None:
+        return None, err
+    pattern_s = _normalize_optional_text(string_values["pattern"])
+    err = _validate_heading_constraint_pattern(pattern_s)
+    if err:
+        return None, err
 
-    description = obj.get("description")
-    if description is not None and not isinstance(description, str):
-        return None, "Heading constraint field 'description' must be string"
-    desc_s = description.strip() if isinstance(description, str) and description.strip() else None
-
-    required_bool, req_err = _parse_required_bool_field(obj, "required")
-    if req_err:
-        return None, "Heading constraint field 'required' must be boolean"
-
-    multiple, mult_err = _parse_optional_bool(obj.get("multiple"), "multiple")
-    if mult_err:
-        return None, f"Heading constraint: {mult_err}"
-
-    numbered, num_err = _parse_optional_bool(obj.get("numbered"), "numbered")
-    if num_err:
-        return None, f"Heading constraint: {num_err}"
-
-    # Validate regex early for better errors.
-    if pattern is not None and pattern.strip():
-        try:
-            re.compile(pattern)
-        except re.error as e:
-            return None, f"Heading constraint 'pattern' invalid regex: {e}"
+    required_bool, multiple, numbered = options
 
     return HeadingConstraint(
-        id=hid_s,
+        id=_normalize_heading_identifier(string_values["id"]) or None,
         level=int(level),
-        pattern=(pattern.strip() if isinstance(pattern, str) and pattern.strip() else None),
-        description=desc_s,
-        required=bool(required_bool),
+        pattern=pattern_s,
+        description=_normalize_optional_text(string_values["description"]),
+        required=required_bool,
         multiple=multiple,
         numbered=numbered,
-        prev=prev_s,
-        next=next_s,
-        pointer=(pointer.strip() if isinstance(pointer, str) and pointer.strip() else None),
+        prev=_normalize_heading_identifier(string_values["prev"]) or None,
+        next=_normalize_heading_identifier(string_values["next"]) or None,
+        pointer=_normalize_optional_text(pointer),
     ), None
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-heading
 
@@ -1827,64 +2813,23 @@ def _parse_id_constraint(obj: object) -> Tuple[Optional[IdConstraint], Optional[
     if not isinstance(kind, str) or not kind.strip():
         return None, "Constraint entry missing required 'kind'"
 
-    required_bool, req_err = _parse_required_bool_field(obj, "required")
-    if req_err:
-        return None, "Constraint field 'required' must be boolean"
-
-    name = obj.get("name")
-    if name is not None and not isinstance(name, str):
-        return None, "Constraint field 'name' must be string"
-
-    description = obj.get("description")
-    if description is not None and not isinstance(description, str):
-        return None, "Constraint field 'description' must be string"
-
-    template = obj.get("template")
-    if template is not None and not isinstance(template, str):
-        return None, "Constraint field 'template' must be string"
-    template_s = template.strip() if isinstance(template, str) and template.strip() else None
-
-    examples, ex_err = _parse_examples(obj.get("examples"))
-    if ex_err:
-        return None, ex_err
-
-    task, task_err = _parse_optional_bool(obj.get("task"), "task")
-    if task_err:
-        return None, task_err
-
-    priority, pr_err = _parse_optional_bool(obj.get("priority"), "priority")
-    if pr_err:
-        return None, pr_err
-
-    to_code = obj.get("to_code")
-    if to_code is not None and not isinstance(to_code, bool):
-        return None, "Constraint field 'to_code' must be boolean"
-
-    headings_raw = obj.get("headings")
-    headings: Optional[List[str]] = None
-    if headings_raw is not None:
-        if not isinstance(headings_raw, list) or any(not isinstance(h, str) for h in headings_raw):
-            return None, "Constraint field 'headings' must be list[str]"
-        headings = _normalize_heading_identifiers(headings_raw)
-
-    # New schema: embedded references map.
-    references, ref_err = _parse_references(obj.get("references"))
-    if ref_err:
-        return None, ref_err
+    parsed_fields, err = _collect_id_constraint_fields(obj)
+    if err or parsed_fields is None:
+        return None, err
 
     return (
         IdConstraint(
             kind=kind.strip(),
-            required=required_bool,
-            name=name,
-            description=description,
-            template=template_s,
-            examples=examples,
-            task=task,
-            priority=priority,
-            to_code=to_code,
-            headings=headings,
-            references=references,
+            required=bool(parsed_fields["required"]),
+            name=parsed_fields["name"],
+            description=parsed_fields["description"],
+            template=parsed_fields["template"],
+            examples=parsed_fields["examples"],
+            task=parsed_fields["task"],
+            priority=parsed_fields["priority"],
+            to_code=parsed_fields["to_code"],
+            headings=parsed_fields["headings"],
+            references=parsed_fields["references"],
         ),
         None,
     )
@@ -1967,7 +2912,13 @@ def _normalize_id_entry(
         if not isinstance(vv, str) or not vv.strip():
             return None, f"constraints for {kind} identifiers[{kkind}]: Constraint entry missing required 'kind'"
         if vv.strip().lower() != inferred_kind.lower():
-            return None, f"constraints for {kind} identifiers[{kkind}]: Constraint entry kind does not match identifiers key"
+            return (
+                None,
+                (
+                    f"constraints for {kind} identifiers[{kkind}]: Constraint entry "
+                    "kind does not match identifiers key"
+                ),
+            )
         return dict(entry), None
     normalized = dict(entry)
     normalized["kind"] = inferred_kind
@@ -2046,62 +2997,10 @@ def parse_kit_constraints(data: object) -> Tuple[Optional[KitConstraints], List[
         if not isinstance(raw, dict):
             errors.append(f"constraints for {kind} must be an object")
             continue
-
-        has_identifiers = "identifiers" in raw
-        if not has_identifiers:
-            errors.append(f"constraints for {kind} must include 'identifiers'")
+        parsed = _parse_artifact_kind_constraints(kind, raw, errors)
+        if parsed is None:
             continue
-
-        name = raw.get("name")
-        if name is not None and not isinstance(name, str):
-            errors.append(f"constraints for {kind} field 'name' must be string")
-            continue
-
-        description = raw.get("description")
-        if description is not None and not isinstance(description, str):
-            errors.append(f"constraints for {kind} field 'description' must be string")
-            continue
-
-        headings: Optional[List[HeadingConstraint]] = None
-        headings_raw = raw.get("headings")
-        if headings_raw is not None:
-            if not isinstance(headings_raw, list):
-                errors.append(f"constraints for {kind} field 'headings' must be a list")
-                continue
-            parsed_headings: List[HeadingConstraint] = []
-            for idx, hraw in enumerate(headings_raw):
-                ptr = f"/{kind.strip().upper()}/headings/{idx}"
-                hc, herr = _parse_heading_constraint(hraw, pointer=ptr)
-                if herr:
-                    errors.append(f"constraints for {kind} headings[{idx}]: {herr}")
-                    continue
-                if hc is not None:
-                    parsed_headings.append(hc)
-            headings = _normalize_heading_ids(parsed_headings, kind, errors)
-
-        defined_id, ok = _parse_identifiers_block(raw.get("identifiers"), kind, errors)
-        if not ok:
-            continue
-        if defined_id is None:
-            errors.append(f"constraints for {kind}: identifiers block returned no data")
-            continue
-
-        # TOC flag (default true when absent)
-        toc_raw = raw.get("toc")
-        toc_val = True
-        if toc_raw is not None:
-            if not isinstance(toc_raw, bool):
-                errors.append(f"constraints for {kind} field 'toc' must be boolean")
-                continue
-            toc_val = toc_raw
-
-        out[kind.strip().upper()] = ArtifactKindConstraints(
-            name=name,
-            description=description,
-            defined_id=defined_id,
-            headings=headings,
-            toc=toc_val,
-        )
+        out[kind.strip().upper()] = parsed
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-kit-loop
 
     if errors:
@@ -2220,6 +3119,7 @@ def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[st
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
 def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstraints], List[str]]:
     """Load constraints files."""
     loaded: List[KitConstraints] = []
@@ -2240,6 +3140,7 @@ def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstrain
 def load_constraints_toml(kit_root: Path) -> Tuple[Optional[KitConstraints], List[str]]:
     """Load constraints toml."""
     return load_constraints_file((kit_root / "constraints.toml").resolve())
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-headings-datamodel
@@ -2266,8 +3167,39 @@ _HEADING_LINE_RE = re.compile(r"^\s*(#{1,6})\s+(.+?)\s*$")
 _HEADING_NUMBER_PREFIX_RE = re.compile(r"^(?P<prefix>\d+(?:\.\d+)*)(?:\.)?\s+(?P<title>.+)$")
 # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-headings-datamodel
 
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
+def _parse_heading_numbering(
+    raw_title: str,
+    path: Path,
+) -> Tuple[bool, str, Optional[str], Optional[List[int]]]:
+    """Extract numbering metadata from one heading title."""
+    numbered = False
+    title_text = raw_title
+    number_prefix: Optional[str] = None
+    number_parts: Optional[List[int]] = None
+    match = _HEADING_NUMBER_PREFIX_RE.match(raw_title)
+    if not match:
+        return numbered, title_text, number_prefix, number_parts
+
+    numbered = True
+    number_prefix = str(match.group("prefix") or "").strip() or None
+    if number_prefix:
+        try:
+            number_parts = [int(x) for x in number_prefix.split(".") if x.strip()]
+        except ValueError as exc:
+            logger.warning(
+                "Invalid heading number prefix %r in %s: %s",
+                number_prefix,
+                path,
+                exc,
+            )
+            number_parts = None
+    title_text = str(match.group("title") or "").strip()
+    return numbered, title_text, number_prefix, number_parts
+
+
 def _scan_headings(path: Path) -> List[Dict[str, object]]:
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
     from .document import read_text_safe
 
     lines = read_text_safe(path)
@@ -2287,20 +3219,7 @@ def _scan_headings(path: Path) -> List[Dict[str, object]]:
             continue
         level = len(m.group(1))
         raw_title = str(m.group(2) or "").strip()
-        numbered = False
-        title_text = raw_title
-        number_prefix: Optional[str] = None
-        number_parts: Optional[List[int]] = None
-        mp = _HEADING_NUMBER_PREFIX_RE.match(raw_title)
-        if mp:
-            numbered = True
-            number_prefix = str(mp.group("prefix") or "").strip() or None
-            if number_prefix:
-                try:
-                    number_parts = [int(x) for x in number_prefix.split(".") if x.strip()]
-                except ValueError:
-                    number_parts = None
-            title_text = str(mp.group("title") or "").strip()
+        numbered, title_text, number_prefix, number_parts = _parse_heading_numbering(raw_title, path)
         out.append({
             "line": idx0 + 1,
             "level": level,
@@ -2311,14 +3230,481 @@ def _scan_headings(path: Path) -> List[Dict[str, object]]:
             "number_parts": number_parts,
         })
     return out
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
+
+
+def _heading_constraint_label(hc: HeadingConstraint) -> str:
+    hid = str(getattr(hc, "id", "") or "").strip()
+    pat = str(getattr(hc, "pattern", "") or "").strip()
+    if pat:
+        return f"{hid}({pat})" if hid else pat
+    return hid or f"level={int(hc.level)}"
+
+
+def _heading_constraint_info(hc: Optional[HeadingConstraint]) -> Optional[Dict[str, object]]:
+    if hc is None:
+        return None
+    return {
+        "id": getattr(hc, "id", None),
+        "level": int(getattr(hc, "level", 0) or 0),
+        "pattern": getattr(hc, "pattern", None),
+        "description": getattr(hc, "description", None),
+        "pointer": getattr(hc, "pointer", None),
+    }
+
+
+def _heading_constraint_source_fields(
+    hc: HeadingConstraint,
+    idx: int,
+    constraints_path: Optional[Path],
+    kit_id: Optional[str],
+) -> Dict[str, object]:
+    pointer = getattr(hc, "pointer", None) or f"/<unknown-kind>/headings/{idx}"
+    return {
+        "constraints_path": str(constraints_path) if constraints_path is not None else None,
+        "constraints_pointer": pointer,
+        "kit": kit_id,
+        "heading_id": getattr(hc, "id", None),
+        "heading_description": getattr(hc, "description", None),
+    }
+
+
+def _heading_context(
+    *,
+    heading_constraint: HeadingConstraint,
+    idx: int,
+    artifact_kind: str,
+    path: Path,
+    constraints_path: Optional[Path],
+    kit_id: Optional[str],
+) -> HeadingErrorContext:
+    return HeadingErrorContext(
+        heading_constraint=heading_constraint,
+        idx=idx,
+        artifact_kind=artifact_kind,
+        path=path,
+        constraints_path=constraints_path,
+        kit_id=kit_id,
+    )
+
+
+def _heading_context_fields(ctx: HeadingErrorContext) -> Dict[str, object]:
+    return _heading_constraint_source_fields(
+        ctx.heading_constraint,
+        ctx.idx,
+        ctx.constraints_path,
+        ctx.kit_id,
+    )
+
+
+def _neighbor_heading_constraints(
+    heading_constraints: Sequence[HeadingConstraint],
+    by_id: Dict[str, HeadingConstraint],
+    ctx: HeadingErrorContext,
+) -> Tuple[Optional[HeadingConstraint], Optional[HeadingConstraint]]:
+    prev_id = getattr(ctx.heading_constraint, "prev", None) or (
+        heading_constraints[ctx.idx - 1].id if ctx.idx > 0 else None
+    )
+    next_id = getattr(ctx.heading_constraint, "next", None) or (
+        heading_constraints[ctx.idx + 1].id
+        if ctx.idx + 1 < len(heading_constraints) else None
+    )
+    return (
+        by_id.get(str(prev_id)) if prev_id else None,
+        by_id.get(str(next_id)) if next_id else None,
+    )
+
+
+def _build_heading_constraints_by_id(
+    heading_constraints: Sequence[HeadingConstraint],
+) -> Dict[str, HeadingConstraint]:
+    by_id: Dict[str, HeadingConstraint] = {}
+    for heading_constraint in heading_constraints:
+        hid = str(getattr(heading_constraint, "id", "") or "").strip()
+        if hid and hid not in by_id:
+            by_id[hid] = heading_constraint
+    return by_id
+
+
+def _heading_numbering_state(
+    heading: Dict[str, object],
+) -> Optional[Tuple[Tuple[int, Tuple[Tuple[int, ...], int]], int, str]]:
+    parts = heading.get("number_parts")
+    if not parts or not isinstance(parts, list) or not all(isinstance(x, int) for x in parts):
+        return None
+    parent = tuple(parts[:-1])
+    key = (int(heading.get("level", 0) or 0), (parent, len(parts)))
+    prefix = str(heading.get("number_prefix") or "").strip() or ".".join(str(x) for x in parts)
+    return key, int(parts[-1]), prefix
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering-fn
+def _check_heading_numbering_sequence(
+    *,
+    headings: Sequence[Dict[str, object]],
+    artifact_kind: str,
+    path: Path,
+    errors: List[Dict[str, object]],
+) -> None:
+    last_child_by_key: Dict[Tuple[int, Tuple[Tuple[int, ...], int]], int] = {}
+    last_prefix_by_key: Dict[Tuple[int, Tuple[Tuple[int, ...], int]], str] = {}
+
+    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering
+    for heading in headings:
+        numbering_state = _heading_numbering_state(heading)
+        if numbering_state is None:
+            continue
+        key, child, prefix = numbering_state
+        parent = key[1][0]
+
+        if key in last_child_by_key:
+            expected = int(last_child_by_key[key]) + 1
+            if child != expected:
+                expected_prefix = ".".join([*(str(x) for x in parent), str(expected)]) if parent else str(expected)
+                errors.append(error(
+                    "structure",
+                    (
+                        f"Heading `{prefix}` in {artifact_kind} artifact is not "
+                        f"consecutive — expected `{expected_prefix}` after "
+                        f"`{last_prefix_by_key.get(key)}`"
+                    ),
+                    code=EC.HEADING_NUMBER_NOT_CONSECUTIVE,
+                    path=path,
+                    line=int(heading.get("line", 1) or 1),
+                    artifact_kind=artifact_kind,
+                    found_prefix=prefix,
+                    expected_prefix=expected_prefix,
+                    previous_prefix=last_prefix_by_key.get(key),
+                ))
+
+        last_child_by_key[key] = child
+        last_prefix_by_key[key] = prefix
+    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering-fn
+
+
+def _match_heading_constraint(
+    heading: Dict[str, object],
+    heading_constraint: HeadingConstraint,
+) -> bool:
+    if int(heading.get("level", 0)) != int(heading_constraint.level):
+        return False
+    pattern = getattr(heading_constraint, "pattern", None)
+    if not pattern:
+        return True
+    pattern_s = str(pattern).strip()
+    title = str(heading.get("title_text") or "").strip()
+    if not _is_regex_pattern_hc(pattern_s):
+        return pattern_s.casefold() == title.casefold()
+    try:
+        return re.search(pattern_s, title, flags=re.IGNORECASE) is not None
+    except re.error as exc:
+        logger.warning("Invalid heading match regex %r: %s", pattern_s, exc)
+        return False
+
+
+def _scope_end_for_parent_heading(
+    headings: Sequence[Dict[str, object]],
+    parent_idx: int,
+    parent_level: int,
+) -> int:
+    idx = parent_idx + 1
+    while idx < len(headings):
+        if int(headings[idx].get("level", 0) or 0) <= parent_level:
+            return idx
+        idx += 1
+    return len(headings)
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-scope
+def _match_scope_for_constraint(
+    *,
+    headings: Sequence[Dict[str, object]],
+    heading_constraint: HeadingConstraint,
+    cursor: int,
+    last_match_idx_by_level: Dict[int, int],
+) -> Tuple[int, int, int]:
+    hc_level = int(getattr(heading_constraint, "level", 0) or 0)
+    scope_start = cursor
+    scope_end = len(headings)
+    for level in range(hc_level - 1, 0, -1):
+        parent_idx = last_match_idx_by_level.get(level)
+        if parent_idx is None:
+            continue
+        scope_start = max(scope_start, parent_idx + 1)
+        scope_end = _scope_end_for_parent_heading(headings, parent_idx, level)
+        break
+    return hc_level, scope_start, scope_end
+def _find_heading_matches_in_scope(
+    *,
+    headings: Sequence[Dict[str, object]],
+    heading_constraint: HeadingConstraint,
+    scope_start: int,
+    scope_end: int,
+) -> Tuple[List[Dict[str, object]], int, int]:
+    match_idx = scope_start
+    while match_idx < scope_end and not _match_heading_constraint(headings[match_idx], heading_constraint):
+        match_idx += 1
+    if match_idx >= scope_end:
+        return [], scope_start, scope_start
+    matches = [headings[match_idx]]
+    next_idx = match_idx + 1
+    if heading_constraint.multiple is not False:
+        while next_idx < scope_end and _match_heading_constraint(headings[next_idx], heading_constraint):
+            matches.append(headings[next_idx])
+            next_idx += 1
+    return matches, match_idx, next_idx
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-scope
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-hc-helpers
+def _append_missing_heading_error(
+    *,
+    heading_ctx: HeadingValidationContext,
+    heading_constraint: HeadingConstraint,
+    idx: int,
+) -> None:
+    ctx = _heading_context(
+        heading_constraint=heading_constraint,
+        idx=idx,
+        artifact_kind=heading_ctx.artifact_kind,
+        path=heading_ctx.path,
+        constraints_path=heading_ctx.constraints_path,
+        kit_id=heading_ctx.kit_id,
+    )
+    hc_desc = str(getattr(ctx.heading_constraint, "description", "") or "").strip()
+    after_hc, before_hc = _neighbor_heading_constraints(
+        heading_ctx.heading_constraints,
+        heading_ctx.by_id,
+        ctx,
+    )
+    between: List[str] = []
+    if after_hc is not None:
+        between.append(f"after '{_heading_constraint_label(after_hc)}'")
+    if before_hc is not None:
+        between.append(f"before '{_heading_constraint_label(before_hc)}'")
+    between_s = (" (expected " + " and ".join(between) + ")") if between else ""
+    desc_s = (f" ({hc_desc})" if hc_desc else "")
+    heading_ctx.errors.append(error(
+        "constraints",
+        (
+            f"Required level-{int(heading_constraint.level)} heading "
+            f"(pattern: `{heading_constraint.pattern}`) missing in "
+            f"{heading_ctx.artifact_kind} artifact{between_s}{desc_s}"
+        ),
+        code=EC.HEADING_MISSING,
+        path=ctx.path,
+        line=1,
+        artifact_kind=ctx.artifact_kind,
+        heading_level=int(ctx.heading_constraint.level),
+        heading_pattern=ctx.heading_constraint.pattern,
+        expected_after=_heading_constraint_info(after_hc),
+        expected_before=_heading_constraint_info(before_hc),
+        **_heading_context_fields(ctx),
+    ))
+
+
+def _append_multiple_heading_error(
+    *,
+    heading_ctx: HeadingValidationContext,
+    heading_constraint: HeadingConstraint,
+    idx: int,
+    match_count: int,
+    line: int,
+) -> None:
+    ctx = _heading_context(
+        heading_constraint=heading_constraint,
+        idx=idx,
+        artifact_kind=heading_ctx.artifact_kind,
+        path=heading_ctx.path,
+        constraints_path=heading_ctx.constraints_path,
+        kit_id=heading_ctx.kit_id,
+    )
+    hc_desc = str(getattr(ctx.heading_constraint, "description", "") or "").strip()
+    desc_s = (f" ({hc_desc})" if hc_desc else "")
+    heading_ctx.errors.append(error(
+        "constraints",
+        (
+            f"Heading `{ctx.heading_constraint.pattern}` "
+            f"(level {int(ctx.heading_constraint.level)}) appears {match_count} "
+            f"times in {ctx.artifact_kind} artifact but only 1 is allowed{desc_s}"
+        ),
+        code=EC.HEADING_PROHIBITS_MULTIPLE,
+        path=ctx.path,
+        line=line,
+        artifact_kind=ctx.artifact_kind,
+        heading_level=int(ctx.heading_constraint.level),
+        heading_pattern=ctx.heading_constraint.pattern,
+        **_heading_context_fields(ctx),
+    ))
+
+
+def _append_numbering_mismatch_error(
+    *,
+    heading_constraint: HeadingConstraint,
+    idx: int,
+    heading: Dict[str, object],
+    artifact_kind: str,
+    path: Path,
+    constraints_path: Optional[Path],
+    kit_id: Optional[str],
+    errors: List[Dict[str, object]],
+) -> None:
+    hc_desc = str(getattr(heading_constraint, "description", "") or "").strip()
+    desc_s = (f" ({hc_desc})" if hc_desc else "")
+    errors.append(error(
+        "constraints",
+        (
+            f"Heading `{heading_constraint.pattern}` "
+            f"(level {int(heading_constraint.level)}) in {artifact_kind} artifact: "
+            "numbering "
+            f"{'is required but missing' if heading_constraint.numbered is True else 'is prohibited but present'}"
+            f"{desc_s}"
+        ),
+        code=EC.HEADING_NUMBERING_MISMATCH,
+        path=path,
+        line=int(heading.get("line", 1) or 1),
+        artifact_kind=artifact_kind,
+        heading_level=int(heading_constraint.level),
+        heading_pattern=heading_constraint.pattern,
+        numbered=heading_constraint.numbered,
+        **_heading_constraint_source_fields(heading_constraint, idx, constraints_path, kit_id),
+    ))
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-hc-helpers
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
+def _validate_heading_matches(
+    *,
+    headings: Sequence[Dict[str, object]],
+    heading_constraints: Sequence[HeadingConstraint],
+    by_id: Dict[str, HeadingConstraint],
+    artifact_kind: str,
+    path: Path,
+    constraints_path: Optional[Path],
+    kit_id: Optional[str],
+    errors: List[Dict[str, object]],
+) -> None:
+    cursor = 0
+    last_match_idx_by_level: Dict[int, int] = {}
+    heading_ctx = HeadingValidationContext(
+        heading_constraints=heading_constraints,
+        by_id=by_id,
+        artifact_kind=artifact_kind,
+        path=path,
+        constraints_path=constraints_path,
+        kit_id=kit_id,
+        errors=errors,
+    )
+
+    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
+    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-loop
+    for idx, heading_constraint in enumerate(heading_constraints):
+        cursor = _validate_single_heading_match(
+            heading_ctx=heading_ctx,
+            headings=headings,
+            heading_constraint=heading_constraint,
+            idx=idx,
+            cursor=cursor,
+            last_match_idx_by_level=last_match_idx_by_level,
+        )
+    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-loop
+    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
+def _validate_single_heading_match(
+    *,
+    heading_ctx: HeadingValidationContext,
+    headings: Sequence[Dict[str, object]],
+    heading_constraint: HeadingConstraint,
+    idx: int,
+    cursor: int,
+    last_match_idx_by_level: Dict[int, int],
+) -> int:
+    hc_level, scope_start, scope_end = _match_scope_for_constraint(
+        headings=headings,
+        heading_constraint=heading_constraint,
+        cursor=cursor,
+        last_match_idx_by_level=last_match_idx_by_level,
+    )
+    matches, match_idx, next_idx = _find_heading_matches_in_scope(
+        headings=headings,
+        heading_constraint=heading_constraint,
+        scope_start=scope_start,
+        scope_end=scope_end,
+    )
+    if not matches:
+        if heading_constraint.required:
+            _append_missing_heading_error(
+                heading_ctx=heading_ctx,
+                heading_constraint=heading_constraint,
+                idx=idx,
+            )
+        return cursor
+    cursor = _update_heading_match_state(
+        heading_constraint=heading_constraint,
+        hc_level=hc_level,
+        match_idx=match_idx,
+        next_idx=next_idx,
+        last_match_idx_by_level=last_match_idx_by_level,
+    )
+    if heading_constraint.multiple is False and len(matches) > 1:
+        _append_multiple_heading_error(
+            heading_ctx=heading_ctx,
+            heading_constraint=heading_constraint,
+            idx=idx,
+            match_count=len(matches),
+            line=int(matches[1].get("line", 1) or 1),
+        )
+    if heading_constraint.numbered is None:
+        return cursor
+    want_numbered = heading_constraint.numbered is True
+    for match in matches:
+        if bool(match.get("numbered", False)) == want_numbered:
+            continue
+        _append_numbering_mismatch_error(
+            heading_constraint=heading_constraint,
+            idx=idx,
+            heading=match,
+            artifact_kind=heading_ctx.artifact_kind,
+            path=heading_ctx.path,
+            constraints_path=heading_ctx.constraints_path,
+            kit_id=heading_ctx.kit_id,
+            errors=heading_ctx.errors,
+        )
+    return cursor
+
+
+def _update_heading_match_state(
+    *,
+    heading_constraint: HeadingConstraint,
+    hc_level: int,
+    match_idx: int,
+    next_idx: int,
+    last_match_idx_by_level: Dict[int, int],
+) -> int:
+    if heading_constraint.multiple is not False:
+        cursor = next_idx
+        last_idx = next_idx - 1
+    else:
+        cursor = match_idx + 1
+        last_idx = match_idx
+    last_match_idx_by_level[hc_level] = last_idx
+    for level in list(last_match_idx_by_level.keys()):
+        if level > hc_level:
+            del last_match_idx_by_level[level]
+    return cursor
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-headings-entry
 def validate_headings_contract(
     *,
     path: Path,
     constraints: ArtifactKindConstraints,
-    registered_systems: Optional[Iterable[str]],  # pylint: disable=unused-argument  # public API; reserved for system-scoped heading validation
+    registered_systems: Optional[Iterable[str]],  # pylint: disable=unused-argument
+    # public API; reserved for system-scoped heading validation
     artifact_kind: str,
     constraints_path: Optional[Path] = None,
     kit_id: Optional[str] = None,
@@ -2338,266 +3724,26 @@ def validate_headings_contract(
     heading_constraints = getattr(constraints, "headings", None) or []
     if not heading_constraints:
         return {"errors": errors, "warnings": warnings}
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-hc-helpers
-    def _hc_label(hc: HeadingConstraint) -> str:
-        hid = str(getattr(hc, "id", "") or "").strip()
-        pat = str(getattr(hc, "pattern", "") or "").strip()
-        if pat:
-            return f"{hid}({pat})" if hid else pat
-        return hid or f"level={int(hc.level)}"
-
-    def _hc_info(hc: Optional[HeadingConstraint]) -> Optional[Dict[str, object]]:
-        if hc is None:
-            return None
-        return {
-            "id": getattr(hc, "id", None),
-            "level": int(getattr(hc, "level", 0) or 0),
-            "pattern": getattr(hc, "pattern", None),
-            "description": getattr(hc, "description", None),
-            "pointer": getattr(hc, "pointer", None),
-        }
-
-    by_id: Dict[str, HeadingConstraint] = {}
-    for hc in heading_constraints:
-        hid = str(getattr(hc, "id", "") or "").strip()
-        if hid and hid not in by_id:
-            by_id[hid] = hc
-
-    def _source_fields(hc: HeadingConstraint, idx: int) -> Dict[str, object]:
-        ptr = getattr(hc, "pointer", None) or f"/<unknown-kind>/headings/{idx}"
-        return {
-            "constraints_path": str(constraints_path) if constraints_path is not None else None,
-            "constraints_pointer": ptr,
-            "kit": kit_id,
-            "heading_id": getattr(hc, "id", None),
-            "heading_description": getattr(hc, "description", None),
-        }
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-hc-helpers
+    by_id = _build_heading_constraints_by_id(heading_constraints)
 
     headings = _scan_headings(path)
     # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-validate-init
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering-fn
-    def _check_numbering_sequence() -> None:
-        # If the document uses numbered headings, enforce that sibling sections under the same
-        # numeric parent progress consecutively (e.g., 3.6 -> 3.7, not 3.8).
-        last_child_by_key: Dict[Tuple[int, Tuple[Tuple[int, ...], int]], int] = {}
-        last_prefix_by_key: Dict[Tuple[int, Tuple[Tuple[int, ...], int]], str] = {}
+    _check_heading_numbering_sequence(
+        headings=headings,
+        artifact_kind=str(artifact_kind).strip().upper(),
+        path=path,
+        errors=errors,
+    )
 
-        for h in headings:
-            parts = h.get("number_parts")
-            if not parts:
-                continue
-            if not isinstance(parts, list) or not all(isinstance(x, int) for x in parts):
-                continue
-
-            # IMPORTANT: Do not mix numbering sequences across different Markdown heading levels.
-            # Example: a template may have:
-            # - level-2 headings: "## 1. Overview", "## 2. Entries"
-            # - level-3 headings: "### 1. Feature A", "### 2. Feature B"
-            # Both use numeric prefixes, but they are independent sequences.
-            md_level = int(h.get("level", 0) or 0)
-
-            parent = tuple(parts[:-1])
-            depth = len(parts)
-            child = int(parts[-1])
-            key = (md_level, (parent, depth))
-
-            prefix = str(h.get("number_prefix") or "").strip()
-            if not prefix:
-                prefix = ".".join(str(x) for x in parts)
-
-            if key in last_child_by_key:
-                expected = int(last_child_by_key[key]) + 1
-                if child != expected:
-                    expected_prefix = ".".join([*(str(x) for x in parent), str(expected)]) if parent else str(expected)
-                    errors.append(error(
-                        "structure",
-                        f"Heading `{prefix}` in {str(artifact_kind).strip().upper()} artifact is not consecutive — expected `{expected_prefix}` after `{last_prefix_by_key.get(key)}`",
-                        code=EC.HEADING_NUMBER_NOT_CONSECUTIVE,
-                        path=path,
-                        line=int(h.get("line", 1) or 1),
-                        artifact_kind=str(artifact_kind).strip().upper(),
-                        found_prefix=prefix,
-                        expected_prefix=expected_prefix,
-                        previous_prefix=last_prefix_by_key.get(key),
-                    ))
-
-            last_child_by_key[key] = child
-            last_prefix_by_key[key] = prefix
-
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering-fn
-    _check_numbering_sequence()
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-numbering
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
-    def _is_regex_pattern(pat: str) -> bool:
-        # Note: ( ) are excluded — they commonly appear in natural heading text.
-        return any(ch in pat for ch in ".^$*+?{}[]\\|")
-
-    def _matches(h: Dict[str, object], hc: HeadingConstraint) -> bool:
-        if int(h.get("level", 0)) != int(hc.level):
-            return False
-        pat = getattr(hc, "pattern", None)
-        if not pat:
-            return True
-        pat_s = str(pat).strip()
-        title = str(h.get("title_text") or "").strip()
-        if not _is_regex_pattern(pat_s):
-            return pat_s.casefold() == title.casefold()
-        try:
-            return re.search(pat_s, title, flags=re.IGNORECASE) is not None
-        except re.error:
-            return False
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-fn
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-scope
-    # Prepare matches for each constraint (in order) using hierarchical scope.
-    cursor = 0
-    matched_by_idx: Dict[int, List[Dict[str, object]]] = {}
-    last_match_idx_by_level: Dict[int, int] = {}
-
-    def _scope_end_for_parent(parent_idx: int, parent_level: int) -> int:
-        k = parent_idx + 1
-        while k < len(headings):
-            if int(headings[k].get("level", 0) or 0) <= parent_level:
-                return k
-            k += 1
-        return len(headings)
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-scope
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-loop
-    for idx, hc in enumerate(heading_constraints):
-        matches: List[Dict[str, object]] = []
-
-        hc_level = int(getattr(hc, "level", 0) or 0)
-        scope_start = cursor
-        scope_end = len(headings)
-
-        # Restrict search to the active parent section (nearest previously matched lower-level constraint).
-        parent_level: Optional[int] = None
-        parent_idx: Optional[int] = None
-        for pl in range(hc_level - 1, 0, -1):
-            if pl in last_match_idx_by_level:
-                parent_level = pl
-                parent_idx = last_match_idx_by_level[pl]
-                break
-        if parent_level is not None and parent_idx is not None:
-            scope_start = max(scope_start, parent_idx + 1)
-            scope_end = _scope_end_for_parent(parent_idx, parent_level)
-
-        # Find first match within scope
-        j = scope_start
-        while j < scope_end and not _matches(headings[j], hc):
-            j += 1
-
-        if j >= scope_end:
-            if hc.required:
-                hc_desc = str(getattr(hc, "description", "") or "").strip()
-                prev_id = getattr(hc, "prev", None) or (heading_constraints[idx - 1].id if idx > 0 else None)
-                next_id = getattr(hc, "next", None) or (heading_constraints[idx + 1].id if idx + 1 < len(heading_constraints) else None)
-                after_hc = by_id.get(str(prev_id)) if prev_id else None
-                before_hc = by_id.get(str(next_id)) if next_id else None
-                between = []
-                if after_hc is not None:
-                    between.append(f"after '{_hc_label(after_hc)}'")
-                if before_hc is not None:
-                    between.append(f"before '{_hc_label(before_hc)}'")
-                between_s = (" (expected " + " and ".join(between) + ")") if between else ""
-                desc_s = (f" ({hc_desc})" if hc_desc else "")
-                errors.append(error(
-                    "constraints",
-                    f"Required level-{int(hc.level)} heading (pattern: `{hc.pattern}`) missing in {str(artifact_kind).strip().upper()} artifact{between_s}{desc_s}",
-                    code=EC.HEADING_MISSING,
-                    path=path,
-                    line=1,
-                    artifact_kind=str(artifact_kind).strip().upper(),
-                    heading_level=int(hc.level),
-                    heading_pattern=hc.pattern,
-                    expected_after=_hc_info(after_hc),
-                    expected_before=_hc_info(before_hc),
-                    **_source_fields(hc, idx),
-                ))
-            continue
-
-        # Always include the first match
-        matches.append(headings[j])
-
-        # Consume further matches when multiple is allowed (None) or required (True)
-        if hc.multiple is not False:
-            k = j + 1
-            while k < scope_end and _matches(headings[k], hc):
-                matches.append(headings[k])
-                k += 1
-            cursor = k
-            last_idx = k - 1
-        else:
-            cursor = j + 1
-            last_idx = j
-
-        # Update hierarchy tracking
-        last_match_idx_by_level[hc_level] = last_idx
-        for lvl in list(last_match_idx_by_level.keys()):
-            if lvl > hc_level:
-                del last_match_idx_by_level[lvl]
-
-        matched_by_idx[idx] = matches
-
-        # multiple enforcement
-        if hc.multiple is False and len(matches) > 1:
-            hc_desc = str(getattr(hc, "description", "") or "").strip()
-            desc_s = (f" ({hc_desc})" if hc_desc else "")
-            errors.append(error(
-                "constraints",
-                f"Heading `{hc.pattern}` (level {int(hc.level)}) appears {len(matches)} times in {str(artifact_kind).strip().upper()} artifact but only 1 is allowed{desc_s}",
-                code=EC.HEADING_PROHIBITS_MULTIPLE,
-                path=path,
-                line=int(matches[1].get("line", 1) or 1),
-                artifact_kind=str(artifact_kind).strip().upper(),
-                heading_level=int(hc.level),
-                heading_pattern=hc.pattern,
-                **_source_fields(hc, idx),
-            ))
-        if hc.multiple is True and len(matches) < 1:
-            hc_desc = str(getattr(hc, "description", "") or "").strip()
-            desc_s = (f" ({hc_desc})" if hc_desc else "")
-            errors.append(error(
-                "constraints",
-                f"Heading `{hc.pattern}` (level {int(hc.level)}) appears only {len(matches)} time(s) in {str(artifact_kind).strip().upper()} artifact but at least 1 required{desc_s}",
-                code=EC.HEADING_REQUIRES_MULTIPLE,
-                path=path,
-                line=1,
-                artifact_kind=str(artifact_kind).strip().upper(),
-                heading_level=int(hc.level),
-                heading_pattern=hc.pattern,
-                **_source_fields(hc, idx),
-            ))
-
-        # numbered enforcement
-        if hc.numbered is not None:
-            want_numbered = hc.numbered is True
-            for mh in matches:
-                is_numbered = bool(mh.get("numbered", False))
-                if is_numbered == want_numbered:
-                    continue
-                hc_desc = str(getattr(hc, "description", "") or "").strip()
-                desc_s = (f" ({hc_desc})" if hc_desc else "")
-                errors.append(error(
-                    "constraints",
-                    f"Heading `{hc.pattern}` (level {int(hc.level)}) in {str(artifact_kind).strip().upper()} artifact: numbering {'is required but missing' if hc.numbered is True else 'is prohibited but present'}{desc_s}",
-                    code=EC.HEADING_NUMBERING_MISMATCH,
-                    path=path,
-                    line=int(mh.get("line", 1) or 1),
-                    artifact_kind=str(artifact_kind).strip().upper(),
-                    heading_level=int(hc.level),
-                    heading_pattern=hc.pattern,
-                    numbered=hc.numbered,
-                    **_source_fields(hc, idx),
-                ))
-
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-loop
-    # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
+    _validate_heading_matches(
+        headings=headings,
+        heading_constraints=heading_constraints,
+        by_id=by_id,
+        artifact_kind=str(artifact_kind).strip().upper(),
+        path=path,
+        constraints_path=constraints_path,
+        kit_id=kit_id,
+        errors=errors,
+    )
     return {"errors": errors, "warnings": warnings}

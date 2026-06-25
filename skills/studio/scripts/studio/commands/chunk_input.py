@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import math
 import re
 import shutil
@@ -24,11 +25,17 @@ from typing import Dict, List, Sequence, Tuple
 
 from ..utils.ui import ui
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_MAX_LINES = 300
 DEFAULT_THRESHOLD_LINES = 500
 CHUNK_FILE_RE = re.compile(r"^\d+-\d+-.+-part-\d+\.[^.]+$")
 DIRECT_PROMPT_FILE = "direct-prompt.md"
 PACKAGE_MANIFEST_FILE = "manifest.json"
+
+
+def _warn_chunk_input(message: str) -> None:
+    logger.warning("chunk-input: %s", message)
 
 
 # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args
@@ -225,93 +232,92 @@ def _finalize_written_paths(
 # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-finalize-written-paths
 
 
-# @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-write-chunk-file
-def _write_chunks(
-    sources: Sequence[Dict[str, object]],
-    output_dir: Path,
-    max_lines: int,
-) -> Tuple[List[Dict[str, object]], str, str]:
-    output_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.tmp-", dir=output_dir.parent))
+def _build_chunk_records(
+    source: Dict[str, object],
+    source_index: int,
+    lines: List[str],
+    ranges: List[Tuple[int, int]],
+    staging_dir: Path,
+    chunk_index: int,
+) -> Tuple[List[Dict[str, object]], int]:
+    # @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-write-chunk-file
+    chunk_records: List[Dict[str, object]] = []
+    total_parts = len(ranges)
+    for part_number, (start, end) in enumerate(ranges, start=1):
+        selected = lines[start - 1 : end] if end >= start else []
+        chunk_text = "\n".join(selected)
+        if chunk_text and not chunk_text.endswith("\n"):
+            chunk_text += "\n"
+        filename = (
+            f"{chunk_index:03d}-{source_index:02d}-{source['label']}-"
+            f"part-{part_number:02d}.md"
+        )
+        (staging_dir / filename).write_text(chunk_text, encoding="utf-8")
+        chunk_records.append({
+            "file": filename,
+            "source_kind": source["kind"],
+            "source": source["display_name"],
+            "source_path": source["path"],
+            "source_label": source["label"],
+            "part": part_number,
+            "part_count": total_parts,
+            "start_line": start,
+            "end_line": end,
+            "line_count": max(0, end - start + 1),
+        })
+        chunk_index += 1
+    return chunk_records, chunk_index
+    # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-write-chunk-file
+
+
+def _swap_chunk_output(output_dir: Path, staging_dir: Path) -> Tuple[Path | None, bool]:
+    # @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
+    preserve_ok = True
     backup_dir: Path | None = None
-    swap_succeeded = False
-    chunks: List[Dict[str, object]] = []
-    try:
-        _write_special_source_files(sources, staging_dir)
-        chunk_index = 1
-        for source_index, source in enumerate(sources, start=1):
-            text = str(source["text"])
-            lines = text.splitlines() if text else []
-            ranges = _chunk_ranges(len(lines), max_lines)
-            total_parts = len(ranges)
-            for part_number, (start, end) in enumerate(ranges, start=1):
-                selected = lines[start - 1 : end] if end >= start else []
-                chunk_text = "\n".join(selected)
-                if chunk_text and not chunk_text.endswith("\n"):
-                    chunk_text += "\n"
-                filename = (
-                    f"{chunk_index:03d}-{source_index:02d}-{source['label']}-"
-                    f"part-{part_number:02d}.md"
-                )
-                chunk_path = staging_dir / filename
-                chunk_path.write_text(chunk_text, encoding="utf-8")
-                chunks.append({
-                    "file": filename,
-                    "source_kind": source["kind"],
-                    "source": source["display_name"],
-                    "source_path": source["path"],
-                    "source_label": source["label"],
-                    "part": part_number,
-                    "part_count": total_parts,
-                    "start_line": start,
-                    "end_line": end,
-                    "line_count": max(0, end - start + 1),
-                })
-                chunk_index += 1
-        input_signature = _write_package_manifest(sources, chunks, staging_dir, max_lines)
-        preserve_ok = True
-        if output_dir.exists():
-            backup_dir = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.backup-", dir=output_dir.parent))
-            backup_dir.rmdir()
-            output_dir.replace(backup_dir)
-            try:
-                _preserve_non_generated(backup_dir, staging_dir)
-            except OSError:
-                preserve_ok = False
-        staging_dir.replace(output_dir)
-        _finalize_written_paths(sources, chunks, output_dir)
-        if backup_dir is not None and backup_dir.exists():
-            if preserve_ok:
-                shutil.rmtree(backup_dir, ignore_errors=True)
-            # else: preservation failed — keep backup so user files are not lost
-        swap_succeeded = True
-        return chunks, input_signature, (output_dir / PACKAGE_MANIFEST_FILE).as_posix()
-    except BaseException:
-        if backup_dir is not None and backup_dir.exists() and not output_dir.exists():
+    if output_dir.exists():
+        backup_dir = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.backup-", dir=output_dir.parent))
+        backup_dir.rmdir()
+        output_dir.replace(backup_dir)
+        try:
+            _preserve_non_generated(backup_dir, staging_dir)
+        except OSError as exc:
+            _warn_chunk_input(
+                f"failed to preserve non-generated files from {backup_dir} into {staging_dir}: {exc}"
+            )
             backup_dir.replace(output_dir)
-        raise
-    finally:
-        if staging_dir.exists():
-            shutil.rmtree(staging_dir, ignore_errors=True)
-        if not swap_succeeded and backup_dir is not None and backup_dir.exists() and backup_dir != output_dir:
-            if output_dir.exists():
-                # Restore succeeded or staging already replaced output_dir;
-                # preserve non-generated user data then remove the backup.
-                try:
-                    _preserve_non_generated(backup_dir, output_dir)
-                    shutil.rmtree(backup_dir, ignore_errors=True)
-                except OSError:
-                    pass  # preservation failed — keep backup intact to avoid losing user files
-            # else: restore failed — keep backup intact as the only copy
-# @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-write-chunk-file
+            preserve_ok = False
+            return backup_dir, preserve_ok
+    staging_dir.replace(output_dir)
+    return backup_dir, preserve_ok
+    # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
+
+# @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
+def _cleanup_chunk_swap(backup_dir: Path | None, output_dir: Path, preserve_ok: bool, swap_succeeded: bool) -> None:
+    if swap_succeeded and backup_dir is not None and backup_dir.exists():
+        if preserve_ok:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        return
+    if backup_dir is None or not backup_dir.exists() or backup_dir == output_dir:
+        return
+    if output_dir.exists():
+        try:
+            _preserve_non_generated(backup_dir, output_dir)
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        except OSError as exc:
+            raise OSError(
+                f"failed to restore preserved files from {backup_dir} into {output_dir}: {exc}"
+            ) from exc
+    # @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-clean-stale
 
 
-def cmd_chunk_input(argv: List[str]) -> int:
-    """Chunk workflow input into deterministic files bounded by max lines."""
+def _parse_chunk_args(argv: List[str]):
     # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args
     parser = _ChunkInputArgumentParser(
         prog="chunk-input",
-        description="Chunk workflow input into line-bounded files for plan execution; use --include-stdin to combine prompt text with file paths",
+        description=(
+            "Chunk workflow input into line-bounded files for plan execution; "
+            "use --include-stdin to combine prompt text with file paths"
+        ),
     )
     parser.add_argument(
         "paths",
@@ -333,7 +339,10 @@ def cmd_chunk_input(argv: List[str]) -> int:
         "--threshold-lines",
         type=int,
         default=DEFAULT_THRESHOLD_LINES,
-        help=f"Oversized-input threshold that should force planning (default: {DEFAULT_THRESHOLD_LINES})",
+        help=(
+            "Oversized-input threshold that should force planning "
+            f"(default: {DEFAULT_THRESHOLD_LINES})"
+        ),
     )
     parser.add_argument(
         "--stdin-label",
@@ -350,88 +359,72 @@ def cmd_chunk_input(argv: List[str]) -> int:
         action="store_true",
         help="Compute input signature and source metadata without writing any files",
     )
-    try:
-        args = parser.parse_args(argv)
-    except ValueError as exc:
-        ui.result({"status": "ERROR", "message": str(exc)})
-        return 1
+    return parser.parse_args(argv)
     # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args
 
-    if args.max_lines <= 0:
-        ui.result({"status": "ERROR", "message": "--max-lines must be > 0"})
-        return 1
-    if args.threshold_lines <= 0:
-        ui.result({"status": "ERROR", "message": "--threshold-lines must be > 0"})
-        return 1
 
+def _load_chunk_sources(args):
     # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-read-sources
-    try:
-        sources = [_read_source(path_str, idx) for idx, path_str in enumerate(args.paths, start=1)]
-        if args.paths and args.include_stdin:
-            sources.insert(0, _read_stdin_source(args.stdin_label))
-        elif not sources:
-            sources = [_read_stdin_source(args.stdin_label)]
-    except (FileNotFoundError, OSError, UnicodeDecodeError, ValueError) as exc:
-        ui.result({"status": "ERROR", "message": str(exc)})
-        return 1
+    sources = [_read_source(path_str, idx) for idx, path_str in enumerate(args.paths, start=1)]
+    if args.paths and args.include_stdin:
+        sources.insert(0, _read_stdin_source(args.stdin_label))
+    elif not sources:
+        sources = [_read_stdin_source(args.stdin_label)]
+    return sources
     # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-read-sources
 
-    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-evaluate-threshold
-    total_lines = sum(int(source["line_count"]) for source in sources)
-    output_dir = Path(args.output_dir).expanduser().resolve()
-    if output_dir.exists() and not output_dir.is_dir():
-        ui.result({"status": "ERROR", "message": f"--output-dir path exists and is not a directory: {output_dir}"})
-        return 1
-    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-evaluate-threshold
 
+def _chunk_count(source: Dict[str, object], max_lines: int) -> int:
+    line_count = int(source["line_count"])
+    return math.ceil(line_count / max_lines) if line_count else 1
+
+
+def _source_result(source: Dict[str, object], max_lines: int) -> Dict[str, object]:
+    return {
+        "kind": source["kind"],
+        "label": source["label"],
+        "display_name": source["display_name"],
+        "path": source["path"],
+        "stored_path": source.get("stored_path"),
+        "line_count": source["line_count"],
+        "chunk_count": _chunk_count(source, max_lines),
+    }
+
+
+def _dry_run_result(
+    args,
+    output_dir: Path,
+    sources: Sequence[Dict[str, object]],
+    total_lines: int,
+) -> Dict[str, object]:
     # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-dry-run
-    if args.dry_run:
-        input_signature, _ = _build_input_signature(sources)
-        result = {
-            "status": "OK",
-            "dry_run": True,
-            "output_dir": output_dir.as_posix(),
-            "total_sources": len(sources),
-            "total_lines": total_lines,
-            "max_lines": args.max_lines,
-            "threshold_lines": args.threshold_lines,
-            "input_signature": input_signature,
-            "plan_required": total_lines > args.threshold_lines,
-            "sources": [
-                {
-                    "kind": source["kind"],
-                    "label": source["label"],
-                    "display_name": source["display_name"],
-                    "path": source["path"],
-                    "line_count": source["line_count"],
-                    "chunk_count": math.ceil(int(source["line_count"]) / args.max_lines) if int(source["line_count"]) else 1,
-                }
-                for source in sources
-            ],
-        }
-
-        def _human_dry(data: Dict[str, object]) -> None:
-            ui.header("Chunk Input (dry run)")
-            ui.info(
-                f"{data['total_sources']} input source(s), {data['total_lines']} lines total"
-            )
-            ui.detail("input_signature", str(data["input_signature"]))
-            ui.detail("plan_required", "yes" if bool(data["plan_required"]) else "no")
-
-        ui.result(result, human_fn=_human_dry)
-        return 0
+    input_signature, _ = _build_input_signature(sources)
+    return {
+        "status": "OK",
+        "dry_run": True,
+        "output_dir": output_dir.as_posix(),
+        "total_sources": len(sources),
+        "total_lines": total_lines,
+        "max_lines": args.max_lines,
+        "threshold_lines": args.threshold_lines,
+        "input_signature": input_signature,
+        "plan_required": total_lines > args.threshold_lines,
+        "sources": [_source_result(source, args.max_lines) for source in sources],
+    }
     # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-dry-run
 
-    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-prepare-output
-    try:
-        chunks, input_signature, package_manifest = _write_chunks(sources, output_dir, args.max_lines)
-    except OSError as exc:
-        ui.result({"status": "ERROR", "message": f"Failed to write chunks: {exc}"})
-        return 1
-    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-prepare-output
 
+def _written_chunk_result(
+    args,
+    output_dir: Path,
+    sources,
+    chunks,
+    input_signature: str,
+    package_manifest: str,
+    total_lines: int,
+) -> Dict[str, object]:
     # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-return-result
-    result = {
+    return {
         "status": "OK",
         "output_dir": output_dir.as_posix(),
         "total_sources": len(sources),
@@ -451,36 +444,149 @@ def cmd_chunk_input(argv: List[str]) -> int:
         ),
         "chunk_count": len(chunks),
         "chunks": chunks,
-        "sources": [
-            {
-                "kind": source["kind"],
-                "label": source["label"],
-                "display_name": source["display_name"],
-                "path": source["path"],
-                "stored_path": source.get("stored_path"),
-                "line_count": source["line_count"],
-                "chunk_count": math.ceil(int(source["line_count"]) / args.max_lines) if int(source["line_count"]) else 1,
-            }
-            for source in sources
-        ],
+        "sources": [_source_result(source, args.max_lines) for source in sources],
     }
-
-    def _human(data: Dict[str, object]) -> None:
-        ui.header("Chunk Input")
-        ui.info(
-            f"Prepared {data['chunk_count']} chunk(s) from {data['total_sources']} input source(s) "
-            f"({data['total_lines']} lines total)"
-        )
-        ui.detail("output_dir", str(data["output_dir"]))
-        if data.get("direct_prompt_file"):
-            ui.detail("direct_prompt_file", str(data["direct_prompt_file"]))
-        ui.detail("plan_required", "yes" if bool(data["plan_required"]) else "no")
-        for chunk in data["chunks"]:
-            ui.file_action(str(chunk["path"]), "created")
-
-    ui.result(result, human_fn=_human)
-    return 0
     # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-return-result
+
+
+def _chunk_input_error(message: str) -> int:
+    ui.result({"status": "ERROR", "message": message})
+    return 1
+
+
+def _validate_chunk_threshold_args(args) -> int | None:
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-evaluate-threshold
+    if args.max_lines <= 0:
+        return _chunk_input_error("--max-lines must be > 0")
+    if args.threshold_lines <= 0:
+        return _chunk_input_error("--threshold-lines must be > 0")
+    return None
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-evaluate-threshold
+
+
+def _resolve_chunk_output_dir(output_dir: Path) -> int | None:
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-prepare-output
+    if output_dir.exists() and not output_dir.is_dir():
+        return _chunk_input_error(f"--output-dir path exists and is not a directory: {output_dir}")
+    return None
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-prepare-output
+
+
+def _human_dry_chunk_result(data: Dict[str, object]) -> None:
+    ui.header("Chunk Input (dry run)")
+    ui.info(f"{data['total_sources']} input source(s), {data['total_lines']} lines total")
+    ui.detail("input_signature", str(data["input_signature"]))
+    ui.detail("plan_required", "yes" if bool(data["plan_required"]) else "no")
+
+
+def _human_chunk_result(data: Dict[str, object]) -> None:
+    ui.header("Chunk Input")
+    ui.info(
+        f"Prepared {data['chunk_count']} chunk(s) from {data['total_sources']} input source(s) "
+        f"({data['total_lines']} lines total)"
+    )
+    ui.detail("output_dir", str(data["output_dir"]))
+    if data.get("direct_prompt_file"):
+        ui.detail("direct_prompt_file", str(data["direct_prompt_file"]))
+    ui.detail("plan_required", "yes" if bool(data["plan_required"]) else "no")
+    for chunk in data["chunks"]:
+        ui.file_action(str(chunk["path"]), "created")
+
+
+# @cpt-begin:cpt-studio-algo-execution-plans-chunk-write:p1:inst-write-chunk-file
+def _write_chunks(
+    sources: Sequence[Dict[str, object]],
+    output_dir: Path,
+    max_lines: int,
+) -> Tuple[List[Dict[str, object]], str, str]:
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging_dir = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.tmp-", dir=output_dir.parent))
+    backup_dir: Path | None = None
+    preserve_ok = True
+    swap_succeeded = False
+    chunks: List[Dict[str, object]] = []
+    try:
+        _write_special_source_files(sources, staging_dir)
+        chunk_index = 1
+        for source_index, source in enumerate(sources, start=1):
+            text = str(source["text"])
+            lines = text.splitlines() if text else []
+            chunk_records, chunk_index = _build_chunk_records(
+                source,
+                source_index,
+                lines,
+                _chunk_ranges(len(lines), max_lines),
+                staging_dir,
+                chunk_index,
+            )
+            chunks.extend(chunk_records)
+        input_signature = _write_package_manifest(sources, chunks, staging_dir, max_lines)
+        backup_dir, preserve_ok = _swap_chunk_output(output_dir, staging_dir)
+        if not preserve_ok:
+            raise OSError("failed to preserve non-generated files")
+        _finalize_written_paths(sources, chunks, output_dir)
+        swap_succeeded = True
+        return chunks, input_signature, (output_dir / PACKAGE_MANIFEST_FILE).as_posix()
+    except BaseException:
+        if backup_dir is not None and backup_dir.exists() and not output_dir.exists():
+            backup_dir.replace(output_dir)
+        raise
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        _cleanup_chunk_swap(backup_dir, output_dir, preserve_ok, swap_succeeded)
+# @cpt-end:cpt-studio-algo-execution-plans-chunk-write:p1:inst-write-chunk-file
+
+
+def cmd_chunk_input(argv: List[str]) -> int:
+    """Chunk workflow input into deterministic files bounded by max lines."""
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args
+    try:
+        args = _parse_chunk_args(argv)
+    except ValueError as exc:
+        return _chunk_input_error(str(exc))
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args
+
+    validation_error = _validate_chunk_threshold_args(args)
+    if validation_error is not None:
+        return validation_error
+
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-read-sources
+    try:
+        sources = _load_chunk_sources(args)
+    except (FileNotFoundError, OSError, UnicodeDecodeError, ValueError) as exc:
+        return _chunk_input_error(str(exc))
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-read-sources
+
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-evaluate-threshold
+    total_lines = sum(int(source["line_count"]) for source in sources)
+    output_dir = Path(args.output_dir).expanduser().resolve()
+    output_dir_error = _resolve_chunk_output_dir(output_dir)
+    if output_dir_error is not None:
+        return output_dir_error
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-evaluate-threshold
+
+    # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-dry-run
+    result_rc = 0
+    if args.dry_run:
+        result = _dry_run_result(args, output_dir, sources, total_lines)
+        ui.result(result, human_fn=_human_dry_chunk_result)
+    else:
+        # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-prepare-output
+        try:
+            chunks, input_signature, package_manifest = _write_chunks(sources, output_dir, args.max_lines)
+        except OSError as exc:
+            return _chunk_input_error(f"Failed to write chunks: {exc}")
+        # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-prepare-output
+
+        # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-return-result
+        result = _written_chunk_result(
+            args, output_dir, sources, chunks, input_signature, package_manifest, total_lines
+        )
+        ui.result(result, human_fn=_human_chunk_result)
+        # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-return-result
+    # @cpt-end:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-dry-run
+    return result_rc
 
 
 __all__ = ["cmd_chunk_input"]

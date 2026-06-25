@@ -332,15 +332,15 @@ class TestCLIDelegateCommand:
             }
             saved_json_mode = is_json_mode()
             set_json_mode(False)
-            stderr = io.StringIO()
+            stdout = io.StringIO()
             try:
-                with redirect_stderr(stderr), \
+                with redirect_stdout(stdout), \
                      patch("studio.ralphex_export.run_delegation", return_value=result):
                     rc = cmd_delegate([plan_dir, "--dry-run", "--root", repo])
             finally:
                 set_json_mode(saved_json_mode)
             assert rc == 0
-            assert "Dashboard: http://localhost:8080" in stderr.getvalue()
+            assert "Dashboard: http://localhost:8080" in stdout.getvalue()
 
 
 # -- CLI wiring tests -------------------------------------------------------

@@ -13,7 +13,6 @@ import io
 import json
 import os
 import shutil
-import sys
 import tarfile
 import zipfile
 from datetime import datetime, timezone
@@ -28,6 +27,7 @@ from studio_proxy.resolve import (
     get_cache_provenance_file,
     get_version_file,
 )
+from studio_proxy.stderr import write_stderr, write_stderr_warning
 
 # GitHub repository for skill bundle releases
 GITHUB_OWNER = "constructorfabric"
@@ -38,6 +38,10 @@ USER_AGENT = "constructor-studio/1.0"
 
 class _WhatsnewGenerationError(RuntimeError):
     """Internal sentinel for optional GitHub whatsnew generation failures."""
+
+
+def _warn(message: str) -> None:
+    write_stderr_warning(message)
 
 
 def _patch_cached_version(cache_dir: Path, version: str) -> None:
@@ -60,8 +64,8 @@ def _patch_cached_version(cache_dir: Path, version: str) -> None:
                 break
         if patched:
             init_file.write_text("".join(lines), encoding="utf-8")
-    except OSError:
-        pass  # Non-critical, version file is the source of truth
+    except OSError as exc:
+        _warn(f"unable to patch cached version in {init_file}: {exc}")
 
 
 def _get_github_headers() -> dict:
@@ -136,8 +140,8 @@ def _github_json_list(url: str) -> List[Dict[str, Any]]:
 
 
 def _warn_whatsnew_generation_failed(scope: str, exc: BaseException) -> None:
-    sys.stderr.write(
-        f"Warning: unable to generate {scope} whatsnew.toml from GitHub release notes: {exc}\n"
+    write_stderr_warning(
+        f"unable to generate {scope} whatsnew.toml from GitHub release notes: {exc}"
     )
 
 
@@ -145,21 +149,22 @@ def _toml_string(value: str) -> str:
     return json.dumps(str(value), ensure_ascii=False)
 
 
+def _release_notes_section(release: Dict[str, Any]) -> str:
+    tag = str(release.get("tag_name") or "").strip()
+    if not tag:
+        return ""
+    summary = str(release.get("name") or "").strip() or tag
+    details = str(release.get("body") or "").strip()
+    return "\n".join((
+        f'[whatsnew.{_toml_string(tag)}]',
+        f"summary = {_toml_string(summary)}",
+        f"details = {_toml_string(details)}",
+    ))
+
+
 def _release_notes_to_whatsnew_toml(releases: List[Dict[str, Any]]) -> str:
-    lines: List[str] = []
-    for release in releases:
-        tag = str(release.get("tag_name") or "").strip()
-        if not tag:
-            continue
-        name = str(release.get("name") or "").strip()
-        body = str(release.get("body") or "").strip()
-        lines.extend([
-            f'[whatsnew.{_toml_string(tag)}]',
-            f"summary = {_toml_string(name or tag)}",
-            f"details = {_toml_string(body)}",
-            "",
-        ])
-    return "\n".join(lines)
+    sections = [section for section in (_release_notes_section(release) for release in releases) if section]
+    return "\n\n".join(sections)
 
 
 def _write_github_whatsnew(cache_dir: Path, api_base: str) -> None:
@@ -237,6 +242,7 @@ def _resolve_tag_commit_sha(api_base: str, requested_ref: str) -> str:
     return commit_sha
 
 
+# @cpt-begin:cpt-studio-algo-version-config-github-authority:p1
 def _resolve_explicit_github_version(api_base: str, requested_ref: str) -> Dict[str, Any]:
     """Resolve an explicit selector through GitHub Release, tag, then ref fallback."""
     from studio_proxy.mirrors import apply_override
@@ -295,8 +301,10 @@ def _resolve_explicit_github_version(api_base: str, requested_ref: str) -> Dict[
         "verified": "unverified",
         "freshness": "unknown",
     }
+# @cpt-end:cpt-studio-algo-version-config-github-authority:p1
 
 
+# @cpt-begin:cpt-studio-algo-version-config-github-authority:p1
 def _last_known_offline_metadata(
     api_base: str,
     canonical_source: str,
@@ -320,6 +328,7 @@ def _last_known_offline_metadata(
     offline["effective_source"] = offline.get("effective_source") or api_base
     offline["offline_at"] = _utc_now_iso()
     return offline
+# @cpt-end:cpt-studio-algo-version-config-github-authority:p1
 
 
 def _cache_matches_authority(
@@ -386,6 +395,56 @@ def _resolve_default_branch_snapshot(api_base: str) -> Optional[Dict[str, str]]:
     }
 
 
+def _latest_release_request(api_base: str) -> Request:
+    from studio_proxy.mirrors import apply_override
+
+    url = apply_override(f"{api_base}/releases/latest")
+    return Request(url, headers=_get_github_headers())
+
+
+def _latest_release_snapshot_fallback(api_base: str) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
+    try:
+        snapshot = _resolve_default_branch_snapshot(api_base)
+    except (HTTPError, URLError, json.JSONDecodeError, OSError) as exc:
+        write_stderr_warning(f"No releases found and default branch resolution failed: {exc}")
+        return None, None, {}
+    if not snapshot:
+        write_stderr_warning("No releases found and default branch could not be resolved.")
+        return None, None, {}
+    write_stderr_warning(
+        f"No releases found. Using default branch commit {snapshot['branch']}@{snapshot['commit_sha']}."
+    )
+    return snapshot["commit_sha"], snapshot["download_url"], {
+        "resolver_mode": "default_branch_snapshot",
+        "resolution_basis": "github_default_branch",
+        "default_branch": snapshot["branch"],
+        "commit_sha": snapshot["commit_sha"],
+        "verified": "unverified",
+    }
+
+
+def _report_github_http_error(exc: HTTPError) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
+    body = ""
+    try:
+        body = exc.read().decode("utf-8", errors="replace")
+    except OSError as read_exc:
+        _warn(f"unable to read GitHub error body: {read_exc}")
+    write_stderr(f"GitHub API error: HTTP {exc.code} - {exc.reason}")
+    if body:
+        try:
+            err_data = json.loads(body)
+            if "message" in err_data:
+                write_stderr(f"  {err_data['message']}")
+        except json.JSONDecodeError:
+            write_stderr(f"  {body[:200]}")
+    return None, None, {}
+
+
+def _report_github_error(exc: BaseException) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
+    write_stderr(f"GitHub API error: {exc}")
+    return None, None, {}
+
+
 def _resolve_latest_version_with_metadata(
     api_base: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
@@ -397,77 +456,21 @@ def _resolve_latest_version_with_metadata(
 
     Returns (version_tag, asset_url, metadata) or (None, None, {}) on failure.
     """
-    from studio_proxy.mirrors import apply_override
-    # inst-resolve-version
     base = api_base or GITHUB_API_BASE
-    url = apply_override(f"{base}/releases/latest")
-    req = Request(url, headers=_get_github_headers())
     try:
-        with urlopen(req, timeout=30) as resp:
+        with urlopen(_latest_release_request(base), timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except HTTPError as e:
         if e.code == 404:
-            try:
-                snapshot = _resolve_default_branch_snapshot(base)
-            except (HTTPError, URLError, json.JSONDecodeError, OSError) as exc:
-                sys.stderr.write(f"No releases found and default branch resolution failed: {exc}\n")
-                return None, None, {}
-            if not snapshot:
-                sys.stderr.write("No releases found and default branch could not be resolved.\n")
-                return None, None, {}
-            sys.stderr.write(
-                "No releases found. Using default branch commit "
-                f"{snapshot['branch']}@{snapshot['commit_sha']}.\n"
-            )
-            return snapshot["commit_sha"], snapshot["download_url"], {
-                "resolver_mode": "default_branch_snapshot",
-                "resolution_basis": "github_default_branch",
-                "default_branch": snapshot["branch"],
-                "commit_sha": snapshot["commit_sha"],
-                "verified": "unverified",
-            }
-        body = ""
-        try:
-            body = e.read().decode("utf-8", errors="replace")
-        except OSError:
-            pass
-        sys.stderr.write(f"GitHub API error: HTTP {e.code} — {e.reason}\n")
-        if body:
-            try:
-                err_data = json.loads(body)
-                if "message" in err_data:
-                    sys.stderr.write(f"  {err_data['message']}\n")
-            except json.JSONDecodeError:
-                sys.stderr.write(f"  {body[:200]}\n")
-        return None, None, {}
+            return _latest_release_snapshot_fallback(base)
+        return _report_github_http_error(e)
     except (URLError, json.JSONDecodeError, OSError) as e:
-        sys.stderr.write(f"GitHub API error: {e}\n")
-        return None, None, {}
+        return _report_github_error(e)
 
     tag = data.get("tag_name")
     if not tag:
         return None, None, {}
-
-    # Look for a .tar.gz or .zip asset named studio-skill-* (new name).
-    # Also accept cf-constructor-skill-* during the cypilot-migration legacy window
-    # so that 4.x releases still resolve after the rebrand.
-    for asset in data.get("assets", []):
-        name = asset.get("name", "")
-        if (
-            name.startswith("studio-skill") or name.startswith("cf-constructor-skill")
-        ) and (
-            name.endswith(".tar.gz") or name.endswith(".zip")
-        ):
-            asset_url = asset.get("browser_download_url")
-            if asset_url:
-                asset_url = apply_override(asset_url)
-            return tag, asset_url, {}
-
-    # Fallback: use the source tarball
-    tarball_url = data.get("tarball_url")
-    if tarball_url:
-        tarball_url = apply_override(tarball_url)
-    return tag, tarball_url, {}
+    return tag, _select_release_download_url(data), {}
 
 
 def resolve_latest_version(
@@ -522,8 +525,8 @@ def copy_from_local(
                     if "__version__" in line and "=" in line:
                         local_version = line.split("=", 1)[1].strip().strip('"').strip("'")
                         break
-            except OSError:
-                pass
+            except OSError as exc:
+                _warn(f"unable to read local version from {init_candidate}: {exc}")
             break
 
     if not force and version_file.is_file():
@@ -574,6 +577,253 @@ def copy_from_local(
     )
 # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 
+
+# @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
+def _resolve_cache_sources(url: Optional[str]) -> Tuple[str, str]:
+    from studio_proxy.mirrors import apply_override
+
+    canonical_source = _canonical_api_base(url)
+    api_base = apply_override(GITHUB_API_BASE)
+    if url is not None:
+        api_base = _resolve_api_base(url)
+    return canonical_source, api_base
+
+
+def _offline_cache_hit(
+    api_base: str,
+    canonical_source: str,
+    cache_dir: Path,
+    version_file: Path,
+) -> Tuple[bool, str]:
+    offline = _last_known_offline_metadata(api_base, canonical_source)
+    if offline and cache_dir.is_dir() and version_file.is_file():
+        _write_cache_provenance(offline)
+        offline_version = str(
+            offline.get("installed_version")
+            or offline.get("resolved_ref")
+            or version_file.read_text(encoding="utf-8").strip()
+        )
+        _write_cache_version_toml(cache_dir, offline_version, offline)
+        return True, (
+            "Using last-known cache state "
+            f"(version {offline.get('resolved_ref') or offline.get('installed_version')})\n"
+            "  freshness: offline\n"
+            "  reverify:  cfs update --force"
+        )
+    return False, "Failed to resolve latest version from GitHub API. Check network connectivity."
+
+
+def _latest_download_metadata(
+    api_base: str,
+    canonical_source: str,
+    cache_dir: Path,
+    version_file: Path,
+) -> Tuple[Optional[str], Optional[str], Dict[str, Any], Optional[Tuple[bool, str]]]:
+    resolved_version, asset_url, latest_metadata = _resolve_latest_version_with_metadata(api_base=api_base)
+    if resolved_version is None:
+        return None, None, {}, _offline_cache_hit(api_base, canonical_source, cache_dir, version_file)
+    metadata: Dict[str, Any] = {
+        "source_type": "github",
+        "installed_version": resolved_version,
+        "requested_ref": "latest",
+        "resolved_ref": resolved_version,
+        "resolver_mode": latest_metadata.get("resolver_mode", "latest_release"),
+        "resolution_basis": latest_metadata.get("resolution_basis", "github_release"),
+        "download_url": asset_url,
+        "verified": latest_metadata.get("verified", "verified"),
+        "freshness": "fresh",
+    }
+    if latest_metadata.get("default_branch"):
+        metadata["default_branch"] = latest_metadata["default_branch"]
+    if latest_metadata.get("commit_sha"):
+        metadata["commit_sha"] = latest_metadata["commit_sha"]
+    return resolved_version, asset_url, metadata, None
+
+
+def _explicit_download_metadata(
+    version: str,
+    api_base: str,
+) -> Tuple[Optional[str], Optional[str], Dict[str, Any], Optional[Tuple[bool, str]]]:
+    try:
+        metadata = _resolve_explicit_github_version(api_base, version)
+    except (HTTPError, URLError, json.JSONDecodeError, OSError) as exc:
+        return None, None, {}, (False, f"Failed to resolve version {version} from GitHub API: {exc}")
+    resolved_version = str(metadata.get("resolved_ref") or version)
+    asset_url = metadata.get("download_url")
+    return resolved_version, asset_url, metadata, None
+
+
+def _resolve_download_metadata(
+    version: Optional[str],
+    api_base: str,
+    canonical_source: str,
+    cache_dir: Path,
+    version_file: Path,
+) -> Tuple[Optional[str], Optional[str], Dict[str, Any], Optional[Tuple[bool, str]]]:
+    if version is None or version == "latest":
+        return _latest_download_metadata(api_base, canonical_source, cache_dir, version_file)
+    return _explicit_download_metadata(version, api_base)
+
+
+def _cache_hit_metadata_changed(metadata: Dict[str, Any], asset_url: Optional[str]) -> bool:
+    cached_provenance = get_cache_provenance() or {}
+    provenance_keys = (
+        "freshness",
+        "verified",
+        "resolver_mode",
+        "resolution_basis",
+        "default_branch",
+        "commit_sha",
+    )
+    if not any(cached_provenance.get(key) != metadata.get(key) for key in provenance_keys):
+        return False
+    metadata.update({
+        "download_url": asset_url,
+        "resolved_at": _utc_now_iso(),
+    })
+    _write_cache_provenance(metadata)
+    return True
+# @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
+
+
+def _reuse_cached_download(
+    force: bool,
+    version_file: Path,
+    cache_dir: Path,
+    resolved_version: str,
+    metadata: Dict[str, Any],
+    asset_url: Optional[str],
+) -> Optional[Tuple[bool, str]]:
+    if force or not version_file.is_file():
+        return None
+    cached_version = version_file.read_text(encoding="utf-8").strip()
+    if cached_version != resolved_version:
+        return None
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
+    if not _cache_matches_authority(resolved_version, metadata):
+        return None
+    _cache_hit_metadata_changed(metadata, asset_url)
+    _write_cache_version_toml(cache_dir, resolved_version, metadata)
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
+    return True, f"Cache already up to date (version {resolved_version})"
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
+def _download_archive(asset_url: str) -> Tuple[bool, bytes | str]:
+    req = Request(asset_url, headers=_get_github_headers())
+    try:
+        with urlopen(req, timeout=120) as resp:
+            return True, resp.read()
+    except HTTPError as exc:
+        return False, f"Download failed: HTTP {exc.code} - {exc.reason}. URL: {asset_url}"
+    except URLError as exc:
+        return False, f"Download failed: {exc.reason}. Check network connectivity."
+    except OSError as exc:
+        return False, f"Download failed: {exc}. Check network connectivity."
+# @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
+
+
+def _reset_cache_dir(cache_dir: Path) -> None:
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-mkdir-cache
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-mkdir-cache
+
+
+def _extract_tar_archive(archive_data: bytes, cache_dir: Path) -> bool:
+    try:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-tar-stripped
+        buf = io.BytesIO(archive_data)
+        if not tarfile.is_tarfile(buf):
+            return False
+        buf.seek(0)
+        with tarfile.open(fileobj=buf, mode="r:*") as tf:
+            members = tf.getmembers()
+            prefix = _find_common_prefix(members)
+            _extract_stripped(tf, members, prefix, cache_dir)
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-tar-stripped
+        return True
+    except (tarfile.TarError, OSError) as exc:
+        _warn(f"unable to extract tar archive into {cache_dir}: {exc}")
+        return False
+
+
+def _extract_zip_archive(archive_data: bytes, cache_dir: Path) -> bool:
+    try:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-zip-stripped
+        buf = io.BytesIO(archive_data)
+        with zipfile.ZipFile(buf) as zf:
+            members = zf.namelist()
+            prefix = _find_zip_prefix(members)
+            _extract_zip_stripped(zf, members, prefix, cache_dir)
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-zip-stripped
+        return True
+    except (zipfile.BadZipFile, OSError) as exc:
+        _warn(f"unable to extract zip archive into {cache_dir}: {exc}")
+        return False
+
+
+def _extract_archive(archive_data: bytes, cache_dir: Path) -> bool:
+    return _extract_tar_archive(archive_data, cache_dir) or _extract_zip_archive(archive_data, cache_dir)
+
+
+def _finalize_cached_download(
+    cache_dir: Path,
+    version_file: Path,
+    resolved_version: str,
+    asset_url: str,
+    api_base: str,
+    metadata: Dict[str, Any],
+) -> Tuple[bool, str]:
+    # @cpt-begin:cpt-studio-algo-version-config-github-authority:p1
+    _patch_cached_version(cache_dir, resolved_version)
+    _remove_non_github_whatsnew(cache_dir)
+    _write_github_whatsnew(cache_dir, api_base)
+    # @cpt-end:cpt-studio-algo-version-config-github-authority:p1
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
+    version_file.write_text(resolved_version, encoding="utf-8")
+    metadata.update({
+        "download_url": asset_url,
+        "resolved_at": _utc_now_iso(),
+    })
+    _write_cache_version_toml(cache_dir, resolved_version, metadata)
+    _write_cache_provenance(metadata)
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-path-new
+    return True, (
+        f"Cached: {resolved_version}\n"
+        f"  from: {asset_url}\n"
+        f"  to:   {cache_dir}"
+    )
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-path-new
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
+def _prepare_download_payload(
+    resolved_version: Optional[str],
+    asset_url: Optional[str],
+) -> Tuple[Optional[bytes], Optional[Tuple[bool, str]]]:
+    """Validate resolved metadata and fetch the archive payload."""
+    if resolved_version is None:
+        return None, (False, "Failed to resolve version metadata.")
+    if asset_url is None:
+        return None, (False, f"No download URL found for version {resolved_version}")
+
+    downloaded, archive_payload = _download_archive(asset_url)
+    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
+    if not downloaded:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
+        return None, (False, str(archive_payload))
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
+    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
+    if not isinstance(archive_payload, bytes):
+        return None, (False, "Download produced invalid archive data.")
+    return archive_payload, None
+# @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
+
 def download_and_cache(
     version: Optional[str] = None,
     force: bool = False,
@@ -590,176 +840,54 @@ def download_and_cache(
     Returns:
         (success, message) tuple.
     """
-    from studio_proxy.mirrors import apply_override
     cache_dir = get_cache_dir()
     version_file = get_version_file()
-
-    # Resolve API base for custom URL (fork support)
-    canonical_source = _canonical_api_base(url)
-    api_base = apply_override(GITHUB_API_BASE)
-    if url is not None:
-        api_base = _resolve_api_base(url)
-
+    canonical_source, api_base = _resolve_cache_sources(url)
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-resolve-version
-    requested_ref = "latest" if version is None or version == "latest" else version
-    metadata: Dict[str, Any]
-    if version is None or version == "latest":
-        resolved_version, asset_url, latest_metadata = _resolve_latest_version_with_metadata(
-            api_base=api_base,
-        )
-        if resolved_version is None:
-            offline = _last_known_offline_metadata(api_base, canonical_source)
-            if offline and cache_dir.is_dir() and version_file.is_file():
-                _write_cache_provenance(offline)
-                offline_version = str(
-                    offline.get("installed_version")
-                    or offline.get("resolved_ref")
-                    or version_file.read_text(encoding="utf-8").strip()
-                )
-                _write_cache_version_toml(cache_dir, offline_version, offline)
-                return True, (
-                    f"Using last-known cache state (version {offline.get('resolved_ref') or offline.get('installed_version')})\n"
-                    "  freshness: offline\n"
-                    "  reverify:  cfs update --force"
-                )
-            return False, "Failed to resolve latest version from GitHub API. Check network connectivity."
-        metadata = {
-            "source_type": "github",
-            "installed_version": resolved_version,
-            "requested_ref": requested_ref,
-            "resolved_ref": resolved_version,
-            "resolver_mode": latest_metadata.get("resolver_mode", "latest_release"),
-            "resolution_basis": latest_metadata.get("resolution_basis", "github_release"),
-            "download_url": asset_url,
-            "verified": latest_metadata.get("verified", "verified"),
-            "freshness": "fresh",
-        }
-        if latest_metadata.get("default_branch"):
-            metadata["default_branch"] = latest_metadata["default_branch"]
-        if latest_metadata.get("commit_sha"):
-            metadata["commit_sha"] = latest_metadata["commit_sha"]
-    else:
-        try:
-            metadata = _resolve_explicit_github_version(api_base, version)
-        except (HTTPError, URLError, json.JSONDecodeError, OSError) as exc:
-            return False, f"Failed to resolve version {version} from GitHub API: {exc}"
-        resolved_version = str(metadata.get("resolved_ref") or version)
-        asset_url = metadata.get("download_url")
+    resolved_version, asset_url, metadata, early_result = _resolve_download_metadata(
+        version,
+        api_base,
+        canonical_source,
+        cache_dir,
+        version_file,
+    )
+    if early_result is not None:
+        return early_result
     # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-resolve-version
 
     metadata.update({
         "canonical_source": canonical_source,
         "effective_source": api_base,
     })
-
-    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
-    if not force and version_file.is_file():
-        cached_version = version_file.read_text(encoding="utf-8").strip()
-        if cached_version == resolved_version and _cache_matches_authority(
-            resolved_version,
-            metadata,
-        ):
-            cached_provenance = get_cache_provenance() or {}
-            provenance_keys = (
-                "freshness",
-                "verified",
-                "resolver_mode",
-                "resolution_basis",
-                "default_branch",
-                "commit_sha",
-            )
-            if any(cached_provenance.get(key) != metadata.get(key) for key in provenance_keys):
-                metadata.update({
-                    "download_url": asset_url,
-                    "resolved_at": _utc_now_iso(),
-                })
-                _write_cache_provenance(metadata)
-            _write_cache_version_toml(cache_dir, resolved_version, metadata)
-            # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
-            return True, f"Cache already up to date (version {resolved_version})"
-            # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
-    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
-
-    if asset_url is None:
-        return False, f"No download URL found for version {resolved_version}"
-
+    cached_result = _reuse_cached_download(
+        force,
+        version_file,
+        cache_dir,
+        resolved_version,
+        metadata,
+        asset_url,
+    )
+    if cached_result is not None:
+        return cached_result
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
-    req = Request(asset_url, headers=_get_github_headers())
-    try:
-        with urlopen(req, timeout=120) as resp:
-            archive_data = resp.read()
-    except HTTPError as e:
-        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
-        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
-        return False, f"Download failed: HTTP {e.code} — {e.reason}. URL: {asset_url}"
-        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-download-fail
-        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-download-error
-    except URLError as e:
-        return False, f"Download failed: {e.reason}. Check network connectivity."
-    except OSError as e:
-        return False, f"Download failed: {e}. Check network connectivity."
+    archive_data, archive_error = _prepare_download_payload(resolved_version, asset_url)
+    if archive_error is not None:
+        return archive_error
     # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-download-archive
 
-    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-mkdir-cache
-    # Remove old cache to prevent version mixing
-    if cache_dir.exists():
-        shutil.rmtree(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-mkdir-cache
-
+    _reset_cache_dir(cache_dir)
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-archive
-    extracted = False
-    try:
-        # Try tar.gz first
-        buf = io.BytesIO(archive_data)
-        if tarfile.is_tarfile(buf):
-            buf.seek(0)
-            with tarfile.open(fileobj=buf, mode="r:*") as tf:
-                # GitHub tarballs have a top-level directory; strip it
-                members = tf.getmembers()
-                prefix = _find_common_prefix(members)
-                _extract_stripped(tf, members, prefix, cache_dir)
-                extracted = True
-    except (tarfile.TarError, OSError):
-        pass
-
-    if not extracted:
-        try:
-            buf = io.BytesIO(archive_data)
-            with zipfile.ZipFile(buf) as zf:
-                members = zf.namelist()
-                prefix = _find_zip_prefix(members)
-                _extract_zip_stripped(zf, members, prefix, cache_dir)
-                extracted = True
-        except (zipfile.BadZipFile, OSError):
-            pass
-
-    if not extracted:
+    if archive_data is None or not _extract_archive(archive_data, cache_dir):
         return False, "Failed to extract archive: unrecognized format"
     # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-archive
-
-    # Patch __version__ in cached skill's __init__.py with resolved version
-    _patch_cached_version(cache_dir, resolved_version)
-    _remove_non_github_whatsnew(cache_dir)
-    _write_github_whatsnew(cache_dir, api_base)
-
-    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
-    version_file.write_text(resolved_version, encoding="utf-8")
-    metadata.update({
-        "download_url": asset_url,
-        "resolved_at": _utc_now_iso(),
-    })
-    _write_cache_version_toml(cache_dir, resolved_version, metadata)
-    _write_cache_provenance(metadata)
-    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
-
-    # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-path-new
-    return True, (
-        f"Cached: {resolved_version}\n"
-        f"  from: {asset_url}\n"
-        f"  to:   {cache_dir}"
+    return _finalize_cached_download(
+        cache_dir,
+        version_file,
+        resolved_version,
+        asset_url,
+        api_base,
+        metadata,
     )
-    # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-path-new
 
 # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 def _find_common_prefix(members: list) -> str:
@@ -780,6 +908,7 @@ def _extract_stripped(
 ) -> None:
     """Extract tar members, stripping the common prefix."""
     for member in members:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-tar-members
         if not member.name.startswith(prefix):
             continue
         rel = member.name[len(prefix):]
@@ -799,6 +928,7 @@ def _extract_stripped(
             f = tf.extractfile(member)
             if f is not None:
                 target.write_bytes(f.read())
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-tar-members
 
 def _find_zip_prefix(members: list) -> str:
     """Find common top-level directory prefix in zip members."""
@@ -818,6 +948,7 @@ def _extract_zip_stripped(
 ) -> None:
     """Extract zip members, stripping the common prefix."""
     for name in members:
+        # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-zip-members
         if not name.startswith(prefix):
             continue
         rel = name[len(prefix):]
@@ -831,4 +962,5 @@ def _extract_zip_stripped(
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(zf.read(name))
+        # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-extract-zip-members
 # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers

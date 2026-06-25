@@ -26,6 +26,7 @@
   - [Headings Contract Validation](#headings-contract-validation)
   - [Load Constraints](#load-constraints)
   - [Content Language Scan](#content-language-scan)
+  - [Check Language Scan Execution](#check-language-scan-execution)
   - [Language Configuration](#language-configuration)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Validation Report Lifecycle](#validation-report-lifecycle)
@@ -107,6 +108,23 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - Imports and module setup for validate command - `inst-validate-imports`
 - [x] - `p1` - Internal helpers: attach issue to artifact report, enrich target artifact paths, find artifact in system, suggest path from autodetect - `inst-validate-helpers`
 - [x] - `p1` - Human-friendly formatter: issue location, issue formatting, validate report display - `inst-validate-format`
+- [x] - `p1` - Parse validate CLI arguments and merge kit-defined known kinds into the active validation context - `inst-validate-cli-setup`
+- [x] - `p1` - Build the validate session: load context, collect workspace config errors, and run the validate-kits self-check gate - `inst-validate-session`
+- [x] - `p1` - Emit validate results to stdout or file output, including the empty-registry fast path - `inst-validate-output`
+- [x] - `p1` - Resolve explicit or registry-derived artifact targets for validation - `inst-validate-artifact-resolution`
+- [x] - `p1` - Resolve per-artifact constraints and emit early registry-level failures before downstream validation - `inst-validate-constraint-resolution`
+- [x] - `p1` - Build per-artifact validate reports, traceability counts, and aggregated issue attachments - `inst-validate-artifact-report`
+- [x] - `p1` - Build the full artifact set used for cross-validation, including eligible cross-repo workspace artifacts - `inst-validate-cross-context`
+- [x] - `p1` - Collect reachable cross-repo workspace artifacts as reference-only validation context, skipping unreachable, duplicate, and non-artifact sources - `inst-validate-cross-repo-artifacts`
+- [x] - `p1` - Run cross-artifact validation and merge only issues that apply to the actively validated artifacts - `inst-validate-cross-run`
+- [x] - `p1` - Resolve code scan targets and collect code marker state from configured codebase entries - `inst-validate-code-scan`
+- [x] - `p1` - Execute recursive system code scanning and strict code cross-validation against artifact expectations - `inst-validate-code-run`
+- [x] - `p1` - Build traceability lookup indexes for artifact paths, FULL-traceability IDs, and reference coverage - `inst-validate-traceability-index`
+- [x] - `p1` - Apply fallback reference coverage rules for unconstrained artifact kinds - `inst-validate-reference-coverage`
+- [x] - `p1` - Load language-validation configuration from workspace settings - `inst-validate-language-config`
+- [x] - `p1` - Scan artifact content for language-policy violations - `inst-validate-language-scan`
+- [x] - `p1` - Run artifact language validation across all selected markdown artifacts - `inst-validate-language-run`
+- [x] - `p1` - Format issue-location, header, and extra-field details for human validate output - `inst-validate-issue-format`
 
 ### Check Language
 
@@ -126,12 +144,17 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - Violations found â†’ FAIL exit code 2
 
 **Steps**:
-1. [x] - `p1` - Parse arguments, resolve allowed languages, resolve scan roots, resolve ignore globs (CLI `--exclude` merged with `check_language_ignore_paths` from workspace config), invoke scanner, display result - `inst-cmd-check-language`
+1. [x] - `p1` - User invokes `cfs check-language [paths...] [--languages CODES] [--ignore PATTERN] [--quiet]` - `inst-user-check-language`
+2. [x] - `p1` - Build the command parser and parse CLI arguments into the active check-language request - `inst-check-lang-parse-args`
+3. [x] - `p1` - Execute the scan pipeline using `cpt-studio-algo-traceability-validation-check-language-scan` - `inst-check-lang-run-scan`
+4. [x] - `p1` - **IF** argument, workspace-config, path, or scanner setup fails, **RETURN** ERROR result with message - `inst-check-lang-error`
+5. [x] - `p1` - **IF** no violations are found, build PASS result with allowed languages and scanned file count - `inst-check-lang-pass`
+6. [x] - `p1` - **ELSE** build FAIL result with grouped violations, file count, and violation count - `inst-check-lang-fail`
+7. [x] - `p1` - Emit machine-readable result with human-friendly output for the selected status and exit code - `inst-check-lang-human-output`
 
 **Supporting**:
 - [x] - `p1` - Imports, argument parsing setup, and module-level constants - `inst-check-lang-imports`
-- [x] - `p1` - `_read_config_languages`, `_read_config_ignore_paths`, `_default_roots`, `_count_md_files` helper functions - `inst-helpers`
-- [x] - `p1` - `_human_result`: format violation report for human output - `inst-human-result`
+- [x] - `p1` - Workspace-config readers and default-root fallback helpers - `inst-check-lang-support`
 
 ### Query Traceability
 
@@ -513,6 +536,22 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 **Supporting**:
 - [x] - `p1` - Imports and module-level type aliases - `inst-lang-scan-imports`
 - [x] - `p1` - `LangScanError` and `LangViolation` dataclass with `bad_chars_preview` and `line_preview` helpers - `inst-violation-datamodel`
+
+### Check Language Scan Execution
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-check-language-scan`
+
+**Input**: Parsed check-language CLI arguments, supported language codes
+
+**Output**: `{allowed_languages, files_scanned, violations, grouped_violations, violation_items}`
+
+1. [x] - `p1` - Resolve allowed languages from CLI override or workspace validation config - `inst-check-lang-resolve-languages`
+2. [x] - `p1` - Merge CLI ignore patterns with workspace-config ignore paths - `inst-check-lang-resolve-ignore`
+3. [x] - `p1` - Resolve scan roots from explicit paths or the default project architecture root - `inst-check-lang-resolve-roots`
+4. [x] - `p1` - Build allowed Unicode ranges and run the markdown scanner across resolved roots - `inst-check-lang-scan-execution`
+5. [x] - `p1` - Count scanned markdown files for the result payload - `inst-check-lang-count-files`
+6. [x] - `p1` - Group violations by file and convert them into machine-readable result items - `inst-check-lang-group-violations`
+7. [x] - `p1` - **RETURN** scan result payload with allowed languages, scanned files, grouped violations, and violation items - `inst-check-lang-return-scan`
 
 ### Language Configuration
 

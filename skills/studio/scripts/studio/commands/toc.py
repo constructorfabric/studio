@@ -12,11 +12,30 @@ from pathlib import Path
 from typing import List
 
 from studio.utils.toc import (
+    add_toc_max_level_argument,
     process_file as _process_file,
     validate_toc as _validate_toc,
 )
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-imports
+
+
+def _process_toc_file(
+    filepath_str: str,
+    *,
+    max_level: int,
+    dry_run: bool,
+    indent_size: int,
+) -> dict:
+    # @cpt-begin:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-process
+    filepath = Path(filepath_str).resolve()
+    return _process_file(
+        filepath,
+        max_level=max_level,
+        dry_run=dry_run,
+        indent_size=indent_size,
+    )
+    # @cpt-end:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-process
 
 def cmd_toc(argv: List[str]) -> int:
     """Generate/update Table of Contents in markdown files."""
@@ -30,12 +49,7 @@ def cmd_toc(argv: List[str]) -> int:
         nargs="+",
         help="Markdown file path(s) to process",
     )
-    p.add_argument(
-        "--max-level",
-        type=int,
-        default=3,
-        help="Maximum heading level to include (default: 3)",
-    )
+    add_toc_max_level_argument(p)
     p.add_argument(
         "--indent",
         type=int,
@@ -60,14 +74,12 @@ def cmd_toc(argv: List[str]) -> int:
     validation_errors = 0
     for filepath_str in args.files:
         filepath = Path(filepath_str).resolve()
-        # @cpt-begin:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-process
-        result = _process_file(
-            filepath,
+        result = _process_toc_file(
+            filepath_str,
             max_level=args.max_level,
             dry_run=args.dry_run,
             indent_size=args.indent,
         )
-        # @cpt-end:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-process
 
         # @cpt-begin:cpt-studio-flow-developer-experience-toc:p1:inst-toc-gen-validate
         # Auto-validate after generation (unless skipped or dry-run)

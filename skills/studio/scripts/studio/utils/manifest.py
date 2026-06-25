@@ -16,6 +16,7 @@ installation and update: only declared resources are installed.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import re
 import string
 from dataclasses import dataclass, field, replace
@@ -24,6 +25,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from ._tomllib_compat import tomllib
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +121,56 @@ class RuleEntry(ComponentEntry):
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-rule-entry
 
 
+def resolve_project_root_from_core_data(
+    data: Dict[str, Any],
+    studio_dir: Path,
+    *,
+    default_to_parent: bool,
+) -> Optional[Path]:
+    """Resolve the effective project root from parsed ``core.toml`` data."""
+    # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-project-root-from-core
+    raw_root = data.get("project_root")
+    if isinstance(raw_root, str) and raw_root.strip():
+        root_path = Path(raw_root.strip())
+        if root_path.is_absolute():
+            return root_path.resolve()
+        return (studio_dir / root_path).resolve()
+    if default_to_parent:
+        return studio_dir.parent.resolve()
+    return None
+    # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-project-root-from-core
+
+
+def load_project_root_from_core_toml(
+    core_toml: Path,
+    studio_dir: Path,
+    *,
+    default_to_parent: bool,
+) -> Optional[Path]:
+    """Read ``core.toml`` and resolve its effective project root."""
+    data = load_toml_file(core_toml)
+    if data is None:
+        return None
+    return resolve_project_root_from_core_data(
+        data,
+        studio_dir,
+        default_to_parent=default_to_parent,
+    )
+
+
+def load_toml_file(path: Path) -> Optional[Dict[str, Any]]:
+    """Load a TOML file into a dict, returning None on failure."""
+    if not path.is_file():
+        return None
+    try:
+        with open(path, "rb") as handle:
+            data = tomllib.load(handle)
+    except (OSError, ValueError) as exc:
+        logger.warning("Failed to load TOML file %s: %s", path, exc)
+        return None
+    return data if isinstance(data, dict) else None
+
+
 # @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-manifest-v2
 @dataclass(frozen=True)
 class ManifestV2:
@@ -175,6 +228,129 @@ _VALID_AGENT_CONTEXTS = {"low", "medium", "high", "max"}
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-component-helpers
 
 
+# @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-component-helpers
+def _ensure_agent_table(path: Path, idx: int, raw: Any) -> Dict[str, Any]:
+    """Return an agent table or raise a section-specific error."""
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path}: [[agents]][{idx}] must be a table")
+    return raw
+
+
+def _validate_agent_null_fields(path: Path, idx: int, agent_id: str, raw: Dict[str, Any]) -> None:
+    """Reject TOML nulls for enum-backed agent fields."""
+    for field_name in ("mode", "role", "target", "provider"):
+        if field_name in raw and raw[field_name] is None:
+            raise ValueError(
+                f"{path}: [[agents]][{idx}] ('{agent_id}'): "
+                f"null is not a valid {field_name}"
+            )
+
+
+def _parse_agent_choice(
+    path: Path,
+    idx: int,
+    agent_id: str,
+    raw: Dict[str, Any],
+    field_name: str,
+    default: str,
+    valid: set[str],
+) -> str:
+    """Parse and validate a required agent enum field."""
+    return _validate_agent_choice(
+        path,
+        idx,
+        agent_id,
+        field_name,
+        str(raw.get(field_name, default)).strip(),
+        valid,
+    ) or default
+
+
+def _parse_optional_agent_choice(
+    path: Path,
+    idx: int,
+    agent_id: str,
+    raw: Dict[str, Any],
+    field_name: str,
+    valid: set[str],
+) -> Optional[str]:
+    """Parse and validate an optional agent enum field."""
+    value = raw.get(field_name)
+    return _validate_agent_choice(
+        path,
+        idx,
+        agent_id,
+        field_name,
+        str(value).strip() if value is not None else None,
+        valid,
+    )
+# @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-component-helpers
+
+
+# @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-agents
+def _parse_agent_entry(path: Path, idx: int, raw: Any) -> AgentEntry:
+    """Parse one ``[[agents]]`` entry with schema validation."""
+    raw_agent = _ensure_agent_table(path, idx, raw)
+    base = _parse_base_fields(raw_agent, manifest_path=path)
+    agent_id = base["id"]
+    _validate_component_id(path, "agents", idx, agent_id)
+
+    tools = list(raw_agent.get("tools", []))
+    disallowed_tools = list(raw_agent.get("disallowed_tools", []))
+    if tools and disallowed_tools:
+        raise ValueError(
+            f"{path}: [[agents]][{idx}] ('{agent_id}'): "
+            "tools and disallowed_tools are mutually exclusive"
+        )
+
+    _validate_agent_null_fields(path, idx, agent_id, raw_agent)
+    raw_model = str(raw_agent.get("model", "")).strip()
+    if raw_model.startswith("cf:") and raw_model not in _VALID_AGENT_MODEL_TIERS:
+        raise ValueError(
+            f"{path}: [[agents]][{idx}] ('{agent_id}'): invalid model {raw_model!r}; "
+            f"expected one of {sorted(_VALID_AGENT_MODEL_TIERS)} or a raw provider model id"
+        )
+
+    return AgentEntry(
+        **base,
+        mode=_parse_agent_choice(path, idx, agent_id, raw_agent, "mode", "readwrite", _VALID_AGENT_MODES),
+        isolation=bool(raw_agent.get("isolation", False)),
+        model=raw_model,
+        tools=tools,
+        disallowed_tools=disallowed_tools,
+        skills=list(raw_agent.get("skills", [])),
+        color=str(raw_agent.get("color", "")).strip(),
+        memory_dir=str(raw_agent.get("memory_dir", "")).strip(),
+        role=_parse_agent_choice(path, idx, agent_id, raw_agent, "role", "any", _VALID_AGENT_ROLES),
+        target=_parse_agent_choice(path, idx, agent_id, raw_agent, "target", "any", _VALID_AGENT_TARGETS),
+        provider=_parse_agent_choice(
+            path,
+            idx,
+            agent_id,
+            raw_agent,
+            "provider",
+            "anthropic",
+            _VALID_AGENT_PROVIDERS,
+        ),
+        reasoning_effort=_parse_optional_agent_choice(
+            path,
+            idx,
+            agent_id,
+            raw_agent,
+            "reasoning_effort",
+            _VALID_AGENT_EFFORTS,
+        ),
+        context_window=_parse_optional_agent_choice(
+            path,
+            idx,
+            agent_id,
+            raw_agent,
+            "context_window",
+            _VALID_AGENT_CONTEXTS,
+        ),
+    )
+
+
 def _validate_agent_choice(
     path: Path,
     idx: int,
@@ -192,6 +368,7 @@ def _validate_agent_choice(
             f"expected one of {sorted(valid)}"
         )
     return value
+# @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-agents
 
 
 # @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-v2
@@ -305,7 +482,10 @@ def _parse_base_fields(raw: Dict[str, Any], manifest_path: Optional[Path] = None
     # Must be relative — absolute paths are rejected to prevent arbitrary file reads.
     if raw_append_file is not None:
         if not isinstance(raw_append_file, str):
-            raise ValueError(f"Component '{comp_id}': 'append_file' must be a string, got {type(raw_append_file).__name__}")
+            raise ValueError(
+                f"Component '{comp_id}': 'append_file' must be a string, got "
+                f"{type(raw_append_file).__name__}"
+            )
         if manifest_path is None:
             raise ValueError(f"Component '{comp_id}': 'append_file' requires manifest_path context")
         append_path = Path(raw_append_file)
@@ -352,89 +532,7 @@ def _parse_agents(path: Path, raw_agents: List[Any]) -> List[AgentEntry]:
     """Parse [[agents]] section with extended schema validation."""
     agents: List[AgentEntry] = []
     for idx, raw in enumerate(raw_agents):
-        if not isinstance(raw, dict):
-            raise ValueError(f"{path}: [[agents]][{idx}] must be a table")
-        base = _parse_base_fields(raw, manifest_path=path)
-        _validate_component_id(path, "agents", idx, base["id"])
-
-        tools = list(raw.get("tools", []))
-        disallowed_tools = list(raw.get("disallowed_tools", []))
-
-        # Mutual exclusivity check
-        if tools and disallowed_tools:
-            raise ValueError(
-                f"{path}: [[agents]][{idx}] ('{base['id']}'): "
-                "tools and disallowed_tools are mutually exclusive"
-            )
-
-        # Reject TOML null explicitly for enum-validated fields so the error
-        # message names the offending field rather than failing with 'None'.
-        for _null_field in ("mode", "role", "target", "provider"):
-            if _null_field in raw and raw[_null_field] is None:
-                raise ValueError(
-                    f"{path}: [[agents]][{idx}] ('{base['id']}'): "
-                    f"null is not a valid {_null_field}"
-                )
-
-        mode = _validate_agent_choice(
-            path, idx, base["id"], "mode",
-            str(raw.get("mode", "readwrite")).strip(),
-            _VALID_AGENT_MODES,
-        )
-        role = _validate_agent_choice(
-            path, idx, base["id"], "role",
-            str(raw.get("role", "any")).strip(),
-            _VALID_AGENT_ROLES,
-        )
-        target = _validate_agent_choice(
-            path, idx, base["id"], "target",
-            str(raw.get("target", "any")).strip(),
-            _VALID_AGENT_TARGETS,
-        )
-        provider = _validate_agent_choice(
-            path, idx, base["id"], "provider",
-            str(raw.get("provider", "anthropic")).strip(),
-            _VALID_AGENT_PROVIDERS,
-        )
-        raw_model = str(raw.get("model", "")).strip()
-        if raw_model.startswith("cf:") and raw_model not in _VALID_AGENT_MODEL_TIERS:
-            raise ValueError(
-                f"{path}: [[agents]][{idx}] ('{base['id']}'): invalid model {raw_model!r}; "
-                f"expected one of {sorted(_VALID_AGENT_MODEL_TIERS)} or a raw provider model id"
-            )
-        reasoning_effort = _validate_agent_choice(
-            path, idx, base["id"], "reasoning_effort",
-            str(raw["reasoning_effort"]).strip()
-            if raw.get("reasoning_effort") is not None else None,
-            _VALID_AGENT_EFFORTS,
-        )
-        context_window = _validate_agent_choice(
-            path, idx, base["id"], "context_window",
-            str(raw["context_window"]).strip()
-            if raw.get("context_window") is not None else None,
-            _VALID_AGENT_CONTEXTS,
-        )
-
-        # `_validate_agent_choice` either returns the validated value or raises;
-        # `mode` / `role` / `target` / `provider` are guaranteed non-None here
-        # because the get(...) calls supply non-None defaults, so the previous
-        # `or "<default>"` fallbacks were unreachable.
-        agents.append(AgentEntry(
-            **base,
-            mode=mode,
-            isolation=bool(raw.get("isolation", False)),
-            model=raw_model,
-            tools=tools,
-            disallowed_tools=disallowed_tools,
-            skills=list(raw.get("skills", [])),
-            color=str(raw.get("color", "")).strip(),
-            memory_dir=str(raw.get("memory_dir", "")).strip(),
-            role=role,
-            target=target,
-            provider=provider,
-            reasoning_effort=reasoning_effort,
-            context_window=context_window,
-        ))
+        agents.append(_parse_agent_entry(path, idx, raw))
     return agents
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-agents
 
@@ -539,7 +637,180 @@ def _rewrite_component_paths(
 # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-includes-helpers
 
 
-# @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-includes-header
+def _initialize_include_resolution(
+    manifest_dir: Path,
+    include_chain: Optional[Set[Path]],
+    include_order: Optional[List[Path]],
+    trusted_root: Optional[Path],
+) -> tuple[Set[Path], List[Path], Path]:
+    """Seed include traversal state for the top-level manifest."""
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-init-collections
+    if include_chain is None or include_order is None:
+        root_manifest_path = (manifest_dir / "manifest.toml").resolve()
+        include_chain = {root_manifest_path}
+        include_order = [root_manifest_path]
+    if trusted_root is None:
+        trusted_root = manifest_dir.resolve()
+    return include_chain, include_order, trusted_root
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-init-collections
+
+
+# @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-manifest-component-ids
+def _manifest_component_ids(manifest: ManifestV2) -> set[tuple[str, str]]:
+    """Collect component ids keyed by manifest section."""
+    return (
+        {("agents", component.id) for component in manifest.agents}
+        | {("skills", component.id) for component in manifest.skills}
+        | {("workflows", component.id) for component in manifest.workflows}
+        | {("rules", component.id) for component in manifest.rules}
+    )
+# @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-manifest-component-ids
+
+
+def _resolve_included_manifest_path(
+    manifest_dir: Path,
+    include_path_str: str,
+    trusted_root: Path,
+    include_chain: Set[Path],
+    include_order: List[Path],
+) -> Path:
+    """Resolve one include path and enforce traversal, cycle, and depth guards."""
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-include-path
+    resolved = (manifest_dir / include_path_str).resolve()
+    try:
+        resolved.relative_to(trusted_root)
+    except ValueError as exc:
+        raise ValueError(
+            f"Include path '{include_path_str}' escapes the trusted root "
+            f"'{trusted_root}' — path traversal is not allowed"
+        ) from exc
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-include-path
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-circular
+    if resolved in include_chain:
+        chain_str = " -> ".join(str(path) for path in include_order) + f" -> {resolved}"
+        raise ValueError(f"Circular include detected: {chain_str}")
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-circular
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-depth
+    if len(include_chain) >= _MAX_INCLUDE_DEPTH:
+        raise ValueError(
+            f"Max include depth of {_MAX_INCLUDE_DEPTH} exceeded "
+            f"while resolving '{include_path_str}' "
+            f"(chain depth: {len(include_chain)})"
+        )
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-depth
+    return resolved
+
+
+def _rewrite_manifest_components(
+    manifest: ManifestV2,
+    included_dir: Path,
+    trusted_root: Path,
+) -> tuple[list[AgentEntry], list[SkillEntry], list[WorkflowEntry], list[RuleEntry]]:
+    """Rewrite component file paths from an included manifest to absolute paths."""
+    return (
+        [_rewrite_component_paths(component, included_dir, trusted_root) for component in manifest.agents],
+        [_rewrite_component_paths(component, included_dir, trusted_root) for component in manifest.skills],
+        [_rewrite_component_paths(component, included_dir, trusted_root) for component in manifest.workflows],
+        [_rewrite_component_paths(component, included_dir, trusted_root) for component in manifest.rules],
+    )
+
+
+# @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-filter-shadowed-components
+def _filter_shadowed_components(
+    rewritten_agents: list[AgentEntry],
+    rewritten_skills: list[SkillEntry],
+    rewritten_workflows: list[WorkflowEntry],
+    rewritten_rules: list[RuleEntry],
+    shadowed_ids: set[tuple[str, str]],
+) -> tuple[list[AgentEntry], list[SkillEntry], list[WorkflowEntry], list[RuleEntry]]:
+    """Drop included components shadowed by the including manifest."""
+    if not shadowed_ids:
+        return rewritten_agents, rewritten_skills, rewritten_workflows, rewritten_rules
+    shadowed_agent_ids = {cid for section, cid in shadowed_ids if section == "agents"}
+    shadowed_skill_ids = {cid for section, cid in shadowed_ids if section == "skills"}
+    shadowed_workflow_ids = {cid for section, cid in shadowed_ids if section == "workflows"}
+    shadowed_rule_ids = {cid for section, cid in shadowed_ids if section == "rules"}
+    return (
+        [component for component in rewritten_agents if component.id not in shadowed_agent_ids],
+        [component for component in rewritten_skills if component.id not in shadowed_skill_ids],
+        [component for component in rewritten_workflows if component.id not in shadowed_workflow_ids],
+        [component for component in rewritten_rules if component.id not in shadowed_rule_ids],
+    )
+# @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-filter-shadowed-components
+
+
+# @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-include-resolution-state
+@dataclass
+class _IncludeResolutionState:
+    agents: List[AgentEntry]
+    skills: List[SkillEntry]
+    workflows: List[WorkflowEntry]
+    rules: List[RuleEntry]
+    resources: List[ManifestResource]
+    includer_ids: set[tuple[str, str]]
+    accumulated_includee_ids: set[tuple[str, str]] = field(default_factory=set)
+
+    @classmethod
+    def from_manifest(cls, manifest: ManifestV2) -> "_IncludeResolutionState":
+        """Seed mutable include-resolution state from a manifest snapshot."""
+        return cls(
+            agents=list(manifest.agents),
+            skills=list(manifest.skills),
+            workflows=list(manifest.workflows),
+            rules=list(manifest.rules),
+            resources=list(manifest.resources),
+            includer_ids=_manifest_component_ids(manifest),
+        )
+# @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-include-resolution-state
+
+
+def _merge_included_manifest(
+    state: _IncludeResolutionState,
+    included_manifest: ManifestV2,
+    included_dir: Path,
+    trusted_root: Path,
+    resolved: Path,
+) -> None:
+    rewritten_agents, rewritten_skills, rewritten_workflows, rewritten_rules = _rewrite_manifest_components(
+        included_manifest,
+        included_dir,
+        trusted_root,
+    )
+    included_ids = _manifest_component_ids(
+        ManifestV2(
+            version=included_manifest.version,
+            agents=rewritten_agents,
+            skills=rewritten_skills,
+            workflows=rewritten_workflows,
+            rules=rewritten_rules,
+        )
+    )
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-collision
+    inter_includee_collisions = state.accumulated_includee_ids & included_ids
+    if inter_includee_collisions:
+        raise ValueError(
+            f"Component ID collision between included manifests at '{resolved}': "
+            f"{sorted(inter_includee_collisions)}"
+        )
+    shadowed_by_includer = state.includer_ids & included_ids
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-check-collision
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-merge-included
+    rewritten_agents, rewritten_skills, rewritten_workflows, rewritten_rules = _filter_shadowed_components(
+        rewritten_agents,
+        rewritten_skills,
+        rewritten_workflows,
+        rewritten_rules,
+        shadowed_by_includer,
+    )
+    state.agents.extend(rewritten_agents)
+    state.skills.extend(rewritten_skills)
+    state.workflows.extend(rewritten_workflows)
+    state.rules.extend(rewritten_rules)
+    state.resources.extend(included_manifest.resources)
+    state.accumulated_includee_ids |= included_ids - shadowed_by_includer
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-merge-included
+
+
 def resolve_includes(
     manifest: ManifestV2,
     manifest_dir: Path,
@@ -576,147 +847,68 @@ def resolve_includes(
         ValueError: On path traversal, circular includes, depth exceeded, or
                     ID collision.
     """
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-resolve-includes-header
-    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step1-read-includes
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-read-includes
     if not manifest.includes:
         return manifest
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step1-read-includes
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-read-includes
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-init-collections
-    if include_chain is None or include_order is None:
-        # Seed the root manifest's own path so a cycle like root → A → root is
-        # detected when A tries to include root (depth 2) and the error chain
-        # lists the true originating node first.
-        root_manifest_path = (manifest_dir / "manifest.toml").resolve()
-        include_chain = {root_manifest_path}
-        include_order = [root_manifest_path]
-    if trusted_root is None:
-        trusted_root = manifest_dir.resolve()
-
-    # Working copies of component lists
-    agents: List[AgentEntry] = list(manifest.agents)
-    skills: List[SkillEntry] = list(manifest.skills)
-    workflows: List[WorkflowEntry] = list(manifest.workflows)
-    rules: List[RuleEntry] = list(manifest.rules)
-    resources: List[ManifestResource] = list(manifest.resources)
-
-    # Track the IDs declared directly in the includer (not from any included
-    # manifest).  These IDs take priority: when an includee declares the same
-    # ID, the includer's definition silently wins.  We also track the IDs that
-    # have been accumulated from previously-processed includees so that a
-    # collision *between two includees* remains an error.
-    includer_ids: set = (
-        {("agents", c.id) for c in manifest.agents}
-        | {("skills", c.id) for c in manifest.skills}
-        | {("workflows", c.id) for c in manifest.workflows}
-        | {("rules", c.id) for c in manifest.rules}
+    include_chain, include_order, trusted_root = _initialize_include_resolution(
+        manifest_dir,
+        include_chain,
+        include_order,
+        trusted_root,
     )
-    accumulated_includee_ids: set = set()
+    state = _IncludeResolutionState.from_manifest(manifest)
     # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-init-collections
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2-foreach-include
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-iterate-includes
     for include_path_str in manifest.includes:
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.1-resolve-path
-        resolved: Path = (manifest_dir / include_path_str).resolve()
-        # Guard against path traversal: all includes must stay within the
-        # trusted root established by the top-level caller.
-        try:
-            resolved.relative_to(trusted_root)
-        except ValueError as exc:
-            raise ValueError(
-                f"Include path '{include_path_str}' escapes the trusted root "
-                f"'{trusted_root}' — path traversal is not allowed"
-            ) from exc
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.1-resolve-path
+        resolved = _resolve_included_manifest_path(
+            manifest_dir,
+            include_path_str,
+            trusted_root,
+            include_chain,
+            include_order,
+        )
 
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.2-circular-check
-        if resolved in include_chain:
-            chain_str = " -> ".join(str(p) for p in include_order) + f" -> {resolved}"
-            raise ValueError(
-                f"Circular include detected: {chain_str}"
-            )
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.2-circular-check
-
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.3-depth-check
-        if len(include_chain) >= _MAX_INCLUDE_DEPTH:
-            raise ValueError(
-                f"Max include depth of {_MAX_INCLUDE_DEPTH} exceeded "
-                f"while resolving '{include_path_str}' "
-                f"(chain depth: {len(include_chain)})"
-            )
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.3-depth-check
-
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.4-parse-included
+        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-parse-included
         included_manifest = parse_manifest_v2(resolved)
         included_dir = resolved.parent
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.4-parse-included
+        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-parse-included
 
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.5-recurse
-        new_chain: Set[Path] = include_chain | {resolved}
-        new_order: List[Path] = include_order + [resolved]
-        included_manifest = resolve_includes(included_manifest, included_dir, new_chain, trusted_root, new_order)
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.5-recurse
-
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.6-rewrite-paths
-        rewritten_agents = [_rewrite_component_paths(c, included_dir, trusted_root) for c in included_manifest.agents]
-        rewritten_skills = [_rewrite_component_paths(c, included_dir, trusted_root) for c in included_manifest.skills]
-        rewritten_workflows = [_rewrite_component_paths(c, included_dir, trusted_root) for c in included_manifest.workflows]
-        rewritten_rules = [_rewrite_component_paths(c, included_dir, trusted_root) for c in included_manifest.rules]
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.6-rewrite-paths
-
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.7-collision-check
-        included_ids: set = (
-            {("agents", c.id) for c in rewritten_agents}
-            | {("skills", c.id) for c in rewritten_skills}
-            | {("workflows", c.id) for c in rewritten_workflows}
-            | {("rules", c.id) for c in rewritten_rules}
-        )
-        # Collisions between two different includees are always an error.
-        inter_includee_collisions = accumulated_includee_ids & included_ids
-        if inter_includee_collisions:
-            raise ValueError(
-                f"Component ID collision between included manifests at '{resolved}': "
-                f"{sorted(inter_includee_collisions)}"
+        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-recurse-includes
+        if included_manifest.includes:
+            included_manifest = resolve_includes(
+                included_manifest,
+                included_dir,
+                include_chain | {resolved},
+                trusted_root,
+                include_order + [resolved],
             )
-        # Collisions between the includer and an includee: includer wins
-        # silently — filter the shadowed components out of the included set.
-        shadowed_by_includer = includer_ids & included_ids
-        if shadowed_by_includer:
-            shadowed_agent_ids = {cid for sec, cid in shadowed_by_includer if sec == "agents"}
-            shadowed_skill_ids = {cid for sec, cid in shadowed_by_includer if sec == "skills"}
-            shadowed_workflow_ids = {cid for sec, cid in shadowed_by_includer if sec == "workflows"}
-            shadowed_rule_ids = {cid for sec, cid in shadowed_by_includer if sec == "rules"}
-            rewritten_agents = [c for c in rewritten_agents if c.id not in shadowed_agent_ids]
-            rewritten_skills = [c for c in rewritten_skills if c.id not in shadowed_skill_ids]
-            rewritten_workflows = [c for c in rewritten_workflows if c.id not in shadowed_workflow_ids]
-            rewritten_rules = [c for c in rewritten_rules if c.id not in shadowed_rule_ids]
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.7-collision-check
+        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-recurse-includes
 
-        # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.8-merge
-        agents.extend(rewritten_agents)
-        skills.extend(rewritten_skills)
-        workflows.extend(rewritten_workflows)
-        rules.extend(rewritten_rules)
-        resources.extend(included_manifest.resources)
-        # Track the IDs we just merged in (excluding those shadowed by the
-        # includer, since they were dropped) so subsequent includees can be
-        # checked against them.
-        merged_ids = included_ids - shadowed_by_includer
-        accumulated_includee_ids |= merged_ids
-        # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2.8-merge
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step2-foreach-include
+        _merge_included_manifest(
+            state,
+            included_manifest,
+            included_dir,
+            trusted_root,
+            resolved,
+        )
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-iterate-includes
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step3-return
-    return ManifestV2(
+    # @cpt-begin:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-return-augmented
+    resolved_manifest = ManifestV2(
         version=manifest.version,
         includes=manifest.includes,
-        agents=agents,
-        skills=skills,
-        workflows=workflows,
-        rules=rules,
-        resources=resources,
+        agents=state.agents,
+        skills=state.skills,
+        workflows=state.workflows,
+        rules=state.rules,
+        resources=state.resources,
     )
-    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-step3-return
+    return resolved_manifest
+    # @cpt-end:cpt-studio-algo-project-extensibility-resolve-includes:p1:inst-return-augmented
 
 
 # ---------------------------------------------------------------------------
@@ -773,6 +965,7 @@ def _merge_component_entry(
 
     All other fields follow inner-scope-wins (taken from *inner*).
     """
+    # @cpt-begin:cpt-studio-dod-project-extensibility-inner-scope-wins:p1:inst-inherit-source-and-append
     inherited_source = inner.source or outer.source
     inherited_prompt_file = inner.prompt_file or outer.prompt_file
 
@@ -789,10 +982,10 @@ def _merge_component_entry(
         prompt_file=inherited_prompt_file,
         append=accumulated_append,
     )
+    # @cpt-end:cpt-studio-dod-project-extensibility-inner-scope-wins:p1:inst-inherit-source-and-append
 # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-merge-entry
 
 
-# @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-merge-components-header
 def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
     """Merge component entries from multiple manifest layers.
 
@@ -812,12 +1005,9 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
     Returns:
         ``MergedComponents`` with all merged dicts and provenance metadata.
     """
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-merge-components-header
-    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step1-init
     merged = MergedComponents()
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step1-init
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-foreach-layer
+    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-layers
     for layer in layers:
         # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2.1-skip-non-loaded
         if layer.state != ManifestLayerState.LOADED or layer.manifest is None:
@@ -827,7 +1017,7 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
         manifest = layer.manifest
 
         # Iterate all component sections with their type labels
-        # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-inner
+        # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-components
         sections: List[Tuple[str, Dict, List]] = [
             ("agents", merged.agents, manifest.agents),
             ("skills", merged.skills, manifest.skills),
@@ -838,7 +1028,9 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
             for component in component_list:
                 cid = component.id
 
-                # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-overwrite
+                # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-overwrite
+                # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
+                # @cpt-begin:cpt-studio-dod-project-extensibility-inner-scope-wins:p1:inst-apply-inner-scope-wins
                 if cid in merged_dict:
                     # Record previous winner as overridden
                     prov_key = f"{component_type}:{cid}"
@@ -855,7 +1047,6 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
                     # Inherit source and accumulate appends from the outer entry
                     component = _merge_component_entry(merged_dict[cid], component)  # type: ignore[arg-type]
                 else:
-                    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-newentry
                     prov_key = f"{component_type}:{cid}"
                     merged.provenance[prov_key] = ProvenanceRecord(
                         component_id=cid,
@@ -864,19 +1055,19 @@ def merge_components(layers: List[ManifestLayer]) -> MergedComponents:
                         winning_path=layer.path,
                         overridden=[],
                     )
-                    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-newentry
+                # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-record-provenance
 
                 merged_dict[cid] = component  # type: ignore[assignment]
-                # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-overwrite
-        # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-inner
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step2-foreach-layer
+                # @cpt-end:cpt-studio-dod-project-extensibility-inner-scope-wins:p1:inst-apply-inner-scope-wins
+                # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-overwrite
+        # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-components
+    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-iterate-layers
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step3-return
+    # @cpt-begin:cpt-studio-algo-project-extensibility-merge-components:p1:inst-return-merged
     return merged
-    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-step3-return
+    # @cpt-end:cpt-studio-algo-project-extensibility-merge-components:p1:inst-return-merged
 
 
-# @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-appends-header
 def apply_section_appends(
     base_content: str,
     components: List[ComponentEntry],
@@ -905,12 +1096,12 @@ def apply_section_appends(
     Returns:
         Composed content string.
     """
-    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-appends-header
-    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step1-base
+    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-start-base
     composed = base_content
-    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step1-base
+    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-start-base
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step2-foreach-component
+    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-iterate-appends
+    # @cpt-begin:cpt-studio-dod-project-extensibility-section-appending:p1:inst-apply-section-appends
     type_class_map = {
         "agents": AgentEntry,
         "skills": SkillEntry,
@@ -922,21 +1113,91 @@ def apply_section_appends(
         if expected_cls is not None and not isinstance(component, expected_cls):
             continue
         if component.id == component_id and component.append:
+            # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-append-content
             composed = composed + "\n" + component.append
+            # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-append-content
             # The component's .append field already contains all accumulated
             # layer appends (built by _merge_component_entry), so we only
             # need to apply it once.
             break
-    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step2-foreach-component
+    # @cpt-end:cpt-studio-dod-project-extensibility-section-appending:p1:inst-apply-section-appends
+    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-iterate-appends
 
-    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step3-return
+    # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-return-composed
     return composed
-    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step3-return
+    # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-return-composed
 
 
 # ---------------------------------------------------------------------------
 # Schema validation helper
 # ---------------------------------------------------------------------------
+
+# @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
+def _validate_schema_manifest_section(manifest: Any, errors: list[str]) -> bool:
+    """Validate the top-level manifest section."""
+    if not isinstance(manifest, dict):
+        errors.append("Missing or invalid [manifest] section")
+        return False
+
+    version = manifest.get("version")
+    if not isinstance(version, str) or not version.strip():
+        errors.append("[manifest].version is required and must be a non-empty string")
+
+    root = manifest.get("root")
+    if root is not None and (not isinstance(root, str) or not root.strip()):
+        errors.append("[manifest].root must be a non-empty string when present")
+
+    user_modifiable = manifest.get("user_modifiable")
+    if user_modifiable is not None and not isinstance(user_modifiable, bool):
+        errors.append("[manifest].user_modifiable must be a boolean when present")
+    return True
+# @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
+
+
+# @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
+def _validate_schema_resource_entry(
+    res: Any,
+    idx: int,
+    valid_types: set[str],
+    id_chars: set[str],
+) -> list[str]:
+    """Validate one legacy resource entry."""
+    prefix = f"[[resources]][{idx}]"
+    if not isinstance(res, dict):
+        return [f"{prefix}: must be a table"]
+
+    errors: list[str] = []
+    resource_id = res.get("id")
+    if not isinstance(resource_id, str) or not resource_id.strip():
+        errors.append(f"{prefix}.id is required and must be a non-empty string")
+    elif not resource_id[0].islower() or not all(char in id_chars for char in resource_id):
+        errors.append(
+            f"{prefix}.id '{resource_id}' must match ^[a-z][a-z0-9_]*$ "
+            "(lowercase letter start, then lowercase alphanumeric or underscore)"
+        )
+
+    source = res.get("source")
+    if not isinstance(source, str) or not source.strip():
+        errors.append(f"{prefix}.source is required and must be a non-empty string")
+
+    default_path = res.get("default_path")
+    if not isinstance(default_path, str) or not default_path.strip():
+        errors.append(f"{prefix}.default_path is required and must be a non-empty string")
+
+    resource_type = res.get("type")
+    if not isinstance(resource_type, str) or resource_type not in valid_types:
+        errors.append(f"{prefix}.type must be one of {sorted(valid_types)}, got {resource_type!r}")
+
+    description = res.get("description")
+    if description is not None and not isinstance(description, str):
+        errors.append(f"{prefix}.description must be a string when present")
+
+    user_modifiable = res.get("user_modifiable")
+    if user_modifiable is not None and not isinstance(user_modifiable, bool):
+        errors.append(f"{prefix}.user_modifiable must be a boolean when present")
+    return errors
+# @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
+
 
 # @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
 def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
@@ -949,21 +1210,8 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
 
     # --- [manifest] section ---
     manifest = data.get("manifest")
-    if not isinstance(manifest, dict):
-        errors.append("Missing or invalid [manifest] section")
+    if not _validate_schema_manifest_section(manifest, errors):
         return errors
-
-    version = manifest.get("version")
-    if not isinstance(version, str) or not version.strip():
-        errors.append("[manifest].version is required and must be a non-empty string")
-
-    root = manifest.get("root")
-    if root is not None and (not isinstance(root, str) or not root.strip()):
-        errors.append("[manifest].root must be a non-empty string when present")
-
-    um = manifest.get("user_modifiable")
-    if um is not None and not isinstance(um, bool):
-        errors.append("[manifest].user_modifiable must be a boolean when present")
 
     # --- [[resources]] ---
     resources = data.get("resources")
@@ -978,45 +1226,7 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
     id_chars = set(string.ascii_lowercase + string.digits + "_")
 
     for idx, res in enumerate(resources):
-        prefix = f"[[resources]][{idx}]"
-        if not isinstance(res, dict):
-            errors.append(f"{prefix}: must be a table")
-            continue
-
-        # id
-        rid = res.get("id")
-        if not isinstance(rid, str) or not rid.strip():
-            errors.append(f"{prefix}.id is required and must be a non-empty string")
-        elif not rid[0].islower() or not all(c in id_chars for c in rid):
-            errors.append(
-                f"{prefix}.id '{rid}' must match ^[a-z][a-z0-9_]*$ "
-                "(lowercase letter start, then lowercase alphanumeric or underscore)"
-            )
-
-        # source
-        source = res.get("source")
-        if not isinstance(source, str) or not source.strip():
-            errors.append(f"{prefix}.source is required and must be a non-empty string")
-
-        # default_path
-        dp = res.get("default_path")
-        if not isinstance(dp, str) or not dp.strip():
-            errors.append(f"{prefix}.default_path is required and must be a non-empty string")
-
-        # type
-        rtype = res.get("type")
-        if not isinstance(rtype, str) or rtype not in valid_types:
-            errors.append(f"{prefix}.type must be one of {sorted(valid_types)}, got {rtype!r}")
-
-        # description (optional)
-        desc = res.get("description")
-        if desc is not None and not isinstance(desc, str):
-            errors.append(f"{prefix}.description must be a string when present")
-
-        # user_modifiable (optional)
-        rum = res.get("user_modifiable")
-        if rum is not None and not isinstance(rum, bool):
-            errors.append(f"{prefix}.user_modifiable must be a boolean when present")
+        errors.extend(_validate_schema_resource_entry(res, idx, valid_types, id_chars))
 
     return errors
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-schema-validator
@@ -1026,6 +1236,7 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
 # Public API
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 def resolve_kit_manifest_path(kit_source: Path) -> Optional[Path]:
     """Return the effective manifest path for a kit source.
 
@@ -1039,6 +1250,7 @@ def resolve_kit_manifest_path(kit_source: Path) -> Optional[Path]:
     if legacy_path.is_file():
         return legacy_path
     return None
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
@@ -1099,8 +1311,10 @@ def load_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Union[Manife
         user_modifiable=bool(meta.get("user_modifiable", True)),
         resources=resources,
     )
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 def _load_canonical_kit_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Manifest]:
     """Adapt canonical kit metadata into the manifest installer model."""
     canonical_path = kit_source / ".cf-studio-kit.toml"
@@ -1136,6 +1350,73 @@ def _load_canonical_kit_manifest(kit_source: Path, kit_slug: str = "") -> Option
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-validate
+def _validate_manifest_unique_ids(manifest: Manifest) -> list[str]:
+    """Validate that manifest resource ids are unique."""
+    errors: list[str] = []
+    seen_ids: dict[str, int] = {}
+    for idx, resource in enumerate(manifest.resources):
+        if resource.id in seen_ids:
+            errors.append(
+                f"Duplicate resource id '{resource.id}' "
+                f"(first at index {seen_ids[resource.id]}, again at {idx})"
+            )
+            continue
+        seen_ids[resource.id] = idx
+    return errors
+
+
+def _validate_manifest_source_entry(resource: ManifestResource, kit_source: Path) -> list[str]:
+    """Validate one resource source path and type."""
+    errors: list[str] = []
+    source_path = kit_source / resource.source
+    if not source_path.exists():
+        return [
+            f"Resource '{resource.id}': source path '{resource.source}' "
+            "does not exist in kit package"
+        ]
+    if resource.type == "file" and not source_path.is_file():
+        errors.append(
+            f"Resource '{resource.id}': type is 'file' but "
+            f"source '{resource.source}' is a directory"
+        )
+    elif resource.type == "directory" and not source_path.is_dir():
+        errors.append(
+            f"Resource '{resource.id}': type is 'directory' but "
+            f"source '{resource.source}' is a file"
+        )
+    return errors
+
+
+def _validate_manifest_default_path(resource: ManifestResource) -> list[str]:
+    """Validate that the default install path is a safe relative path."""
+    errors: list[str] = []
+    default_path = resource.default_path
+    if default_path.startswith("/") or default_path.startswith("\\"):
+        errors.append(
+            f"Resource '{resource.id}': default_path '{default_path}' must be a relative path"
+        )
+    try:
+        from pathlib import PurePosixPath
+        resolved = PurePosixPath(default_path).as_posix()
+    except (ValueError, OSError, NotImplementedError):
+        return [f"Resource '{resource.id}': default_path '{default_path}' is not a valid path"]
+    if ".." in resolved.split("/"):
+        errors.append(
+            f"Resource '{resource.id}': default_path '{default_path}' "
+            "must not contain '..' path components"
+        )
+    return errors
+
+
+def _validate_manifest_source_traversal(resource: ManifestResource) -> list[str]:
+    """Reject legacy source paths containing ``..`` traversal."""
+    if resource.source and ".." in str(resource.source):
+        return [f"Resource '{resource.id}': source path contains '..' traversal: {resource.source}"]
+    return []
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-validate
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-validate
 def validate_manifest(manifest: Manifest, kit_source: Path) -> list[str]:
     """Validate a parsed *manifest* against the actual *kit_source* directory.
 
@@ -1149,67 +1430,12 @@ def validate_manifest(manifest: Manifest, kit_source: Path) -> list[str]:
     """
     errors: list[str] = []
 
-    # 1. Unique ids
-    seen_ids: dict[str, int] = {}
-    for idx, res in enumerate(manifest.resources):
-        if res.id in seen_ids:
-            errors.append(
-                f"Duplicate resource id '{res.id}' "
-                f"(first at index {seen_ids[res.id]}, again at {idx})"
-            )
-        else:
-            seen_ids[res.id] = idx
+    errors.extend(_validate_manifest_unique_ids(manifest))
 
-    for res in manifest.resources:
-        source_path = kit_source / res.source
-
-        # 2. Source path exists
-        if not source_path.exists():
-            errors.append(
-                f"Resource '{res.id}': source path '{res.source}' "
-                f"does not exist in kit package"
-            )
-            continue
-
-        # 3. Type matches actual source
-        if res.type == "file" and not source_path.is_file():
-            errors.append(
-                f"Resource '{res.id}': type is 'file' but "
-                f"source '{res.source}' is a directory"
-            )
-        elif res.type == "directory" and not source_path.is_dir():
-            errors.append(
-                f"Resource '{res.id}': type is 'directory' but "
-                f"source '{res.source}' is a file"
-            )
-
-    # 4. default_path — valid relative paths
-    for res in manifest.resources:
-        dp = res.default_path
-        if dp.startswith("/") or dp.startswith("\\"):
-            errors.append(
-                f"Resource '{res.id}': default_path '{dp}' must be a relative path"
-            )
-        # Check for path traversal
-        try:
-            from pathlib import PurePosixPath
-            resolved = PurePosixPath(dp).as_posix()
-            if ".." in resolved.split("/"):
-                errors.append(
-                    f"Resource '{res.id}': default_path '{dp}' "
-                    f"must not contain '..' path components"
-                )
-        except (ValueError, OSError, NotImplementedError):
-            errors.append(
-                f"Resource '{res.id}': default_path '{dp}' is not a valid path"
-            )
-
-    # 5. source — check for path traversal
-    for res in manifest.resources:
-        if res.source and ".." in str(res.source):
-            errors.append(
-                f"Resource '{res.id}': source path contains '..' traversal: {res.source}"
-            )
+    for resource in manifest.resources:
+        errors.extend(_validate_manifest_source_entry(resource, kit_source))
+        errors.extend(_validate_manifest_default_path(resource))
+        errors.extend(_validate_manifest_source_traversal(resource))
 
     return errors
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-validate
@@ -1219,7 +1445,7 @@ def validate_manifest(manifest: Manifest, kit_source: Path) -> list[str]:
 # Resource Resolution API
 # ---------------------------------------------------------------------------
 
-# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-path
 def _resolve_binding_path(
     studio_dir: Path,
     identifier: str,
@@ -1261,29 +1487,116 @@ def _resolve_binding_path(
     project_root = _project_root_from_core_toml(studio_dir / "config" / "core.toml", studio_dir)
     if project_root is not None and not _path_is_within(resolved_path, project_root):
         raise ValueError(
-            f"Resource '{identifier}' binding path '{normalized_path}' escapes the current project root '{project_root}'"
+            f"Resource '{identifier}' binding path '{normalized_path}' escapes "
+            f"the current project root '{project_root}'"
         )
     return resolved_path
-# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-path
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
 def _project_root_from_core_toml(core_toml: Path, studio_dir: Path) -> Optional[Path]:
+    return load_project_root_from_core_toml(
+        core_toml,
+        studio_dir,
+        default_to_parent=True,
+    )
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-config
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
+def _load_binding_config(core_toml: Path) -> tuple[Optional[Dict[str, Any]], list[str]]:
+    """Load ``core.toml`` and return the kits table plus parse errors."""
     if not core_toml.is_file():
-        return None
+        return None, []
     try:
         with open(core_toml, "rb") as f:
             data = tomllib.load(f)
-    except (OSError, ValueError):
-        return None
-    raw_root = data.get("project_root")
-    if isinstance(raw_root, str) and raw_root.strip():
-        root_path = Path(raw_root.strip())
-        if root_path.is_absolute():
-            return root_path.resolve()
-        return (studio_dir / root_path).resolve()
-    return studio_dir.parent.resolve()
+    except tomllib.TOMLDecodeError as exc:
+        return None, [f"Failed to parse {core_toml}: {exc}"]
+    except OSError as exc:
+        return None, [f"Failed to read {core_toml}: {exc}"]
+    kits = data.get("kits")
+    if not isinstance(kits, dict):
+        return None, []
+    return kits, []
 # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-config
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-register-from-manifest
+def _resolve_registered_manifest_bindings(
+    studio_dir: Path,
+    slug: str,
+    kit_entry: Dict[str, Any],
+) -> tuple[dict[str, Path], list[str]]:
+    """Resolve bindings for register-mode kits from their installed manifest."""
+    kit_root_value = str(kit_entry.get("path") or "").strip()
+    if not kit_root_value:
+        return {}, [f"Kit '{slug}' is in register mode but has no registered manifest root path"]
+    try:
+        kit_root = _resolve_binding_path(studio_dir, f"{slug}.path", kit_root_value)
+    except ValueError as exc:
+        return {}, [str(exc)]
+
+    manifest = load_manifest(kit_root, kit_slug=slug)
+    if manifest is None:
+        return {}, [f"Kit '{slug}' is in register mode but no canonical or legacy manifest was found at {kit_root}"]
+
+    result: dict[str, Path] = {}
+    binding_errors: list[str] = []
+    for resource in manifest.resources:
+        try:
+            result[resource.id] = _resolve_binding_path(
+                studio_dir,
+                resource.id,
+                (Path(kit_root_value) / resource.source).as_posix(),
+                allowed_absolute_root=kit_root_value,
+            )
+        except ValueError as exc:
+            binding_errors.append(str(exc))
+    return result, binding_errors
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-register-from-manifest
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-extract
+def _extract_binding_path(binding: Any) -> str:
+    """Extract a resource binding path from either string or table syntax."""
+    if isinstance(binding, dict):
+        return str(binding.get("path", "")).strip()
+    if isinstance(binding, str):
+        return binding.strip()
+    return ""
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-binding-extract
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-declared-bindings
+def _resolve_declared_resource_bindings(
+    studio_dir: Path,
+    resources: Dict[str, Any],
+    allowed_absolute_root: str,
+) -> tuple[dict[str, Path], list[str]]:
+    """Resolve direct ``[kits.<slug>.resources]`` bindings."""
+    result: dict[str, Path] = {}
+    binding_errors: list[str] = []
+    for identifier, binding in resources.items():
+        binding_path = _extract_binding_path(binding)
+        if not binding_path:
+            continue
+        # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
+        try:
+            result[identifier] = _resolve_binding_path(
+                studio_dir,
+                identifier,
+                binding_path,
+                allowed_absolute_root=allowed_absolute_root,
+            )
+        except ValueError as exc:
+            binding_errors.append(str(exc))
+        # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
+    return result, binding_errors
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-declared-bindings
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
@@ -1321,78 +1634,27 @@ def resolve_resource_bindings_with_errors(
 ) -> tuple[dict[str, Path], list[str]]:
     """Resolve resource bindings while preserving valid entries and collecting errors."""
     core_toml = config_dir / "core.toml"
-    if not core_toml.is_file():
-        return {}, []
-
-    try:
-        with open(core_toml, "rb") as f:
-            data = tomllib.load(f)
-    except tomllib.TOMLDecodeError as exc:
-        return {}, [f"Failed to parse {core_toml}: {exc}"]
-    except OSError as exc:
-        return {}, [f"Failed to read {core_toml}: {exc}"]
-
-    kits = data.get("kits")
-    if not isinstance(kits, dict):
-        return {}, []
+    kits, load_errors = _load_binding_config(core_toml)
+    if load_errors or kits is None:
+        return {}, load_errors
     kit_entry = kits.get(slug)
     if not isinstance(kit_entry, dict):
         return {}, []
     install_mode = str(kit_entry.get("install_mode", "") or "").strip()
     # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-register-from-manifest
     if install_mode == "register":
-        kit_root_value = str(kit_entry.get("path") or "").strip()
-        if not kit_root_value:
-            return {}, [f"Kit '{slug}' is in register mode but has no registered manifest root path"]
-        try:
-            kit_root = _resolve_binding_path(studio_dir, f"{slug}.path", kit_root_value)
-        except ValueError as exc:
-            return {}, [str(exc)]
-        manifest = load_manifest(kit_root, kit_slug=slug)
-        if manifest is None:
-            return {}, [f"Kit '{slug}' is in register mode but no canonical or legacy manifest was found at {kit_root}"]
-        result: dict[str, Path] = {}
-        binding_errors: list[str] = []
-        for resource in manifest.resources:
-            try:
-                result[resource.id] = _resolve_binding_path(
-                    studio_dir,
-                    resource.id,
-                    (Path(kit_root_value) / resource.source).as_posix(),
-                    allowed_absolute_root=kit_root_value,
-                )
-            except ValueError as exc:
-                binding_errors.append(str(exc))
-        return result, binding_errors
+        return _resolve_registered_manifest_bindings(studio_dir, slug, kit_entry)
     # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-register-from-manifest
     resources = kit_entry.get("resources")
     if not isinstance(resources, dict):
         return {}, []
     # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
 
-    # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
-    result: dict[str, Path] = {}
-    binding_errors: list[str] = []
-    for identifier, binding in resources.items():
-        if isinstance(binding, dict):
-            binding_path = str(binding.get("path", "")).strip()
-        elif isinstance(binding, str):
-            binding_path = binding.strip()
-        else:
-            continue
-        if not binding_path:
-            continue
-        try:
-            result[identifier] = _resolve_binding_path(
-                studio_dir,
-                identifier,
-                binding_path,
-                allowed_absolute_root=str(kit_entry.get("path", "") or ""),
-            )
-        except ValueError as exc:
-            binding_errors.append(str(exc))
-    # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
-
+    result, binding_errors = _resolve_declared_resource_bindings(
+        studio_dir,
+        resources,
+        str(kit_entry.get("path", "") or ""),
+    )
     # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-return
     return result, binding_errors
     # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-return
@@ -1411,6 +1673,77 @@ class ResourceInfo:
     source_base: str  # source path in manifest (e.g., "artifacts/ADR")
     user_modifiable: bool = True
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-resource-info
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-resolve-source-within-kit
+def _resolve_relative_source_within_kit(
+    kit_source: Path,
+    resource_id: str,
+    source: str,
+    label: str = "source path",
+) -> Path:
+    """Resolve a relative resource path and enforce kit-root containment."""
+    source_rel = Path(source)
+    if source_rel.is_absolute():
+        raise ValueError(f"Resource '{resource_id}': {label} '{source}' must be relative")
+    resolved_source = (kit_source / source_rel).resolve()
+    try:
+        resolved_source.relative_to(kit_source.resolve())
+    except ValueError as exc:
+        raise ValueError(
+            f"Resource '{resource_id}': {label} '{source}' escapes the kit root"
+        ) from exc
+    return resolved_source
+# @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-resolve-source-within-kit
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-directory-files
+def _record_directory_resource_files(
+    kit_source: Path,
+    source_dir: Path,
+    resource_id: str,
+    source_to_resource_id: Dict[str, str],
+) -> None:
+    """Map all files inside a directory resource to the same resource id."""
+    if not source_dir.is_dir():
+        return
+    for file_path in source_dir.rglob("*"):
+        if file_path.is_file():
+            rel_path = file_path.relative_to(kit_source).as_posix()
+            source_to_resource_id[rel_path] = resource_id
+# @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-directory-files
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-subagent-sources
+def _record_subagent_sources(
+    kit_source: Path,
+    resource: Any,
+    source_to_resource_id: Dict[str, str],
+    resource_info: Dict[str, ResourceInfo],
+) -> None:
+    """Add synthetic file resources for declared subagent sources."""
+    for subagent in getattr(resource, "subagents", []) or []:
+        if not isinstance(subagent, dict):
+            continue
+        subagent_source = str(subagent.get("source", "") or "").strip().replace("\\", "/")
+        if not subagent_source:
+            continue
+        resolved_subagent = _resolve_relative_source_within_kit(
+            kit_source,
+            resource.id,
+            subagent_source,
+            "subagent source path",
+        )
+        if not resolved_subagent.is_file():
+            continue
+        synthetic_id = f"{resource.id}.__subagent__.{subagent_source}"
+        resource_info[synthetic_id] = ResourceInfo(
+            type="file",
+            source_base=subagent_source,
+            user_modifiable=resource.user_modifiable,
+        )
+        source_to_resource_id[subagent_source] = synthetic_id
+# @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-subagent-sources
 
 
 # @cpt-begin:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-build-mapping-header
@@ -1437,9 +1770,8 @@ def build_source_to_resource_mapping(
           source_base path for computing relative paths within directories).
 
     Returns (empty_dict, empty_dict) if no manifest.toml exists.
-
-    @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-load-manifest
     """
+    # @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-load-manifest
     manifest = load_manifest(kit_source, kit_slug=kit_slug)
     if manifest is None:
         return {}, {}
@@ -1454,60 +1786,18 @@ def build_source_to_resource_mapping(
     # @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-expand-directories
     for res in manifest.resources:
         # @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-source-mapping-relative-only
-        source_rel = Path(res.source)
-        if source_rel.is_absolute():
-            raise ValueError(
-                f"Resource '{res.id}': source path '{res.source}' must be relative"
-            )
-        resolved_source = (kit_source / source_rel).resolve()
-        try:
-            resolved_source.relative_to(kit_source.resolve())
-        except ValueError as exc:
-            raise ValueError(
-                f"Resource '{res.id}': source path '{res.source}' escapes the kit root"
-            ) from exc
-        # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-source-mapping-relative-only
+        resolved_source = _resolve_relative_source_within_kit(kit_source, res.id, res.source)
         resource_info[res.id] = ResourceInfo(
             type=res.type,
             source_base=res.source,
             user_modifiable=res.user_modifiable,
         )
+        # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-source-mapping-relative-only
         if res.type == "file":
             source_to_resource_id[res.source] = res.id
         elif res.type == "directory":
-            source_dir = kit_source / res.source
-            if source_dir.is_dir():
-                for fpath in source_dir.rglob("*"):
-                    if fpath.is_file():
-                        rel_path = fpath.relative_to(kit_source).as_posix()
-                        source_to_resource_id[rel_path] = res.id
-        for subagent in getattr(res, "subagents", []) or []:
-            if not isinstance(subagent, dict):
-                continue
-            subagent_source = str(subagent.get("source", "") or "").strip().replace("\\", "/")
-            if not subagent_source:
-                continue
-            source_rel_subagent = Path(subagent_source)
-            if source_rel_subagent.is_absolute():
-                raise ValueError(
-                    f"Resource '{res.id}': subagent source path '{subagent_source}' must be relative"
-                )
-            resolved_subagent = (kit_source / source_rel_subagent).resolve()
-            try:
-                resolved_subagent.relative_to(kit_source.resolve())
-            except ValueError as exc:
-                raise ValueError(
-                    f"Resource '{res.id}': subagent source path '{subagent_source}' escapes the kit root"
-                ) from exc
-            if not resolved_subagent.is_file():
-                continue
-            synthetic_id = f"{res.id}.__subagent__.{subagent_source}"
-            resource_info[synthetic_id] = ResourceInfo(
-                type="file",
-                source_base=subagent_source,
-                user_modifiable=res.user_modifiable,
-            )
-            source_to_resource_id[subagent_source] = synthetic_id
+            _record_directory_resource_files(kit_source, resolved_source, res.id, source_to_resource_id)
+        _record_subagent_sources(kit_source, res, source_to_resource_id, resource_info)
     # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-expand-directories
     # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-map-file-resources
     # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-resource-info

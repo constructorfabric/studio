@@ -142,8 +142,7 @@ class TestValidateAgentEntryPromptEscape(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             source_dir = Path(tmp) / "kit"
             source_dir.mkdir()
-            stderr_capture = io.StringIO()
-            with patch("sys.stderr", stderr_capture):
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
                 result = _validate_agent_entry(
                     "reviewer",
                     {"description": "Reviewer", "prompt_file": "../outside.md"},
@@ -152,7 +151,7 @@ class TestValidateAgentEntryPromptEscape(unittest.TestCase):
                 )
 
         self.assertIsNone(result)
-        self.assertIn("prompt source escapes source dir", stderr_capture.getvalue())
+        self.assertIn("prompt source escapes source dir", "\n".join(captured.output))
 
 
 class TestAgentTemplateClaudeContextWindowMaxWarning(unittest.TestCase):
@@ -176,10 +175,9 @@ class TestAgentTemplateClaudeContextWindowMaxWarning(unittest.TestCase):
             "target": "any",
         }
 
-        stderr_capture = io.StringIO()
-        with patch("sys.stderr", stderr_capture):
+        with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
             lines = _agent_template_claude(agent)
-        self.assertIn("context_window=max has no effect", stderr_capture.getvalue())
+        self.assertIn("context_window=max has no effect", "\n".join(captured.output))
 
 
 class TestIsAgentInstalledLegacyPaths(unittest.TestCase):
@@ -556,10 +554,8 @@ class TestCleanupStudioLegacySubagentsMoreBranches(unittest.TestCase):
                 "ALWAYS open and follow `{cypilot_path}/agents/codegen.md`\n",
                 encoding="utf-8",
             )
-            stderr_capture = io.StringIO()
-            with patch("pathlib.Path.unlink", side_effect=OSError("locked")), patch(
-                "sys.stderr",
-                stderr_capture,
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured, patch(
+                "pathlib.Path.unlink", side_effect=OSError("locked")
             ):
                 result = _cleanup_studio_legacy_subagents(
                     "claude",
@@ -569,7 +565,7 @@ class TestCleanupStudioLegacySubagentsMoreBranches(unittest.TestCase):
                 )
 
         self.assertEqual(result, [])
-        self.assertIn("failed to remove legacy subagent file", stderr_capture.getvalue())
+        self.assertIn("failed to remove legacy subagent file", "\n".join(captured.output))
 
 
 class TestProcessWorkflowsStaleProxyDeletion(unittest.TestCase):

@@ -3185,7 +3185,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_human_validate_formatter_pass(self):
         """_human_validate with PASS status (lines 847-850)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _human_validate
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3198,7 +3198,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_human_validate_formatter_fail_truncation(self):
         """_human_validate truncates long error/warning lists (lines 835-836, 843-844)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _human_validate
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3213,7 +3213,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_human_validate_formatter_other_status(self):
         """_human_validate with non-PASS/FAIL status (lines 853-854)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _human_validate
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3224,7 +3224,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_format_issue_non_dict(self):
         """_format_issue with non-dict issue (lines 882-887)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _format_issue
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3239,7 +3239,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_format_issue_with_reasons_and_fixing(self):
         """_format_issue with reasons and fixing_prompt (lines 916-924)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _format_issue
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3253,7 +3253,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_format_issue_with_extra_keys(self):
         """_format_issue auto-formats unknown keys (lines 934-938)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _format_issue
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3265,7 +3265,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_format_issue_no_location_no_code(self):
         """_format_issue with no location or code (lines 907-911)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _format_issue
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3280,7 +3280,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_format_issue_with_location_string(self):
         """_format_issue with location field (lines 860-872)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _format_issue
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3291,7 +3291,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_format_issue_warning_with_header(self):
         """_format_issue warning with code (lines 903-906)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _format_issue
         from studio.utils.ui import set_json_mode
         set_json_mode(False)
@@ -3316,7 +3316,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_human_validate_uses_artifact_count_fallback(self):
         """_human_validate uses artifact_count when artifacts_validated missing (line 816)."""
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
         from studio.commands.validate import _human_validate
         from studio.utils.ui import set_json_mode
         set_json_mode(False)

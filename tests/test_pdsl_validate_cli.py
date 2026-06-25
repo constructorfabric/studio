@@ -90,12 +90,12 @@ def test_pdsl_validate_text_human_fail_without_json() -> None:
     rc, stdout, stderr = _run(["pdsl", "validate", "--text", INVALID_PDSL])
 
     assert rc == 2
-    assert stdout == ""
-    assert "PDSL validation did not pass" in stderr
-    assert "PDSL200" in stderr
-    assert "PDSL300" in stderr
-    assert "PDSL400" in stderr
-    assert "PDSL500" in stderr
+    assert stderr == ""
+    assert "PDSL validation did not pass" in stdout
+    assert "PDSL200" in stdout
+    assert "PDSL300" in stdout
+    assert "PDSL400" in stdout
+    assert "PDSL500" in stdout
 
 
 def test_pdsl_validate_stdin_json() -> None:
@@ -143,10 +143,10 @@ def test_pdsl_help_is_validate_only_and_no_scaffold_output() -> None:
     rc, stdout, stderr = _run(["pdsl", "--help"])
 
     assert rc == 0
-    assert stdout == ""
-    assert "validate" in stderr
-    assert "Scaffold generation" in stderr
-    assert "scaffold text" not in stderr
+    assert stderr == ""
+    assert "validate" in stdout
+    assert "Scaffold generation" in stdout
+    assert "scaffold text" not in stdout
 
 
 def test_pdsl_unsupported_scaffold_is_error() -> None:
@@ -267,4 +267,3 @@ RULES:
     assert any("STATE item must start with one of: SET; got LOAD" in msg for msg in messages)
     assert any("WHEN item must start with one of:" in msg and "got SET" in msg for msg in messages)
     assert any("RULES item must start with one of:" in msg and "got RUN" in msg for msg in messages)
-

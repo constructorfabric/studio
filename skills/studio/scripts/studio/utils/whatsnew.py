@@ -5,6 +5,7 @@ Shared helpers for displaying whatsnew entries from whatsnew.toml files.
 Used by both `cfs update` (core) and `cfs kit update` (kit).
 """
 
+# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
 import logging
 import re
 import sys
@@ -12,10 +13,15 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 from ._tomllib_compat import tomllib
+from .stderr_logging import emit_stderr_message
 
-# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
 logger = logging.getLogger(__name__)
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
+
+
+def _emit_terminal_message(message: str) -> None:
+    """Emit human-facing terminal text through the logger channel."""
+    emit_stderr_message(message.rstrip("\n"), logger_name=f"{__name__}.stderr")
 
 # @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-format
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])")
@@ -183,9 +189,7 @@ def _display_whatsnew_entries(
         title: Header title (e.g., "What's new in Studio" or "What's new in sdlc kit").
         use_ansi: Whether to use ANSI formatting.
     """
-    sys.stderr.write(f"\n{'=' * 60}\n")
-    sys.stderr.write(f"  {title}\n")
-    sys.stderr.write(f"{'=' * 60}\n")
+    _emit_terminal_message(f"\n{'=' * 60}\n  {title}\n{'=' * 60}")
 
     for ver, entry in entries:
         ver = strip_control_chars(ver)
@@ -194,18 +198,18 @@ def _display_whatsnew_entries(
         summary = format_whatsnew_text(summary_source, use_ansi=use_ansi)
         # If summary wasn't changed by formatting, wrap version in bold
         if use_ansi and summary == summary_source:
-            sys.stderr.write(f"\n  \033[1m{ver}: {summary_source}\033[0m\n")
+            _emit_terminal_message(f"\n  \033[1m{ver}: {summary_source}\033[0m")
         else:
             version_label = f"\033[1m{ver}:\033[0m" if use_ansi else f"{ver}:"
-            sys.stderr.write(f"\n  {version_label} {summary}\n")
+            _emit_terminal_message(f"\n  {version_label} {summary}")
 
         if details_source:
             for line in details_source.splitlines():
-                sys.stderr.write(
-                    f"    {format_whatsnew_text(strip_control_chars(line), use_ansi=use_ansi)}\n"
+                _emit_terminal_message(
+                    f"    {format_whatsnew_text(strip_control_chars(line), use_ansi=use_ansi)}"
                 )
 
-    sys.stderr.write(f"\n{'=' * 60}\n")
+    _emit_terminal_message(f"\n{'=' * 60}")
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-display-entries
 
 
@@ -219,9 +223,11 @@ def _prompt_continue(interactive: bool) -> bool:
     if not interactive:
         return True
 
-    sys.stderr.write("  Why this input is needed: confirm that you reviewed the update summary before changes continue.\n")
-    sys.stderr.write("  Press Enter to continue, or type `q` to abort the update: ")
-    sys.stderr.flush()
+    _emit_terminal_message(
+        "  Why this input is needed: confirm that you reviewed the update summary "
+        "before changes continue.\n"
+    )
+    _emit_terminal_message("  Press Enter to continue, or type `q` to abort the update:")
     try:
         response = input().strip().lower()
     except (EOFError, KeyboardInterrupt):

@@ -334,8 +334,8 @@ class TestChunkInputCommand(unittest.TestCase):
                 ])
 
             self.assertEqual(rc, 0)
-            self.assertEqual(stdout_buf.getvalue(), "")
-            output = stderr_buf.getvalue()
+            self.assertEqual(stderr_buf.getvalue(), "")
+            output = stdout_buf.getvalue()
             self.assertIn("Chunk Input", output)
             self.assertIn("direct_prompt_file", output)
             self.assertIn("created", output)
@@ -574,8 +574,8 @@ class TestChunkInputCommand(unittest.TestCase):
             self.assertEqual(backup_candidates, [], "backup should be cleaned up after success")
 
 
-    def test_preservation_failure_does_not_fail_command(self):
-        """If _preserve_non_generated raises, command still succeeds but keeps backup."""
+    def test_preservation_failure_fails_command_and_restores_output(self):
+        """If _preserve_non_generated raises, command fails and restores prior output."""
         with TemporaryDirectory() as td:
             src = Path(td) / "request.md"
             out_dir = Path(td) / "input"
@@ -594,18 +594,21 @@ class TestChunkInputCommand(unittest.TestCase):
             with patch("studio.commands.chunk_input.shutil.copy2", side_effect=OSError("copy failed")), redirect_stdout(second_buf):
                 second_rc = cmd_chunk_input([str(src), "--output-dir", str(out_dir)])
 
-            self.assertEqual(second_rc, 0)
+            self.assertEqual(second_rc, 1)
             payload = json.loads(second_buf.getvalue())
-            self.assertEqual(payload["status"], "OK")
-            self.assertEqual(payload["chunk_count"], 1)
+            self.assertEqual(payload["status"], "ERROR")
+            self.assertIn("failed to preserve non-generated files", payload["message"])
 
-            # New chunks written successfully
+            # Original output remains intact
             self.assertTrue((out_dir / "manifest.json").is_file())
+            manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(manifest["chunks"]), 1)
+            self.assertTrue((out_dir / "user-notes.txt").is_file())
+            self.assertEqual((out_dir / "user-notes.txt").read_text(encoding="utf-8"), "keep me\n")
 
-            # Backup kept so user files are not silently lost
+            # Rollback consumes the backup by restoring it into output_dir
             backup_candidates = list(Path(td).glob(".input.backup-*"))
-            self.assertEqual(len(backup_candidates), 1, "backup should be kept when preservation fails")
-            self.assertTrue((backup_candidates[0] / "user-notes.txt").is_file(), "user file should survive in backup")
+            self.assertEqual(backup_candidates, [], "backup should be consumed by rollback on preservation failure")
 
 
     def test_dry_run_returns_signature_without_writing_files(self):
@@ -743,8 +746,8 @@ class TestChunkInputCommand(unittest.TestCase):
                 rc = cmd_chunk_input([str(src), "--output-dir", str(out_dir), "--dry-run"])
 
             self.assertEqual(rc, 0)
-            self.assertEqual(stdout_buf.getvalue(), "")
-            output = stderr_buf.getvalue()
+            self.assertEqual(stderr_buf.getvalue(), "")
+            output = stdout_buf.getvalue()
             self.assertIn("dry run", output)
             self.assertIn("input_signature", output)
             self.assertFalse(out_dir.exists())

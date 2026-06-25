@@ -12,14 +12,16 @@ and explicit sync operations using subprocess (stdlib-only constraint).
 
 # @cpt-begin:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-datamodel
 import os
+import logging
 import re
 import subprocess
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Tuple
 
 if TYPE_CHECKING:
     from .workspace import NamespaceRule, ResolveConfig, SourceEntry
+
+logger = logging.getLogger(__name__)
 
 # Patterns for parsing Git URLs
 # HTTPS: https://gitlab.com/org/repo.git
@@ -80,6 +82,14 @@ def _lookup_namespace(host: str, rules: list) -> "Optional[NamespaceRule]":
         if rule.host == host:
             return rule
     return None
+
+
+def _resolve_git_template(host: str, resolve_config: "ResolveConfig") -> str:
+    """Return the directory template for a host, falling back to the default."""
+    default_template = "{org}/{repo}"
+    namespace_rules = getattr(resolve_config, "namespace", []) or []
+    rule = _lookup_namespace(host, namespace_rules)
+    return getattr(rule, "template", default_template) if rule else default_template
 # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-lookup-namespace
 
 
@@ -109,7 +119,7 @@ def _clone_if_missing(url: str, local_path: Path, branch: str) -> Optional[Path]
     Returns local_path on success, None on clone failure.
     """
     if _parse_git_url(url) is None:
-        print(f"Warning: refusing to clone unrecognized URL: {_redact_url(url)}", file=sys.stderr)
+        logger.warning("Refusing to clone unrecognized URL: %s", _redact_url(url))
         return None
     if local_path.is_dir() and (local_path / ".git").exists():
         return local_path
@@ -120,7 +130,7 @@ def _clone_if_missing(url: str, local_path: Path, branch: str) -> Optional[Path]
     clone_args.extend([url, str(local_path)])
     rc, _out, err = _run_git(clone_args)
     if rc:
-        print(f"Warning: git clone failed for {_redact_url(url)}: {err}", file=sys.stderr)
+        logger.warning("Git clone failed for %s: %s", _redact_url(url), err)
         return None
     return local_path
 # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-clone-or-fetch
@@ -173,28 +183,27 @@ def _compute_local_path(
 
     host, org, repo = parsed
 
-    # Look up namespace rule (exact match → default fallback)
-    namespace_rules = getattr(resolve_config, "namespace", []) or []
-    # @cpt-begin:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
-    rule = _lookup_namespace(host, namespace_rules)
-    # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
-
     # Apply template and compute local path
-    default_template = "{org}/{repo}"
-    template = getattr(rule, "template", default_template) if rule else default_template
+    # @cpt-begin:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
+    template = _resolve_git_template(host, resolve_config)
     try:
         templated = _apply_template(template, org, repo)
-    except ValueError:
+    except ValueError as exc:
+        logger.warning("Unsafe git workspace template for %s: %s", _redact_url(source.url or ""), exc)
         return None
+    # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
 
     workdir = getattr(resolve_config, "workdir", ".workspace-sources")
     local_path = (workspace_parent / workdir / templated).resolve()
 
     # Defence-in-depth: ensure resolved path is inside the workspace
     expected_base = (workspace_parent / workdir).resolve()
-    try:
-        local_path.relative_to(expected_base)
-    except ValueError:
+    if not local_path.is_relative_to(expected_base):
+        logger.warning(
+            "Computed git local path escapes workspace: %s not under %s",
+            local_path,
+            expected_base,
+        )
         return None
 
     return local_path
@@ -222,13 +231,13 @@ def resolve_git_source(
     if local_path is None:
         url = getattr(source, "url", None)
         if url:
-            print(f"Warning: cannot compute local path for git URL: {_redact_url(url)}", file=sys.stderr)
+            logger.warning("Cannot compute local path for git URL: %s", _redact_url(url))
         return None
 
     try:
         local_path.parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        print(f"Warning: cannot create directory {local_path.parent}: {exc}", file=sys.stderr)
+        logger.warning("Cannot create directory %s: %s", local_path.parent, exc)
         return None
 
     # Determine branch

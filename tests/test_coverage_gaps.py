@@ -13,7 +13,7 @@ import os
 import subprocess
 import sys
 import textwrap
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch, MagicMock
@@ -215,13 +215,13 @@ class TestPrintHumanDelegatedBranch:
         }
         saved = is_json_mode()
         set_json_mode(False)
-        stderr = io.StringIO()
+        stdout = io.StringIO()
         try:
-            with redirect_stderr(stderr):
+            with redirect_stdout(stdout):
                 _print_human(result)
         finally:
             set_json_mode(saved)
-        output = stderr.getvalue()
+        output = stdout.getvalue()
         assert "Delegation completed" in output
         assert "Dashboard" in output
 
@@ -236,13 +236,13 @@ class TestPrintHumanDelegatedBranch:
         }
         saved = is_json_mode()
         set_json_mode(False)
-        stderr = io.StringIO()
+        stdout = io.StringIO()
         try:
-            with redirect_stderr(stderr):
+            with redirect_stdout(stdout):
                 _print_human(result)
         finally:
             set_json_mode(saved)
-        output = stderr.getvalue()
+        output = stdout.getvalue()
         assert "Delegation completed" in output
         assert "Dashboard" not in output
 

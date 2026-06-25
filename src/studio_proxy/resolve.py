@@ -13,10 +13,39 @@ import re
 import tomllib
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+from studio_proxy.stderr import write_stderr_warning
 
 MARKER_START = "<!-- @cf:root-agents -->"
 
 _TOML_FENCE_RE = re.compile(r"```toml\s*\n(.*?)```", re.DOTALL)
+
+
+def _warn(message: str) -> None:
+    write_stderr_warning(message)
+
+
+def _load_text(path: Path) -> tuple[str, Optional[str]]:
+    """Load UTF-8 text from a file, returning an error string on failure."""
+    if not path.is_file():
+        if path.exists():
+            return "", f"Not a file: {path}"
+        return "", f"File not found: {path}"
+    try:
+        return path.read_text(encoding="utf-8"), None
+    except OSError as exc:
+        return "", f"Failed to read {path}: {exc}"
+
+
+# @cpt-dod:cpt-studio-dod-core-infra-agents-integrity:p1
+def _read_root_agents_marked_text(project_root: Path) -> Optional[str]:
+    """Return root AGENTS.md text only when it includes the managed marker."""
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
+    agents_file = project_root / "AGENTS.md"
+    content, err = _load_text(agents_file)
+    if err or MARKER_START not in content:
+        return None
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
+    return content
 
 def find_project_root(start_dir: Optional[Path] = None) -> Optional[Path]:
     """Find the project root by walking up looking for AGENTS.md with @cf:root-agents marker."""
@@ -26,7 +55,8 @@ def find_project_root(start_dir: Optional[Path] = None) -> Optional[Path]:
         if agents_file.is_file():
             try:
                 head = agents_file.read_text(encoding="utf-8")[:512]
-            except OSError:
+            except OSError as exc:
+                _warn(f"unable to read {agents_file}: {exc}")
                 continue
             if MARKER_START in head:
                 return parent
@@ -39,7 +69,8 @@ def _parse_toml_from_markdown(text: str) -> Dict[str, Any]:
         try:
             data = tomllib.loads(m.group(1))
             merged.update(data)
-        except (tomllib.TOMLDecodeError, ValueError):
+        except (tomllib.TOMLDecodeError, ValueError) as exc:
+            _warn(f"ignoring invalid TOML block in AGENTS.md: {exc}")
             continue
     return merged
 
@@ -49,14 +80,8 @@ def read_cf_studio_path(project_root: Path) -> Optional[str]:
 
     Returns the install directory path (relative to project root) or None.
     """
-    agents_file = project_root / "AGENTS.md"
-    if not agents_file.is_file():
-        return None
-    try:
-        content = agents_file.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    if MARKER_START not in content:
+    content = _read_root_agents_marked_text(project_root)
+    if content is None:
         return None
 
     toml_data = _parse_toml_from_markdown(content)
@@ -106,6 +131,7 @@ def get_cache_provenance_file() -> Path:
     return get_cache_dir() / ".provenance.json"
 # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-walk-parents
 def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     """
     Find project-installed skill by reading ``cf-studio-path`` variable from root AGENTS.md.
@@ -116,7 +142,6 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
 
     Returns path to the skill entry point (studio.py) or None.
     """
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-walk-parents
     project_root = find_project_root(start_dir)
     if project_root is None:
         return None
@@ -124,13 +149,16 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     install_dir = read_cf_studio_path(project_root)
     if install_dir is None:
         return None
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-walk-parents
 
     # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
     # Check .core/ layout first, then flat layout (new: studio; legacy: cypilot)
     for skill_name in ("studio", "cypilot"):
         core_skill_dir = project_root / install_dir / ".core" / "skills" / skill_name / "scripts"
-        skill_dir = core_skill_dir if core_skill_dir.is_dir() else project_root / install_dir / "skills" / skill_name / "scripts"
+        skill_dir = (
+            core_skill_dir
+            if core_skill_dir.is_dir()
+            else project_root / install_dir / "skills" / skill_name / "scripts"
+        )
         entry_point = skill_dir / f"{skill_name}.py"
         if entry_point.is_file():
             # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-project-path
@@ -144,14 +172,15 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
 
     return None
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-walk-parents
 
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-check-global-cache
 def find_cached_skill() -> Optional[Path]:
     """
     Check for cached skill at ~/.cf-studio/cache/.
 
     Returns path to the skill entry point or None.
     """
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-check-global-cache
     cache_dir = get_cache_dir()
     # Check new layout first (studio), then legacy layout (cypilot)
     for skill_name in ("studio", "cypilot"):
@@ -160,9 +189,12 @@ def find_cached_skill() -> Optional[Path]:
             # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-cache-path
             return entry_point
             # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-cache-path
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-check-global-cache
     return None
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-check-global-cache
 
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-cache-exists
+# @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-not-found
 def resolve_skill(start_dir: Optional[Path] = None) -> Tuple[Optional[Path], str]:
     """
     Resolve skill target: project-installed first, then cache.
@@ -170,21 +202,18 @@ def resolve_skill(start_dir: Optional[Path] = None) -> Tuple[Optional[Path], str
     Returns (path_to_skill_entry, source) where source is "project" or "cache".
     Returns (None, "none") if no skill found.
     """
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
     project_skill = find_project_skill(start_dir)
     if project_skill is not None:
         return project_skill, "project"
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
 
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-cache-exists
     cached_skill = find_cached_skill()
     if cached_skill is not None:
         return cached_skill, "cache"
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-cache-exists
 
-    # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-not-found
     return None, "none"
-    # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-not-found
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-not-found
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-cache-exists
+# @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-if-marker
 
 # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 def get_cached_version() -> Optional[str]:
@@ -225,7 +254,8 @@ def _version_toml_data(start_dir: Optional[Path] = None) -> Optional[Dict[str, A
         return None
     try:
         return tomllib.loads(version_toml.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError, ValueError):
+    except (OSError, tomllib.TOMLDecodeError, ValueError) as exc:
+        _warn(f"unable to read pinned version metadata from {version_toml}: {exc}")
         return None
 
 
@@ -269,7 +299,8 @@ def _read_provenance_file(provenance_file: Path) -> Optional[Dict[str, Any]]:
         return None
     try:
         data = json.loads(provenance_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        _warn(f"unable to read cache provenance from {provenance_file}: {exc}")
         return None
     return data if isinstance(data, dict) else None
 
@@ -285,7 +316,7 @@ def get_project_version(skill_path: Path) -> Optional[str]:
                     if line.startswith("__version__"):
                         # Extract version string
                         return line.split("=", 1)[1].strip().strip("\"'")
-            except (OSError, ValueError):
-                pass
+            except (OSError, ValueError) as exc:
+                _warn(f"unable to read project version from {init_file}: {exc}")
     return None
 # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers

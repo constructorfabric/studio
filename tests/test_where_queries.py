@@ -115,11 +115,11 @@ class TestCmdWhereDefined(_ContextTestBase):
             root = Path(td)
             _setup_project(root)
             _with_context(root)
-            stderr = io.StringIO()
             stdout = io.StringIO()
-            with redirect_stdout(stdout), redirect_stderr(stderr):
-                cmd_where_defined(["cpt-test-item-1", "--id", "cpt-other"])
-            self.assertIn("WARNING", stderr.getvalue())
+            with self.assertLogs("studio.utils.context", level="WARNING") as logs:
+                with redirect_stdout(stdout):
+                    cmd_where_defined(["cpt-test-item-1", "--id", "cpt-other"])
+            self.assertTrue(any("using positional" in message for message in logs.output))
 
     def test_artifact_not_found(self):
         stdout = io.StringIO()
@@ -303,11 +303,11 @@ class TestCmdWhereUsed(_ContextTestBase):
             root = Path(td)
             _setup_project(root)
             _with_context(root)
-            stderr = io.StringIO()
             stdout = io.StringIO()
-            with redirect_stdout(stdout), redirect_stderr(stderr):
-                cmd_where_used(["cpt-test-item-1", "--id", "cpt-other"])
-            self.assertIn("WARNING", stderr.getvalue())
+            with self.assertLogs("studio.utils.context", level="WARNING") as logs:
+                with redirect_stdout(stdout):
+                    cmd_where_used(["cpt-test-item-1", "--id", "cpt-other"])
+            self.assertTrue(any("using positional" in message for message in logs.output))
 
     def test_artifact_not_found(self):
         stdout = io.StringIO()
@@ -451,7 +451,7 @@ class TestHumanWhereDefined(_HumanModeBase):
 
     def test_found_with_checked(self):
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_where_defined({
                 "status": "FOUND", "id": "cpt-x", "artifacts_scanned": 1, "count": 1,
                 "definitions": [{"artifact": "/tmp/A.md", "artifact_type": "PRD", "line": 10, "checked": True}],
@@ -462,7 +462,7 @@ class TestHumanWhereDefined(_HumanModeBase):
 
     def test_not_found(self):
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_where_defined({
                 "status": "NOT_FOUND", "id": "cpt-missing", "artifacts_scanned": 2,
                 "count": 0, "definitions": [],
@@ -472,7 +472,7 @@ class TestHumanWhereDefined(_HumanModeBase):
 
     def test_ambiguous(self):
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_where_defined({
                 "status": "AMBIGUOUS", "id": "cpt-dup", "artifacts_scanned": 2, "count": 2,
                 "definitions": [
@@ -485,7 +485,7 @@ class TestHumanWhereDefined(_HumanModeBase):
 
     def test_no_line(self):
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_where_defined({
                 "status": "FOUND", "id": "cpt-x", "artifacts_scanned": 1, "count": 1,
                 "definitions": [{"artifact": "/tmp/A.md", "artifact_type": "PRD", "line": "", "checked": False}],
@@ -497,7 +497,7 @@ class TestHumanWhereUsed(_HumanModeBase):
 
     def test_found_with_checked(self):
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_where_used({
                 "id": "cpt-x", "artifacts_scanned": 1, "count": 1,
                 "references": [{"artifact": "/tmp/A.md", "artifact_type": "PRD", "line": 10, "type": "reference", "checked": True}],
@@ -507,7 +507,7 @@ class TestHumanWhereUsed(_HumanModeBase):
 
     def test_no_refs(self):
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_where_used({
                 "id": "cpt-missing", "artifacts_scanned": 2, "count": 0, "references": [],
             })
@@ -516,7 +516,7 @@ class TestHumanWhereUsed(_HumanModeBase):
 
     def test_no_line(self):
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_where_used({
                 "id": "cpt-x", "artifacts_scanned": 1, "count": 1,
                 "references": [{"artifact": "/tmp/A.md", "artifact_type": "PRD", "line": "", "type": "ref", "checked": False}],

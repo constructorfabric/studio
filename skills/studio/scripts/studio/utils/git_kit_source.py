@@ -26,6 +26,7 @@ from __future__ import annotations
 # @cpt-begin:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -34,8 +35,10 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+logger = logging.getLogger(__name__)
 
 
 _KIT_SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -110,6 +113,20 @@ class GitKitResolution:
     kit_source_dir: Path
     tmp_dir: Path
     authority_metadata: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class _GitAuthorityOptions:
+    """Inputs required to build git authority metadata."""
+
+    requested_ref: str
+    commit_sha: str
+    identity: str
+    resolution_basis: str
+    verified: str
+    freshness: str
+    offline_reason: str = ""
+    cache_metadata: Optional[Dict[str, str]] = None
 # @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
 
 
@@ -546,6 +563,102 @@ def _metadata_value(metadata: Dict[str, Any], key: str) -> str:
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 
 
+def _effective_requested_ref(requested_ref: str, previous_requested_ref: str) -> str:
+    """Normalize the requested ref for cache/offline comparisons."""
+    effective_requested_ref = _requested_ref_display(requested_ref)
+    if effective_requested_ref == "HEAD":
+        return previous_requested_ref or "HEAD"
+    return effective_requested_ref
+
+
+def _offline_metadata_matches(
+    parsed: GitKitSource,
+    commit_sha: str,
+    previous_metadata: Dict[str, Any],
+    effective_requested_ref: str,
+) -> bool:
+    """Return whether prior metadata matches the current git source request."""
+    return bool(commit_sha) and all(
+        [
+            _metadata_value(previous_metadata, "decoded_remote_url_hash") == parsed.remote_hash,
+            _metadata_value(previous_metadata, "selected_subdirectory") == parsed.selected_subdirectory,
+            _metadata_value(previous_metadata, "kit_identity") == parsed.kit_identity,
+            _metadata_value(previous_metadata, "requested_ref") == effective_requested_ref,
+        ]
+    )
+
+
+def _manifest_matches_offline_cache(
+    manifest: Dict[str, Any],
+    parsed: GitKitSource,
+    effective_requested_ref: str,
+    commit_sha: str,
+) -> bool:
+    """Return whether the cached artifact manifest still matches the request."""
+    return all(
+        [
+            manifest.get("decoded_remote_url_hash") == parsed.remote_hash,
+            manifest.get("selected_subdirectory") == parsed.selected_subdirectory,
+            manifest.get("kit_identity") == parsed.kit_identity,
+            manifest.get("requested_ref") == effective_requested_ref,
+            manifest.get("resolved_commit_sha") == commit_sha,
+        ]
+    )
+
+
+def _build_git_authority(
+    parsed: GitKitSource,
+    options: _GitAuthorityOptions,
+) -> Dict[str, Any]:
+    """Build normalized git source provenance metadata."""
+    authority: Dict[str, Any] = {
+        "source_type": "git",
+        "original_source": parsed.original_source,
+        "canonical_source": parsed.canonical_source,
+        "effective_source": parsed.canonical_source,
+        "decoded_remote_url": parsed.decoded_remote_url,
+        "decoded_remote_url_hash": parsed.remote_hash,
+        "requested_ref": options.requested_ref,
+        "resolved_ref": options.commit_sha,
+        "commit_sha": options.commit_sha,
+        "installed_version": options.commit_sha,
+        "identity": options.identity,
+        "resolver_mode": _selector_classification(
+            "" if options.requested_ref == "HEAD" else options.requested_ref,
+            options.resolution_basis,
+        ),
+        "resolution_basis": options.resolution_basis,
+        "verified": options.verified,
+        "freshness": options.freshness,
+        "selected_subdirectory": parsed.selected_subdirectory,
+        "kit_identity": parsed.kit_identity,
+        "transport": parsed.transport,
+        "sanitized_url_display": parsed.sanitized_url_display,
+    }
+    if options.offline_reason:
+        authority["offline_reason"] = options.offline_reason
+    if options.cache_metadata:
+        authority.update(options.cache_metadata)
+    return authority
+
+
+def _build_git_auth_env(git_auth: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    """Translate runtime git auth settings into environment variables."""
+    env: Dict[str, str] = {}
+    if not isinstance(git_auth, dict):
+        return env
+    env_data = git_auth.get("env", {})
+    if isinstance(env_data, dict):
+        env.update({str(k): str(v) for k, v in env_data.items()})
+    ssh_command = git_auth.get("ssh_command")
+    if isinstance(ssh_command, str) and ssh_command:
+        env["GIT_SSH_COMMAND"] = ssh_command
+    askpass_command = git_auth.get("askpass_command")
+    if isinstance(askpass_command, str) and askpass_command:
+        env["GIT_ASKPASS"] = askpass_command
+    return env
+
+
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 def _materialize_offline_last_known(
     parsed: GitKitSource,
@@ -554,20 +667,9 @@ def _materialize_offline_last_known(
     failure: RuntimeError,
 ) -> Optional[GitKitResolution]:
     commit_sha = _metadata_value(previous_metadata, "commit_sha")
-    previous_remote_hash = _metadata_value(previous_metadata, "decoded_remote_url_hash")
-    previous_subdir = _metadata_value(previous_metadata, "selected_subdirectory")
-    previous_kit = _metadata_value(previous_metadata, "kit_identity")
     previous_requested_ref = _metadata_value(previous_metadata, "requested_ref")
-    effective_requested_ref = _requested_ref_display(requested_ref)
-    if effective_requested_ref == "HEAD":
-        effective_requested_ref = previous_requested_ref or "HEAD"
-    if (
-        not commit_sha
-        or previous_remote_hash != parsed.remote_hash
-        or previous_subdir != parsed.selected_subdirectory
-        or previous_kit != parsed.kit_identity
-        or previous_requested_ref != effective_requested_ref
-    ):
+    effective_requested_ref = _effective_requested_ref(requested_ref, previous_requested_ref)
+    if not _offline_metadata_matches(parsed, commit_sha, previous_metadata, effective_requested_ref):
         return None
     artifact_dir = _cache_artifact_dir(parsed, commit_sha)
     manifest_path = artifact_dir / "artifact-manifest.json"
@@ -575,46 +677,38 @@ def _materialize_offline_last_known(
         return None
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to read offline cache manifest %s: %s", manifest_path, exc)
         return None
-    if (
-        manifest.get("decoded_remote_url_hash") != parsed.remote_hash
-        or manifest.get("selected_subdirectory") != parsed.selected_subdirectory
-        or manifest.get("kit_identity") != parsed.kit_identity
-        or manifest.get("requested_ref") != effective_requested_ref
-        or manifest.get("resolved_commit_sha") != commit_sha
+    if not _manifest_matches_offline_cache(
+        manifest,
+        parsed,
+        effective_requested_ref,
+        commit_sha,
     ):
         return None
     tmp_dir = Path(tempfile.mkdtemp(prefix="studio-git-kit-offline-"))
     kit_source_dir = tmp_dir / "kit"
     shutil.copytree(artifact_dir, kit_source_dir, ignore=shutil.ignore_patterns("artifact-manifest.json"))
     identity = f"{parsed.canonical_source}@{effective_requested_ref}#{commit_sha}"
-    authority = {
-        "source_type": "git",
-        "original_source": parsed.original_source,
-        "canonical_source": parsed.canonical_source,
-        "effective_source": parsed.canonical_source,
-        "decoded_remote_url": parsed.decoded_remote_url,
-        "decoded_remote_url_hash": parsed.remote_hash,
-        "requested_ref": effective_requested_ref,
-        "resolved_ref": commit_sha,
-        "commit_sha": commit_sha,
-        "installed_version": commit_sha,
-        "identity": identity,
-        "resolver_mode": _selector_classification("" if effective_requested_ref == "HEAD" else effective_requested_ref, "offline_last_known"),
-        "resolution_basis": "offline_last_known",
-        "offline_reason": str(failure),
-        "verified": "stale",
-        "freshness": "last_known",
-        "selected_subdirectory": parsed.selected_subdirectory,
-        "kit_identity": parsed.kit_identity,
-        "transport": parsed.transport,
-        "sanitized_url_display": parsed.sanitized_url_display,
-        "cache_remote_hash": parsed.remote_hash,
-        "cache_requested_ref_hash": _ref_hash(effective_requested_ref),
-        "cache_subdir_hash": _subdir_hash(parsed.selected_subdirectory),
-        "cache_kit_hash": _kit_hash(parsed.kit_identity),
-    }
+    authority = _build_git_authority(
+        parsed,
+        _GitAuthorityOptions(
+            requested_ref=effective_requested_ref,
+            commit_sha=commit_sha,
+            identity=identity,
+            resolution_basis="offline_last_known",
+            verified="stale",
+            freshness="last_known",
+            offline_reason=str(failure),
+            cache_metadata={
+            "cache_remote_hash": parsed.remote_hash,
+            "cache_requested_ref_hash": _ref_hash(effective_requested_ref),
+            "cache_subdir_hash": _subdir_hash(parsed.selected_subdirectory),
+            "cache_kit_hash": _kit_hash(parsed.kit_identity),
+            },
+        ),
+    )
     return GitKitResolution(kit_source_dir=kit_source_dir, tmp_dir=tmp_dir, authority_metadata=authority)
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 
@@ -628,8 +722,24 @@ def _checkout_ref(repo_dir: Path, requested_ref: str) -> str:
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-checkout
 
 
+def _clone_git_source(
+    parsed: GitKitSource,
+    repo_dir: Path,
+    requested_ref: str,
+    env: Dict[str, str],
+) -> Tuple[str, str, Path]:
+    """Clone the repository and resolve the selected source subdirectory."""
+    _run_git(["clone", "--quiet", parsed.decoded_remote_url, str(repo_dir)], env=env)
+    resolution_basis = _checkout_ref(repo_dir, requested_ref)
+    commit_sha = _run_git(["rev-parse", "HEAD"], cwd=repo_dir, env=env)
+    kit_source_dir = repo_dir / parsed.selected_subdirectory if parsed.selected_subdirectory else repo_dir
+    if not kit_source_dir.is_dir():
+        raise RuntimeError(f"Git source subdirectory not found: {parsed.selected_subdirectory}")
+    return resolution_basis, commit_sha, kit_source_dir
+
+
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-install-fetch-cache
-def materialize_git_kit_source(
+def materialize_git_kit_source(  # pylint: disable=too-many-locals
     parsed: GitKitSource,
     *,
     requested_ref: str = "",
@@ -640,31 +750,18 @@ def materialize_git_kit_source(
     requested_ref = _validate_requested_ref(requested_ref)
     tmp_dir = Path(tempfile.mkdtemp(prefix="studio-git-kit-"))
     repo_dir = tmp_dir / "repo"
-    env = {}
+    env = _build_git_auth_env(git_auth)
     # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-auth-runtime:p1:inst-git-auth-runtime-object
-    if isinstance(git_auth, dict):
-        env_data = git_auth.get("env", {})
-        if isinstance(env_data, dict):
-            env.update({str(k): str(v) for k, v in env_data.items()})
-        ssh_command = git_auth.get("ssh_command")
-        if isinstance(ssh_command, str) and ssh_command:
-            env["GIT_SSH_COMMAND"] = ssh_command
-        askpass_command = git_auth.get("askpass_command")
-        if isinstance(askpass_command, str) and askpass_command:
-            env["GIT_ASKPASS"] = askpass_command
+    # Auth environment is normalized by _build_git_auth_env().
     # @cpt-end:cpt-studio-algo-generic-git-kit-installer-auth-runtime:p1:inst-git-auth-runtime-object
 
     try:
-        # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
-        _run_git(["clone", "--quiet", parsed.decoded_remote_url, str(repo_dir)], env=env)
-        resolution_basis = _checkout_ref(repo_dir, requested_ref)
-        commit_sha = _run_git(["rev-parse", "HEAD"], cwd=repo_dir, env=env)
-        # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
-        kit_source_dir = repo_dir
-        if parsed.selected_subdirectory:
-            kit_source_dir = repo_dir / parsed.selected_subdirectory
-            if not kit_source_dir.is_dir():
-                raise RuntimeError(f"Git source subdirectory not found: {parsed.selected_subdirectory}")
+        resolution_basis, commit_sha, kit_source_dir = _clone_git_source(
+            parsed,
+            repo_dir,
+            requested_ref,
+            env,
+        )
     except RuntimeError as exc:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         if previous_metadata:
@@ -679,30 +776,18 @@ def materialize_git_kit_source(
     selector = requested_ref or "HEAD"
     identity = f"{parsed.canonical_source}@{selector}#{commit_sha}"
     cache_metadata = _cache_artifact(parsed, kit_source_dir, requested_ref, commit_sha, resolution_basis)
-    # @cpt-begin:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-content
-    authority = {
-        "source_type": "git",
-        "original_source": parsed.original_source,
-        "canonical_source": parsed.canonical_source,
-        "effective_source": parsed.canonical_source,
-        "decoded_remote_url": parsed.decoded_remote_url,
-        "decoded_remote_url_hash": parsed.remote_hash,
-        "requested_ref": selector,
-        "resolved_ref": commit_sha,
-        "commit_sha": commit_sha,
-        "installed_version": commit_sha,
-        "identity": identity,
-        "resolver_mode": _selector_classification(requested_ref, resolution_basis),
-        "resolution_basis": resolution_basis,
-        "verified": "verified",
-        "freshness": "fresh",
-        "selected_subdirectory": parsed.selected_subdirectory,
-        "kit_identity": parsed.kit_identity,
-        "transport": parsed.transport,
-        "sanitized_url_display": parsed.sanitized_url_display,
-        **cache_metadata,
-    }
-    # @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-content
+    authority = _build_git_authority(
+        parsed,
+        _GitAuthorityOptions(
+            requested_ref=selector,
+            commit_sha=commit_sha,
+            identity=identity,
+            resolution_basis=resolution_basis,
+            verified="verified",
+            freshness="fresh",
+            cache_metadata=cache_metadata,
+        ),
+    )
     return GitKitResolution(
         kit_source_dir=kit_source_dir,
         tmp_dir=tmp_dir,

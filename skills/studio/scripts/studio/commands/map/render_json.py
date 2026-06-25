@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Sequence
 from .model import Edge, Node
 
 
+# @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-render-json
 @dataclass(frozen=True)
 class RenderJsonInput:
     """Inputs required to render the map JSON payload."""
@@ -34,7 +35,6 @@ class RenderJsonInput:
 
 def render_json(inp: RenderJsonInput) -> str:
     """Render json."""
-    # @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-render-json
     nodes_sorted = sorted([n.to_dict() for n in inp.nodes], key=lambda d: d["id"])
     edges_sorted = sorted([e.to_dict() for e in inp.edges], key=lambda d: d["id"])
     dangling = _dangling_section(inp.nodes, inp.edges)
@@ -57,9 +57,8 @@ def render_json(inp: RenderJsonInput) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False)
     # @cpt-end:cpt-studio-algo-map-render-json:p1:inst-render-json
 
-
+# @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-dangling-section
 def _dangling_section(nodes: Sequence[Node], edges: Sequence[Edge]) -> List[dict]:
-    # @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-dangling-section
     by_id: Dict[str, Node] = {n.id: n for n in nodes}
     out: List[dict] = []
     seen: set[tuple] = set()
@@ -81,12 +80,11 @@ def _dangling_section(nodes: Sequence[Node], edges: Sequence[Edge]) -> List[dict
     return out
     # @cpt-end:cpt-studio-algo-map-render-json:p1:inst-dangling-section
 
-
+# @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-categories-section
 def _categories_section(
     nodes: Sequence[Node],
     category_styles: Optional[Dict[str, dict]] = None,
 ) -> Dict[str, dict]:
-    # @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-categories-section
     cats: Dict[str, Dict[str, int]] = {}
     origins: Dict[str, Counter] = {}
     for n in nodes:
@@ -123,9 +121,8 @@ def _categories_section(
     return out
     # @cpt-end:cpt-studio-algo-map-render-json:p1:inst-categories-section
 
-
+# @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-deterministic-style
 def _deterministic_style(name: str) -> Dict[str, str]:
-    # @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-deterministic-style
     h = hashlib.sha256(name.encode("utf-8")).hexdigest()
     hue = int(h[:6], 16) % 360
     return {

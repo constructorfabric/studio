@@ -7,12 +7,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from studio.utils._tomllib_compat import tomllib
 
+from ..resolve_vars import load_resolved_variables
 from .categorize import (
     CategorizeOptions, OverrideCategory, OverrideConfig, categorize_nodes,
 )
@@ -22,139 +24,207 @@ from .layout import compute_layout
 from .links import extract_file_links
 from .render_html import RenderHtmlInput, render_html
 from .render_json import RenderJsonInput, render_json
-from .scan import ScanOptions, scan_repo
+from .scan import ScanOptions, _OPTIONAL_MAP_DISCOVERY_ERRORS, scan_repo
+
+def _emit_stdout(message: str) -> None:
+    """Emit user-facing map output to stdout without altering existing text."""
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    emit_logger = logging.getLogger(f"{__name__}.summary")
+    emit_logger.handlers = [handler]
+    emit_logger.setLevel(logging.INFO)
+    emit_logger.propagate = False
+    try:
+        emit_logger.log(logging.INFO, "%s", message.rstrip("\n"))
+    finally:
+        handler.close()
 
 
-def cmd_map(argv: List[str]) -> int:
-    """Run the map command."""
+def _emit_stderr(message: str, level: int = logging.WARNING) -> None:
+    """Emit diagnostics to stderr via a dedicated logger handler."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    emit_logger = logging.getLogger(f"{__name__}.stderr")
+    emit_logger.handlers = [handler]
+    emit_logger.setLevel(level)
+    emit_logger.propagate = False
+    try:
+        emit_logger.log(level, "%s", message.rstrip("\n"))
+    finally:
+        handler.close()
+
+
+def _build_map_parser() -> argparse.ArgumentParser:
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-cmd-map
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         prog="cfs map",
         description="Build an interactive markdown↔source map via cpt identifiers.",
     )
-    p.add_argument("--out", default=None)
-    p.add_argument("--format", choices=["html", "json"], default="html")
-    p.add_argument("--config", default=None)
-    p.add_argument("--no-source", action="store_true")
-    p.add_argument("--local-only", action="store_true")
-    p.add_argument("--inline-data", action="store_true")
-    p.add_argument(
+    parser.add_argument("--out", default=None)
+    parser.add_argument("--format", choices=["html", "json"], default="html")
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--no-source", action="store_true")
+    parser.add_argument("--local-only", action="store_true")
+    parser.add_argument("--inline-data", action="store_true")
+    parser.add_argument(
         "--include-adapter",
         action="store_true",
         help="Scan inside the cf / studio adapter directory too. "
              "Useful when markdown references {cf-studio-path}/... paths that "
              "should resolve to nodes in the graph.",
     )
-    p.add_argument("-v", "--verbose", action="store_true")
-    args = p.parse_args(argv)
+    parser.add_argument("-v", "--verbose", action="store_true")
+    return parser
+    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-cmd-map
 
-    cwd = Path.cwd().resolve()
-    primary_root = cwd
-    out_path = Path(args.out).resolve() if args.out else cwd / f"md-map.{args.format}"
 
-    sources = _discover_sources(primary_root, local_only=args.local_only)
-    override = _load_override(primary_root, args.config)
-
-    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-collect-nodes
+def _collect_nodes_for_sources(sources: List[dict], args) -> tuple[list, Dict[str, Path]]:
     all_nodes = []
     project_root_by_source: Dict[str, Path] = {}
-    for src in sources:
-        if not src["reachable"]:
+    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-collect-nodes
+    for source in sources:
+        if not source["reachable"]:
             continue
-        src_root = Path(src["path"]).resolve()
+        src_root = Path(source["path"]).resolve()
         opts = ScanOptions(
             project_root=src_root,
-            source_name=src["name"],
+            source_name=source["name"],
             no_source=args.no_source,
             include_adapter=args.include_adapter,
         )
         all_nodes.extend(scan_repo(opts))
-        project_root_by_source[src["name"]] = src_root
+        project_root_by_source[source["name"]] = src_root
+    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-collect-nodes
+    return all_nodes, project_root_by_source
 
+
+def _apply_override_filter(all_nodes, override) -> list:
+    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-layout-render
+    if override is None:
+        return all_nodes
+    if override.show_uncategorized:
+        for node in all_nodes:
+            if node.category_origin != "override":
+                node.category = "_uncategorized"
+                node.category_origin = "uncategorized-bucket"
+        return all_nodes
+    if not override.categories:
+        _emit_stderr(
+            "map: override config has zero categories and show_uncategorized=false;"
+            " result will be empty"
+        )
+    return [node for node in all_nodes if node.category_origin == "override"]
+    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-layout-render
+
+
+def _apply_phantom_override(nodes_all, edges, override):
+    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-layout-render
+    if override is None:
+        return nodes_all, edges
+    if override.show_uncategorized:
+        for node in nodes_all:
+            if node.category_origin == "phantom":
+                node.category = "_uncategorized"
+                node.category_origin = "uncategorized-bucket"
+        return nodes_all, edges
+    filtered_nodes = [node for node in nodes_all if node.category_origin == "override"]
+    node_ids = {node.id for node in filtered_nodes}
+    filtered_edges = [edge for edge in edges if edge.from_id in node_ids and edge.to_id in node_ids]
+    return filtered_nodes, filtered_edges
+    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-layout-render
+
+
+def _category_styles_from_override(override: Optional[OverrideConfig]) -> dict:
+    # @cpt-begin:cpt-studio-dod-dependency-mapping-graph:p1:inst-layout-render
+    category_styles = {}
+    if override is None:
+        return category_styles
+    for category in override.categories:
+        if category.color is None:
+            continue
+        entry: dict = {"color": category.color}
+        if category.background is not None:
+            entry["background"] = category.background
+        category_styles[category.name] = entry
+    return category_styles
+    # @cpt-end:cpt-studio-dod-dependency-mapping-graph:p1:inst-layout-render
+
+
+def _write_map_output(args, out_path: Path, json_payload: str):
+    # @cpt-begin:cpt-studio-dod-dependency-mapping-graph:p1:inst-layout-render
+    sidecar_path = None
+    if args.format == "json":
+        out_path.write_text(json_payload, encoding="utf-8")
+        return sidecar_path
+    html, sidecar_js = render_html(RenderHtmlInput(
+        json_payload=json_payload,
+        inline_data=args.inline_data,
+        sidecar_basename=out_path.name + ".js",
+    ))
+    out_path.write_text(html, encoding="utf-8")
+    if sidecar_js is not None:
+        sidecar_path = out_path.with_name(out_path.name + ".js")
+        sidecar_path.write_text(sidecar_js, encoding="utf-8")
+    return sidecar_path
+    # @cpt-end:cpt-studio-dod-dependency-mapping-graph:p1:inst-layout-render
+
+
+def _build_map_graph(primary_root: Path, args, sources: List[dict], override):
+    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-cmd-map
+    all_nodes, project_root_by_source = _collect_nodes_for_sources(sources, args)
     categorize_nodes(all_nodes, CategorizeOptions(
         project_root=primary_root,
         override=override,
         source_roots=project_root_by_source,
     ))
-    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-collect-nodes
-
-    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-filter-override
-    # Apply override filtering: when an override config is loaded, only nodes
-    # that matched an override category are kept by default.  When
-    # show_uncategorized=true, non-matched nodes are bucketed instead.
-    if override is not None:
-        if override.show_uncategorized:
-            for n in all_nodes:
-                if n.category_origin != "override":
-                    n.category = "_uncategorized"
-                    n.category_origin = "uncategorized-bucket"
-        else:
-            if not override.categories:
-                print(
-                    "map: override config has zero categories and show_uncategorized=false;"
-                    " result will be empty",
-                    file=sys.stderr,
-                )
-            all_nodes = [n for n in all_nodes if n.category_origin == "override"]
-    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-filter-override
-
-    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-build-edges
+    filtered_nodes = _apply_override_filter(all_nodes, override)
     template_vars = _load_template_vars(primary_root)
+    template_vars_by_source = {
+        source_name: _load_template_vars(project_root)
+        for source_name, project_root in project_root_by_source.items()
+    }
     file_edges = extract_file_links(
-        all_nodes, project_root=primary_root, template_vars=template_vars,
+        filtered_nodes,
+        project_root=primary_root,
+        project_root_by_source=project_root_by_source,
+        template_vars=template_vars,
+        template_vars_by_source=template_vars_by_source,
     )
-    cpt_edges, phantoms = build_cpt_edges(all_nodes)
-    edges = list(file_edges) + list(cpt_edges)
-    nodes_all = list(all_nodes) + list(phantoms)
-
-    # Apply phantom handling for override paths: phantoms are generated after
-    # the earlier bucketing/filter step so they need a second pass here.
-    if override is not None:
-        if override.show_uncategorized:
-            # Bucket phantoms into _uncategorized (same rule as non-override nodes).
-            for n in nodes_all:
-                if n.category_origin == "phantom":
-                    n.category = "_uncategorized"
-                    n.category_origin = "uncategorized-bucket"
-        else:
-            # Drop phantoms and any edges that reference removed nodes.
-            nodes_all = [n for n in nodes_all if n.category_origin == "override"]
-            _node_ids = {n.id for n in nodes_all}
-            edges = [e for e in edges if e.from_id in _node_ids and e.to_id in _node_ids]
-
+    cpt_edges, phantoms = build_cpt_edges(filtered_nodes)
+    nodes_all, edges = _apply_phantom_override(
+        list(filtered_nodes) + list(phantoms),
+        list(file_edges) + list(cpt_edges),
+        override,
+    )
     enrich_edges(edges, nodes_all, project_root_by_source=project_root_by_source)
-    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-build-edges
+    return nodes_all, edges, project_root_by_source
+    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-cmd-map
 
-    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-layout-render
-    vis_nodes, bucket_rects, category_bands = compute_layout(
-        nodes_all, edges, category_style=None, verbose=args.verbose,
-    )
 
-    art_toml, adapter_dir = _resolve_artifacts_toml(primary_root)
-    if art_toml is None:
-        print(
-            "map: no artifacts.toml found via adapter resolution; source scanning disabled",
-            file=sys.stderr,
-        )
-    scan_meta = {
+def _build_scan_meta(primary_root: Path, art_toml: Optional[Path], adapter_dir: Optional[Path]) -> dict:
+    # @cpt-begin:cpt-studio-state-dependency-map:p1:inst-layout-render
+    return {
         "artifacts_toml": str(art_toml.relative_to(primary_root)) if art_toml is not None else None,
         "systems_scanned": _count_systems(adapter_dir),
         "systems_docs_only": _count_systems(adapter_dir, docs_only=True),
         "skip_dirs": sorted(skip_dirs_for_meta(primary_root)),
     }
+    # @cpt-end:cpt-studio-state-dependency-map:p1:inst-layout-render
 
-    # Build per-category style dict from the override config so the JSON legend
-    # reflects user-defined colors from md-map.toml [categories.style].
-    category_styles = {}
-    if override is not None:
-        for oc in override.categories:
-            if oc.color is not None:
-                entry: dict = {"color": oc.color}
-                if oc.background is not None:
-                    entry["background"] = oc.background
-                category_styles[oc.name] = entry
 
-    json_payload = render_json(RenderJsonInput(
+def _render_map_json_payload(
+    nodes_all,
+    edges,
+    sources,
+    scan_meta,
+    vis_nodes,
+    bucket_rects,
+    category_bands,
+    override,
+) -> str:
+    # @cpt-begin:cpt-studio-dod-dependency-mapping-graph:p1:inst-layout-render
+    category_styles = _category_styles_from_override(override)
+    return render_json(RenderJsonInput(
         nodes=nodes_all,
         edges=edges,
         workspace={"primary": "local", "sources": sources},
@@ -164,20 +234,57 @@ def cmd_map(argv: List[str]) -> int:
         category_bands=category_bands,
         category_styles=category_styles or None,
     ))
+    # @cpt-end:cpt-studio-dod-dependency-mapping-graph:p1:inst-layout-render
 
-    sidecar_path = None
-    if args.format == "json":
-        out_path.write_text(json_payload, encoding="utf-8")
-    else:
-        html, sidecar_js = render_html(RenderHtmlInput(
-            json_payload=json_payload,
-            inline_data=args.inline_data,
-            sidecar_basename=out_path.name + ".js",
-        ))
-        out_path.write_text(html, encoding="utf-8")
-        if sidecar_js is not None:
-            sidecar_path = out_path.with_name(out_path.name + ".js")
-            sidecar_path.write_text(sidecar_js, encoding="utf-8")
+
+def _resolve_map_paths(args) -> tuple[Path, Path]:
+    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-cmd-map
+    cwd = Path.cwd().resolve()
+    out_path = Path(args.out).resolve() if args.out else cwd / f"md-map.{args.format}"
+    return cwd, out_path
+    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-cmd-map
+
+
+def _resolve_map_scan_meta(primary_root: Path) -> dict:
+    # @cpt-begin:cpt-studio-state-dependency-map:p1:inst-layout-render
+    art_toml, adapter_dir = _resolve_artifacts_toml(primary_root)
+    if art_toml is None:
+        _emit_stderr(
+            "map: no artifacts.toml found via adapter resolution; source scanning disabled"
+        )
+    return _build_scan_meta(primary_root, art_toml, adapter_dir)
+    # @cpt-end:cpt-studio-state-dependency-map:p1:inst-layout-render
+
+
+def _warn_optional_discovery(context: str, exc: Exception) -> None:
+    """Report a best-effort map discovery failure without aborting the command."""
+    _emit_stderr(f"map: warning: {context}: {type(exc).__name__}: {exc}")
+
+
+def cmd_map(argv: List[str]) -> int:  # pylint: disable=too-many-locals
+    """Run the map command."""
+    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-cmd-map
+    args = _build_map_parser().parse_args(argv)
+
+    primary_root, out_path = _resolve_map_paths(args)
+
+    sources = _discover_sources(primary_root, local_only=args.local_only)
+    override = _load_override(primary_root, args.config)
+
+    graph = _build_map_graph(primary_root, args, sources, override)
+    nodes_all, edges, _project_root_by_source = graph
+
+    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-layout-render
+    vis_nodes, bucket_rects, category_bands = compute_layout(
+        nodes_all, edges, category_style=None, verbose=args.verbose,
+    )
+
+    scan_meta = _resolve_map_scan_meta(primary_root)
+    json_payload = _render_map_json_payload(
+        nodes_all, edges, sources, scan_meta, vis_nodes, bucket_rects, category_bands, override,
+    )
+
+    sidecar_path = _write_map_output(args, out_path, json_payload)
 
     _print_summary(scan_meta, sources, nodes_all, edges, out_path, sidecar_path, args.config)
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-layout-render
@@ -210,8 +317,8 @@ def _discover_sources(primary_root: Path, local_only: bool) -> List[dict]:
                 "reachable": reachable,
                 "role": src_entry.role,
             })
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
-        pass
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery("workspace source discovery failed", exc)
     return sources
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-discover-sources
 
@@ -228,8 +335,8 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
     try:
         with path.open("rb") as f:
             data = tomllib.load(f)
-    except Exception as exc:  # pylint: disable=broad-exception-caught  # override config validation
-        print(f"map: invalid {path}: {exc}", file=sys.stderr)
+    except (OSError, ValueError) as exc:  # override config validation
+        _emit_stderr(f"map: invalid {path}: {exc}", level=logging.ERROR)
         sys.exit(2)
     show_uncategorized = bool(data.get("show_uncategorized", False))
     cats = []
@@ -248,7 +355,7 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
 def _load_template_vars(primary_root: Path) -> Dict[str, str]:
     """Flatten ``resolve-vars`` output into a {name: project-root-relative-path} map.
 
-    Calls the studio CLI in JSON mode. Returns an empty dict on any failure —
+    Loads resolve-vars data in-process. Returns an empty dict on any failure —
     template-variable expansion is best-effort enrichment, never a hard dep.
 
     Output shape: ``{"system": {...}, "kits": {<slug>: {...}}}`` with absolute
@@ -257,29 +364,15 @@ def _load_template_vars(primary_root: Path) -> Dict[str, str]:
     ``studio_path``) are exposed at the top level.
     """
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-load-template-vars
-    import json
-    import subprocess
-
-    candidates = [
-        ["cfs", "--json", "resolve-vars"],
-        [sys.executable, "-m", "studio.cli", "--json", "resolve-vars"],
-    ]
-    data = None
-    for cmd in candidates:
-        try:
-            out = subprocess.run(
-                cmd, cwd=primary_root, capture_output=True, text=True, check=False, timeout=15,
-            )
-        except Exception:  # pylint: disable=broad-exception-caught
-            continue
-        if out.returncode or not out.stdout.strip():
-            continue
-        try:
-            data = json.loads(out.stdout)
-            break
-        except Exception:  # pylint: disable=broad-exception-caught
-            continue
-    if data is None:
+    try:
+        data, context_error = load_resolved_variables(primary_root)
+    except (ValueError, OSError) as exc:
+        _emit_stderr(
+            "map: warning: template variable discovery failed; continuing without template vars: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return {}
+    if context_error is not None or data is None:
         return {}
     return _flatten_vars(data, primary_root)
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-load-template-vars
@@ -350,35 +443,23 @@ def _resolve_artifacts_toml(primary_root: Path):
     tests), the flat ``primary_root/artifacts.toml`` layout is used instead to
     prevent picking up the parent project's adapter.
     """
+    # @cpt-begin:cpt-studio-state-dependency-map:p1:inst-layout-render
     try:
-        from studio.utils.files import find_studio_directory, find_project_root, load_artifacts_registry
-        detected_root = find_project_root(primary_root)
-        if detected_root is not None and detected_root.resolve() == primary_root.resolve():  # pragma: no cover
-            # primary_root IS the VCS project root — use full adapter resolution.
-            adapter_dir = find_studio_directory(primary_root) or primary_root
-            cfg, _err = load_artifacts_registry(adapter_dir)
-            if cfg is None:
-                return None, adapter_dir
-            # Reconstruct the resolved file path for scan_meta reporting.
-            # Mirror the fallback chain from load_artifacts_registry.
-            for candidate in (
-                adapter_dir / "artifacts.toml",
-                adapter_dir / "config" / "artifacts.toml",
-                adapter_dir / "artifacts.json",
-            ):
-                if candidate.is_file():
-                    return candidate, adapter_dir
+        from .scan import _adapter_dir_for_scan_root, _resolve_registry_path_for_root
+
+        adapter_dir = _adapter_dir_for_scan_root(primary_root)
+        registry_path = _resolve_registry_path_for_root(primary_root)
+        if registry_path is None:
             return None, adapter_dir
-        # primary_root is a sub-directory — use flat layout only.
-        flat = primary_root / "artifacts.toml"
-        if flat.is_file():
-            return flat, primary_root
+        return registry_path, adapter_dir
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery("artifacts registry resolution failed", exc)
         return None, primary_root
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
-        return None, primary_root
+    # @cpt-end:cpt-studio-state-dependency-map:p1:inst-layout-render
 
 
 def _count_systems(adapter_dir: Optional[Path], docs_only: bool = False) -> int:
+    # @cpt-begin:cpt-studio-state-dependency-map:p1:inst-layout-render
     if adapter_dir is None:  # pragma: no cover
         return 0
     try:
@@ -394,8 +475,10 @@ def _count_systems(adapter_dir: Optional[Path], docs_only: bool = False) -> int:
                 if getattr(s, "traceability_mode", "FULL") == "DOCS-ONLY"
             )
         return len(meta.systems)
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery("system counting failed", exc)
         return 0
+    # @cpt-end:cpt-studio-state-dependency-map:p1:inst-layout-render
 
 
 def _print_summary(
@@ -416,19 +499,19 @@ def _print_summary(
     cpt_impl = sum(1 for e in edges if e.type == "cpt-impl")
     reachable = sum(1 for s in sources if s["reachable"])
     unreachable = sum(1 for s in sources if not s["reachable"])
-    print(f"Config       : {config_path or '(none)'}")
-    print(
+    _emit_stdout(f"Config       : {config_path or '(none)'}")
+    _emit_stdout(
         f"Mode         : {'federated' if reachable > 1 else 'single-repo'} "
         f"({reachable} reachable, {unreachable} unreachable)"
     )
-    print(
+    _emit_stdout(
         f"Source scan  : artifacts.toml: {scan_meta['systems_scanned']} systems, "
         f"{scan_meta['systems_docs_only']} DOCS-ONLY"
     )
-    print(f"Scanned      : {md} markdown, {src} source files")
-    print(f"Edges        : {file_edges} file-link, {cpt_doc} cpt-doc, {cpt_impl} cpt-impl")
-    print(f"Phantom IDs  : {phantom} dangling cpt uses")
-    print(f"Wrote        : {out_path}")
+    _emit_stdout(f"Scanned      : {md} markdown, {src} source files")
+    _emit_stdout(f"Edges        : {file_edges} file-link, {cpt_doc} cpt-doc, {cpt_impl} cpt-impl")
+    _emit_stdout(f"Phantom IDs  : {phantom} dangling cpt uses")
+    _emit_stdout(f"Wrote        : {out_path}")
     if sidecar_path is not None:
-        print(f"               {sidecar_path}")
+        _emit_stdout(f"               {sidecar_path}")
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-print-summary

@@ -4,16 +4,22 @@ Constructor Studio Workspace - Multi-repo federation support.
 Loads and validates .cf-workspace.toml (standalone or inline in core.toml).
 Each source maps a named repo to a local path, optional adapter location, and a role.
 """
+
+from __future__ import annotations
 # @cpt-algo:cpt-studio-feature-workspace:p1
+# @cpt-algo:cpt-studio-algo-workspace-find-config:p1
 # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-datamodel
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import logging
 import re
 
 from ..constants import WORKSPACE_CONFIG_FILENAME
 from . import toml_utils
+
+logger = logging.getLogger(__name__)
 
 # Valid source roles
 VALID_ROLES = {"artifacts", "codebase", "kits", "full"}
@@ -44,6 +50,80 @@ def _resolve_config_path(project_root: Path, studio_rel: str) -> Path:
     if not config_path.is_file():
         config_path = (project_root / studio_rel / _CONFIG_FILENAME).resolve()
     return config_path
+
+
+def _error_result(message: str) -> Tuple[None, str]:
+    """Return a standardized workspace-config failure tuple."""
+    return None, message
+
+
+def _load_workspace_from_path_value(
+    project_root: Path,
+    ws_value: str,
+) -> Tuple[Optional["WorkspaceConfig"], Optional[str]]:
+    # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-load-standalone
+    normalized_value = ws_value.strip()
+    ws_path = (project_root / normalized_value).resolve()
+    ws_cfg, ws_err = WorkspaceConfig.load(ws_path)
+    # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-load-standalone
+    return ws_cfg, ws_err
+
+
+def _parse_workspace_sources(data: dict) -> Dict[str, SourceEntry]:
+    """Parse and validate the ``sources`` section from workspace config."""
+    raw_sources = (data or {}).get("sources", {})
+    if not isinstance(raw_sources, dict):
+        raise ValueError("'sources' must be a mapping")
+    sources: Dict[str, SourceEntry] = {}
+    for name, src_data in raw_sources.items():
+        if not isinstance(src_data, dict):
+            raise ValueError(f"Source '{name}' must be a table, got {type(src_data).__name__}")
+        if isinstance(name, str) and name.strip():
+            normalized_name = name.strip()
+            sources[normalized_name] = SourceEntry.from_dict(normalized_name, src_data)
+    return sources
+
+
+def _parse_workspace_section(
+    data: dict,
+    key: str,
+    factory: object,
+) -> Optional[object]:
+    """Parse an optional workspace subsection when present as a dict."""
+    raw_value = (data or {}).get(key)
+    if not isinstance(raw_value, dict):
+        return None
+    return factory.from_dict(raw_value)
+
+
+def _validate_workspace_data(data: object, workspace_path: Path) -> Optional[str]:
+    """Return an error message when raw workspace TOML is structurally invalid."""
+    if not isinstance(data, dict):
+        return f"Invalid workspace file (expected TOML table): {workspace_path}"
+    if "version" not in data:
+        return f"Missing required field 'version' in {workspace_path}"
+    if "sources" not in data:
+        return f"Missing required field 'sources' in {workspace_path}"
+    return None
+
+
+def _load_workspace_project_config(project_root: Path) -> Optional[dict]:
+    from .files import load_project_config
+
+    # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-load-project-config
+    config = load_project_config(project_root)
+    return config
+    # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-load-project-config
+
+
+def _lookup_source_for_resolution(
+    sources: Dict[str, "SourceEntry"],
+    source_name: str,
+) -> Optional["SourceEntry"]:
+    # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-lookup
+    source_entry = sources.get(source_name)
+    return source_entry
+    # @cpt-end:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-lookup
 
 
 @dataclass
@@ -224,38 +304,13 @@ class WorkspaceConfig:
         resolution_base: Optional[Path] = None,
     ) -> "WorkspaceConfig":
         """Build an instance from a dictionary."""
-        version = str((data or {}).get("version", "1.0")).strip()
-        sources: Dict[str, SourceEntry] = {}
-        raw_sources = (data or {}).get("sources", {})
-        if not isinstance(raw_sources, dict):
-            raise ValueError("'sources' must be a mapping")
-        for name, src_data in raw_sources.items():
-            if not isinstance(src_data, dict):
-                raise ValueError(f"Source '{name}' must be a table, got {type(src_data).__name__}")
-            if isinstance(name, str) and name.strip():
-                sources[name.strip()] = SourceEntry.from_dict(name.strip(), src_data)
-
-        traceability = TraceabilityConfig()
-        raw_trace = (data or {}).get("traceability", None)
-        if isinstance(raw_trace, dict):
-            traceability = TraceabilityConfig.from_dict(raw_trace)
-
-        resolve_cfg: Optional[ResolveConfig] = None
-        raw_resolve = (data or {}).get("resolve", None)
-        if isinstance(raw_resolve, dict):
-            resolve_cfg = ResolveConfig.from_dict(raw_resolve)
-
-        validation_cfg: Optional[ValidationConfig] = None
-        raw_validation = (data or {}).get("validation", None)
-        if isinstance(raw_validation, dict):
-            validation_cfg = ValidationConfig.from_dict(raw_validation)
-
         return cls(
-            version=version,
-            sources=sources,
-            traceability=traceability,
-            resolve=resolve_cfg,
-            validation=validation_cfg,
+            version=str((data or {}).get("version", "1.0")).strip(),
+            sources=_parse_workspace_sources(data),
+            traceability=_parse_workspace_section(data, "traceability", TraceabilityConfig)
+            or TraceabilityConfig(),
+            resolve=_parse_workspace_section(data, "resolve", ResolveConfig),
+            validation=_parse_workspace_section(data, "validation", ValidationConfig),
             workspace_file=workspace_file,
             is_inline=is_inline,
             resolution_base=resolution_base,
@@ -287,24 +342,21 @@ class WorkspaceConfig:
             (WorkspaceConfig, None) on success or (None, error_message) on failure.
         """
         if not workspace_path.is_file():
-            return None, f"Workspace file not found: {workspace_path}"
+            return _error_result(f"Workspace file not found: {workspace_path}")
         try:
             data = toml_utils.load(workspace_path)
         except (OSError, ValueError) as e:
-            return None, f"Failed to read workspace file {workspace_path}: {e}"
-        if not isinstance(data, dict):
-            return None, f"Invalid workspace file (expected TOML table): {workspace_path}"
-        if "version" not in data:
-            return None, f"Missing required field 'version' in {workspace_path}"
-        if "sources" not in data:
-            return None, f"Missing required field 'sources' in {workspace_path}"
+            return _error_result(f"Failed to read workspace file {workspace_path}: {e}")
+        validation_error = _validate_workspace_data(data, workspace_path)
+        if validation_error is not None:
+            return _error_result(validation_error)
         try:
             cfg = cls.from_dict(data, workspace_file=workspace_path.resolve(), is_inline=False)
         except ValueError as e:
-            return None, f"Invalid workspace config in {workspace_path}: {e}"
+            return _error_result(f"Invalid workspace config in {workspace_path}: {e}")
         errs = cfg.validate()
         if errs:
-            return None, f"Invalid workspace config in {workspace_path}: {'; '.join(errs)}"
+            return _error_result(f"Invalid workspace config in {workspace_path}: {'; '.join(errs)}")
         return cfg, None
     # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-config-datamodel
 
@@ -317,19 +369,14 @@ class WorkspaceConfig:
         paths resolve relative to the project root (set via resolution_base).
         For git URL sources, delegates to git_utils.resolve_git_source().
         """
-        # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-lookup
-        src = self.sources.get(source_name)
-        # @cpt-end:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-lookup
+        src = _lookup_source_for_resolution(self.sources, source_name)
         # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-if-not-found
         if src is None:
             return None
         # @cpt-end:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-if-not-found
         # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-determine-base
-        if self.resolution_base is not None:
-            base = self.resolution_base
-        elif self.workspace_file is not None:
-            base = self.workspace_file.parent
-        else:
+        base = self.get_resolution_base()
+        if base is None:
             return None
         # @cpt-end:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-determine-base
         # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-return
@@ -346,6 +393,14 @@ class WorkspaceConfig:
         # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-fallback
         return None
         # @cpt-end:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-fallback
+
+    def get_resolution_base(self) -> Optional[Path]:
+        """Return the filesystem base used for relative workspace resolution."""
+        if self.resolution_base is not None:
+            return self.resolution_base
+        if self.workspace_file is not None:
+            return self.workspace_file.parent
+        return None
 
     # @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-methods
     def resolve_source_adapter(self, source_name: str) -> Optional[Path]:
@@ -371,7 +426,10 @@ class WorkspaceConfig:
             if not src.path and not src.url:
                 errors.append(f"Source '{name}' must have either 'path' or 'url'")
             if src.role not in VALID_ROLES:
-                errors.append(f"Source '{name}' has invalid role '{src.role}' (valid: {', '.join(sorted(VALID_ROLES))})")
+                errors.append(
+                    f"Source '{name}' has invalid role '{src.role}' (valid: "
+                    f"{', '.join(sorted(VALID_ROLES))})"
+                )
         if self.validation is not None and self.validation.allowed_content_languages:
             try:
                 from .content_language import SUPPORTED_LANGUAGES as _SUPPORTED
@@ -385,8 +443,12 @@ class WorkspaceConfig:
                         f"{', '.join(sorted(unknown))} "
                         f"(supported: {', '.join(sorted(_SUPPORTED))})"
                     )
-            except ImportError:
-                pass
+            except ImportError as exc:
+                logger.warning(
+                    "Content-language validation skipped because the language catalog "
+                    "could not be imported: %s",
+                    exc,
+                )
         return errors
 
     def add_source(
@@ -436,7 +498,7 @@ class WorkspaceConfig:
     # @cpt-end:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-methods
 
 
-# @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-parse-inline-impl
+# @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-parse-inline
 def _parse_inline_workspace(
     ws_value: dict,
     project_root: Path,
@@ -444,6 +506,7 @@ def _parse_inline_workspace(
     """Parse an inline [workspace] dict from core.toml."""
     from .files import _read_studio_var
 
+    # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-parse-inline-impl
     studio_rel = _read_studio_var(project_root)
     if studio_rel:
         config_file = _resolve_config_path(project_root, studio_rel)
@@ -465,11 +528,14 @@ def _parse_inline_workspace(
     errs = ws.validate()
     if errs:
         return None, f"Invalid inline workspace in {config_file}: {'; '.join(errs)}"
-    return ws, None
-# @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-parse-inline-impl
+    # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-inline
+    inline_cfg = ws
+    return inline_cfg, None
+    # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-inline
+    # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-parse-inline-impl
+# @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-parse-inline
 
 
-# @cpt-algo:cpt-studio-algo-workspace-find-config:p1
 # @cpt-dod:cpt-studio-dod-workspace-backward-compat:p1
 def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig], Optional[str]]:
     """Find and load workspace configuration.
@@ -487,11 +553,9 @@ def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig]
         (WorkspaceConfig, None) if found, or (None, None) if no workspace,
         or (None, error_message) on parse failure.
     """
-    from .files import load_project_config, _read_studio_var
+    from .files import _read_studio_var
 
-    # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-load-project-config
-    cfg = load_project_config(project_root)
-    # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-load-project-config
+    cfg = _load_workspace_project_config(project_root)
     # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-if-no-config
     if cfg is None:
         # Distinguish "no config file" from "parse error":
@@ -506,35 +570,34 @@ def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig]
 
     ws_value = cfg.get("workspace")
     # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-if-ws-string
-    if isinstance(ws_value, str) and ws_value.strip():
-        # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-if-ws-string
-        # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-load-standalone
-        ws_path = (project_root / ws_value.strip()).resolve()
-        # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-load-standalone
-        # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
-        return WorkspaceConfig.load(ws_path)
-        # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
+    if isinstance(ws_value, str):
+        normalized_value = ws_value.strip()
+        if normalized_value:
+            # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
+            ws_cfg, ws_err = _load_workspace_from_path_value(project_root, normalized_value)
+            return ws_cfg, ws_err
+            # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
+    # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-if-ws-string
     # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-if-ws-dict
     if isinstance(ws_value, dict):
-        # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-if-ws-dict
-        # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-parse-inline
-        ws_cfg = _parse_inline_workspace(ws_value, project_root)
-        # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-parse-inline
-        # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-inline
-        return ws_cfg
-        # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-inline
+    # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-if-ws-dict
+        return _parse_inline_workspace(ws_value, project_root)
 
     # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-none
     if ws_value is not None:
-        return None, f"Malformed 'workspace' in core.toml: expected string path or table, got {type(ws_value).__name__}: {ws_value!r}"
+        return (
+            None,
+            "Malformed 'workspace' in core.toml: expected string path or table, "
+            f"got {type(ws_value).__name__}: {ws_value!r}",
+        )
     return _find_standalone_workspace(project_root)
     # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-none
 
 
-# @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-standalone-impl
 _LEGACY_WORKSPACE_FILENAME = ".studio-workspace.toml"
 
 
+# @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-standalone-impl
 def _find_standalone_workspace(
     project_root: Path,
 ) -> Tuple[Optional[WorkspaceConfig], Optional[str]]:
@@ -546,10 +609,16 @@ def _find_standalone_workspace(
     """
     candidate = (project_root / WORKSPACE_CONFIG_FILENAME).resolve()
     if candidate.is_file():
-        return WorkspaceConfig.load(candidate)
+        # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
+        ws_cfg, ws_err = WorkspaceConfig.load(candidate)
+        return ws_cfg, ws_err
+        # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
     legacy = (project_root / _LEGACY_WORKSPACE_FILENAME).resolve()
     if legacy.is_file():
-        return WorkspaceConfig.load(legacy)
+        # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
+        ws_cfg, ws_err = WorkspaceConfig.load(legacy)
+        return ws_cfg, ws_err
+        # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
     return None, None
 # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-standalone-impl
 

@@ -994,11 +994,22 @@ class TestRunDelegation:
         """
         real_open = builtins.open
         mock_tty = MagicMock()
-        mock_tty.readline.return_value = answer + "\n"
+        mock_tty.__enter__.return_value.readline.return_value = answer + "\n"
 
         def _side_effect(path, *args, **kwargs):
             if str(path) == "/dev/tty":
                 return mock_tty
+            return real_open(path, *args, **kwargs)
+
+        return patch("builtins.open", side_effect=_side_effect)
+
+    def _mock_tty_open_error(self, exc):
+        """Return a context manager that raises *exc* only for /dev/tty open."""
+        real_open = builtins.open
+
+        def _side_effect(path, *args, **kwargs):
+            if str(path) == "/dev/tty":
+                raise exc
             return real_open(path, *args, **kwargs)
 
         return patch("builtins.open", side_effect=_side_effect)
@@ -1048,6 +1059,36 @@ class TestRunDelegation:
                  patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc), \
                  patch("sys.stdin.isatty", return_value=True), \
                  self._mock_tty_open("n"):
+                result = run_delegation(
+                    config=config,
+                    plan_dir=plan_dir,
+                    repo_root=repo_root,
+                    mode="execute",
+                    dry_run=False,
+                )
+            invoke_proc.terminate.assert_called_once_with()
+            assert result["status"] == "error"
+            assert result["lifecycle_state"] == "failed"
+            assert "was stopped" in result["error"].lower()
+
+    def test_timeout_prompt_eof_stops_process(self):
+        """Timeout prompt stops the process when no answer can be read."""
+        with TemporaryDirectory() as tmp:
+            repo_root, plan_dir = self._make_delegatable_project(tmp)
+            config = {}
+            discover_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
+            invoke_proc = MagicMock(returncode=143)
+            invoke_proc.communicate.side_effect = [
+                subprocess.TimeoutExpired(["/usr/bin/ralphex"], 3600),
+                ("", ""),
+            ]
+
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc), \
+                 patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc), \
+                 patch("sys.stdin.isatty", return_value=True), \
+                 self._mock_tty_open_error(OSError()), \
+                 patch("builtins.input", side_effect=EOFError):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,

@@ -4030,6 +4030,25 @@ class TestCLIValidateTemplatesVerbose(unittest.TestCase):
 class TestCLIInitErrorBranches(unittest.TestCase):
     """Tests for init command error branches."""
 
+    def test_init_rejects_install_dir_outside_project_root(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / ".git").mkdir()
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main([
+                    "init",
+                    "--yes",
+                    "--project-root",
+                    str(root),
+                    "--install-dir",
+                    "../escape",
+                ])
+            self.assertEqual(exit_code, 1)
+            out = json.loads(stdout.getvalue())
+            self.assertEqual(out.get("status"), "ERROR")
+            self.assertIn("within project root", out["errors"][0]["error"])
+
     def test_init_config_not_a_file(self):
         """Test init when legacy config path exists as directory (ignored by new init)."""
         with TemporaryDirectory() as tmpdir:

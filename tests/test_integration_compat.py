@@ -675,13 +675,11 @@ class TestMultiLayerPipeline(unittest.TestCase):
             # No source set
             skills: Dict[str, SkillEntry] = {"nosource-skill": skill}
 
-            import io
-            captured = io.StringIO()
-            with mock.patch("sys.stderr", captured):
+            with self.assertLogs("studio.commands.agents", level="WARNING") as logs:
                 result = generate_manifest_skills(skills, "claude", project_root, dry_run=False)
 
             self.assertEqual(len(result["created"]), 0)
-            self.assertIn("no source or prompt_file", captured.getvalue())
+            self.assertTrue(any("no source or prompt_file" in message for message in logs.output))
 
 
 if __name__ == "__main__":

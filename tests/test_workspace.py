@@ -81,13 +81,26 @@ from studio.commands.workspace_info import (
     cmd_workspace_info,
 )
 from studio.commands.workspace_add import (
+    _add_inline_when_requested,
     _add_to_standalone,
     _add_to_inline,
+    _emit_add_result,
     _human_workspace_add,
+    _is_scp_style_ssh,
+    _resolve_inline_workspace,
+    _resolve_workspace_config,
+    _route_workspace_add,
+    _validate_add_args,
+    _validate_workspace_add_name,
     cmd_workspace_add,
 )
 from studio.commands.workspace_sync import (
+    _collect_git_sources,
+    _emit_sync_result,
     _human_workspace_sync,
+    _load_workspace_config,
+    _resolve_sync_base,
+    _sync_sources,
     cmd_workspace_sync,
 )
 
@@ -2668,6 +2681,116 @@ class TestAddToStandaloneEdgeCases:
         assert "updated in" in data["message"]
 
 
+class TestWorkspaceAddHelpers:
+    """Focused helper tests for workspace_add."""
+
+    def test_is_scp_style_ssh(self):
+        assert _is_scp_style_ssh("git@github.com:org/repo.git") is True
+        assert _is_scp_style_ssh("ssh://github.com/org/repo.git") is False
+
+    def test_validate_add_args_rejects_inline_url(self):
+        args = argparse.Namespace(inline=True, url="https://x/y.git", branch=None, path="")
+        assert "not supported in inline" in _validate_add_args(args)
+
+    def test_validate_add_args_rejects_branch_with_path(self):
+        args = argparse.Namespace(inline=False, url=None, branch="main", path="../repo")
+        assert "only valid with --url" in _validate_add_args(args)
+
+    def test_validate_add_args_rejects_bad_url_scheme(self):
+        args = argparse.Namespace(inline=False, url="git://example.com/repo.git", branch=None, path="")
+        assert "Unsupported URL scheme" in _validate_add_args(args)
+
+    def test_validate_add_args_accepts_https_and_scp_urls(self):
+        https_args = argparse.Namespace(inline=False, url="https://example.com/repo.git", branch=None, path="")
+        scp_args = argparse.Namespace(inline=False, url="git@example.com:org/repo.git", branch=None, path="")
+        assert _validate_add_args(https_args) is None
+        assert _validate_add_args(scp_args) is None
+
+    def test_resolve_inline_workspace_creates_default_sources(self):
+        ws, err = _resolve_inline_workspace({})
+        assert err is None
+        assert ws["version"] == "1.0"
+        assert ws["sources"] == {}
+
+    def test_resolve_inline_workspace_rejects_malformed_workspace_type(self):
+        ws, err = _resolve_inline_workspace({"workspace": []})
+        assert ws == {}
+        assert "Malformed 'workspace'" in err
+
+    def test_emit_add_result_with_url_and_branch(self, capsys):
+        args = argparse.Namespace(
+            name="repo",
+            role="full",
+            path="",
+            adapter=".bootstrap",
+            url="https://user:pass@example.com/org/repo.git",
+            branch="main",
+        )
+        rc = _emit_add_result(args, True, "/tmp/ws.toml", "done")
+        assert rc == 0
+        data = _parse_json(capsys)
+        assert data["replaced"] is True
+        assert data["source"]["branch"] == "main"
+        assert "pass" not in data["source"]["url"]
+
+    def test_validate_workspace_add_name_emits_error(self, capsys):
+        args = argparse.Namespace(name="bad/name")
+        assert _validate_workspace_add_name(args) == 1
+        data = _parse_json(capsys)
+        assert data["status"] == "ERROR"
+
+    def test_resolve_workspace_config_emits_default_error(self, capsys):
+        with patch("studio.utils.workspace.find_workspace_config", return_value=(None, None)):
+            assert _resolve_workspace_config(Path("/tmp/project")) is None
+        data = _parse_json(capsys)
+        assert "workspace-init" in data["message"]
+
+    def test_route_workspace_add_rejects_url_for_inline_workspace(self, capsys):
+        args = argparse.Namespace(url="https://example.com/repo.git")
+        ws_cfg = MagicMock()
+        ws_cfg.is_inline = True
+        with patch("studio.commands.workspace_add._resolve_workspace_config", return_value=ws_cfg):
+            rc = _route_workspace_add(args, Path("/tmp/project"))
+        assert rc == 1
+        data = _parse_json(capsys)
+        assert "standalone workspace file" in data["message"]
+
+    def test_route_workspace_add_delegates_to_inline(self):
+        args = argparse.Namespace(url=None)
+        ws_cfg = MagicMock()
+        ws_cfg.is_inline = True
+        with patch("studio.commands.workspace_add._resolve_workspace_config", return_value=ws_cfg):
+            with patch("studio.commands.workspace_add._add_to_inline", return_value=7) as mock_add:
+                rc = _route_workspace_add(args, Path("/tmp/project"))
+        assert rc == 7
+        mock_add.assert_called_once()
+
+    def test_route_workspace_add_delegates_to_standalone(self):
+        args = argparse.Namespace(url=None)
+        ws_cfg = MagicMock()
+        ws_cfg.is_inline = False
+        with patch("studio.commands.workspace_add._resolve_workspace_config", return_value=ws_cfg):
+            with patch("studio.commands.workspace_add._add_to_standalone", return_value=9) as mock_add:
+                rc = _route_workspace_add(args, Path("/tmp/project"))
+        assert rc == 9
+        mock_add.assert_called_once_with(args, ws_cfg)
+
+    def test_add_inline_when_requested_returns_none_without_flag(self):
+        args = argparse.Namespace(inline=False)
+        assert _add_inline_when_requested(args, Path("/tmp/project")) is None
+
+    def test_add_inline_when_requested_rejects_existing_standalone_workspace(self, capsys):
+        args = argparse.Namespace(inline=True)
+        existing = MagicMock()
+        existing.is_inline = False
+        existing.workspace_file = Path("/tmp/ws.toml")
+        with patch("studio.utils.workspace.find_workspace_config", return_value=(existing, None)):
+            rc = _add_inline_when_requested(args, Path("/tmp/project"))
+        assert rc == 1
+        data = _parse_json(capsys)
+        assert "Standalone workspace already exists" in data["message"]
+
+
 # ---------------------------------------------------------------------------
 # Human-friendly formatter tests
 # ---------------------------------------------------------------------------
@@ -3311,6 +3434,86 @@ class TestHumanWorkspaceSync:
             ],
         }
         _human_workspace_sync(data)
+
+
+class TestWorkspaceSyncHelpers:
+    """Focused helper tests for workspace_sync."""
+
+    def test_resolve_sync_base_prefers_resolution_base(self):
+        ws_cfg = MagicMock()
+        ws_cfg.resolution_base = Path("/tmp/resolve")
+        ws_cfg.workspace_file = Path("/tmp/ws.toml")
+        assert _resolve_sync_base(ws_cfg, Path("/tmp/project")) == Path("/tmp/resolve")
+
+    def test_resolve_sync_base_uses_workspace_parent_then_project_root(self):
+        ws_cfg = MagicMock()
+        ws_cfg.resolution_base = None
+        ws_cfg.workspace_file = Path("/tmp/config/ws.toml")
+        assert _resolve_sync_base(ws_cfg, Path("/tmp/project")) == Path("/tmp/config")
+        ws_cfg.workspace_file = None
+        assert _resolve_sync_base(ws_cfg, Path("/tmp/project")) == Path("/tmp/project")
+
+    def test_collect_git_sources_filters_and_validates(self):
+        ws_cfg = MagicMock()
+        ws_cfg.sources = {
+            "remote": SourceEntry(name="remote", path="", url="https://example.com/repo.git"),
+            "local": SourceEntry(name="local", path="../repo"),
+        }
+        git_sources, err = _collect_git_sources(ws_cfg, None)
+        assert err is None
+        assert list(git_sources) == ["remote"]
+
+        git_sources, err = _collect_git_sources(ws_cfg, "missing")
+        assert git_sources is None
+        assert err["status"] == "ERROR"
+        assert "available" in err
+
+        git_sources, err = _collect_git_sources(ws_cfg, "local")
+        assert git_sources is None
+        assert "only Git URL sources can be synced" in err["message"]
+
+    def test_sync_sources_aggregates_results(self):
+        src1 = SourceEntry(name="good", path="", url="https://example.com/good.git")
+        src2 = SourceEntry(name="bad", path="", url="https://example.com/bad.git")
+        with patch(
+            "studio.utils.git_utils.sync_git_source",
+            side_effect=[{"status": "synced"}, {"status": "failed", "error": "boom"}],
+        ):
+            results, synced, failed = _sync_sources(
+                {"good": src1, "bad": src2},
+                ResolveConfig(),
+                Path("/tmp/base"),
+                force=True,
+            )
+        assert synced == 1
+        assert failed == 1
+        assert results[0]["name"] == "good"
+        assert results[1]["name"] == "bad"
+
+    def test_load_workspace_config_handles_missing_root_and_workspace(self, capsys):
+        with patch("studio.utils.workspace.require_project_root", return_value=None):
+            assert _load_workspace_config() == (None, None)
+
+        with patch("studio.utils.workspace.require_project_root", return_value=Path("/tmp/project")):
+            with patch("studio.utils.workspace.find_workspace_config", return_value=(None, None)):
+                project_root, ws_cfg = _load_workspace_config()
+        assert project_root == Path("/tmp/project")
+        assert ws_cfg is None
+        data = _parse_json(capsys)
+        assert "workspace-init" in data["message"]
+
+    def test_load_workspace_config_returns_workspace(self):
+        ws_cfg = MagicMock()
+        with patch("studio.utils.workspace.require_project_root", return_value=Path("/tmp/project")):
+            with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+                assert _load_workspace_config() == (Path("/tmp/project"), ws_cfg)
+
+    def test_emit_sync_result_exit_codes(self, capsys):
+        assert _emit_sync_result("OK", 1, 0, [{"status": "synced"}]) == 0
+        data = _parse_json(capsys)
+        assert data["status"] == "OK"
+
+        assert _emit_sync_result("FAIL", 0, 1, [{"status": "failed"}]) == 2
 
     def test_ok_status_with_results(self):
 

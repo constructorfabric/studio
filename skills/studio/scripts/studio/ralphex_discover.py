@@ -64,14 +64,12 @@ def discover(config: dict) -> Optional[str]:
         return path
     # @cpt-end:cpt-studio-algo-ralphex-delegation-discover:p1:inst-search-path
 
-    # @cpt-begin:cpt-studio-algo-ralphex-delegation-discover:p1:inst-read-config
     persisted = (
         config
         .get("integrations", {})
         .get("ralphex", {})
         .get("executable_path", "")
     )
-    # @cpt-end:cpt-studio-algo-ralphex-delegation-discover:p1:inst-read-config
 
     # @cpt-begin:cpt-studio-algo-ralphex-delegation-discover:p1:inst-verify-persisted
     if persisted and os.path.isfile(persisted):

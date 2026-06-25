@@ -12,7 +12,7 @@ import sys
 import io
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -452,7 +452,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
         buf = io.StringIO()
         set_json_mode(False)
         try:
-            with redirect_stderr(buf):
+            with redirect_stdout(buf):
                 _human_generate_agents_ok(
                     {"status": "PASS"},
                     ["claude"],

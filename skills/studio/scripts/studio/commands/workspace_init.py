@@ -4,12 +4,19 @@ workspace-init: Initialize a new workspace by scanning nested sub-directories fo
 # @cpt-algo:cpt-studio-feature-workspace:p1
 # @cpt-begin:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-helpers
 import argparse
+import logging
 import os
-import sys
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..utils.ui import ui
+
+logger = logging.getLogger(__name__)
+
+
+def _warn_workspace_init(message: str) -> None:
+    logger.warning("workspace-init: %s", message)
 
 
 def _is_project_dir(entry: Path) -> bool:
@@ -22,10 +29,12 @@ def _is_project_dir(entry: Path) -> bool:
     try:
         head = agents_file.read_text(encoding="utf-8")[:512]
         return "<!-- @cf:root-agents -->" in head
-    except OSError:
+    except OSError as exc:
+        _warn_workspace_init(f"cannot read {agents_file}: {exc}")
         return False
 
 
+# @cpt-begin:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-find-adapter
 def _find_adapter_path(entry: Path) -> Optional[str]:
     """Find the adapter path for a project directory."""
     from ..utils.files import find_studio_directory, _read_studio_var
@@ -42,17 +51,24 @@ def _find_adapter_path(entry: Path) -> Optional[str]:
     if found_dir is not None:
         try:
             return str(found_dir.relative_to(entry))
-        except ValueError:
+        except ValueError as exc:
+            _warn_workspace_init(
+                f"adapter path {found_dir} is outside {entry}; using absolute path: {exc}"
+            )
             return str(found_dir)
     return None
+# @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-find-adapter
 
 
 def _compute_source_path(entry: Path, output_dir: Path) -> str:
     """Compute relative source path from the output location."""
     try:
         return Path(os.path.relpath(entry, output_dir)).as_posix()
-    except ValueError:
+    except ValueError as exc:
         # Windows: entry and output_dir are on different drives
+        _warn_workspace_init(
+            f"cannot relativize {entry} against {output_dir}; using absolute path: {exc}"
+        )
         return entry.resolve().as_posix()
 # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-helpers
 
@@ -61,13 +77,16 @@ def _compute_source_path(entry: Path, output_dir: Path) -> str:
 def _infer_role(repo_path: Path) -> str:
     """Best-effort role inference from directory contents."""
     # @cpt-begin:cpt-studio-algo-workspace-infer-role:p1:inst-role-check-src
-    has_src = any((repo_path / d).is_dir() for d in ["src", "lib", "app", "pkg"])
+    src_dirs = ["src", "lib", "app", "pkg"]
+    has_src = any((repo_path / d).is_dir() for d in src_dirs)
     # @cpt-end:cpt-studio-algo-workspace-infer-role:p1:inst-role-check-src
     # @cpt-begin:cpt-studio-algo-workspace-infer-role:p1:inst-role-check-docs
-    has_docs = any((repo_path / d).is_dir() for d in ["docs", "architecture", "requirements"])
+    docs_dirs = ["docs", "architecture", "requirements"]
+    has_docs = any((repo_path / d).is_dir() for d in docs_dirs)
     # @cpt-end:cpt-studio-algo-workspace-infer-role:p1:inst-role-check-docs
     # @cpt-begin:cpt-studio-algo-workspace-infer-role:p1:inst-role-check-kits
-    has_kits = (repo_path / "kits").is_dir()
+    kits_dir = repo_path / "kits"
+    has_kits = kits_dir.is_dir()
     # @cpt-end:cpt-studio-algo-workspace-infer-role:p1:inst-role-check-kits
 
     # @cpt-begin:cpt-studio-algo-workspace-infer-role:p1:inst-role-if-multi
@@ -94,7 +113,6 @@ def _infer_role(repo_path: Path) -> str:
 
 def _sanitize_source_name(name: str) -> str:
     """Sanitize an auto-discovered source name to safe characters."""
-    import re
     # Replace unsafe characters with hyphens
     sanitized = re.sub(r"[^A-Za-z0-9._-]", "-", name)
     # Strip leading non-alphanumeric characters
@@ -113,11 +131,10 @@ def _dedup_source_key(key: str, existing: Dict[str, dict], new_path: str) -> str
     while f"{key}-{n}" in existing:
         n += 1
     new_key = f"{key}-{n}"
-    print(
-        f"Warning: source name '{key}' collision — "
+    _warn_workspace_init(
+        f"source name '{key}' collision; "
         f"'{new_path}' conflicts with '{existing[key].get('path', '?')}'; "
-        f"renaming to '{new_key}'",
-        file=sys.stderr,
+        f"renaming to '{new_key}'"
     )
     return new_key
 
@@ -139,7 +156,7 @@ def _scan_nested_repos(
     try:
         entries = sorted(scan_root.iterdir(), key=lambda p: p.name)
     except OSError as exc:
-        print(f"Warning: cannot scan {scan_root}: {exc}", file=sys.stderr)
+        _warn_workspace_init(f"cannot scan {scan_root}: {exc}")
         entries = []
     # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-list-entries
 
@@ -160,18 +177,18 @@ def _scan_nested_repos(
             continue
             # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-if-not-project
 
-        # @cpt-begin:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-find-adapter
         adapter_path = _find_adapter_path(entry)
-        # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-find-adapter
         # @cpt-begin:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-if-no-adapter
         if not adapter_path:
             continue
         # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-if-no-adapter
         # @cpt-begin:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-compute-path
-        info: dict = {"path": _compute_source_path(entry, output_dir), "adapter": adapter_path}
+        source_path = _compute_source_path(entry, output_dir)
+        info: dict = {"path": source_path, "adapter": adapter_path}
         # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-compute-path
         # @cpt-begin:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-infer-role
-        info["role"] = _infer_role(entry)
+        role = _infer_role(entry)
+        info["role"] = role
         # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-infer-role
         # @cpt-begin:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-add-source
         key = _dedup_source_key(entry.name, discovered, info.get("path", "?"))
@@ -201,8 +218,9 @@ def _write_inline(
     existing["workspace"] = workspace_data
     try:
         toml_utils.dump(existing, config_path)
-    except OSError as e:
-        return 1, {"status": "ERROR", "message": f"Failed to write workspace to {config_path}: {e}"}
+    except OSError as exc:
+        logger.error("failed to write inline workspace config to %s: %s", config_path, exc)
+        return 1, {"status": "ERROR", "message": f"Failed to write workspace to {config_path}: {exc}"}
 
     return 0, {
         "status": "CREATED",
@@ -231,8 +249,9 @@ def _write_standalone(
 
     try:
         toml_utils.dump(workspace_data, output_path)
-    except OSError as e:
-        return 1, {"status": "ERROR", "message": f"Failed to write workspace config to {output_path}: {e}"}
+    except OSError as exc:
+        logger.error("failed to write workspace config to %s: %s", output_path, exc)
+        return 1, {"status": "ERROR", "message": f"Failed to write workspace config to {output_path}: {exc}"}
 
     return 0, {
         "status": "CREATED",
@@ -285,6 +304,30 @@ def _check_existing_workspace(project_root: Path, *, inline: bool, force: bool) 
             "Use --force to reinitialize (this will overwrite existing workspace config)."
         )
     return None
+
+# @cpt-flow:cpt-studio-flow-workspace-init:p1
+# @cpt-dod:cpt-studio-dod-workspace-init:p1
+def _resolve_workspace_init_project_root() -> Path | None:
+    from ..utils.workspace import require_project_root
+
+    # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-find-project-root
+    project_root = require_project_root()
+    if project_root is None:
+        return None
+    # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-find-project-root
+    return project_root
+
+
+def _discover_workspace_sources(
+    scan_root: Path,
+    output_dir: Path,
+    *,
+    max_depth: int,
+) -> Dict[str, dict]:
+    # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-discover-nested
+    discovered = _scan_nested_repos(scan_root, output_dir, max_depth=max_depth)
+    return discovered
+    # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-discover-nested
 # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-init-helpers
 
 
@@ -302,7 +345,8 @@ def _write_workspace_config(
     # @cpt-state:cpt-studio-state-workspace-config-lifecycle:p1
     # @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-reinit-inline
     if inline:
-        return _write_inline(project_root, workspace_data)
+        exit_code, data = _write_inline(project_root, workspace_data)
+        return exit_code, data
     # @cpt-end:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-reinit-inline
     # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-if-inline
     # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-else-standalone
@@ -320,14 +364,16 @@ def _write_workspace_config(
     return exit_code, data
 
 
-# @cpt-flow:cpt-studio-flow-workspace-init:p1
-# @cpt-dod:cpt-studio-dod-workspace-init:p1
 def cmd_workspace_init(argv: List[str]) -> int:
     """Initialize a multi-repo workspace."""
+
     # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-user-workspace-init
     p = argparse.ArgumentParser(
         prog="workspace-init",
-        description="Initialize a new workspace: scan nested sub-dirs for repos with adapters, generate .cf-workspace.toml",
+        description=(
+            "Initialize a new workspace: scan nested sub-dirs for repos with "
+            "adapters, generate .cf-workspace.toml"
+        ),
     )
     p.add_argument(
         "--root", default=None,
@@ -350,21 +396,30 @@ def cmd_workspace_init(argv: List[str]) -> int:
         if n < 1:
             raise argparse.ArgumentTypeError(f"must be >= 1, got {n}")
         return n
-    p.add_argument("--max-depth", type=_positive_int, default=3, help="Maximum directory depth for nested repo scanning (default: 3, min: 1)")
+    p.add_argument(
+        "--max-depth",
+        type=_positive_int,
+        default=3,
+        help="Maximum directory depth for nested repo scanning (default: 3, min: 1)",
+    )
     p.add_argument("--dry-run", action="store_true", help="Print what would be generated without writing files")
     args = p.parse_args(argv)
 
     if args.inline and args.output:
-        ui.result({"status": "ERROR", "message": "--inline and --output are mutually exclusive. --inline always writes to config/core.toml."})
+        ui.result(
+            {
+                "status": "ERROR",
+                "message": (
+                    "--inline and --output are mutually exclusive. --inline "
+                    "always writes to config/core.toml."
+                ),
+            }
+        )
         return 1
     # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-user-workspace-init
 
-    from ..utils.workspace import require_project_root
-
-    # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-find-project-root
-    project_root = require_project_root()
-    # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-find-project-root
     # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-if-no-root
+    project_root = _resolve_workspace_init_project_root()
     if project_root is None:
         return 1
     # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-if-no-root
@@ -381,9 +436,11 @@ def cmd_workspace_init(argv: List[str]) -> int:
     # Determine output dir for relative path computation
     output_dir = _resolve_output_dir(args, scan_root, project_root)
 
-    # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-discover-nested
-    discovered = _scan_nested_repos(scan_root, output_dir, max_depth=args.max_depth)
-    # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-discover-nested
+    discovered = _discover_workspace_sources(
+        scan_root,
+        output_dir,
+        max_depth=args.max_depth,
+    )
 
     # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-build-workspace-data
     workspace_data: dict = {"version": "1.0", "sources": discovered}
@@ -455,11 +512,14 @@ def _human_workspace_init(data: dict) -> None:
         ui.info(hint)
 
     ui.blank()
-    if status in ("CREATED", "DRY_RUN"):
+    success_statuses = {"CREATED", "DRY_RUN"}
+    if status in success_statuses:
         ui.success(message)
     elif status == "ERROR":
         ui.error(message)
+    elif message:
+        ui.info(f"Status: {status} — {message}")
     else:
-        ui.info(f"Status: {status}" + (f" — {message}" if message else ""))
+        ui.info(f"Status: {status}")
     ui.blank()
 # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-init-human-fmt

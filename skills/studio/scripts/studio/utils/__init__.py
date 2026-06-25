@@ -93,6 +93,23 @@ from .workspace import (
 from .layer_discovery import (
     discover_layers,
 )
+from .codebase import __all__ as _codebase_all
+from .context import __all__ as _context_all
+from .language_config import __all__ as _language_config_all
+from .workspace import __all__ as _workspace_all
+
+_PUBLIC_LANGUAGE_EXPORTS = [
+    name for name in _language_config_all
+    if name != "DEFAULT_SINGLE_LINE_COMMENTS"
+]
+_PUBLIC_CONTEXT_EXPORTS = [
+    name for name in _context_all
+    if name != "get_workspace_upgrade_error"
+]
+_PUBLIC_WORKSPACE_EXPORTS = [
+    name for name in _workspace_all
+    if name != "validate_source_name"
+]
 
 __all__ = [
     # File operations
@@ -114,16 +131,6 @@ __all__ = [
     "field_block",
     "has_list_item",
     "extract_backticked_ids",
-    # Language configuration
-    "LanguageConfig",
-    "load_language_config",
-    "build_studio_begin_regex",
-    "build_studio_end_regex",
-    "build_no_studio_begin_regex",
-    "build_no_studio_end_regex",
-    "DEFAULT_FILE_EXTENSIONS",
-    "EXTENSION_COMMENT_DEFAULTS",
-    "comment_defaults_for_extensions",
     # Artifacts metadata
     "ArtifactsMeta",
     "SystemNode",
@@ -131,40 +138,10 @@ __all__ = [
     "CodebaseEntry",
     "Kit",
     "load_artifacts_meta",
-    # Codebase parsing
-    "CodeFile",
-    "ScopeMarker",
-    "BlockMarker",
-    "CodeReference",
-    "load_code_file",
-    "validate_code_file",
-    "cross_validate_code",
-    # Context
-    "StudioContext",
-    "LoadedKit",
-    "SourceContext",
-    "WorkspaceContext",
-    "collect_artifacts_to_scan",
-    "determine_target_source",
-    "get_context",
-    "get_expanded_meta",
-    "get_primary_context",
-    "resolve_adapter_context",
-    "resolve_artifacts_for_command",
-    "resolve_target_and_artifacts",
-    "set_context",
-    "ensure_context",
-    "is_workspace",
-    # Workspace
-    "VALID_ROLES",
-    "SourceEntry",
-    "TraceabilityConfig",
-    "NamespaceRule",
-    "ResolveConfig",
-    "WorkspaceConfig",
-    "find_workspace_config",
-    "require_project_root",
-    "load_inline_config",
     # Layer discovery
     "discover_layers",
+    *_PUBLIC_LANGUAGE_EXPORTS,
+    *_codebase_all,
+    *_PUBLIC_CONTEXT_EXPORTS,
+    *_PUBLIC_WORKSPACE_EXPORTS,
 ]

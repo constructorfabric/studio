@@ -1021,10 +1021,10 @@ class TestCLIDelegateE2E(unittest.TestCase):
             self.assertEqual(after, before)
             self.assertEqual(mock_run.call_args.kwargs["dry_run"], True)
             self.assertEqual(mock_run.call_args.kwargs["repo_root"], str(root.resolve()))
-            self.assertEqual(stdout, "")
-            self.assertIn("[DRY RUN] Command assembled (not invoked):", stderr)
-            self.assertIn("Dashboard: http://127.0.0.1:8400", stderr)
-            self.assertIn("Lifecycle: exported", stderr)
+            self.assertIn("[DRY RUN] Command assembled (not invoked):", stdout)
+            self.assertIn("Dashboard: http://127.0.0.1:8400", stdout)
+            self.assertIn("Lifecycle: exported", stdout)
+            self.assertEqual(stderr, "")
 
     def test_delegate_json_non_dry_run_success_is_read_only_locally(self):
         with TemporaryDirectory() as tmpdir:
@@ -1144,10 +1144,10 @@ class TestCLIDoctorE2E(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(after, before)
-            self.assertEqual(stdout, "")
-            self.assertIn("Studio Doctor", stderr)
-            self.assertIn("[PASS] inst-check-ralphex: ralphex 1.2.3 at /tmp/ralphex", stderr)
-            self.assertIn("All checks passed.", stderr)
+            self.assertIn("Studio Doctor", stdout)
+            self.assertIn("[PASS] inst-check-ralphex: ralphex 1.2.3 at /tmp/ralphex", stdout)
+            self.assertIn("All checks passed.", stdout)
+            self.assertEqual(stderr, "")
 
     def test_doctor_degraded_output_is_read_only(self):
         with TemporaryDirectory() as tmpdir:
@@ -1171,7 +1171,7 @@ class TestCLIDoctorE2E(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(after, before)
-            self.assertEqual(stdout, "")
-            self.assertIn("Studio Doctor", stderr)
-            self.assertIn("[WARN] inst-check-ralphex: ralphex not found. install guidance", stderr)
-            self.assertIn("All checks passed with warnings.", stderr)
+            self.assertIn("Studio Doctor", stdout)
+            self.assertIn("[WARN] inst-check-ralphex: ralphex not found. install guidance", stdout)
+            self.assertIn("All checks passed with warnings.", stdout)
+            self.assertEqual(stderr, "")

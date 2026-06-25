@@ -136,6 +136,7 @@ cfs <command> [subcommand] [options] [arguments]
 
 - **stdout** — JSON only. Every command outputs a JSON object or array.
 - **stderr** — human-readable messages (progress, warnings, notices).
+- Proxy modules MUST emit plain-text stderr via dedicated stderr helpers. Those helpers may use a logger-backed implementation internally, but the user-facing stderr contract must remain plain text so host logging formatters cannot add timestamps, levels, or logger names.
 - **`--quiet`** — suppress stderr output.
 - **`--verbose`** — increase stderr detail level.
 

@@ -5,9 +5,12 @@ Functions for working with documents and file paths.
 """
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-scan-ids-datamodel
-from pathlib import Path
 import re
+import logging
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 _CPT_ID_RE = re.compile(r"(cpt-[a-z0-9][a-z0-9-]+)")
 _HEADING_RE = re.compile(r"^\s*(#{1,6})\s+(.+?)\s*$")
@@ -21,7 +24,8 @@ _ID_DEF_RE = re.compile(
     r"|"
     r"`(?P<priority_only>p\d+)`\s*-\s*\*\*ID\*\*:\s*`(?P<id2>cpt-[a-z0-9][a-z0-9-]+)`"
     r"|"
-    r"[-*]\s+(?P<task>\[\s*[xX]?\s*\])\s*(?:`(?P<priority>p\d+)`\s*-\s*)?\*\*ID\*\*:\s*`(?P<id3>cpt-[a-z0-9][a-z0-9-]+)`"
+    r"[-*]\s+(?P<task>\[\s*[xX]?\s*\])\s*(?:`(?P<priority>p\d+)`\s*-\s*)?"
+    r"\*\*ID\*\*:\s*`(?P<id3>cpt-[a-z0-9][a-z0-9-]+)`"
     r")\s*$"
 )
 _ID_REF_RE = re.compile(
@@ -32,10 +36,68 @@ _BACKTICK_ID_RE = re.compile(r"`(cpt-[a-z0-9][a-z0-9-]+)`")
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-scan-cdsl-datamodel
 _CDSL_LINE_RE = re.compile(
-    r"^\s*(?:\d+\.\s+|-\s+)\[\s*(?P<check>[xX ])\s*\]\s*-\s*`(?P<phase>(?:p\d+|ph-\d+))`\s*-\s*.+\s*-\s*`inst-(?P<inst>[a-z0-9-]+)`\s*$"
+    r"^\s*(?:\d+\.\s+|-\s+)\[\s*(?P<check>[xX ])\s*\]\s*-\s*"
+    r"`(?P<phase>(?:p\d+|ph-\d+))`\s*-\s*.+\s*-\s*"
+    r"`inst-(?P<inst>[a-z0-9-]+)`\s*$"
 )
 _CDSL_PHASE_NUM_RE = re.compile(r"^(?:p|ph-)(?P<num>\d+)$")
 # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-scan-cdsl-datamodel
+
+
+def _iter_non_fenced_lines(lines: List[str]):
+    """Yield non-empty lines outside fenced code blocks."""
+    in_fence = False
+    for idx0, raw in enumerate(lines):
+        if _CODE_FENCE_RE.match(raw):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        stripped = raw.strip()
+        if stripped:
+            yield idx0, raw, stripped
+
+
+def _build_id_hit(
+    match: re.Match[str],
+    *,
+    idx0: int,
+    hit_type: str,
+    id_group_names: Tuple[str, ...],
+    priority_group_names: Tuple[str, ...],
+) -> Dict[str, object]:
+    """Create a normalized ID hit entry from a regex match."""
+    priority = next((match.group(name) for name in priority_group_names if match.group(name)), None)
+    id_value = next((match.group(name) for name in id_group_names if match.group(name)), None)
+    checked = (match.group("task") or "").lower().find("x") != -1
+    hit: Dict[str, object] = {
+        "id": id_value,
+        "line": idx0 + 1,
+        "type": hit_type,
+        "checked": checked,
+        "has_task": match.group("task") is not None,
+        "has_priority": priority is not None and str(priority).strip(),
+    }
+    if priority:
+        hit["priority"] = priority
+    return hit
+
+
+def _normalize_reference_candidate(stripped: str) -> str:
+    """Drop simple list markers before matching a reference-only line."""
+    for prefix in ("- ", "* "):
+        if stripped.startswith(prefix):
+            return stripped[2:].strip()
+    return stripped
+
+
+def _extract_phase_number(match: re.Match[str]) -> Optional[int]:
+    """Extract a numeric CDSL phase when present."""
+    phase_raw = str(match.group("phase") or "").strip()
+    phase_match = _CDSL_PHASE_NUM_RE.match(phase_raw)
+    if not phase_match:
+        return None
+    return int(phase_match.group("num"))
 
 def _normalize_cpt_id_from_line(line: str) -> Optional[str]:
     stripped = line.strip()
@@ -75,64 +137,37 @@ def scan_cpt_ids(path: Path) -> List[Dict[str, object]]:
     # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-read-file
 
     hits: List[Dict[str, object]] = []
-    in_fence = False
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-foreach-line
-    for idx0, raw in enumerate(lines):
-        if _CODE_FENCE_RE.match(raw):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-
-        stripped = raw.strip()
-        if not stripped:
-            continue
-
+    for idx0, raw, stripped in _iter_non_fenced_lines(lines):
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-def
         m = _ID_DEF_RE.match(stripped)
-        # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-def
-        # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-if-def
         if m:
-            checked = (m.group("task") or "").lower().find("x") != -1
-            priority = m.group("priority") or m.group("priority_only") or m.group("priority_only2")
-            id_value = m.group("id") or m.group("id2") or m.group("id3") or m.group("id4")
-            h: Dict[str, object] = {
-                "id": id_value,
-                "line": idx0 + 1,
-                "type": "definition",
-                "checked": checked,
-                "has_task": m.group("task") is not None,
-                "has_priority": priority is not None and str(priority).strip(),
-            }
-            if priority:
-                h["priority"] = priority
-            hits.append(h)
+            # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-if-def
+            definition_hit = _build_id_hit(
+                m,
+                idx0=idx0,
+                hit_type="definition",
+                id_group_names=("id", "id2", "id3", "id4"),
+                priority_group_names=("priority", "priority_only", "priority_only2"),
+            )
+            hits.append(definition_hit)
             continue
-        # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-if-def
+            # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-if-def
+        # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-def
 
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-ref
         # Reference line format (optionally checkbox / priority).
-        stripped_ref = stripped
-        if stripped_ref.startswith("- "):
-            stripped_ref = stripped_ref[2:].strip()
-        elif stripped_ref.startswith("* "):
-            stripped_ref = stripped_ref[2:].strip()
+        stripped_ref = _normalize_reference_candidate(stripped)
         mref = _ID_REF_RE.match(stripped_ref)
         if mref:
-            checked = (mref.group("task") or "").lower().find("x") != -1
-            priority = mref.group("priority") or mref.group("priority_only")
-            h = {
-                "id": mref.group("id"),
-                "line": idx0 + 1,
-                "type": "reference",
-                "checked": checked,
-                "has_task": mref.group("task") is not None,
-                "has_priority": priority is not None and str(priority).strip(),
-            }
-            if priority:
-                h["priority"] = priority
-            hits.append(h)
+            hits.append(_build_id_hit(
+                mref,
+                idx0=idx0,
+                hit_type="reference",
+                id_group_names=("id",),
+                priority_group_names=("priority", "priority_only"),
+            ))
             continue
         # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-ref
 
@@ -201,25 +236,14 @@ def scan_cdsl_instructions(path: Path) -> List[Dict[str, object]]:
     # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-read-file
 
     hits: List[Dict[str, object]] = []
-    in_fence = False
     last_defined_id: Optional[str] = None
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-foreach-cdsl
-    for idx0, raw in enumerate(lines):
-        if _CODE_FENCE_RE.match(raw):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-
-        stripped = raw.strip()
-        if not stripped:
-            continue
-
+    for idx0, raw, stripped in _iter_non_fenced_lines(lines):
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-track-parent
         mdef = _ID_DEF_RE.match(stripped)
         if mdef:
-            id_value = mdef.group("id") or mdef.group("id2") or mdef.group("id3")
+            id_value = mdef.group("id") or mdef.group("id2") or mdef.group("id3") or mdef.group("id4")
             if id_value:
                 last_defined_id = id_value
             continue
@@ -230,24 +254,22 @@ def scan_cdsl_instructions(path: Path) -> List[Dict[str, object]]:
             continue
 
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-extract-inst
-        check = str(m.group("check") or " ").strip().lower()
-        checked = check == "x"
-        phase_raw = str(m.group("phase") or "").strip()
-        mph = _CDSL_PHASE_NUM_RE.match(phase_raw)
-        if not mph:
+        phase = _extract_phase_number(m)
+        if phase is None:
             continue
-        phase = int(mph.group("num"))
+        checked = str(m.group("check") or " ").strip().lower() == "x"
         # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-extract-inst
 
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-associate-parent
-        hits.append({
+        hit = {
             "type": "cdsl",
             "checked": checked,
             "phase": phase,
             "inst": str(m.group("inst")),
             "parent_id": last_defined_id,
             "line": idx0 + 1,
-        })
+        }
+        hits.append(hit)
         # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-associate-parent
     # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-foreach-cdsl
 
@@ -304,117 +326,150 @@ def get_content_scoped(
             return None
         return (text, start_idx + 1, end_idx + 1)
 
-    # (1) Hash-fence blocks first: "##" or "###" line alone.
+    scoped = _get_hash_fence_scoped(lines, wanted, emit)
+    if scoped is not None:
+        return scoped
+
+    scoped = _get_heading_scoped(lines, wanted, emit)
+    if scoped is not None:
+        return scoped
+
+    scoped = _get_definition_scoped(lines, wanted, emit)
+    if scoped is not None:
+        return scoped
+
+    return None
+
+
+def _get_hash_fence_scoped(lines, wanted, emit):
+    """Resolve content from hash-fence-delimited sections."""
     fence_idxs = [i for i, ln in enumerate(lines) if ln.strip() in {"##", "###"}]
     for start_i, end_i in zip(fence_idxs[0::2], fence_idxs[1::2]):
         if end_i <= start_i + 1:
             continue
-        inner = lines[start_i + 1 : end_i]
-        # Split inner into segments by Studio ID lines.
-        boundaries: List[Tuple[int, str]] = []
-        for rel_idx, ln in enumerate(inner):
-            sid = _normalize_cpt_id_from_line(ln)
-            if sid:
-                boundaries.append((rel_idx, sid))
+        boundaries = [
+            (rel_idx, sid)
+            for rel_idx, ln in enumerate(lines[start_i + 1 : end_i])
+            if (sid := _normalize_cpt_id_from_line(ln))
+        ]
         if not boundaries:
             continue
 
-        for bi, (b_rel, sid) in enumerate(boundaries):
-            if sid != wanted:
-                continue
-            seg_start = start_i + 1 + b_rel + 1
-            seg_end = end_i - 1
-            if bi + 1 < len(boundaries):
-                next_rel, _ = boundaries[bi + 1]
-                seg_end = start_i + 1 + next_rel - 1
-            if seg_start > seg_end:
-                return None
-            return emit(lines[seg_start : seg_end + 1], seg_start, seg_end)
+        scoped = _emit_hash_fence_segment(lines, boundaries, start_i, end_i, wanted, emit)
+        if scoped is not None:
+            return scoped
+    return None
 
-    # (2) Heading scopes: return content until next heading of <= level.
-    for idx, ln in enumerate(lines):
-        m = _HEADING_RE.match(ln)
-        if not m:
-            continue
-        level = len(m.group(1))
-        title = m.group(2)
-        matches = _CPT_ID_RE.findall(title)
-        if wanted not in matches and wanted != title.strip() and wanted != title.strip("`").strip():
-            continue
 
-        start = idx + 1
-        end = len(lines) - 1
-        for j in range(idx + 1, len(lines)):
-            m2 = _HEADING_RE.match(lines[j])
-            if not m2:
-                continue
-            if len(m2.group(1)) <= level:
-                end = j - 1
-                break
-        if start > end:
+def _emit_hash_fence_segment(lines, boundaries, start_i, end_i, wanted, emit):
+    """Emit the matching segment inside one hash-fence block."""
+    for index, (boundary_rel, sid) in enumerate(boundaries):
+        if sid != wanted:
+            continue
+        seg_start = start_i + boundary_rel + 2
+        seg_end = end_i - 1
+        if index + 1 < len(boundaries):
+            next_rel, _ = boundaries[index + 1]
+            seg_end = start_i + next_rel
+        if seg_start > seg_end:
             return None
-        return emit(lines[start : end + 1], start, end)
+        return emit(lines[seg_start : seg_end + 1], seg_start, seg_end)
+    return None
 
-    # (3) ID-definition scoped by nearest heading: support common pattern
-    #     #### Human Title
-    #     **ID**: `cpt-...`
-    #     content...
-    #     #### Next Title
-    #
-    # Extract from the line after the matching ID definition until the next heading
-    # at the same-or-higher level as the nearest preceding heading (or any heading if none).
-    in_fence = False
+
+def _get_heading_scoped(lines, wanted, emit):
+    """Resolve content from a heading whose title includes the wanted ID."""
+    for idx, line in enumerate(lines):
+        heading_match = _HEADING_RE.match(line)
+        if not heading_match:
+            continue
+        level = len(heading_match.group(1))
+        title = heading_match.group(2)
+        if not _heading_matches_wanted_id(title, wanted):
+            continue
+        return _emit_heading_scope(lines, idx, level, emit)
+    return None
+
+
+def _heading_matches_wanted_id(title: str, wanted: str) -> bool:
+    """Return whether a heading title names the wanted ID."""
+    matches = _CPT_ID_RE.findall(title)
+    stripped_title = title.strip()
+    return (
+        wanted in matches
+        or wanted == stripped_title
+        or wanted == stripped_title.strip("`").strip()
+    )
+
+
+def _emit_heading_scope(lines, start_idx, level, emit):
+    """Emit content below a heading until the next heading at same or higher level."""
+    start = start_idx + 1
+    end = len(lines) - 1
+    for idx in range(start_idx + 1, len(lines)):
+        next_heading = _HEADING_RE.match(lines[idx])
+        if next_heading and len(next_heading.group(1)) <= level:
+            end = idx - 1
+            break
+    if start > end:
+        return None
+    return emit(lines[start : end + 1], start, end)
+
+
+def _get_definition_scoped(lines, wanted, emit):
+    """Resolve content below an ID definition inside its surrounding heading scope."""
     last_heading_level: Optional[int] = None
+    in_fence = False
 
-    for idx, ln in enumerate(lines):
-        if _CODE_FENCE_RE.match(ln):
+    for idx, line in enumerate(lines):
+        if _CODE_FENCE_RE.match(line):
             in_fence = not in_fence
             continue
         if in_fence:
             continue
 
-        mh = _HEADING_RE.match(ln)
-        if mh:
-            last_heading_level = len(mh.group(1))
+        heading_match = _HEADING_RE.match(line)
+        if heading_match:
+            last_heading_level = len(heading_match.group(1))
             continue
 
-        mdef = _ID_DEF_RE.match(ln.strip())
-        if not mdef:
+        definition_match = _ID_DEF_RE.match(line.strip())
+        if not definition_match:
             continue
-        id_found = mdef.group("id") or mdef.group("id2") or mdef.group("id3")
+        id_found = (
+            definition_match.group("id")
+            or definition_match.group("id2")
+            or definition_match.group("id3")
+            or definition_match.group("id4")
+        )
         if id_found != wanted:
             continue
-
-        start = idx + 1
-        end = len(lines) - 1
-
-        # If we have a preceding heading, stop at the next heading with level <= that.
-        # Otherwise, stop at the next heading (any level).
-        cutoff_level = last_heading_level if last_heading_level is not None else 6
-        in_fence2 = False
-        for j in range(idx + 1, len(lines)):
-            if _CODE_FENCE_RE.match(lines[j]):
-                in_fence2 = not in_fence2
-                continue
-            if in_fence2:
-                continue
-            # Stop at the next ID definition (acts as a delimiter within the same section).
-            mnext = _ID_DEF_RE.match(lines[j].strip())
-            if mnext:
-                end = j - 1
-                break
-            m2 = _HEADING_RE.match(lines[j])
-            if not m2:
-                continue
-            if len(m2.group(1)) <= cutoff_level:
-                end = j - 1
-                break
-
-        if start > end:
-            return None
-        return emit(lines[start : end + 1], start, end)
-
+        return _emit_definition_scope(lines, idx, last_heading_level, emit)
     return None
+
+
+def _emit_definition_scope(lines, start_idx, heading_level, emit):
+    """Emit content after a definition until the next delimiter."""
+    start = start_idx + 1
+    end = len(lines) - 1
+    cutoff_level = heading_level if heading_level is not None else 6
+    in_fence = False
+    for idx in range(start_idx + 1, len(lines)):
+        if _CODE_FENCE_RE.match(lines[idx]):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if _ID_DEF_RE.match(lines[idx].strip()):
+            end = idx - 1
+            break
+        next_heading = _HEADING_RE.match(lines[idx])
+        if next_heading and len(next_heading.group(1)) <= cutoff_level:
+            end = idx - 1
+            break
+    if start > end:
+        return None
+    return emit(lines[start : end + 1], start, end)
 # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-scan-ids-get-content
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-scan-ids-file-utils
@@ -440,8 +495,7 @@ def iter_text_files(
     import os
     import fnmatch
 
-    if excludes is None:
-        excludes = []
+    excludes = excludes or []
 
     skip_dirs = {
         ".git", ".hg", ".svn", ".idea", ".vscode", "__pycache__",
@@ -453,37 +507,50 @@ def iter_text_files(
     root = root.resolve()
 
     for dirpath, dirnames, filenames in os.walk(root):
-        # Filter out skip directories
-        dirnames[:] = sorted([d for d in dirnames if d not in skip_dirs and not d.startswith(".")])
+        dirnames[:] = sorted(_iter_visible_dirs(dirnames, skip_dirs))
 
         for fn in sorted(filenames):
             fp = Path(dirpath) / fn
-
-            # Get relative path for pattern matching
-            try:
-                rel = fp.relative_to(root).as_posix()
-            except ValueError:
+            rel = _relative_posix_or_none(fp, root)
+            if rel is None:
                 continue
-
-            # Check excludes
-            if excludes and any(fnmatch.fnmatch(rel, ex) for ex in excludes):
+            if _should_skip_text_file(fp, rel, includes, excludes, max_bytes, fnmatch):
                 continue
-
-            # Check includes (when provided)
-            if includes is not None and not any(fnmatch.fnmatch(rel, inc) for inc in includes):
-                continue
-
-            # Check file size
-            try:
-                st = fp.stat()
-                if st.st_size > max_bytes:
-                    continue
-            except OSError:
-                continue
-
             out.append(fp)
 
     return out
+
+
+def _iter_visible_dirs(dirnames, skip_dirs):
+    """Yield subdirectories that should be traversed."""
+    return (dirname for dirname in dirnames if dirname not in skip_dirs and not dirname.startswith("."))
+
+
+def _relative_posix_or_none(path: Path, root: Path) -> Optional[str]:
+    """Return root-relative POSIX path or None when outside the root."""
+    if path.is_relative_to(root):
+        return path.relative_to(root).as_posix()
+    return None
+
+
+def _should_skip_text_file(
+    path: Path,
+    rel: str,
+    includes: Optional[List[str]],
+    excludes: List[str],
+    max_bytes: int,
+    fnmatch_module,
+) -> bool:
+    """Return whether a candidate file should be excluded from scanning."""
+    if excludes and any(fnmatch_module.fnmatch(rel, pattern) for pattern in excludes):
+        return True
+    if includes is not None and not any(fnmatch_module.fnmatch(rel, pattern) for pattern in includes):
+        return True
+    try:
+        return path.stat().st_size > max_bytes
+    except OSError as exc:
+        logger.warning("Failed to stat %s: %s", path, exc)
+        return True
 
 def read_text_safe(path: Path) -> Optional[List[str]]:
     """
@@ -499,7 +566,8 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
 
     try:
         raw = path.read_bytes()
-    except OSError:
+    except OSError as exc:
+        logger.warning("Failed to read text file %s: %s", path, exc)
         return None
 
     if b"\x00" in raw:
@@ -507,7 +575,8 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
 
     try:
         text = raw.decode("utf-8")
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as exc:
+        logger.warning("Non-UTF-8 bytes ignored while reading %s: %s", path, exc)
         text = raw.decode("utf-8", errors="ignore")
 
     if os.linesep != "\n":
@@ -526,11 +595,11 @@ def to_relative_posix(path: Path, root: Path) -> str:
     Returns:
         Relative POSIX path string
     """
-    try:
-        rel = path.resolve().relative_to(root.resolve())
-    except ValueError:
+    resolved_path = path.resolve()
+    resolved_root = root.resolve()
+    if not resolved_path.is_relative_to(resolved_root):
         return path.as_posix()
-    return rel.as_posix()
+    return resolved_path.relative_to(resolved_root).as_posix()
 
 __all__ = [
     "iter_text_files",

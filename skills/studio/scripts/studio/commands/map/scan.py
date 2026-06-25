@@ -5,12 +5,36 @@
 """
 from __future__ import annotations
 
+import logging
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Sequence, Set, Tuple
 
 from .model import CptUse, Node, node_id
+
+def _emit_warning(message: str) -> None:
+    """Emit a warning to stderr via a dedicated logger handler."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    emit_logger = logging.getLogger(f"{__name__}.scan_warning")
+    emit_logger.handlers = [handler]
+    emit_logger.setLevel(logging.WARNING)
+    emit_logger.propagate = False
+    try:
+        emit_logger.log(logging.WARNING, "%s", message.rstrip("\n"))
+    finally:
+        handler.close()
+
+_OPTIONAL_MAP_DISCOVERY_ERRORS = (
+    ImportError,
+    OSError,
+    ValueError,
+    KeyError,
+    AttributeError,
+    TypeError,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -21,6 +45,11 @@ from .model import CptUse, Node, node_id
 # is added per-project at scan time. Everything else — including dot-prefixed
 # tooling dirs like .claude, .agents, .codex, .windsurf, etc — is walked.
 DEFAULT_SKIP_DIRS: Tuple[str, ...] = (".git",)
+
+
+def _warn_optional_discovery(context: str, exc: Exception) -> None:
+    """Report a best-effort map scan discovery failure without aborting."""
+    _emit_warning(f"map: warning: {context}: {type(exc).__name__}: {exc}")
 
 
 def _detect_adapter_dir(project_root: Path) -> Optional[str]:
@@ -37,7 +66,8 @@ def _detect_adapter_dir(project_root: Path) -> Optional[str]:
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:  # pragma: no cover
+        except OSError as exc:  # pragma: no cover
+            _warn_optional_discovery(f"failed to read adapter marker file {path}", exc)
             continue
         m = re.search(
             r'^\s*(?:cf-path|studio_path)\s*=\s*"([^"]+)"',
@@ -163,7 +193,8 @@ def _walk_files(root: Path, extensions: Sequence[str], skip_dirs: Set[str],
             try:
                 if fp.stat().st_size > max_bytes:
                     continue
-            except OSError:  # pragma: no cover
+            except OSError as exc:  # pragma: no cover
+                _warn_optional_discovery(f"failed to stat candidate file {fp}", exc)
                 continue
             out.append(fp)
     return out
@@ -298,6 +329,7 @@ def _split_md_cpt(path: Path) -> Tuple[List[str], List[CptUse]]:
 # Source scanning
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-scan-sources
 def _resolve_registry_path_for_root(root: Path) -> Optional[Path]:
     """Resolve the artifacts registry path via the canonical adapter_dir helper.
 
@@ -330,11 +362,20 @@ def _resolve_registry_path_for_root(root: Path) -> Optional[Path]:
         # root is a sub-directory — use flat layout only.
         flat = root / "artifacts.toml"
         return flat if flat.is_file() else None
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
-        pass
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery(f"registry resolution failed for {root}", exc)
     # Final fallback: flat layout at root.
     flat = root / "artifacts.toml"
     return flat if flat.is_file() else None  # pragma: no cover
+
+
+def _adapter_dir_for_scan_root(root: Path) -> Path:
+    from studio.utils.files import find_project_root, find_studio_directory
+
+    detected_root = find_project_root(root)
+    if detected_root is not None and detected_root.resolve() == root.resolve():  # pragma: no cover
+        return find_studio_directory(root) or root
+    return root
 
 
 def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Node]:
@@ -343,14 +384,14 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     Returns empty list if artifacts.toml is absent or broken (defensive).
     DOCS-ONLY systems contribute no source nodes.
     """
-    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-scan-sources
     registry_path = _resolve_registry_path_for_root(root)
     if registry_path is None:
         return []
 
     try:
         meta = _load_registry(registry_path)
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery(f"failed to load registry {registry_path}", exc)
         return []
 
     if meta is None:  # pragma: no cover
@@ -363,15 +404,9 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     # Guard: only use adapter resolution when root == project_root to avoid
     # picking up the parent project's adapter when scanning a fixture sub-dir.
     try:
-        from studio.utils.files import find_studio_directory, find_project_root
-        detected_root = find_project_root(root)
-        if detected_root is not None and detected_root.resolve() == root.resolve():  # pragma: no cover
-            adapter_dir = find_studio_directory(root) or root
-        else:
-            adapter_dir = root
-        meta.expand_autodetect(adapter_dir=adapter_dir, project_root=root)
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
-        pass
+        meta.expand_autodetect(adapter_dir=_adapter_dir_for_scan_root(root), project_root=root)
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery(f"autodetect expansion failed for {root}", exc)
 
     nodes: List[Node] = []
     seen: Set[Path] = set()
@@ -398,10 +433,9 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     return nodes
     # @cpt-end:cpt-studio-algo-map-scan:p1:inst-scan-sources
 
-
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-load-registry
 def _load_registry(registry_path: Path):
     """Load ArtifactsMeta directly from an artifacts.toml at the given path."""
-    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-load-registry
     from studio.utils._tomllib_compat import tomllib
     from studio.utils.artifacts_meta import ArtifactsMeta
 
@@ -412,10 +446,9 @@ def _load_registry(registry_path: Path):
     return ArtifactsMeta.from_dict(data)
     # @cpt-end:cpt-studio-algo-map-scan:p1:inst-load-registry
 
-
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-walk-source-dir
 def _walk_source_dir(cb_dir: Path, ext_set: Set[str], skip_dirs: Set[str]) -> List[Path]:
     """Walk a codebase directory, yielding files matching the given extensions."""
-    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-walk-source-dir
     result: List[Path] = []
     for dirpath, dirnames, filenames in os.walk(cb_dir):
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
@@ -426,10 +459,70 @@ def _walk_source_dir(cb_dir: Path, ext_set: Set[str], skip_dirs: Set[str]) -> Li
     return result
     # @cpt-end:cpt-studio-algo-map-scan:p1:inst-walk-source-dir
 
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-make-source-node
+def _source_lines(path: Path) -> List[str]:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:  # pragma: no cover
+        _warn_optional_discovery(f"failed to read source file {path}", exc)
+        return []
+
+
+def _code_snippet(src_lines: List[str], lo: int, hi: int) -> str:
+    if not src_lines:  # pragma: no cover
+        return ""
+    lo = max(1, lo)
+    hi = min(len(src_lines), hi)
+    if lo > hi:
+        return ""
+    return "\n".join(src_lines[lo - 1:hi])
+
+
+def _scope_marker_uses(scope_markers, src_lines: List[str]) -> List[CptUse]:
+    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
+    return [
+        CptUse(
+            cpt_id=f"{scope_marker.id}:p{scope_marker.phase}",
+            line=scope_marker.line,
+            snippet=_code_snippet(src_lines, scope_marker.line, scope_marker.line + 4) or scope_marker.raw.rstrip(),
+            marker_kind="scope",
+        )
+        for scope_marker in scope_markers
+    ]
+    # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
+
+
+def _block_marker_uses(block_markers, src_lines: List[str]) -> List[CptUse]:
+    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
+    cpt_uses: List[CptUse] = []
+    for block_marker in block_markers:
+        cpt_id = f"{block_marker.id}:p{block_marker.phase}"
+        inner_hi = min(block_marker.start_line + _MAX_SNIPPET_LINES, block_marker.end_line)
+        cpt_uses.extend([
+            CptUse(
+                cpt_id=cpt_id,
+                line=block_marker.start_line,
+                snippet=_code_snippet(src_lines, block_marker.start_line, inner_hi)
+                        or f"@cpt-begin:{block_marker.id}:p{block_marker.phase}:inst-{block_marker.inst}",
+                marker_kind="block-begin",
+            ),
+            CptUse(
+                cpt_id=cpt_id,
+                line=block_marker.end_line,
+                snippet=_code_snippet(
+                    src_lines,
+                    max(block_marker.start_line, block_marker.end_line - 4),
+                    block_marker.end_line,
+                )
+                or f"@cpt-end:{block_marker.id}:p{block_marker.phase}:inst-{block_marker.inst}",
+                marker_kind="block-end",
+            ),
+        ])
+    return cpt_uses
+    # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
 
 def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node]:
     """Parse a source file with CodeFile.from_path and build a Node."""
-    # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-make-source-node
     from studio.utils.codebase import CodeFile
     from studio.utils.document import to_relative_posix
 
@@ -439,56 +532,17 @@ def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node
 
     cf, _errors = CodeFile.from_path(path)
 
+    src_lines = _source_lines(path)
     cpt_uses: List[CptUse] = []
-    # Read raw lines once for snippet extraction.
-    try:
-        src_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:  # pragma: no cover
-        src_lines = []
-
-    def _code_snippet(lo: int, hi: int) -> str:
-        if not src_lines:  # pragma: no cover
-            return ""
-        lo = max(1, lo)
-        hi = min(len(src_lines), hi)
-        if lo > hi:
-            return ""
-        return "\n".join(src_lines[lo - 1:hi])
 
     if cf is not None:
         # Scope markers → marker_kind="scope"; embed 3 lines after the marker
         # so the surrounding code is visible.
-        # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
-        for sm in cf.scope_markers:
-            cpt_id = f"{sm.id}:p{sm.phase}"
-            cpt_uses.append(CptUse(
-                cpt_id=cpt_id,
-                line=sm.line,
-                snippet=_code_snippet(sm.line, sm.line + 4) or sm.raw.rstrip(),
-                marker_kind="scope",
-            ))
-        # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-scope-markers
+        scope_uses = _scope_marker_uses(cf.scope_markers, src_lines)
+        cpt_uses.extend(scope_uses)
         # Block markers → begin + end with the inner body included for begin.
-        # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
-        for bm in cf.block_markers:
-            cpt_id = f"{bm.id}:p{bm.phase}"
-            inner_hi = min(bm.start_line + _MAX_SNIPPET_LINES, bm.end_line)
-            cpt_uses.append(CptUse(
-                cpt_id=cpt_id,
-                line=bm.start_line,
-                snippet=_code_snippet(bm.start_line, inner_hi)
-                        or f"@cpt-begin:{bm.id}:p{bm.phase}:inst-{bm.inst}",
-                marker_kind="block-begin",
-            ))
-            # end entry — show last few lines of the block leading up to the @cpt-end
-            cpt_uses.append(CptUse(
-                cpt_id=cpt_id,
-                line=bm.end_line,
-                snippet=_code_snippet(max(bm.start_line, bm.end_line - 4), bm.end_line)
-                        or f"@cpt-end:{bm.id}:p{bm.phase}:inst-{bm.inst}",
-                marker_kind="block-end",
-            ))
-        # @cpt-end:cpt-studio-algo-map-scan:p1:inst-extract-block-markers
+        block_uses = _block_marker_uses(cf.block_markers, src_lines)
+        cpt_uses.extend(block_uses)
 
     return Node(
         id=node_id(source_name, rel),
@@ -503,7 +557,6 @@ def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node
         cpt_defs=[],
         cpt_uses=cpt_uses,
     )
-    # @cpt-end:cpt-studio-algo-map-scan:p1:inst-make-source-node
 
 
 # ---------------------------------------------------------------------------
@@ -517,5 +570,7 @@ def _language_from_ext(suffix: str) -> Optional[str]:
 def _count_lines(path: Path) -> int:
     try:
         return sum(1 for _ in path.open("rb"))
-    except OSError:  # pragma: no cover
+    except OSError as exc:  # pragma: no cover
+        _warn_optional_discovery(f"failed to count lines for {path}", exc)
         return 0
+    # @cpt-end:cpt-studio-algo-map-scan:p1:inst-make-source-node

@@ -10,6 +10,7 @@ Uses only Python stdlib. Never blocks or slows down the main CLI.
 """
 
 import json
+import logging
 import os
 import subprocess
 import threading
@@ -25,6 +26,7 @@ DEFAULT_RETENTION_DAYS = 5
 HTTP_TIMEOUT = 5
 _SKIP_COMMANDS = {"--version", "--help", "-h"}
 _ALLOWED_SCHEMES = ("http://", "https://")  # NOSONAR(S5332) HTTP is acceptable for internal OTEL collectors
+LOGGER = logging.getLogger(__name__)
 
 
 def track_invocation(args: List[str]) -> None:
@@ -116,7 +118,8 @@ def _collect_git_info() -> Dict[str, str]:
             if len(parts) == 2:
                 info[parts[0]] = parts[1]
         return info
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        _log_error(f"Telemetry git info unavailable: {exc}")
         return {}
 
 
@@ -132,8 +135,8 @@ def _append_log(record: dict, now: Optional[datetime] = None) -> bool:
 
     is_new = not log_file.exists()
 
-    with log_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    with log_file.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     return is_new
 
@@ -144,7 +147,12 @@ def _rotate_logs() -> None:
         retention_days = int(
             os.environ.get("CFS_TELEMETRY_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)
         )
-    except ValueError:
+    except ValueError as exc:
+        LOGGER.warning(
+            "Warning: invalid CFS_TELEMETRY_RETENTION_DAYS value; using default %s (%s)",
+            DEFAULT_RETENTION_DAYS,
+            exc,
+        )
         retention_days = DEFAULT_RETENTION_DAYS
 
     retention_days = max(1, retention_days)
@@ -154,8 +162,8 @@ def _rotate_logs() -> None:
         for log_file in LOG_DIR.glob("*.log"):
             if log_file.stat().st_mtime < cutoff:
                 log_file.unlink(missing_ok=True)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log_error(f"Telemetry log rotation failed: {exc}")
 
 
 def _build_otlp_logs(
@@ -224,7 +232,7 @@ def _log_error(message: str) -> None:
             "level": "ERROR",
             "message": message,
         }
-        with log_file.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(error_record, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+        with log_file.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(error_record, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        LOGGER.warning("Warning: unable to record telemetry error locally: %s", exc)
