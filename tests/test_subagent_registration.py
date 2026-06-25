@@ -676,12 +676,16 @@ class TestLegacyStubClassification(unittest.TestCase):
 
     def test_generated_follow_link_protocol_requires_workflow_execution(self):
         from studio.commands.agents import (
+            _REQUIRED_BOOTSTRAP_PATH,
             _follow_protocol_lines,
             _is_pure_studio_generated,
         )
         from studio.constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
 
-        block = _follow_protocol_lines("{cf-studio-path}/.core/workflows/analyze.md")
+        block = _follow_protocol_lines(
+            "{cf-studio-path}/.core/workflows/analyze.md",
+            required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+        )
         content = (
             "---\n"
             "name: cf-analyze\n"
@@ -711,7 +715,7 @@ class TestLegacyStubClassification(unittest.TestCase):
             block.index("UNIT GeneratedBootstrapUnit"),
         )
         self.assertIn(
-            "  LOAD {required_bootstrap_path}",
+            "  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md",
             block,
         )
         self.assertIn("  RUN RequiredBootstrap", block)

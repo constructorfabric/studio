@@ -91,6 +91,9 @@ _TMPL_DESCRIPTION = "description: {description}"
 _AGENT_TEMPLATE_HEADER = ["---", _TMPL_NAME, _TMPL_DESCRIPTION]
 _FOLLOW_LINK_RE = re.compile(r"ALWAYS open and follow `([^`]+)`")
 _CONTROL_PROTOCOL_RE = re.compile(r"LOAD(?: and RUN)? ([^\n]+?) as controlling protocol")
+_REQUIRED_BOOTSTRAP_PATH = (
+    "{cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md"
+)
 _ENDPOINT_POINTER = (
     "Constructor Studio endpoint only. Prompt source: {target_agent_path}. "
     "Final prompt is supplied by the cf controller at dispatch time."
@@ -153,7 +156,11 @@ def _is_safe_generated_id(value: str) -> bool:
 # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
 
 
-def _follow_protocol_lines(target_path: str) -> List[str]:
+def _follow_protocol_lines(
+    target_path: str,
+    *,
+    required_bootstrap_path: str = "{required_bootstrap_path}",
+) -> List[str]:
     """Return the generated protocol block for workflow/skill shims."""
     # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-follow-protocol
     return [
@@ -180,7 +187,7 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         "UNIT GeneratedBootstrapUnit",
         "PURPOSE: Load the required shared bootstrap before handing control to the target protocol.",
         "DO:",
-        "  LOAD {required_bootstrap_path}",
+        "  LOAD " + required_bootstrap_path,
         "  RUN RequiredBootstrap",
         "  LOAD and RUN " + target_path + " as controlling protocol",
         "RULES:",
@@ -342,7 +349,11 @@ def _pure_generated_stub_matches(stripped: str) -> bool:
     if not control_target:
         return False
     expected_protocol = [
-        line.strip() for line in _follow_protocol_lines(control_target)
+        line.strip()
+        for line in _follow_protocol_lines(
+            control_target,
+            required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+        )
         if line.strip()
     ]
     return nonblank == expected_protocol
@@ -2656,7 +2667,7 @@ def _workflow_output_template_context(
         "command": command,
         "workflow_name": wf_name,
         "target_workflow_path": target_rel,
-        "required_bootstrap_path": "{cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md",
+        "required_bootstrap_path": _REQUIRED_BOOTSTRAP_PATH,
         "name": frontmatter.get("name", command),
         "description": frontmatter.get(
             "description",
@@ -2848,7 +2859,7 @@ def _render_kit_workflow_skill_content(
             "name": spec.name,
             "description": spec.description,
             "target_path": spec.target_rel,
-            "required_bootstrap_path": "{cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md",
+            "required_bootstrap_path": _REQUIRED_BOOTSTRAP_PATH,
         },
     )
 # @cpt-end:cpt-studio-algo-agent-integration-list-workflows:p1:inst-generate-kit-workflow-skills
@@ -3963,7 +3974,7 @@ def _render_skill_output(
             "skill_name": str(ctx.skill_name),
             "target_skill_path": target_rel,
             "target_path": target_rel,
-            "required_bootstrap_path": "{cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md",
+            "required_bootstrap_path": _REQUIRED_BOOTSTRAP_PATH,
             "name": out_name,
             "description": out_description,
             "custom_content": ctx.custom_content,
