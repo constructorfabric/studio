@@ -135,6 +135,15 @@ class TestOutputChannelsChecker(unittest.TestCase):
                 "src/studio_proxy/cli.py",
             )
         )
+        checker.visit_call(
+            set_root(
+                Call(
+                    Name("helper"),
+                    keywords=[Keyword("stdout", Attribute(Name("sys"), "stdout"))],
+                ),
+                "pkg/sample.py",
+            )
+        )
         checker.visit_call(set_root(Call(Const("not a function")), "pkg/sample.py"))
 
         self.assertEqual(
@@ -201,6 +210,21 @@ class TestOutputChannelsChecker(unittest.TestCase):
         )
         _assert_pylint_ran(result)
         self.assertIn("stderr-bypass", result.stdout)
+
+    def test_ignores_non_subprocess_stdout_keyword(self) -> None:
+        result = _run_pylint(
+            """
+            import sys
+
+            def helper(**kwargs):
+                return kwargs
+
+            def run():
+                helper(stdout=sys.stdout)
+            """
+        )
+        _assert_pylint_ran(result)
+        self.assertNotIn("stdout-bypass", result.stdout)
 
     def test_flags_subprocess_passthrough_to_stderr(self) -> None:
         result = _run_pylint(

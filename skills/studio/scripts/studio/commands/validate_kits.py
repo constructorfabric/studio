@@ -497,10 +497,10 @@ def _run_registered_self_check(
             loaded_kit=loaded_kit,
         )
         _record_binding_warnings(self_check_report, binding_warnings)
-        if getattr(loaded_kit, "resource_bindings", None):
-            manifest_checked_kits.add(kit_id_str)
         if bound_meta is None:
             continue
+        if getattr(loaded_kit, "resource_bindings", None):
+            manifest_checked_kits.add(kit_id_str)
         _, sc_out = run_self_check_from_meta(
             project_root=project_root,
             adapter_dir=adapter_dir,
@@ -547,11 +547,35 @@ def _collect_self_check_failures(
     self_check_report: Dict[str, object],
     all_errors: List[Dict[str, object]],
 ) -> None:
+    def _error_key(err: Dict[str, object]) -> Tuple[str, str, str]:
+        err_type = str(err.get("type", "") or "")
+        err_path = str(err.get("path", "") or "")
+        if err_type == "constraints" and err_path:
+            return (err_type, err_path, "")
+        return (
+            err_type,
+            err_path,
+            str(err.get("message", "") or ""),
+        )
+
+    seen = {
+        _error_key(err)
+        for err in all_errors
+        if isinstance(err, dict)
+    }
     for result in self_check_report.get("results", []):
         if isinstance(result, dict) and result.get("status") == "FAIL":
             errors = result.get("errors", [])
             if isinstance(errors, list):
-                all_errors.extend(errors)
+                for err in errors:
+                    if not isinstance(err, dict):
+                        all_errors.append(err)
+                        continue
+                    key = _error_key(err)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    all_errors.append(err)
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-template-check
 
 
@@ -599,16 +623,17 @@ def run_validate_kits(
     adapter_dir: Path,
     kit_filter: Optional[str] = None,
     verbose: bool = False,
+    ctx: Optional[Any] = None,
 ) -> Tuple[int, Dict[str, Any]]:
     """Run full kit validation (structural + template/example checks).
 
     Returns (return_code, report_dict).  rc=0 means PASS, rc=2 means FAIL.
     This is the reusable engine called by both the CLI and ``cmd_update``.
     """
-    from ..utils.context import get_context
-    from ..utils.artifacts_meta import load_artifacts_meta
+    from ..utils.context import StudioContext
 
-    ctx = get_context()
+    if ctx is None:
+        ctx = StudioContext.load_from_dir(adapter_dir)
     if not ctx:
         return 1, {"status": "ERROR", "message": "Constructor Studio not initialized. Run 'cfs init' first."}
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-init-context
@@ -644,7 +669,8 @@ def run_validate_kits(
     # ── Phase 2: Template & example validation ────────────────────────
     # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
     self_check_report: Dict[str, object] = {}
-    artifacts_meta, meta_err = load_artifacts_meta(adapter_dir)
+    artifacts_meta = getattr(ctx, "meta", None)
+    meta_err = None if artifacts_meta is not None else "missing"
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
     if artifacts_meta is not None and not meta_err:
         self_check_report = _run_registered_self_check(
@@ -715,6 +741,7 @@ def cmd_validate_kits(argv: List[str]) -> int:
         adapter_dir=ctx.adapter_dir,
         kit_filter=str(args.kit) if args.kit else None,
         verbose=bool(args.verbose),
+        ctx=ctx,
     )
     # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-registered-mode
 

@@ -112,9 +112,10 @@ Enables users to install Studio globally, initialize it in any project with sens
       2. [x] - `p1` - **IF** download failed - `inst-if-download-failed`
          1. [x] - `p1` - **RETURN** error: "Failed to download Studio skill. Check network and retry." (exit 1) - `inst-return-download-error`
       3. [x] - `p1` - Forward command and args to freshly cached skill engine - `inst-forward-fresh-cache`
-6. [x] - `p1` - Skill engine executes command, produces JSON to stdout - `inst-engine-execute`
-7. [x] - `p1` - CLI proxy performs non-blocking background version check - `inst-bg-version-check`
-8. [x] - `p1` - **IF** cached version newer than project version - `inst-if-version-mismatch`
+6. [x] - `p1` - CLI proxy forwards the resolved skill target through the current Python interpreter subprocess - `inst-forward-target`
+7. [x] - `p1` - Skill engine executes command, produces JSON to stdout - `inst-engine-execute`
+8. [x] - `p1` - CLI proxy performs non-blocking background version check - `inst-bg-version-check`
+9. [x] - `p1` - **IF** cached version newer than project version - `inst-if-version-mismatch`
    1. [x] - `p1` - Display update notice to stderr - `inst-show-update-notice`
 9. [x] - `p1` - **IF** first arg is `update` - `inst-if-update-cache`
    1. [x] - `p1` - Algorithm: download and cache skill using `cpt-studio-algo-core-infra-cache-skill` with optional version/branch/SHA argument - `inst-explicit-cache-update`

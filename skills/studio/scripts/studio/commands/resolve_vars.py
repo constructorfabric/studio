@@ -390,6 +390,7 @@ def _collect_all_variables(
     project_root: Path,
     adapter_dir: Path,
     core_data: Optional[dict],
+    kit_filter: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Collect all template variables from system config and kit resources.
 
@@ -423,6 +424,8 @@ def _collect_all_variables(
         for slug, kit_entry in core_data["kits"].items():
             if not isinstance(kit_entry, dict):
                 continue
+            if kit_filter and str(slug) != str(kit_filter):
+                continue
             resolved = _resolve_kit_variables(
                 adapter_dir, kit_entry, str(slug),
             )
@@ -448,6 +451,8 @@ def _collect_all_variables(
 
 def load_resolved_variables(
     start_path: Path,
+    *,
+    kit_filter: Optional[str] = None,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[dict]]:
     """Load resolve-vars data for in-process callers.
 
@@ -469,7 +474,7 @@ def load_resolved_variables(
     # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-load-core
 
     # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-merge
-    result = _collect_all_variables(project_root, adapter_dir, core_data)
+    result = _collect_all_variables(project_root, adapter_dir, core_data, kit_filter=kit_filter)
     if core_load_error:
         result["core_load_error"] = core_load_error
     _add_discovered_layer_variables(result, project_root, adapter_dir)
@@ -684,7 +689,7 @@ def cmd_resolve_vars(argv: list[str]) -> int:
     # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-discover
     # -- Discover project --
     try:
-        result, context_error = load_resolved_variables(start_path)
+        result, context_error = load_resolved_variables(start_path, kit_filter=args.kit)
     except ValueError as exc:
         logger.exception("failed to resolve variables from %s", start_path)
         ui.result({

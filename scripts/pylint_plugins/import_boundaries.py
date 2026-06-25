@@ -54,14 +54,12 @@ def _is_studio_module(node: nodes.NodeNG) -> bool:
     )
 
 
-def _import_name(node: nodes.NodeNG) -> str | None:
+def _import_names(node: nodes.NodeNG) -> list[str]:
     if isinstance(node, nodes.Import):
-        if not node.names:
-            return None
-        return node.names[0][0]
+        return [name for name, _alias in node.names if isinstance(name, str)]
     if isinstance(node, nodes.ImportFrom):
-        return node.modname
-    return None
+        return [node.modname]
+    return []
 
 
 def _imports_proxy(import_name: str | None) -> bool:
@@ -98,10 +96,10 @@ class ImportBoundariesChecker(BaseChecker):
         self._check_import(node)
 
     def _check_import(self, node: nodes.NodeNG) -> None:
-        import_name = _import_name(node)
-        if _is_proxy_module(node) and _imports_studio(import_name):
+        import_names = _import_names(node)
+        if _is_proxy_module(node) and any(_imports_studio(import_name) for import_name in import_names):
             self.add_message("proxy-imports-studio", node=node)
-        elif _is_studio_module(node) and _imports_proxy(import_name):
+        elif _is_studio_module(node) and any(_imports_proxy(import_name) for import_name in import_names):
             self.add_message("studio-imports-proxy", node=node)
 
 

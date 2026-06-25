@@ -13,11 +13,9 @@ _EXEMPT_EXCEPTION_NAMES = frozenset({
 })
 
 _VISIBLE_SIGNAL_NAMES = frozenset({
-    "append",
     "critical",
     "error",
     "exception",
-    "extend",
     "fail",
     "fatal",
     "info",
@@ -26,7 +24,53 @@ _VISIBLE_SIGNAL_NAMES = frozenset({
     "substep",
     "warn",
     "warning",
+})
+
+_VISIBLE_SIGNAL_WRAPPER_PREFIXES = frozenset({
+    "emit_",
+    "log_",
+    "report_",
+    "show_",
+    "write_",
+})
+
+_VISIBLE_SIGNAL_WRAPPER_SUFFIXES = frozenset({
+    "_error",
+    "_errors",
+    "_fail",
+    "_message",
+    "_messages",
+    "_result",
+    "_results",
+    "_warn",
+    "_warning",
+    "_warnings",
+})
+
+_MUTATING_SIGNAL_METHODS = frozenset({
+    "append",
+    "extend",
+    "setdefault",
+    "update",
+})
+
+_DIAGNOSTIC_KEYS = frozenset({
+    "error",
+    "errors",
+    "fail",
+    "level",
+    "message",
+    "messages",
+    "status",
+    "warning",
+    "warnings",
+})
+
+_PASSIVE_CALL_NAMES = frozenset({
+    "append",
+    "extend",
     "write",
+    "writelines",
 })
 
 
@@ -104,20 +148,94 @@ def _callee_name(call: nodes.Call) -> str | None:
     return None
 
 
+def _is_visible_signal_name(name: str | None) -> bool:
+    """Return whether a callee name obviously surfaces the exception."""
+    if not name:
+        return False
+    normalized = name.lstrip("_")
+    if normalized in _VISIBLE_SIGNAL_NAMES:
+        return True
+    if normalized.startswith("stderr_"):
+        return True
+    if any(normalized.endswith(suffix) for suffix in _VISIBLE_SIGNAL_WRAPPER_SUFFIXES):
+        return True
+    for prefix in _VISIBLE_SIGNAL_WRAPPER_PREFIXES:
+        if not normalized.startswith(prefix):
+            continue
+        remainder = normalized[len(prefix):]
+        if remainder in _VISIBLE_SIGNAL_NAMES or remainder.startswith("stderr"):
+            return True
+    return False
+
+
+def _dict_has_diagnostic_keys(node: nodes.NodeNG) -> bool:
+    """Return whether a dict literal carries obvious diagnostic fields."""
+    if not isinstance(node, nodes.Dict):
+        return False
+    for key_node, _value_node in node.items:
+        if isinstance(key_node, nodes.Const) and isinstance(key_node.value, str):
+            if key_node.value in _DIAGNOSTIC_KEYS:
+                return True
+    return False
+
+
+def _assignment_surfaces_error(stmt: nodes.NodeNG) -> bool:
+    """Return whether an assignment stores an explicit diagnostic field."""
+    if not isinstance(stmt, nodes.Assign):
+        return False
+    subscript_node = getattr(nodes, "Subscript", None)
+    if subscript_node is None:
+        return False
+    for target in stmt.targets:
+        if not isinstance(target, subscript_node):
+            continue
+        index = getattr(target, "slice", None)
+        if isinstance(index, nodes.Const) and isinstance(index.value, str):
+            if index.value in _DIAGNOSTIC_KEYS or index.value.endswith(("_error", "_errors", "_warning", "_warnings")):
+                return True
+    return False
+
+
+def _call_surfaces_error(call: nodes.Call) -> bool:
+    """Return whether a call obviously surfaces the exception."""
+    callee_name = _callee_name(call)
+    if _is_visible_signal_name(callee_name):
+        return True
+    if callee_name not in _MUTATING_SIGNAL_METHODS:
+        return False
+    for arg in call.args:
+        if _dict_has_diagnostic_keys(arg):
+            return True
+        if isinstance(arg, nodes.Call) and _is_visible_signal_name(_callee_name(arg)):
+            return True
+    return False
+
+
 def _has_visible_signal(stmt: nodes.NodeNG) -> bool:
     """Return whether a statement visibly surfaces an error."""
     if isinstance(stmt, nodes.Raise):
         return True
+    if _assignment_surfaces_error(stmt):
+        return True
     for call in stmt.nodes_of_class(nodes.Call):
-        callee_name = _callee_name(call)
-        if callee_name in _VISIBLE_SIGNAL_NAMES:
+        if _call_surfaces_error(call):
             return True
     return False
 
 
 def _is_passive_statement(stmt: nodes.NodeNG, silent_names: set[str] | None = None) -> bool:
     """Return whether a statement only mutates local control/data before a silent fallback."""
-    return _is_silent_statement(stmt, silent_names) or _is_passive_assignment(stmt)
+    if _is_silent_statement(stmt, silent_names) or _is_passive_assignment(stmt):
+        return True
+    if _has_visible_signal(stmt):
+        return False
+    call: nodes.Call | None = None
+    expr_node = getattr(nodes, "Expr", None)
+    if expr_node is not None and isinstance(stmt, expr_node) and isinstance(stmt.value, nodes.Call):
+        call = stmt.value
+    elif isinstance(stmt, nodes.Call):
+        call = stmt
+    return _callee_name(call) in _PASSIVE_CALL_NAMES if call is not None else False
 
 
 def _handler_exception_name(handler: nodes.ExceptHandler) -> str | None:
@@ -128,18 +246,6 @@ def _handler_exception_name(handler: nodes.ExceptHandler) -> str | None:
     if isinstance(name, nodes.AssignName):
         return name.name
     return str(name)
-
-
-def _exception_name_used(handler: nodes.ExceptHandler) -> bool:
-    """Return whether the bound exception variable is referenced in the body."""
-    bound_name = _handler_exception_name(handler)
-    if not bound_name:
-        return False
-    for stmt in handler.body:
-        for child in stmt.nodes_of_class(nodes.Name):
-            if child.name == bound_name:
-                return True
-    return False
 
 
 class SilentExceptionSwallowedChecker(BaseChecker):
@@ -163,11 +269,11 @@ class SilentExceptionSwallowedChecker(BaseChecker):
                 continue
             if not handler.body:
                 continue
-            if _exception_name_used(handler):
-                continue
             if any(_has_visible_signal(stmt) for stmt in handler.body):
                 continue
             silent_names = _assigned_silent_names(handler)
+            if not any(_is_silent_statement(stmt, silent_names) for stmt in handler.body):
+                continue
             if all(_is_passive_statement(stmt, silent_names) for stmt in handler.body):
                 self.add_message("silent-exception-swallowed", node=handler)
 

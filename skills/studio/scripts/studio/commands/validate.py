@@ -432,7 +432,7 @@ def _resolve_explicit_artifact(session: _ValidateSession, artifact_path: Path) -
     session.ctx_errors.extend(getattr(session.ctx, "_errors", []) or [])
     session.meta = session.ctx.meta
     session.project_root = session.ctx.project_root
-    session.registered_systems = session.ctx.registered_systems
+    session.registered_systems.update(getattr(session.ctx, "registered_systems", set()) or set())
     session.known_kinds = session.ctx.get_known_id_kinds()
     _extend_known_kinds(session.ctx, session.known_kinds)
     try:

@@ -60,6 +60,38 @@ def _is_logger_call(call: nodes.Call) -> bool:
     return _call_base_name(call) == "logger" and _call_attr_name(call) in _LOGGER_METHODS
 
 
+def _top_level_executed_calls(stmt: nodes.NodeNG):
+    """Yield calls executed by a handler statement, excluding nested defs/classes."""
+    if stmt.__class__.__name__ in {"FunctionDef", "AsyncFunctionDef", "Lambda", "ClassDef"}:
+        return
+
+    nested_types = tuple(
+        node_type
+        for node_type in (
+            getattr(nodes, "FunctionDef", None),
+            getattr(nodes, "AsyncFunctionDef", None),
+            getattr(nodes, "Lambda", None),
+            getattr(nodes, "ClassDef", None),
+        )
+        if node_type is not None
+    )
+
+    def walk(node: nodes.NodeNG, *, allow_root: bool = True):
+        if not allow_root and nested_types and isinstance(node, nested_types):
+            return
+        if isinstance(node, nodes.Call):
+            yield node
+            return
+        for child in getattr(node, "get_children", lambda: [])():
+            if isinstance(child, nodes.NodeNG):
+                yield from walk(child, allow_root=False)
+        for child in getattr(node, "_iter_children", lambda: [])():
+            if isinstance(child, nodes.NodeNG):
+                yield from walk(child, allow_root=False)
+
+    yield from walk(stmt)
+
+
 class ErrorSurfacingChecker(BaseChecker):
     """Require diagnostic logging when an except block surfaces a user-facing error."""
 
@@ -79,7 +111,7 @@ class ErrorSurfacingChecker(BaseChecker):
             has_user_facing_surface = False
             has_diagnostic_log = False
             for stmt in handler.body:
-                for call in stmt.nodes_of_class(nodes.Call):
+                for call in _top_level_executed_calls(stmt):
                     if _is_user_facing_ui_call(call):
                         has_user_facing_surface = True
                     if _is_logger_call(call):

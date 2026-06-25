@@ -723,6 +723,8 @@ def _validate_example_paths(
             artifact_path=example_path,
             artifact_kind=str(kind),
             constraints=constraints_for_kind,
+            # Kit examples are not artifact-registry entries, so registered-system
+            # enforcement would reject valid placeholder/example IDs.
             registered_systems=None,
             constraints_path=constraints_path,
             kit_id=str(kit_id),

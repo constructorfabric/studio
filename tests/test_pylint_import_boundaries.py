@@ -69,10 +69,10 @@ class TestImportBoundariesChecker(unittest.TestCase):
         self.assertFalse(module._is_studio_module(absolute_proxy_import))
         self.assertTrue(module._is_proxy_module(ci_style_absolute_proxy_import))
         self.assertFalse(module._is_studio_module(ci_style_absolute_proxy_import))
-        self.assertEqual(module._import_name(proxy_import), "studio.utils.files")
-        self.assertEqual(module._import_name(studio_import), "studio_proxy.resolve")
-        self.assertIsNone(module._import_name(Import([])))
-        self.assertIsNone(module._import_name(Name("not_import")))
+        self.assertEqual(module._import_names(proxy_import), ["studio.utils.files"])
+        self.assertEqual(module._import_names(studio_import), ["studio_proxy.resolve"])
+        self.assertEqual(module._import_names(Import([])), [])
+        self.assertEqual(module._import_names(Name("not_import")), [])
         self.assertTrue(module._imports_proxy("studio_proxy.cli"))
         self.assertFalse(module._imports_proxy("studio.cli"))
         self.assertTrue(module._imports_studio("studio.utils.ui"))
@@ -114,6 +114,15 @@ class TestImportBoundariesChecker(unittest.TestCase):
         result = _run_pylint(
             """
             import studio.utils.files
+            """,
+            relative_path="src/studio_proxy/resolve.py",
+        )
+        self.assertIn("proxy-imports-studio", result.stdout)
+
+    def test_flags_second_name_in_multi_import(self) -> None:
+        result = _run_pylint(
+            """
+            import os, studio.utils.files
             """,
             relative_path="src/studio_proxy/resolve.py",
         )

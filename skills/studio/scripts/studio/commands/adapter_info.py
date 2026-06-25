@@ -600,12 +600,12 @@ def _legacy_kit_detail(adapter_dir: Path, slug: str, kit_root: Path, core_kit: d
 
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-resolve-registry-path
 def _resolve_registry_path(adapter_dir: Path) -> Path:
-    registry_path = (adapter_dir / "config" / "artifacts.toml").resolve()
+    registry_path = (adapter_dir / "artifacts.toml").resolve()
     if registry_path.is_file():
         return registry_path
-    legacy_toml = (adapter_dir / "artifacts.toml").resolve()
-    if legacy_toml.is_file():
-        return legacy_toml
+    config_toml = (adapter_dir / "config" / "artifacts.toml").resolve()
+    if config_toml.is_file():
+        return config_toml
     legacy_json = adapter_dir / "artifacts.json"
     if legacy_json.is_file():
         return legacy_json.resolve()
@@ -849,6 +849,7 @@ def _apply_variables_metadata(
         return
     # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-load-variables
     # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-store-variables
+    config["variables"] = vars_result.get("variables", {})
     config["variables_by_kit"] = vars_result.get("kits", {})
     if vars_result.get("collisions"):
         config["variables_collisions"] = vars_result["collisions"]
@@ -955,7 +956,12 @@ def cmd_adapter_info(argv: list[str]) -> int:
     # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-registry-missing
     if registry is None:
         config["artifacts_registry"] = None
-        config["artifacts_registry_error"] = "MISSING_OR_INVALID_JSON" if registry_path.exists() else "MISSING"
+        if registry_path.exists():
+            config["artifacts_registry_error"] = (
+                "MISSING_OR_INVALID_TOML" if registry_path.suffix == ".toml" else "MISSING_OR_INVALID_JSON"
+            )
+        else:
+            config["artifacts_registry_error"] = "MISSING"
         config["autodetect_registry"] = None
     # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-registry-missing
     # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-expand-registry

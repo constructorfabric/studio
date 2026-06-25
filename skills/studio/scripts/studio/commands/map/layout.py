@@ -602,39 +602,31 @@ def _try_affinity_layout(layout_input: _AffinityLayoutInput):
     )
     best_affinity_positions: dict[str, tuple[int, int]] | None = None
     best_affinity_metrics: rectpack.StackedLayoutMetrics | None = None
+    chosen_score = _layout_score(
+        layout_input.chosen_metrics,
+        layout_input.chosen_positions,
+        layout_input.category_links,
+        layout_input.choice_by_cat,
+    )
+    best_affinity_score: tuple[float, float, float, float, float, float] | None = None
     for order in order_candidates:
         for width_limit in width_candidates:
             if width_limit < max_cat_width:
                 continue
             positions = _row_pack_positions(order, width_limit, layout_input.choice_by_cat)
             metrics = _layout_metrics(layout_input.best_choices, positions, layout_input.category_inputs)
-            if not _layout_improves(layout_input.stacked_metrics, metrics):
-                continue
-            if best_affinity_metrics is None or _layout_score(
+            score = _layout_score(
                 metrics,
                 positions,
                 layout_input.category_links,
                 layout_input.choice_by_cat,
-            ) < _layout_score(
-                best_affinity_metrics,
-                best_affinity_positions,
-                layout_input.category_links,
-                layout_input.choice_by_cat,  # type: ignore[arg-type]
-            ):
+            )
+            if best_affinity_metrics is None or best_affinity_score is None or score < best_affinity_score:
                 best_affinity_positions = positions
                 best_affinity_metrics = metrics
+                best_affinity_score = score
     if best_affinity_positions is not None and best_affinity_metrics is not None:
-        if _layout_score(
-            best_affinity_metrics,
-            best_affinity_positions,
-            layout_input.category_links,
-            layout_input.choice_by_cat,
-        ) < _layout_score(
-            layout_input.chosen_metrics,
-            layout_input.chosen_positions,
-            layout_input.category_links,
-            layout_input.choice_by_cat,
-        ):
+        if best_affinity_score is not None and best_affinity_score < chosen_score:
             if layout_input.verbose:
                 _emit_stdout("[layout] affinity layout kept")
             return best_affinity_positions, best_affinity_metrics

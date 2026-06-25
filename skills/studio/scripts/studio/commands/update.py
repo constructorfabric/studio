@@ -1594,9 +1594,10 @@ def _rewrite_artifacts_legacy_kit_refs(
     artifacts_toml: Path,
     renamed: Dict[str, str],
     toml_utils,
-) -> None:
+) -> Dict[str, str]:
     if not artifacts_toml.is_file():
-        return
+        return {}
+    changed_renames: Dict[str, str] = {}
     try:
         with open(artifacts_toml, "rb") as f:
             reg = tomllib.load(f)
@@ -1605,16 +1606,18 @@ def _rewrite_artifacts_legacy_kit_refs(
             if not isinstance(sys_entry, dict):
                 continue
             kit_ref = sys_entry.get("kit", "")
-            canonical = _LEGACY_SLUG_RENAMES.get(kit_ref)
+            canonical = renamed.get(kit_ref)
             if not canonical:
                 continue
             sys_entry["kit"] = canonical
-            renamed.setdefault(kit_ref, canonical)
             changed = True
+            changed_renames[kit_ref] = canonical
         if changed:
             toml_utils.dump(reg, artifacts_toml, header_comment="Constructor Studio artifacts registry")
     except (OSError, ValueError, TypeError) as exc:
         logger.warning("Legacy kit dedup write failed for %s: %s", artifacts_toml, exc)
+        return {}
+    return changed_renames
 
 
 def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
@@ -1632,6 +1635,7 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
         return {}
 
     renamed: Dict[str, str] = {}
+    artifacts_renamed: Dict[str, str] = {}
 
     try:
         from ..utils import toml_utils
@@ -1647,29 +1651,34 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
             if not isinstance(kits, dict):
                 return {}
 
+            safe_artifact_renames: Dict[str, str] = {}
             for legacy, canonical in _LEGACY_SLUG_RENAMES.items():
-                if legacy not in kits or canonical not in kits:
+                if canonical not in kits:
+                    continue
+                if legacy not in kits:
+                    safe_artifact_renames[legacy] = canonical
                     continue
                 _merge_duplicate_legacy_kit(kits, renamed, legacy, canonical)
+                if legacy in renamed:
+                    safe_artifact_renames[legacy] = canonical
 
             if renamed:
                 toml_utils.dump(data, core_toml, header_comment="Constructor Studio project configuration")
 
             # Update artifacts.toml inside the lock so both TOML files are
             # mutated atomically with respect to other processes holding the
-            # same core.toml advisory lock.  Even if core.toml dedup didn't fire
-            # (e.g. legacy slug already removed from core.toml), artifacts.toml
-            # may still reference the old slug.
-            _rewrite_artifacts_legacy_kit_refs(
+            # same core.toml advisory lock, but only for legacy slugs that were
+            # actually merged safely in this run.
+            artifacts_renamed = _rewrite_artifacts_legacy_kit_refs(
                 artifacts_toml=config_dir / "artifacts.toml",
-                renamed=renamed,
+                renamed=safe_artifact_renames,
                 toml_utils=toml_utils,
             )
 
     except (OSError, ValueError, TypeError) as exc:
         logger.warning("Legacy kit dedup write failed for %s: %s", core_toml, exc)
 
-    return renamed
+    return {**renamed, **artifacts_renamed}
 # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-record-core-toml-migrations
 
 

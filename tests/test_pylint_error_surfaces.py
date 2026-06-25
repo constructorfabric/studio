@@ -15,6 +15,7 @@ from tests.pylint_plugin_fakes import (
     Const,
     Dict,
     ExceptHandler,
+    FunctionDef,
     Keyword,
     Name,
     Try,
@@ -105,6 +106,7 @@ class TestErrorSurfacesChecker(unittest.TestCase):
             Try([
                 ExceptHandler(body=[Call(Attribute(Name("ui"), "error"))]),
                 ExceptHandler(body=[Call(Attribute(Name("logger"), "exception")), Call(Attribute(Name("ui"), "error"))]),
+                ExceptHandler(body=[FunctionDef("helper", [Call(Attribute(Name("ui"), "error"))])]),
             ])
         )
 
@@ -202,6 +204,26 @@ class TestErrorSurfacesChecker(unittest.TestCase):
                     work()
                 except OSError:
                     ui.info("retrying")
+            """
+        )
+        self.assertNotIn("user-facing-error-without-log", result.stdout)
+
+    def test_ignores_nested_helper_ui_calls(self) -> None:
+        result = _run_pylint(
+            """
+            class UI:
+                def error(self, message):
+                    return message
+
+            ui = UI()
+
+            def run():
+                try:
+                    work()
+                except OSError:
+                    def helper():
+                        ui.error("failed")
+                    helper
             """
         )
         self.assertNotIn("user-facing-error-without-log", result.stdout)

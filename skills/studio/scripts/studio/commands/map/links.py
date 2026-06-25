@@ -38,7 +38,8 @@ def _link_edge_targets(content: str, src: Node, known: set[str], template_vars: 
 def extract_file_links(nodes: Sequence[Node],
                        project_root: Optional[Union[Path, str]] = None,
                        project_root_by_source: Optional[Dict[str, Union[Path, str]]] = None,
-                       template_vars: Optional[Dict[str, str]] = None) -> List[Edge]:
+                       template_vars: Optional[Dict[str, str]] = None,
+                       template_vars_by_source: Optional[Dict[str, Dict[str, str]]] = None) -> List[Edge]:
     """Return markdown→markdown file-link edges. Source nodes are ignored.
 
     Args:
@@ -62,6 +63,7 @@ def extract_file_links(nodes: Sequence[Node],
         for source, root in (project_root_by_source or {}).items()
     }
     template_vars = template_vars or {}
+    template_vars_by_source = template_vars_by_source or {}
     md_nodes = [n for n in nodes if n.kind == "markdown"]
     by_source_rel: Dict[Tuple[Optional[str], str], Node] = {}
     by_rel: Dict[str, List[Node]] = {}
@@ -86,7 +88,8 @@ def extract_file_links(nodes: Sequence[Node],
 
         targets_seen: set[str] = set()
 
-        for match, resolved in _link_edge_targets(content, src, known, template_vars):
+        source_template_vars = template_vars_by_source.get(src.source or "", template_vars)
+        for match, resolved in _link_edge_targets(content, src, known, source_template_vars):
             edge_id = _append_file_link_edge(
                 edges,
                 edge_id,

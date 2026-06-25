@@ -62,6 +62,9 @@ def _is_proxy_module(node: nodes.NodeNG) -> bool:
     )
 
 
+_SUBPROCESS_CALL_NAMES = frozenset({"Popen", "call", "check_call", "check_output", "run"})
+
+
 def _allows_stdout_bypass(node: nodes.NodeNG) -> bool:
     return _is_ui_module(node) or _is_proxy_module(node)
 
@@ -80,6 +83,15 @@ def _attribute_chain(node: nodes.NodeNG) -> list[str] | None:
 def _is_sys_stream(node: nodes.NodeNG, stream_name: str) -> bool:
     chain = _attribute_chain(node)
     return chain == ["sys", stream_name]
+
+
+def _is_subprocess_call(node: nodes.Call) -> bool:
+    chain = _attribute_chain(node.func)
+    if not chain:
+        return False
+    if len(chain) == 1:
+        return chain[0] in _SUBPROCESS_CALL_NAMES
+    return len(chain) == 2 and chain[0] == "subprocess" and chain[1] in _SUBPROCESS_CALL_NAMES
 
 
 def _is_print_call(node: nodes.Call) -> bool:
@@ -140,6 +152,8 @@ class OutputChannelsChecker(BaseChecker):
             self.add_message("stderr-bypass", node=node)
 
     def _check_subprocess_stream_passthrough(self, node: nodes.Call) -> None:
+        if not _is_subprocess_call(node):
+            return
         for keyword in node.keywords or []:
             if keyword.arg not in _SUBPROCESS_STREAM_KWARGS:
                 continue

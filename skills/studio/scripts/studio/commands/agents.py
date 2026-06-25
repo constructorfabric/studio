@@ -4075,7 +4075,9 @@ def _delete_replaced_claude_command(
     try:
         legacy_content = legacy_file.read_text(encoding="utf-8")
     except OSError:
-        skills_result["errors"].append(f"failed to inspect {rel_path}")
+        message = f"failed to inspect {rel_path}"
+        skills_result["errors"].append(message)
+        _warn_agents(message)
         return
     expected_targets = _expected_claude_legacy_targets(
         legacy_skill, project_root, studio_root,
@@ -5314,6 +5316,7 @@ def _cleanup_stale_subagent_toml(
         except (OSError, UnicodeDecodeError) as exc:
             message = f"failed to inspect stale TOML file {rel_path}: {exc}"
             subagents_result["errors"].append(message)
+            _warn_agents(message)
             subagents_result["outputs"].append(
                 {"path": rel_path, "action": "preserved", "reason": "stale_subagent_toml_unreadable"}
             )
@@ -5392,9 +5395,9 @@ def _render_markdown_subagent(
     try:
         out_path.relative_to(ctx.output_dir)
     except ValueError:
-        ctx.subagents_result["errors"].append(
-            f"agent {name!r} would write outside {ctx.output_dir_rel}, skipped"
-        )
+        message = f"agent {name!r} would write outside {ctx.output_dir_rel}, skipped"
+        ctx.subagents_result["errors"].append(message)
+        _warn_agents(message)
         return
     _write_or_skip(out_path, content, ctx.subagents_result, ctx.project_root, ctx.dry_run)
 
@@ -5523,8 +5526,9 @@ def _ensure_agent_config(agent: str, cfg: dict) -> Optional[dict]:
         if recognized:
             defaults = _default_agents_config()
             default_agents = defaults.get("agents") if isinstance(defaults, dict) else None
-            if isinstance(default_agents, dict) and isinstance(default_agents.get(agent), dict):
-                agents_cfg[agent] = default_agents[agent]
+            default_agent_cfg = default_agents.get(agent) if isinstance(default_agents, dict) else None
+            if isinstance(default_agent_cfg, dict):
+                agents_cfg[agent] = default_agent_cfg
         else:
             agents_cfg[agent] = {"workflows": {}, "skills": {}}
         cfg["agents"] = agents_cfg

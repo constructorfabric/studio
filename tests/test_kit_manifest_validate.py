@@ -1583,6 +1583,44 @@ class TestValidateKitsFilterWithResources(unittest.TestCase):
             finally:
                 set_context(None)
 
+    def test_manifest_self_check_falls_back_when_resource_bindings_do_not_resolve_meta(self):
+        from studio.utils.context import StudioContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            root = td_path / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            kit_dir = config / "kits" / "sdlc"
+            _write_minimal_constraints(kit_dir)
+
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc"}},
+                "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
+            }, config / "artifacts.toml")
+
+            ctx = StudioContext.load(root)
+            self.assertIsNotNone(ctx)
+            assert ctx is not None
+            ctx.kits["sdlc"].resource_bindings = {"constraints": str(kit_dir / "constraints.toml")}
+            ctx.kits["sdlc"].resource_entries = {}
+            set_context(ctx)
+            try:
+                rc, result = run_validate_kits(
+                    project_root=ctx.project_root,
+                    adapter_dir=ctx.adapter_dir,
+                    kit_filter="sdlc",
+                    ctx=ctx,
+                )
+                self.assertEqual(rc, 0)
+                self.assertIn("self_check_results", result)
+            finally:
+                set_context(None)
+
 
 class TestValidateCustomKitRootMetadata(unittest.TestCase):
     def setUp(self):

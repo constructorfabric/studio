@@ -376,8 +376,9 @@ def _build_migration_result(
     update_result: Optional[Any],
 ) -> tuple[int, Dict[str, Any]]:
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
+    has_failure_warning = any("failed" in warning.lower() for warning in state.warnings)
     result: Dict[str, Any] = {
-        "status": "PASS" if update_rc in (None, 0) else "WARN",
+        "status": "PASS" if update_rc in (None, 0) and not has_failure_warning else "WARN",
         "project_root": state.project_root.as_posix(),
         "from_dir": state.legacy_rel,
         "studio_dir": state.target_dir.as_posix(),

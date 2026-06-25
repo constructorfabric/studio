@@ -615,22 +615,23 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if target.source == "fresh-cache":
         # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
-        skill_path = target.path
-        forwarded_args = list(args)
-        result = _forward_to_skill(skill_path, forwarded_args)
+        forward_label = "fresh-cache"
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
     elif target.source == "project":
         # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-project
-        skill_path = target.path
-        forwarded_args = list(args)
-        result = _forward_to_skill(skill_path, forwarded_args)
+        forward_label = "project"
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-project
     else:
         # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-cache
-        skill_path = target.path
-        forwarded_args = list(args)
-        result = _forward_to_skill(skill_path, forwarded_args)
+        forward_label = "cache"
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-cache
+
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-target
+    skill_path = target.path
+    forwarded_args = list(args)
+    result = _forward_to_skill(skill_path, forwarded_args)
+    logging.getLogger(__name__).debug("Forwarded cfs invocation via %s source", forward_label)
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-target
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
     if not os.environ.get("CFS_NO_VERSION_CHECK"):

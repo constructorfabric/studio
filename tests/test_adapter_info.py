@@ -1133,7 +1133,7 @@ class TestAdapterInfoRegistryEdgeCases(unittest.TestCase):
             self.assertEqual(rc, 0)
             out = json.loads(buf.getvalue())
             # Registry should be None or have an error
-            self.assertIn(out.get("artifacts_registry_error", ""), ["MISSING_OR_INVALID_JSON", "MISSING", None])
+            self.assertIn(out.get("artifacts_registry_error", ""), ["MISSING_OR_INVALID_TOML", "MISSING", None])
 
     def test_no_systems_key_in_registry(self):
         """Registry without 'systems' key: autodetect_registry returns None."""
@@ -1367,6 +1367,37 @@ class TestAdapterInfoResolveVarsFailure(unittest.TestCase):
             out = json.loads(buf.getvalue())
             self.assertTrue(out.get("variables_degraded"))
             self.assertIn("bad vars", out.get("variables_error", ""))
+
+    def test_info_uses_same_registry_precedence_as_shared_loader(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            adapter = self._bootstrap(root)
+            (adapter / "artifacts.toml").write_text(
+                'version = "1.0"\nsystems = []\n',
+                encoding="utf-8",
+            )
+            (adapter / "config" / "artifacts.toml").write_text(
+                'version = "1.0"\nsystems = []\n',
+                encoding="utf-8",
+            )
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = main(["info", "--root", str(root)])
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["artifacts_registry_path"], str((adapter / "artifacts.toml").resolve()))
+
+    def test_info_reports_invalid_toml_registry_format(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            adapter = self._bootstrap(root)
+            (adapter / "artifacts.toml").write_text("[[[", encoding="utf-8")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = main(["info", "--root", str(root)])
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["artifacts_registry_error"], "MISSING_OR_INVALID_TOML")
 
 
 if __name__ == "__main__":

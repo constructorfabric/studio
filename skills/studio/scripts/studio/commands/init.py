@@ -674,7 +674,10 @@ def _build_init_state(
     agent_tracking: str,
 ) -> _InitState:
     default_install_dir = existing_install_rel or DEFAULT_INSTALL_DIR
-    install_rel = (args.install_dir or default_install_dir).strip() or default_install_dir
+    install_rel = _sanitize_install_rel(
+        project_root,
+        (args.install_dir or default_install_dir).strip() or default_install_dir,
+    )
     root_system = _define_root_system(project_root)
     project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
     return _InitState(
@@ -1374,6 +1377,23 @@ def _resolve_user_path(raw: str, base: Path) -> Path:
     return p.resolve()
 
 
+def _sanitize_install_rel(project_root: Path, install_dir: str) -> str:
+    """Normalize install_dir and keep it contained under project_root."""
+    normalized = install_dir.strip().replace("\\", "/").strip("/")
+    if not normalized:
+        raise ValueError("Install directory must not be empty")
+    rel_path = Path(normalized)
+    if rel_path.is_absolute():
+        raise ValueError("Install directory must be project-relative")
+    project_root_resolved = project_root.resolve()
+    resolved = (project_root_resolved / rel_path).resolve()
+    try:
+        relative = resolved.relative_to(project_root_resolved)
+    except ValueError as exc:
+        raise ValueError(f"Install directory must stay within project root: {install_dir}") from exc
+    return relative.as_posix()
+
+
 def _derive_project_slug(name: str) -> str:
     """Convert a project directory name into the canonical system slug."""
     # @cpt-begin:cpt-studio-algo-core-infra-define-root-system:p1:inst-derive-slug
@@ -1607,12 +1627,24 @@ def _install_default_kit(
 
 def _inject_root_agents(project_root: Path, install_dir: str, dry_run: bool = False) -> str:
     """Inject or update root AGENTS.md managed block. Returns action taken."""
-    return _inject_managed_block(project_root / _AGENTS_FILENAME, install_dir, dry_run, project_root=project_root)
+    sanitized_install_dir = _sanitize_install_rel(project_root, install_dir)
+    return _inject_managed_block(
+        project_root / _AGENTS_FILENAME,
+        sanitized_install_dir,
+        dry_run,
+        project_root=project_root,
+    )
 
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-inject-claude
 def _inject_root_claude(project_root: Path, install_dir: str, dry_run: bool = False) -> str:
     """Inject or update root CLAUDE.md managed block. Returns action taken."""
-    return _inject_managed_block(project_root / "CLAUDE.md", install_dir, dry_run, project_root=project_root)
+    sanitized_install_dir = _sanitize_install_rel(project_root, install_dir)
+    return _inject_managed_block(
+        project_root / "CLAUDE.md",
+        sanitized_install_dir,
+        dry_run,
+        project_root=project_root,
+    )
 # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-inject-claude
 
 
@@ -1950,6 +1982,7 @@ def _repair_existing_install(
     dry_run: bool = False,
 ) -> int:
     """Restore generated runtime files for an already initialized project."""
+    install_rel = _sanitize_install_rel(project_root, install_rel)
     if not CACHE_DIR.is_dir():
         return _emit_missing_cache_error(project_root, studio_dir=(project_root / install_rel).resolve())
 
@@ -2115,13 +2148,27 @@ def _prepare_init_state(
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
 def cmd_init(argv: List[str]) -> int:
     """Run the init command."""
+    # Pylint's generic complexity thresholds are too low for this orchestration
+    # entrypoint: it intentionally keeps the init flow's early exits in one place.
+    # pylint: disable=too-many-locals,too-many-return-statements
     # @cpt-dod:cpt-studio-dod-core-infra-init-config:p1
     args, tracking = _parse_init_args(argv)
 
-    early_rc, project_root, interactive, state = _prepare_init_state(
-        args=args,
-        tracking=tracking,
-    )
+    try:
+        early_rc, project_root, interactive, state = _prepare_init_state(
+            args=args,
+            tracking=tracking,
+        )
+    except ValueError as exc:
+        err_result = {
+            "status": "ERROR",
+            "message": "Init failed",
+            "project_root": str(args.project_root or Path.cwd()),
+            "dry_run": bool(args.dry_run),
+            "errors": [{"path": str(args.install_dir or DEFAULT_INSTALL_DIR), "error": str(exc)}],
+        }
+        ui.result(err_result, human_fn=_human_init_error)
+        return 1
     if early_rc is not None:
         return early_rc
 

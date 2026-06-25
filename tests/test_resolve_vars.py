@@ -790,7 +790,7 @@ class TestInfoVariablesIntegration(unittest.TestCase):
                     rc = cmd_adapter_info(["--root", str(root)])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
-                self.assertNotIn("variables", out)
+                self.assertIn("variables", out)
                 by_kit = out.get("variables_by_kit", {})
                 self.assertIn("sdlc", by_kit)
                 self.assertIn("adr_template", by_kit["sdlc"])
@@ -832,11 +832,45 @@ class TestInfoVariablesIntegration(unittest.TestCase):
                     rc = cmd_adapter_info(["--root", str(root)])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
+                self.assertIn("variables", out)
                 by_kit = out.get("variables_by_kit", {})
                 self.assertIn("sdlc", by_kit)
                 self.assertIn("adr_template", by_kit["sdlc"])
             finally:
                 os.chdir(cwd)
+
+    def test_cli_kit_filter_avoids_unrelated_kit_resolution_failure(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            _write_core_toml(config, {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "good": {
+                        "path": "config/kits/good",
+                        "resources": {"template": {"path": "config/kits/good/template.md"}},
+                    },
+                    "bad": {
+                        "install_mode": "register",
+                        "path": "config/kits/bad",
+                    },
+                },
+            })
+            (config / "kits" / "good").mkdir(parents=True)
+
+            with mock.patch(
+                "studio.commands.resolve_vars.resolve_resource_bindings_with_errors",
+                return_value=({}, ["bad binding"]),
+            ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_resolve_vars(["--root", str(root), "--kit", "good"])
+
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(list(out["kits"].keys()), ["good"])
 
     def test_info_includes_collision_flag(self):
         """cpt info output contains variables_collisions when collision exists."""
@@ -925,7 +959,7 @@ class TestInfoVariablesIntegration(unittest.TestCase):
                     rc = cmd_adapter_info(["--root", str(root)])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
-                self.assertNotIn("variables", out)
+                self.assertIn("variables", out)
                 self.assertEqual(out.get("variables_by_kit", {}), {})
             finally:
                 os.chdir(cwd)

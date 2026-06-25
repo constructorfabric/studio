@@ -78,6 +78,41 @@ def test_load_template_vars_missing_data(monkeypatch, tmp_path):
     assert map_cli._load_template_vars(tmp_path) == {}
 
 
+def test_build_map_graph_loads_template_vars_per_source(monkeypatch, tmp_path):
+    primary = tmp_path / "primary"
+    remote = tmp_path / "remote"
+    primary.mkdir()
+    remote.mkdir()
+    calls: list[Path] = []
+
+    monkeypatch.setattr(
+        map_cli,
+        "_collect_nodes_for_sources",
+        lambda _sources, _args: ([], {"local": primary, "remote": remote}),
+    )
+    monkeypatch.setattr(map_cli, "categorize_nodes", lambda *_a, **_k: None)
+    monkeypatch.setattr(map_cli, "_apply_override_filter", lambda nodes, _override: nodes)
+    monkeypatch.setattr(map_cli, "build_cpt_edges", lambda _nodes: ([], []))
+    monkeypatch.setattr(map_cli, "_apply_phantom_override", lambda nodes, edges, _override: (nodes, edges))
+    monkeypatch.setattr(map_cli, "enrich_edges", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        map_cli,
+        "_load_template_vars",
+        lambda root: calls.append(root) or {"project_root": root.name},
+    )
+    captured: dict = {}
+    monkeypatch.setattr(
+        map_cli,
+        "extract_file_links",
+        lambda nodes, **kwargs: captured.update(kwargs) or [],
+    )
+
+    map_cli._build_map_graph(primary, object(), [{"name": "local"}, {"name": "remote"}], None)
+
+    assert calls == [primary, primary, remote]
+    assert captured["template_vars_by_source"]["remote"]["project_root"] == "remote"
+
+
 def test_flatten_vars_with_nested_kits(tmp_path):
     """Canonical variables produce only unqualified lookup keys."""
     data = {

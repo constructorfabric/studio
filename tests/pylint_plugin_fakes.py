@@ -217,6 +217,26 @@ class Try(NodeNG):
         return list(self.handlers)
 
 
+class FunctionDef(NodeNG):
+    def __init__(self, name: str, body: list[NodeNG] | None = None) -> None:
+        super().__init__()
+        self.name = name
+        self.body = body or []
+
+    def _iter_children(self) -> list[Any]:
+        return list(self.body)
+
+
+class ClassDef(NodeNG):
+    def __init__(self, name: str, body: list[NodeNG] | None = None) -> None:
+        super().__init__()
+        self.name = name
+        self.body = body or []
+
+    def _iter_children(self) -> list[Any]:
+        return list(self.body)
+
+
 class BaseChecker:
     def __init__(self, linter: Any | None = None) -> None:
         self.linter = linter
