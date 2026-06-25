@@ -569,9 +569,10 @@ cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-studio-root P
 2. Compose the main SKILL.md from core commands + collected extensions.
 3. Generate workflow entry points in each agent's native format.
 4. Generate skill shims referencing the composed SKILL.md.
-5. Generate tool-specific subagent files where supported.
-6. Refresh the managed `.gitignore` block so all generated paths are ignored consistently.
-7. Full overwrite on each invocation (no merge with existing files).
+5. Prepend a generated bootstrap unit to every generated skill/workflow shim; that unit loads and runs `{cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md` before the target skill/workflow is executed, including activation of content-memory and resource-context-memory runtime rules.
+6. Generate tool-specific subagent files where supported.
+7. Refresh the managed `.gitignore` block so all generated paths are ignored consistently.
+8. Full overwrite on each invocation (no merge with existing files).
 
 **Discover mode**:
 - `--discover` may extend or create `config/manifest.toml` from discovered layers before generating outputs.
@@ -601,6 +602,7 @@ Each agent is detected via Constructor Studio-specific generated files, not gene
 **Skill file model**:
 - **Kit workflow skills**: Generated as shared `.agents/skills/{id}/SKILL.md` for all non-Claude agents
 - **Manifest skills**: Generated to `.agents/skills/{id}/SKILL.md` with agent targeting enforced via filtering logic — when a manifest skill is scoped to specific agents (e.g. `agents=['cursor']`), it is not generated for other agents
+- **Bootstrap prelude**: Every generated skill/workflow shim contains a canonical `LOAD and RUN <target> as controlling protocol` target inside its generated bootstrap unit for detection/cleanup compatibility, while legacy `ALWAYS open and follow <target>` remains a fallback for old generated files; the bootstrap activates PDSL semantics, Studio instruction memory, command resolution, and the content/resource context memory rules required by downstream workflows
 
 All non-Claude agents read from the shared `.agents/skills/` directory, but agent-specific manifest skills are filtered at generation time. This prevents Cursor-only skills from being offered to Copilot or OpenAI.
 

@@ -2506,6 +2506,18 @@ def test_workflow_prep_recommends_skip_when_resource_context_exists() -> None:
     ) in workflow_prep
 
 
+def test_required_bootstrap_activates_content_and_resource_context_memory() -> None:
+    """Generated-skill bootstrap must activate the content/resource memory runtime rules."""
+    repo_root = Path(__file__).resolve().parents[1]
+    required_bootstrap = (
+        repo_root / "skills" / "studio" / "modules" / "runtime" / "required-bootstrap.md"
+    ).read_text(encoding="utf-8")
+
+    assert "LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md" in required_bootstrap
+    assert "RUN ContentMemory" in required_bootstrap
+    assert "RUN ResourceContextMemory" in required_bootstrap
+
+
 def test_studio_instruction_memory_runs_in_concrete_workflows() -> None:
     """Concrete workflows load generated/project Studio instructions before work."""
     repo_root = Path(__file__).resolve().parents[1]

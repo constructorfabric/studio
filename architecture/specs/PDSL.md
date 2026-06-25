@@ -158,6 +158,9 @@ controller or sub-agent interpreting PDSL applies these rules:
 - `NEVER` is an absolute prohibition in the current scope.
 - `LOAD` makes a referenced prompt asset or context slice available before
   later actions depend on it.
+- `LOAD and RUN <target> as controlling protocol` loads the referenced
+  protocol and immediately transfers execution to it as the active
+  controlling protocol.
 - `RUN` executes a named local unit, probe, check, or workflow step.
 - `WAIT` plus `STOP_TURN` is a hard assistant-turn boundary.
 - `CONTINUE <unit-or-phase>` transfers control to that target; it is not

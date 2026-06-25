@@ -2812,7 +2812,7 @@ class TestCypilotRalphexRegistration(unittest.TestCase):
             found_skill_ref = False
             for fpath in skill_files:
                 content = Path(fpath).read_text(encoding="utf-8")
-                if "ALWAYS open and follow" in content and "SKILL.md" in content:
+                if "LOAD and RUN" in content and "SKILL.md" in content:
                     found_skill_ref = True
                     break
             self.assertTrue(found_skill_ref, "Windsurf skill must reference canonical SKILL.md")
@@ -3675,7 +3675,7 @@ class TestIsPureCypilotGenerated(unittest.TestCase):
 
         content = (
             "---\nname: cypilot\ndescription: Cypilot skill\n---\n\n"
-            "ALWAYS open and follow `{cf-studio-path}/.core/workflows/generate.md`\n"
+            "LOAD and RUN {cf-studio-path}/.core/workflows/generate.md as controlling protocol\n"
         )
         self.assertTrue(_is_pure_studio_generated(content))
 
@@ -3684,7 +3684,7 @@ class TestIsPureCypilotGenerated(unittest.TestCase):
 
         content = (
             "---\nname: cypilot\ndescription: Cypilot skill\n---\n\n"
-            "ALWAYS open and follow `{cf-studio-path}/.core/workflows/generate.md`\n\n"
+            "LOAD and RUN {cf-studio-path}/.core/workflows/generate.md as controlling protocol\n\n"
             "## My custom notes\nSome user-authored content here.\n"
         )
         self.assertFalse(_is_pure_studio_generated(content))
@@ -3843,8 +3843,8 @@ class TestCopilotCustomContent(unittest.TestCase):
             content = skill_proxy.read_text(encoding="utf-8")
             self.assertIn("## Custom Copilot Instructions", content,
                 "custom_content must appear in the /cf skill proxy")
-            self.assertIn("ALWAYS open and follow", content,
-                "skill proxy must contain follow-link directive")
+            self.assertIn("LOAD and RUN", content,
+                "skill proxy must contain controlling-protocol directive")
 
 
 class TestManifestSkillAgentFiltering(unittest.TestCase):
@@ -4262,6 +4262,24 @@ class TestExtractCypilotFollowTarget(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestExtractStudioControlTarget(unittest.TestCase):
+    """Cover _extract_studio_control_target utility."""
+
+    def test_extracts_control_target(self):
+        from studio.commands.agents import _extract_studio_control_target
+
+        content = "LOAD and RUN {cf-studio-path}/test.md as controlling protocol\n"
+        result = _extract_studio_control_target(content)
+        self.assertEqual(result, "{cf-studio-path}/test.md")
+
+    def test_rejects_unmanaged_control_target(self):
+        from studio.commands.agents import _extract_studio_control_target
+
+        content = "LOAD and RUN relative/test.md as controlling protocol\n"
+        result = _extract_studio_control_target(content)
+        self.assertIsNone(result)
+
+
 class TestIsPureCypilotGeneratedV2(unittest.TestCase):
     """Cover _is_pure_studio_generated checks."""
 
@@ -4269,7 +4287,7 @@ class TestIsPureCypilotGeneratedV2(unittest.TestCase):
         from studio.commands.agents import _is_pure_studio_generated
 
         # Canonical frontmatter (only name + description) → pure
-        content = "---\nname: test\ndescription: A skill\n---\nALWAYS open and follow `{cf-studio-path}/test.md`\n"
+        content = "---\nname: test\ndescription: A skill\n---\nLOAD and RUN {cf-studio-path}/test.md as controlling protocol\n"
         result = _is_pure_studio_generated(content)
         self.assertTrue(result)
 
@@ -4277,14 +4295,14 @@ class TestIsPureCypilotGeneratedV2(unittest.TestCase):
         from studio.commands.agents import _is_pure_studio_generated
 
         # Non-canonical key (type) means user-customised frontmatter → not pure
-        content = "---\ntype: command\n---\nALWAYS open and follow `{cf-studio-path}/test.md`\n"
+        content = "---\ntype: command\n---\nLOAD and RUN {cf-studio-path}/test.md as controlling protocol\n"
         result = _is_pure_studio_generated(content)
         self.assertFalse(result)
 
     def test_with_user_content_not_pure(self):
         from studio.commands.agents import _is_pure_studio_generated
 
-        content = "---\nname: test\ndescription: A skill\n---\nALWAYS open and follow `{cf-studio-path}/test.md`\n\nUser added content here\n"
+        content = "---\nname: test\ndescription: A skill\n---\nLOAD and RUN {cf-studio-path}/test.md as controlling protocol\n\nUser added content here\n"
         result = _is_pure_studio_generated(content)
         self.assertFalse(result)
 

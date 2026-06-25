@@ -221,6 +221,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 1. - `p1` - Discover public core and kit skill/workflow entrypoints from registered sources - `inst-read-kit-skills`
 2. - `p1` - Assemble per-agent skill entrypoint files that follow the canonical Studio workflow or skill source - `inst-assemble-sections`
 3. - `p1` - Write skill entrypoints into agent integration paths, never into `.gen/` aggregates - `inst-write-skill`
+4. - `p1` - Generated skill/workflow entrypoints MUST prepend a local bootstrap unit that loads and runs `{cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md` before transferring control to the target skill/workflow; the required bootstrap MUST activate PDSL execution semantics, Studio instruction memory, command resolution, template-variable resolution support, content-memory rules, and resource-context memory rules - `inst-required-bootstrap-unit`
 
 ### List Workflow Files
 
@@ -267,6 +268,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - No generated skill or workflow entrypoint is written to a generated aggregate under `.gen/`
 - [x] - `p1` - Root skill metadata advertises all chat-facing route families
   rather than only plan/generate/analyze/workspace shortcuts
+- [x] - `p1` - Generated skill/workflow entrypoints keep the canonical controlling-protocol target in the generated bootstrap unit for ownership/detection compatibility while executing `required-bootstrap.md` first; legacy `ALWAYS open and follow` remains recognized as a fallback
 
 ### Workflow Discovery
 

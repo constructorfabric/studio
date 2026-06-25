@@ -884,6 +884,15 @@ class TestCLIAgentsCommand(unittest.TestCase):
                     skill_file.exists(),
                     f"Expected skill file not generated: {skill_file.relative_to(root)}",
                 )
+                content = skill_file.read_text(encoding="utf-8")
+                self.assertIn("UNIT GeneratedBootstrapUnit", content)
+                self.assertIn(
+                    "LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md",
+                    content,
+                )
+                self.assertIn("RUN RequiredBootstrap", content)
+                self.assertIn("LOAD and RUN {cf-studio-path}/", content)
+                self.assertIn("as controlling protocol", content)
 
     def test_openai_agent_skill_frontmatter_matches_codex_schema(self):
         """Issue #125: generated skill files must use Codex-compatible frontmatter."""

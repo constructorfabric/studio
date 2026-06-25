@@ -696,13 +696,12 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertEqual(block[0], "CF_WORKFLOW_ACTIVE:")
         self.assertLess(
             block.index("- workflow = executable_control_flow"),
-            block.index("ALWAYS open and follow `{cf-studio-path}/.core/workflows/analyze.md`"),
+            block.index("UNIT GeneratedBootstrapUnit"),
         )
         self.assertIn("- no_substantive_work_until = workflow_explicit_permission", block)
         self.assertIn("- precedence = constructor_studio_workflow > generic_assistant", block)
         self.assertIn("- pre_emit_check = response_shape in workflow_allowed_shapes", block)
-        # The pipeline directive is emitted between the mandatory-rule block and
-        # the "ALWAYS open and follow" target line.
+        # The pipeline directive is emitted before the generated bootstrap unit.
         self.assertIn(ROOT_AGENTS_PIPELINE_INSTRUCTION, block)
         self.assertLess(
             block.index("- protocol_violation > incomplete_answer"),
@@ -710,8 +709,18 @@ class TestLegacyStubClassification(unittest.TestCase):
         )
         self.assertLess(
             block.index(ROOT_AGENTS_PIPELINE_INSTRUCTION),
-            block.index("ALWAYS open and follow `{cf-studio-path}/.core/workflows/analyze.md`"),
+            block.index("UNIT GeneratedBootstrapUnit"),
         )
+        self.assertIn(
+            "  LOAD {required_bootstrap_path}",
+            block,
+        )
+        self.assertIn("  RUN RequiredBootstrap", block)
+        self.assertIn(
+            "  LOAD and RUN {cf-studio-path}/.core/workflows/analyze.md as controlling protocol",
+            block,
+        )
+        self.assertIn("UNIT GeneratedBootstrapUnit", joined)
         self.assertIn("UNIT GeneratedFollowProtocol", joined)
         self.assertIn("ALWAYS treat target as controlling protocol", joined)
         self.assertIn("ALWAYS traverse declared steps/units in order", joined)
