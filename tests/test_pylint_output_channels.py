@@ -54,6 +54,17 @@ def _run_pylint(code: str, *, relative_path: str = "sample.py") -> subprocess.Co
         )
 
 
+def _assert_pylint_ran(result: subprocess.CompletedProcess[str]) -> None:
+    if result.returncode in (0, 4, 16):
+        return
+    raise AssertionError(
+        "pylint invocation failed unexpectedly:\n"
+        f"returncode={result.returncode}\n"
+        f"stdout={result.stdout}\n"
+        f"stderr={result.stderr}"
+    )
+
+
 class TestOutputChannelsChecker(unittest.TestCase):
     """Exercise the local Pylint checker on temporary files."""
 
@@ -164,6 +175,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
                 print("hello")
             """
         )
+        _assert_pylint_ran(result)
         self.assertIn("stdout-bypass", result.stdout)
 
     def test_flags_sys_stdout_write(self) -> None:
@@ -175,6 +187,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
                 sys.stdout.write("hello\\n")
             """
         )
+        _assert_pylint_ran(result)
         self.assertIn("stdout-bypass", result.stdout)
 
     def test_flags_print_to_stderr(self) -> None:
@@ -186,6 +199,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
                 print("bad", file=sys.stderr)
             """
         )
+        _assert_pylint_ran(result)
         self.assertIn("stderr-bypass", result.stdout)
 
     def test_flags_subprocess_passthrough_to_stderr(self) -> None:
@@ -198,6 +212,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
                 subprocess.run(["echo", "hello"], stderr=sys.stderr, check=False)
             """
         )
+        _assert_pylint_ran(result)
         self.assertIn("stderr-bypass", result.stdout)
 
     def test_allows_logger_usage(self) -> None:
@@ -211,6 +226,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
                 logger.warning("bad")
             """
         )
+        _assert_pylint_ran(result)
         self.assertNotIn("stdout-bypass", result.stdout)
         self.assertNotIn("stderr-bypass", result.stdout)
 
@@ -224,6 +240,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
             """,
             relative_path="skills/studio/scripts/studio/utils/ui.py",
         )
+        _assert_pylint_ran(result)
         self.assertNotIn("stdout-bypass", result.stdout)
 
     def test_allows_stdout_inside_proxy_module(self) -> None:
@@ -239,6 +256,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
             """,
             relative_path="src/studio_proxy/cli.py",
         )
+        _assert_pylint_ran(result)
         self.assertNotIn("stdout-bypass", result.stdout)
 
     def test_still_forbids_stderr_inside_ui_module(self) -> None:
@@ -251,6 +269,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
             """,
             relative_path="skills/studio/scripts/studio/utils/ui.py",
         )
+        _assert_pylint_ran(result)
         self.assertIn("stderr-bypass", result.stdout)
 
     def test_still_forbids_stderr_inside_proxy_module(self) -> None:
@@ -263,6 +282,7 @@ class TestOutputChannelsChecker(unittest.TestCase):
             """,
             relative_path="src/studio_proxy/cli.py",
         )
+        _assert_pylint_ran(result)
         self.assertIn("stderr-bypass", result.stdout)
 
 

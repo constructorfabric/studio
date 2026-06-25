@@ -2,36 +2,64 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 from astroid import nodes
 from pylint.checkers import BaseChecker
 
 _STDOUT_METHODS = frozenset({"write", "writelines", "flush"})
 _STDERR_METHODS = frozenset({"write", "writelines", "flush"})
 _SUBPROCESS_STREAM_KWARGS = frozenset({"stdout", "stderr"})
-_ALLOWED_STDOUT_MODULE_SUFFIXES = (
-    "skills/studio/scripts/studio/utils/ui.py",
-    "studio/utils/ui.py",
+_UI_PATH_SEQUENCES = (
+    ("skills", "studio", "scripts", "studio", "utils", "ui.py"),
 )
-_ALLOWED_PROXY_STDOUT_MODULE_PREFIXES = (
-    "src/studio_proxy/",
-    "studio_proxy/",
+_UI_RELATIVE_SUFFIXES = (
+    ("studio", "utils", "ui.py"),
+)
+_PROXY_PATH_SEQUENCES = (
+    ("src", "studio_proxy"),
+)
+_PROXY_RELATIVE_ROOTS = (
+    ("studio_proxy",),
 )
 
 
 def _module_path(node: nodes.NodeNG) -> str:
     root = node.root()
     file_path = getattr(root, "file", None)
-    return str(file_path or "")
+    return str(file_path or "").replace("\\", "/")
+
+
+def _path_has_sequence(path: str, sequence: tuple[str, ...]) -> bool:
+    parts = PurePosixPath(path).parts
+    window = len(sequence)
+    return any(parts[index:index + window] == sequence for index in range(len(parts) - window + 1))
+
+
+def _path_ends_with_sequence(path: str, sequence: tuple[str, ...]) -> bool:
+    parts = PurePosixPath(path).parts
+    return parts[-len(sequence):] == sequence
+
+
+def _path_starts_with_sequence(path: str, sequence: tuple[str, ...]) -> bool:
+    parts = PurePosixPath(path).parts
+    return parts[:len(sequence)] == sequence
 
 
 def _is_ui_module(node: nodes.NodeNG) -> bool:
-    path = _module_path(node).replace("\\", "/")
-    return any(path.endswith(suffix) for suffix in _ALLOWED_STDOUT_MODULE_SUFFIXES)
+    path = _module_path(node)
+    return (
+        any(_path_has_sequence(path, sequence) for sequence in _UI_PATH_SEQUENCES)
+        or any(_path_ends_with_sequence(path, sequence) for sequence in _UI_RELATIVE_SUFFIXES)
+    )
 
 
 def _is_proxy_module(node: nodes.NodeNG) -> bool:
-    path = _module_path(node).replace("\\", "/")
-    return any(prefix in path for prefix in _ALLOWED_PROXY_STDOUT_MODULE_PREFIXES)
+    path = _module_path(node)
+    return (
+        any(_path_has_sequence(path, sequence) for sequence in _PROXY_PATH_SEQUENCES)
+        or any(_path_starts_with_sequence(path, sequence) for sequence in _PROXY_RELATIVE_ROOTS)
+    )
 
 
 def _allows_stdout_bypass(node: nodes.NodeNG) -> bool:
