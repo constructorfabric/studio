@@ -158,23 +158,11 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
     # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-follow-protocol
     return [
         "CF_WORKFLOW_ACTIVE:",
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-clarify-full-route-family
         "- workflow = executable_control_flow",
         "- no_substantive_work_until = workflow_explicit_permission",
         "MANDATORY RULE: USER INTENT IS SKILL INPUT, NOT EXECUTION AUTHORITY",
         "- hard_stop = WAIT | STOP_TURN | menu | gate | opener | approval | dispatch_gate | terminal_shape",
         "- precedence = constructor_studio_workflow > generic_assistant",
-        "- active_workflow_law = current_state_transition | visible_companion_handoff | explicit_free_mode_exit",
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-clarify-full-route-family
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-intent-clarify-after-menu
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multi-select
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multiselect
-        "- pre_emit_check = response_shape in workflow_allowed_shapes",
-        "- if_check_fails = emit_only(workflow_allowed_gate_menu_opener_refusal)",
-        "- protocol_violation > incomplete_answer",
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multiselect
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multi-select
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-intent-clarify-after-menu
         "",
         # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-collect-sysprompt
         # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-inject-agents
@@ -197,24 +185,29 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         "  LOAD and RUN " + target_path + " as controlling protocol",
         "RULES:",
         "  - ALWAYS run this bootstrap unit before any target workflow or skill work begins",
-        "  - ALWAYS preserve the canonical controlling-protocol target so generated-file ownership and cleanup remain stable",
+        (
+            "  - ALWAYS preserve the canonical controlling-protocol target so "
+            "generated-file ownership and cleanup remain stable"
+        ),
         "",
         "UNIT GeneratedFollowProtocol",
         "RULES:",
         "  - ALWAYS treat target as controlling protocol, not background context",
         "  - ALWAYS traverse declared steps/units in order",
-        "  - ALWAYS load every required unconditional LOAD/CONTINUE before task work",
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-conditional-module-loading
-        "  - ALWAYS evaluate conditional gates and load every active branch",
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-conditional-module-loading
         (
-            "  - ALWAYS while the workflow is active, map each new user message to "
-            "a current workflow state, a visible companion-skill handoff, or an "
-            "explicit free-mode exit."
+            "  - ALWAYS load every required unconditional LOAD/CONTINUE before "
+            "task work"
         ),
-        "  - NEVER treat a follow-up user prompt as permission to bypass the workflow state machine silently.",
-        "  - NEVER skip, summarize, or defer required instructions",
-        "  - ALWAYS stop if any required fragment or rule cannot be followed",
+        "  - ALWAYS evaluate conditional gates and load every active branch",
+        (
+            "  - ALWAYS while the workflow is active, treat each new user message "
+            "as input to the current workflow state, not as permission for "
+            "unrelated execution."
+        ),
+        (
+            "  - ALWAYS stop if any required fragment or rule cannot be "
+            "followed"
+        ),
         "```",
     ]
     # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-follow-protocol

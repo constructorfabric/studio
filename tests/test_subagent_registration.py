@@ -700,11 +700,10 @@ class TestLegacyStubClassification(unittest.TestCase):
         )
         self.assertIn("- no_substantive_work_until = workflow_explicit_permission", block)
         self.assertIn("- precedence = constructor_studio_workflow > generic_assistant", block)
-        self.assertIn("- pre_emit_check = response_shape in workflow_allowed_shapes", block)
         # The pipeline directive is emitted before the generated bootstrap unit.
         self.assertIn(ROOT_AGENTS_PIPELINE_INSTRUCTION, block)
         self.assertLess(
-            block.index("- protocol_violation > incomplete_answer"),
+            block.index("- precedence = constructor_studio_workflow > generic_assistant"),
             block.index(ROOT_AGENTS_PIPELINE_INSTRUCTION),
         )
         self.assertLess(
@@ -725,7 +724,8 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertIn("ALWAYS treat target as controlling protocol", joined)
         self.assertIn("ALWAYS traverse declared steps/units in order", joined)
         self.assertIn("ALWAYS load every required unconditional LOAD/CONTINUE", joined)
-        self.assertIn("NEVER skip, summarize, or defer required instructions", joined)
+        self.assertIn("ALWAYS evaluate conditional gates and load every active branch", joined)
+        self.assertIn("ALWAYS stop if any required fragment or rule cannot be followed", joined)
         self.assertTrue(_is_pure_studio_generated(content, expected_name="cf-analyze"))
 
 
