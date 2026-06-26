@@ -13,6 +13,7 @@ entrypoint is `cf-prompting-gen`.
 UNIT WriteSkillsAlias
 PURPOSE: Redirect legacy cf-write-skills invocations into the canonical thin prompt-generation workflow.
 DO:
+  EMIT "Note: write-skills is now an alias for prompting-gen. Continuing with the canonical workflow."
   LOAD {cf-studio-path}/.core/workflows/prompting-gen.md as the controlling generation workflow
   CONTINUE PromptingGenBootstrap
 RULES:

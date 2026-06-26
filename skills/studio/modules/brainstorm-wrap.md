@@ -28,12 +28,13 @@ MENU WrapMenu
 TITLE: Brainstorm complete — keep the results or pick a context-grounded next step (one is suggested).
 OPTIONS:
   1 session -> preserve results in session only, write no files, RETURN envelope with status="wrapped", decisions_count=<count>, open_questions_count=<count>, next_route=null, STOP_TURN
-  2 disk -> REQUIRE writes allowed, WRITE design + state under {cf-studio-path}/.cache/brainstorm/{session_id}/, RETURN envelope with status="checkpointed", decisions_count=<count>, open_questions_count=<count>, next_route=null, STOP_TURN
+  2 disk -> REQUIRE writes are allowed; EMIT "Disk save is not available in this context — choose 'session' to keep results in memory." and re-emit WrapMenu WHEN writes are not allowed; WRITE design + state under {cf-studio-path}/.cache/brainstorm/{session_id}/, RETURN envelope with status="checkpointed", decisions_count=<count>, open_questions_count=<count>, next_route=null, STOP_TURN
   3 reopen -> reopen a topic for another round, SET round_kind = topic, SET round_dispatched = false, and CONTINUE BrainstormRounds
   4 route -> INVOKE the chosen synthesized cf-* skill with decisions + open questions pre-filled, RETURN envelope with status="handoff", decisions_count=<count>, open_questions_count=<count>, next_route="<chosen cf-* skill>"
   INVALID -> EMIT clarifier and EMIT_MENU WrapMenu
 NOTES:
   The rendered menu lists session, disk, and reopen, then enumerates every synthesized routed next step (3 to 5) on its own line as `N <route> — <why>`, and tags exactly one (suggested); option `4 route` above is the representative template for those numbered routes.
+  Render order: session (1), disk (2), reopen (3), then enumerate synthesized route options as 4..N+3 in order; INVALID re-emits the full rendered menu.
 ```
 
 ```pdsl

@@ -16,6 +16,7 @@ entrypoint is `cf-coding-tests`.
 UNIT TestingAlias
 PURPOSE: Redirect legacy cf-testing invocations into the canonical thin test-authoring workflow.
 DO:
+  EMIT "Note: testing is now an alias for coding-tests. Continuing with the canonical workflow."
   LOAD {cf-studio-path}/.core/workflows/coding-tests.md as the controlling test-authoring workflow
   CONTINUE CodingTestsPreset
 RULES:

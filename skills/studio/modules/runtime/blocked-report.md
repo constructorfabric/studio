@@ -44,4 +44,5 @@ DO:
 RULES:
   ALWAYS pair blocked envelopes with a clear next-actions menu when the blocked result is being returned to the user
   NEVER leave blocked recovery paths implied only by prose
+  ALWAYS derive a primary_suggested_producer as the single top-level recommendation from the union of missing_artifacts[].suggested_producers that most efficiently resolves the most missing artifacts in one step; surface it as the first item in suggested_next_skills with a one-line description
 ```

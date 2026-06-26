@@ -6,7 +6,7 @@ PURPOSE: Capture the explanation target before context discovery or storytelling
 STATE:
   SET EXPLAIN_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
-  EMIT "What should I explain? Provide the file, artifact, code area, decision, or topic to walk through."
+  EMIT "What should I explain? Provide the file, artifact, code area, decision, or topic to walk through. Or type `cancel` to stop. I'll walk through it section by section as a source-grounded explanation at your chosen pace."
   SET EXPLAIN_INTENT_CAPTURE_STATE = resume
   WAIT user.reply
   STOP_TURN
@@ -41,6 +41,7 @@ DO:
   CONTINUE WorkflowPrepExploreGate
 RULES:
   ALWAYS use WorkflowPrepExploreGate for the shared explore prompt mechanics
+  ALWAYS infer a suggested option from EXPLAIN_TARGET: mark 'explore' (suggested) when the target is implicit, broad, unfamiliar, or cross-cutting; mark 'skip' (suggested) when an explicit file path or specific artifact was named
 MENU ExplainExploreMenu
 TITLE: Before starting a source-grounded explanation, discover task-relevant context (explicit target, nearby docs/code/artifacts, referenced IDs, and audience-relevant background) with cf-explore — or skip? Explore is suggested when the target is implicit, broad, unfamiliar, or cross-cutting; skip when the target and context are already explicit. Reply with a number.
 OPTIONS:

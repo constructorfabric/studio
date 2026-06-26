@@ -30,10 +30,11 @@ STATE:
   SET suggested_next_skills: list | unset (default unset, scope workflow_run)
 DO:
   SET missing_artifacts = kit-thin-scope with why_needed "This thin kit family only handles scoped prompt, document, or code work; mixed requests must be decomposed and manifest/config work must route through cf-kit", accepted_shapes narrowed-intent or phase-plan-doc or phase-plan-bundle, suggested_producers cf-kit, kit-planning, prompting-planning, documenting-planning, code-planning, explore, brainstorm, override_allowed false
-  SET suggested_next_skills = cf-kit, kit-planning, explore, brainstorm WHEN KIT_WORK_DOMAIN == manifest
-  SET suggested_next_skills = kit-planning, prompting-planning, documenting-planning, code-planning, explore, brainstorm WHEN KIT_WORK_DOMAIN == mixed OR KIT_WORK_DOMAIN == unset
+  SET suggested_next_skills = [cf-kit] WHEN KIT_WORK_DOMAIN == manifest
+  SET suggested_next_skills = [kit-planning] WHEN KIT_WORK_DOMAIN == mixed OR KIT_WORK_DOMAIN == unset
   RUN BlockedReportContract
 RULES:
+  ALWAYS surface a single primary recommended next step per block domain rather than a flat list of 4-6 skill names
   ALWAYS route manifest and kit-configuration work to cf-kit rather than pretending the kit thin prompt/doc/code family owns it
   ALWAYS direct mixed kit work toward planning before generation, review, CI, or fix execution
   NEVER guess a single specialist route when the request still spans multiple kit asset domains

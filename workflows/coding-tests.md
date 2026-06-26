@@ -19,11 +19,13 @@ STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default false, scope workflow_run)
 DO:
-  SET ORIGINAL_INTENT = the user's triggering coding-tests request, normalized to "author or update unit-tests, e2e-tests, or test-spec only for the approved phase contract" WHEN ORIGINAL_INTENT == unset
+  SET ORIGINAL_INTENT = the user's verbatim coding-tests request WHEN ORIGINAL_INTENT == unset
+  SET TESTS_SCOPE = "author or update unit-tests, e2e-tests, or test-spec only for the approved phase contract"
   SET REVIEW_LOOP_REQUESTED = false WHEN REVIEW_LOOP_REQUESTED == unset
   LOAD {cf-studio-path}/.core/workflows/coding-gen.md as the controlling test-authoring engine
   CONTINUE CodingGenBootstrap
 RULES:
   - ALWAYS treat this workflow as test-authoring only
   - NEVER use this workflow to implement production behavior outside test scaffolding and test expectations
+  - ALWAYS use TESTS_SCOPE to constrain the authoring scope in downstream logic; NEVER overwrite ORIGINAL_INTENT with the normalised scope string
 ```

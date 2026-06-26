@@ -50,9 +50,8 @@ DO:
   SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding `cf`, `cf-analyze`, and `cf-generate`
   LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-skill-fallbacks.md WHEN AVAILABLE_SKILLS is empty
   CONTINUE AnalyzeNoMatch WHEN AVAILABLE_SKILLS is empty
-  LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-routing-menus.md WHEN ORIGINAL_INTENT != unset
+  LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-routing-menus.md
   CONTINUE AnalyzeRouteIntentFlow WHEN ORIGINAL_INTENT != unset
-  LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-routing-menus.md WHEN ORIGINAL_INTENT == unset
   CONTINUE AnalyzeRouteLoadFlow WHEN ORIGINAL_INTENT == unset
 RULES:
   ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent

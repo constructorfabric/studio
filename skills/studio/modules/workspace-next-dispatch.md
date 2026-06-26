@@ -6,13 +6,13 @@ PURPOSE: Present post-setup next steps after successful workspace setup (Phase 5
 DO:
   EMIT_MENU WorkspaceNextStepsMenu
   WAIT user.reply
+  STOP_TURN
 MENU WorkspaceNextStepsMenu
-TITLE: What would you like to do next? Option 1 is the suggested default. Reply with a number or a short custom instruction.
+TITLE: What would you like to do next?
 OPTIONS:
-  1 validate-repos -> EMIT "Running workspace validation across the participating repos."; RUN `{cfs_cmd} validate` from each participating repo (verifies cross-repo ID resolution), RETURN a WORKSPACE_STATUS record (phase=next-steps, status=complete, next_route=null), then STOP_TURN
+  1 validate-repos (suggested) — verify cross-repo ID resolution across participating repos -> EMIT "Running workspace validation across the participating repos."; RUN `{cfs_cmd} validate` from each participating repo (verifies cross-repo ID resolution), RETURN a WORKSPACE_STATUS record (phase=next-steps, status=complete, next_route=null), then STOP_TURN
   2 list-ids -> EMIT "Checking that artifacts from all workspace sources are visible."; RUN `{cfs_cmd} list-ids` to confirm artifacts from all sources are visible, RETURN a WORKSPACE_STATUS record (phase=next-steps, status=complete, next_route=null), then STOP_TURN
-  3 review-edit -> EMIT "Reply with the workspace field or source you want to review or edit next."; WAIT the workspace/source field to review or edit, RETURN a WORKSPACE_STATUS record (phase=next-steps, status=complete, next_route=null), then STOP_TURN
-  4 other -> EMIT "Reply with the next workspace action you want to take."; WAIT the user's next workspace action, RETURN a WORKSPACE_STATUS record (phase=next-steps, status=complete, next_route=null), then STOP_TURN
+  3 other — describe the next workspace action you want -> EMIT "Reply with the next workspace action you want to take."; WAIT the user's next workspace action, RETURN a WORKSPACE_STATUS record (phase=next-steps, status=complete, next_route=null), then STOP_TURN
   INVALID -> EMIT_MENU WorkspaceNextStepsMenu
 ```
 

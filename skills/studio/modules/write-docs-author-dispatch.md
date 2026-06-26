@@ -32,8 +32,17 @@ DO:
 UNIT WriteDocsAuthorTargetMissing
 PURPOSE: Stop when create-mode author target paths are still missing.
 DO:
-  EMIT "Author target resolution is required before document creation can continue. Provide the output document path(s) to write."
+  EMIT "I could not determine which file to write. Reply with the output path — for example: `docs/guides/my-guide.md`. Or choose a next step:"
+  EMIT_MENU WriteDocsAuthorTargetMissingMenu
+  WAIT user.reply
   STOP_TURN
+MENU WriteDocsAuthorTargetMissingMenu
+TITLE: Provide output path or choose a next step.
+OPTIONS:
+  1 provide path — reply with the output file path
+  2 plan first — run cf-documenting-planning to define document scope first -> LOAD and CONTINUE cf-documenting-planning
+  3 cancel -> STOP_TURN
+  INVALID -> EMIT_MENU WriteDocsAuthorTargetMissingMenu
 ```
 
 ```pdsl

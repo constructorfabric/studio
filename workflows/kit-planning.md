@@ -23,9 +23,12 @@ DO:
   SET DESIGN_REQUIRED_INPUT_SPECS = design-doc accepted as doc-ref or doc-bundle, design-decisions accepted as decision-list or doc-bundle, acceptance-criteria accepted as criteria-list or doc-bundle, and constraints accepted as constraint-list or doc-bundle
   SET PHASE_CHECKLIST_CONTRACT = authoring required true summary "Author or revise only the scoped kit prompt, document, or code assets for the phase, and route each phase through kit-gen so prompt assets use prompting-gen, document assets use documenting-gen, and code assets use coding-gen", deterministic-validation required true summary "Run kit-ci and produce deterministic-report or ci-findings", semantic-review required true summary "Run kit-review and resolve or report findings", git required true summary "Prepare commit-intent and satisfy git-commit preflight when git finalization is in scope", phase-close required true summary "Mark phase status and closure outcome explicitly"
   SET PHASE_OUTPUT_CONTRACT = phase-plan, phase-dod, skill-changes, doc-changes, code-changes, deterministic-report, review-findings, commit-intent, phase-status
+  EMIT "Each phase in this plan requires: (1) authoring, (2) CI validation, (3) semantic review, (4) git commit prep, (5) phase close. Reply 'lightweight' now to skip git and phase-close steps, or continue to proceed with the full lifecycle."
+  SET PHASE_CHECKLIST_CONTRACT lightweight version = authoring required true, deterministic-validation required true, semantic-review required true, git required false, phase-close required false WHEN user.reply == "lightweight"
   LOAD {cf-studio-path}/.core/workflows/planning.md as the controlling integrable planning workflow
   CONTINUE PlanningBootstrap
 RULES:
+  - ALWAYS disclose the 5-step mandatory phase lifecycle to the user before they approve the plan; allow 'lightweight' reply to opt out of git and phase-close for non-release iterations
   - ALWAYS decompose mixed kit changes into domain-scoped phases before execution
   - ALWAYS use the existing prompting and documenting and coding workflows instead of inventing kit-local authoring or review loops
   - ALWAYS route manifest or kit-configuration work through cf-kit outside this thin planning family

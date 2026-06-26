@@ -41,6 +41,8 @@ RULES:
   ALWAYS include a back option
   ALWAYS include a stop option
   NEVER hide override behind prose when override is legal
+  ALWAYS assign each suggested_next_skills entry its own top-level integer option number (2, 3, 4, ...); override, back, and stop always occupy the last slots after all skill entries
+  ALWAYS mark the first suggested_next_skills entry as (suggested) unless a higher-priority producer is identified from missing_artifacts context
 MENU BlockedNextActionsMenu
 TITLE: This skill is blocked. Choose the next step. Reply with a number.
 OPTIONS:

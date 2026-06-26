@@ -8,6 +8,8 @@ STATE:
   SET scope: single-repo | with-workspace | markdown-only (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/map-preflight.md
+  SET COMPANION_CONTINUE = MapIntentMenu
+  RUN CompanionSkillOffer
   EMIT_MENU MapIntentMenu
   WAIT user.reply
   STOP_TURN

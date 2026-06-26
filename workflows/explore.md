@@ -24,8 +24,10 @@ DO:
   RUN WorkflowBootstrapRouterPrelude
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
+  EMIT "Starting exploration — I'll scan the project for task-relevant files and context."
   CONTINUE ExploreEntry
 RULES:
+  ALWAYS emit a one-sentence orientation before ExploreEntry so the user knows the explore session is starting
   ALWAYS run StudioInstructionsMemoryGate before explore entry routing, scanning, or saved-context handling
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, or delegation
   ALWAYS load the sub-agent dispatch module before ExploreRun can dispatch cf-explorer

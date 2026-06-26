@@ -25,15 +25,15 @@ DO:
   RUN WorkflowBootstrapCommandTemplateContext
   SET ORIGINAL_INTENT = the user's triggering map request (verbatim or shortest faithful summary)
   SET CURRENT_WORKFLOW = cf-map
-  SET COMPANION_CONTINUE = MapIntentRouter
   LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
-  CONTINUE CompanionSkillOffer
+  CONTINUE MapIntentRouter
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before map routing, preflight, scanning, config assist, or handoff
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, git use, or delegation
   ALWAYS load command-resolution before invoking `{cfs_cmd}` map/info commands
   ALWAYS load template-vars before resolving map output paths or unknown template variables
   ALWAYS load context-memory before passing a generated map artifact as resource_context to another workflow
+  ALWAYS capture and confirm map scope before offering companion skills; NEVER offer companions as a gate before map intent is validated
   NEVER require cf or CFS_INIT before map; this workflow owns its prerequisite loads
 ```
 

@@ -16,6 +16,11 @@ entrypoint is `cf-prompting-review`.
 UNIT SkillsReviewAlias
 PURPOSE: Redirect legacy skills-review invocations into the canonical thin prompt review workflow.
 DO:
+  EMIT "Note: skills-review is now an alias for prompting-review. Continuing with the canonical workflow."
   LOAD {cf-studio-path}/.core/workflows/prompting-review.md as the controlling review workflow
   CONTINUE PromptingReviewPreset
+RULES:
+  ALWAYS preserve caller intent and ORIGINAL_INTENT when redirecting to the target workflow
+  NEVER introduce new gates, menus, or behavior changes in the alias itself
+  NEVER silently continue when the target workflow LOAD fails; EMIT an error and STOP_TURN
 ```

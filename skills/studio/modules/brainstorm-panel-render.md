@@ -11,7 +11,7 @@ DO:
   WAIT user.reply
   STOP_TURN
 MENU PanelEditMenu
-TITLE: Panel setup — reply start to begin, or edit one thing.
+TITLE: Panel setup — reply `start` to begin, or refine the panel with one command at a time (drop, swap, add, or change seed topic).
 OPTIONS:
   1 start -> INVOKE skill `cf-explore` with intent=brainstorm and return_context=true (it returns resource_context and skips its save offer and NextActionsOffer handoff), SET resource_context, then CONTINUE BrainstormRounds
   2 seed:<topic> -> set the seed topic, re-render the panel, and EMIT_MENU PanelEditMenu

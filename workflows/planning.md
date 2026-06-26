@@ -55,6 +55,8 @@ UNIT PlanningBlocked
 PURPOSE: Emit the canonical blocked result when integrable planning lacks required inputs.
 DO:
   RUN BlockedReportContract
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+  RUN NextActionsOffer
 RULES:
   - ALWAYS keep the blocked recovery path explicit and skill-oriented
   - NEVER auto-run a suggested producer skill from this path
@@ -87,4 +89,5 @@ RULES:
   - ALWAYS keep planning outputs artifact-oriented and machine-readable
   - ALWAYS use completed-with-assumptions only when the plan depended on explicit unresolved assumptions
   - NEVER claim semantic review or CI completion from this workflow
+  - NEVER include cf-explain as a suggested next action when produced_artifacts are of type phase-plan or phase-dod; instead always surface the first executable skill from the phase sequence as the suggested action
 ```

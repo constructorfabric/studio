@@ -33,14 +33,18 @@ RULES:
 ```
 
 ```pdsl
-UNIT CodingReviewFixGate
+UNIT CodingReviewBrowserAndDone
 PURPOSE: Present findings in the browser, then stop at next-actions without applying fixes.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
-  RUN NextActionsOffer WHEN REVIEW_FINDINGS_REMAINING == 0
-  LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
-  RUN ReviewFindingsReportBrowser
-  RUN NextActionsOffer
+  WHEN REVIEW_FINDINGS_REMAINING == 0:
+    EMIT "Review complete — no findings. Your code passed all checks."
+    RUN NextActionsOffer
+    STOP_TURN
+  OTHERWISE:
+    LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
+    RUN ReviewFindingsReportBrowser
+    RUN NextActionsOffer
 RULES:
   - NEVER apply fixes from coding-review
 ```

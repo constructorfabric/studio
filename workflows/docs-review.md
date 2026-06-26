@@ -16,6 +16,11 @@ entrypoint is `cf-documenting-review`.
 UNIT DocsReviewAlias
 PURPOSE: Redirect legacy docs-review invocations into the canonical thin document review workflow.
 DO:
+  EMIT "Note: docs-review is now an alias for documenting-review. Continuing with the canonical workflow."
   LOAD {cf-studio-path}/.core/workflows/documenting-review.md as the controlling review workflow
   CONTINUE DocumentingReviewPreset
+RULES:
+  ALWAYS preserve caller intent and ORIGINAL_INTENT when redirecting to the target workflow
+  NEVER introduce new gates, menus, or behavior changes in the alias itself
+  NEVER silently continue when the target workflow LOAD fails; EMIT an error and STOP_TURN
 ```

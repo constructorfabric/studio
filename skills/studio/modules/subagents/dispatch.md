@@ -35,21 +35,22 @@ DO:
   RUN SubAgentDispatchExecute
 RULES:
   ALWAYS ask before every dispatch group unless SUB_AGENT_DISPATCH_MODE is already approve-session or inline-session
-  ALWAYS let the user choose native once, native for session, inline once, inline for session, or stop
+  ALWAYS let the user choose native once, native for session, inline once, inline for session, or cancel
   ALWAYS treat explicit user language such as "no sub-agents", "without subagents", or "inline only" as inline-once unless the user asks to save it for the session
   ALWAYS reset SUB_AGENT_DISPATCH_MODE to unset when the user asks to revoke or change the saved dispatch preference
+  ALWAYS allow the calling workflow to set SUB_AGENT_GROUP_DECISION = approve-once before reaching SubAgentDispatch when the user's original message is an explicit imperative with a named target artifact or operation (e.g. 'run cf-review on X', 'fix these findings') and no conditional or questioning language; NEVER allow pre-setting SUB_AGENT_DISPATCH_MODE = approve-session on behalf of the user — session-wide preference must only be set by the user via SubAgentApprovalRequest option 2
 ON_ERROR:
   EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
   EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails AND SUB_AGENT_RETRY_COUNT < 2
   EMIT_MENU SubAgentFallbackLimitRequest WHEN native dispatch fails AND SUB_AGENT_RETRY_COUNT >= 2
 MENU SubAgentApprovalRequest
-TITLE: Approve this cf-* sub-agent dispatch group? Native sub-agents are preferred for this work; inline keeps execution in this chat. You can save either choice for the session.
+TITLE: Ready to run a background task — native mode runs it in a separate process (faster, isolated); inline keeps everything in this chat. Recommended: native.
 OPTIONS:
-  1 approve-once -> SET SUB_AGENT_GROUP_DECISION = approve-once; CONTINUE dispatch
-  2 approve-session -> SET SUB_AGENT_DISPATCH_MODE = approve-session; CONTINUE dispatch
-  3 inline-once -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each synthesized prompt inline for this dispatch group
-  4 inline-session -> SET SUB_AGENT_DISPATCH_MODE = inline-session; RUN each synthesized prompt inline for this and later dispatch groups
-  5 stop -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN
+  1 native (this time) -> SET SUB_AGENT_GROUP_DECISION = approve-once; CONTINUE dispatch
+  2 native (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = approve-session; CONTINUE dispatch
+  3 inline (this time) -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each synthesized prompt inline for this dispatch group
+  4 inline (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = inline-session; RUN each synthesized prompt inline for this and later dispatch groups
+  5 cancel -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN
   INVALID -> EMIT_MENU SubAgentApprovalRequest
 MENU SubAgentFallbackRequest
 TITLE: The sub-agent could not run natively — how should I proceed? (inline is suggested)

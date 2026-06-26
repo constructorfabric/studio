@@ -24,7 +24,7 @@ DO:
   RUN WorkflowBootstrapStudioInstructionsMemory
   RUN WorkflowBootstrapCommandTemplateContext
   LOAD {cf-studio-path}/.core/requirements/auto-config.md as the phase-by-phase methodology reference
-  RUN verify the methodology loaded; RETURN a failed AUTO_CONFIG_RESULT with reason="Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md" and recovery="reinstall or sync the studio kit, then retry auto-config" and STOP_TURN WHEN the load fails
+  RUN verify the methodology loaded; EMIT "Auto-config cannot proceed — the methodology file was not found at {cf-studio-path}/.core/requirements/auto-config.md. To fix: run 'cfs sync' to restore studio kit files, then retry." and RETURN a failed AUTO_CONFIG_RESULT with reason="Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md" and recovery="reinstall or sync the studio kit, then retry auto-config" and STOP_TURN WHEN the load fails
   SET ORIGINAL_INTENT = the user's triggering auto-config request (verbatim or shortest faithful summary)
   SET PLAN_FIRST_CONTINUE = AutoConfigPrecheckGate
   SET CURRENT_WORKFLOW = cf-auto-config

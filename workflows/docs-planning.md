@@ -16,6 +16,7 @@ prerequisites and a default document-phase checklist contract.
 UNIT DocsPlanningAlias
 PURPOSE: Redirect legacy docs-planning invocations into the canonical thin document planning workflow.
 DO:
+  EMIT "Note: docs-planning is now an alias for documenting-planning. Continuing with the canonical workflow."
   LOAD {cf-studio-path}/.core/workflows/documenting-planning.md as the controlling planning workflow
   CONTINUE DocumentingPlanningPreset
 RULES:

@@ -4,11 +4,14 @@
 UNIT DebugSessionConsoleOpen
 PURPOSE: Announce the debugger console after the debugger session state is initialized.
 DO:
+  EMIT "Debug overlay active. While active: every skill step will pause at WAIT/menu/breakpoint; commit requests will go through the session git policy gate; any skill or workflow you run will be stepped through the debugger."
   EMIT "Debugger armed. From now on every cf skill/workflow instruction stops at a breakpoint before it runs. Load the skill you want to debug, then drive it from this console."
   EMIT "Commands: step=run the pending action · over=skip it · back=re-inspect the previous step · cont=run to the next breakpoint · step mode=return to per-action pauses · dump=export trace · off=disable · stop=halt · dbg=full menu. Breakpoints: b <spec>=set · bc <ref>=clear · bl=list · be/bd <id>=enable/disable · run to <loc>."
   RUN DebugCheatsheet
   WAIT user.reply
   STOP_TURN
+RULES:
+  ALWAYS emit a plain-language disclosure of active constraints when the debug overlay is enabled
 UNIT DebugOverlayInvariants
 PURPOSE: Make the breakpoint gate mandatory and global while debug is on.
 WHEN:

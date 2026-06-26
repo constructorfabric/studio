@@ -20,10 +20,15 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/coding-review-fix.md
   SET REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset
+  WHEN ReviewFindingsReport == unset OR (REVIEW_FINDINGS_REMAINING != unset AND REVIEW_FINDINGS_REMAINING == 0):
+    EMIT "No review findings are loaded. Run cf-coding-review first to identify issues, then return here to apply fixes."
+    EMIT suggested_next_skills = [cf-coding-review]
+    STOP_TURN
   CONTINUE CodingReviewFixGate
 RULES:
   - ALWAYS require explicit review findings before applying code fixes
   - NEVER run semantic review from coding-fix
+  - ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_producers when missing
 ```
 
 ```pdsl

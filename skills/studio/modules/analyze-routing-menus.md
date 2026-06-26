@@ -23,11 +23,13 @@ DO:
   EMIT_MENU AnalyzeIntentOffer
   WAIT user.reply
   STOP_TURN
+RULES:
+  ALWAYS expand option 1 with the actual resolved skill name and description before emitting the menu; never emit the token 'most-relevant' as a visible label
 MENU AnalyzeIntentOffer
 TITLE: Analyze intent matched these cf-* workflow(s) — pick one, or pick a companion group / comma-separated compatible skills.
 OPTIONS:
-  1 most-relevant (suggested) -> INVOKE the top-ranked matched cf-* skill or companion group, passing ORIGINAL_INTENT as its input to every invoked skill
-  2 other -> LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-skill-fallbacks.md; CONTINUE AnalyzeOtherSkills
+  1 [resolved skill name] — [skill description] (suggested) -> INVOKE this skill with ORIGINAL_INTENT; STOP_TURN when the skill owns the next turn
+  2 browse all analyze workflows -> LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-skill-fallbacks.md; CONTINUE AnalyzeOtherSkills
   3 none -> EMIT "No analyze workflow was launched. Control is returning to free mode."; STOP_TURN
   INVALID -> EMIT_MENU AnalyzeIntentOffer
 ```
@@ -41,13 +43,14 @@ DO:
   STOP_TURN
 RULES:
   NEVER silently skip describe-intent routing when the intent-capture module fails to load; EMIT an error and re-show the menu WHEN the LOAD of analyze-intent-capture.md fails
+  ALWAYS mark the describe-intent option as (suggested) when ORIGINAL_INTENT == unset
 NOTES:
   The inline LOAD of analyze-intent-capture.md in AnalyzeLoadOffer option 2 is the canonical load site for AnalyzeDescribeIntent routing from the load-offer path. The fallback module (analyze-skill-fallbacks.md) independently loads it for the no-match path. Both load sites are intentional and own distinct routing paths.
 MENU AnalyzeLoadOffer
 TITLE: No analyze intent given — pick a cf-* skill, or describe intent so I can match the right workflow(s).
 OPTIONS:
   1 skill -> INVOKE the user-selected cf-* skill from AVAILABLE_SKILLS with no intent so the skill prompts for its own input; the menu lists each available skill as `<skill-name> — <short description>`
-  2 describe-intent | help-me-choose -> LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-intent-capture.md; CONTINUE AnalyzeDescribeIntent
+  2 describe-intent | help-me-choose (suggested) -> LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-intent-capture.md; CONTINUE AnalyzeDescribeIntent
   3 cancel -> EMIT "Analyze routing cancelled. Control is returning to free mode."; STOP_TURN
   INVALID -> EMIT_MENU AnalyzeLoadOffer
 ```

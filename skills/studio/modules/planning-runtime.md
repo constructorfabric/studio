@@ -121,8 +121,8 @@ RULES:
 MENU PlanSaveGateMenu
 TITLE: Save this plan as a Markdown file before execution? The file will be updated with checkboxes as each phase completes.
 OPTIONS:
-  1 save -> SET PLAN_SAVE_MODE = save
-  2 skip -> SET PLAN_SAVE_MODE = skip
+  1 save (suggested) — recommended — saves progress as checkboxes you can resume if context is lost -> SET PLAN_SAVE_MODE = save
+  2 skip — skip if you prefer no disk writes -> SET PLAN_SAVE_MODE = skip
   INVALID -> EMIT_MENU PlanSaveGateMenu
 ```
 

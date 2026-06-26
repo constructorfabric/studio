@@ -16,6 +16,11 @@ entrypoint is `cf-documenting-ci`.
 UNIT DocsCiAlias
 PURPOSE: Redirect legacy docs-ci invocations into the canonical thin document CI workflow.
 DO:
+  EMIT "Note: docs-ci is now an alias for documenting-ci. Continuing with the canonical workflow."
   LOAD {cf-studio-path}/.core/workflows/documenting-ci.md as the controlling CI workflow
   CONTINUE DocumentingCiPreset
+RULES:
+  ALWAYS preserve caller intent and ORIGINAL_INTENT when redirecting to the target workflow
+  NEVER introduce new gates, menus, or behavior changes in the alias itself
+  NEVER silently continue when the target workflow LOAD fails; EMIT an error and STOP_TURN
 ```

@@ -7,7 +7,7 @@ WHEN:
 DO:
   RUN identify compatible companion skills from the resolved cf-* skill list by matching the task domains, required artifacts, and requested operations against each skill name and description
   RUN rank companion groups by relevance, protocol compatibility, and minimal necessary scope
-  EMIT a menu that includes the best single skill and the best companion group, marking exactly one suggested option
+  EMIT_MENU CompanionRoutingMenu
   WAIT user.reply
   STOP_TURN
 RULES:
@@ -52,11 +52,36 @@ RULES:
   NEVER run without CURRENT_WORKFLOW set by the caller
   NEVER run without COMPANION_CONTINUE set by the caller
 MENU CompanionSkillOfferMenu
-TITLE: This intent may benefit from companion cf-* workflow(s). Return a launch list for the host/user to run in order, or keep this workflow only?
+TITLE: This request spans multiple workflows. How do you want to proceed?
 OPTIONS:
-  1 add-companions (suggested when cross-domain) -> SET COMPANION_SELECTION_APPLIED = true; RETURN ordered launch list [CURRENT_WORKFLOW, selected companion cf-* workflow names] plus ORIGINAL_INTENT for launch by the host/user; STOP_TURN
-  2 continue-single -> SET COMPANION_OFFER_RESOLVED = true; CONTINUE COMPANION_CONTINUE
+  1 run in sequence — start [CURRENT_WORKFLOW] now, then I'll list the companion workflows to run after; this turn ends with the ordered list (suggested when cross-domain) -> SET COMPANION_SELECTION_APPLIED = true; EMIT the ordered launch list [CURRENT_WORKFLOW, resolved companion workflow names] with ORIGINAL_INTENT and a note that the user should invoke each in order after the previous completes; STOP_TURN
+  2 continue with [CURRENT_WORKFLOW] only (suggested when no companion materially improves coverage) -> SET COMPANION_OFFER_RESOLVED = true; CONTINUE COMPANION_CONTINUE
   INVALID -> EMIT_MENU CompanionSkillOfferMenu
+```
+
+```pdsl
+UNIT CompanionRoutingMenu
+PURPOSE: Offer a concrete single-skill or companion-group choice with named options and a cancel escape.
+STATE:
+  SET COMPANION_ROUTING_SINGLE_TARGET: cf-workflow-name | unset (default unset, scope workflow_run)
+  SET COMPANION_ROUTING_GROUP_TARGETS: list | unset (default unset, scope workflow_run)
+DO:
+  SET COMPANION_ROUTING_SINGLE_TARGET = the best single resolved skill name from ranked companion candidates
+  SET COMPANION_ROUTING_GROUP_TARGETS = the best companion group resolved skill names from ranked companion candidates
+  EMIT_MENU CompanionRoutingMenuOptions
+MENU CompanionRoutingMenuOptions
+TITLE: Choose how to proceed — pick a number.
+OPTIONS:
+  1 [COMPANION_ROUTING_SINGLE_TARGET] — [one-line description] (suggested when single domain) -> SET COMPANION_OFFER_RESOLVED = true; CONTINUE COMPANION_ROUTING_SINGLE_TARGET with ORIGINAL_INTENT
+  2 [COMPANION_ROUTING_GROUP_TARGETS joined] — run in sequence for full coverage (suggested when cross-domain) -> SET COMPANION_SELECTION_APPLIED = true; EMIT ordered launch list [COMPANION_ROUTING_GROUP_TARGETS] with ORIGINAL_INTENT and instruction to invoke each in order; STOP_TURN
+  3 cancel — stop and return control to the user -> STOP_TURN
+  INVALID -> EMIT_MENU CompanionRoutingMenuOptions
+RULES:
+  ALWAYS resolve COMPANION_ROUTING_SINGLE_TARGET and COMPANION_ROUTING_GROUP_TARGETS before emitting; never emit placeholder text as visible option labels
+  ALWAYS mark exactly one option as suggested based on whether the task spans one or multiple domains
+  ALWAYS include option 3 cancel so the user can exit without committing
+  ALWAYS set COMPANION_SELECTION_APPLIED = true when option 2 is chosen, mirroring CompanionSkillOfferMenu
+  ALWAYS set COMPANION_OFFER_RESOLVED = true when option 1 is chosen, so callers do not re-offer for the same intent
 ```
 
 ```pdsl

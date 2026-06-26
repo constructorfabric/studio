@@ -26,11 +26,12 @@ DO:
   STOP_TURN
 RULES:
   ALWAYS carry any resource_context / brainstorm decisions into Phase 1 assessment, and ALWAYS let the user skip the gate
+  ALWAYS infer a suggested option from ORIGINAL_INTENT before emitting: mark 'skip' (suggested) when ORIGINAL_INTENT names a clear well-scoped task; mark 'explore' (suggested) when the task spans multiple modules or is unfamiliar; mark 'brainstorm' (suggested) when ORIGINAL_INTENT contains open framing questions or ambiguous requirements
 MENU PlanGateMenu
 TITLE: Before assessing scope, explore project resources or brainstorm decisions — or skip straight to assessment? Skip is the default when the task is already well-defined; explore for unfamiliar projects, brainstorm for ambiguous requirements. Reply with a number.
 OPTIONS:
-  1 explore -> INVOKE skill `cf-explore` with intent=plan and return_context=true, then CONTINUE PlanPhase1Assess
-  2 brainstorm -> INVOKE skill `cf-brainstorm`, then CONTINUE PlanPhase1Assess
-  3 skip -> CONTINUE PlanPhase1Assess
+  1 explore (suggested when the task spans multiple modules or is unfamiliar) -> INVOKE skill `cf-explore` with intent=plan and return_context=true, then CONTINUE PlanPhase1Assess
+  2 brainstorm (suggested when ORIGINAL_INTENT contains open framing questions or ambiguous requirements) -> INVOKE skill `cf-brainstorm`, then CONTINUE PlanPhase1Assess
+  3 skip (suggested when ORIGINAL_INTENT names a clear well-scoped task) -> CONTINUE PlanPhase1Assess
   INVALID -> EMIT_MENU PlanGateMenu
 ```

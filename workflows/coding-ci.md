@@ -46,4 +46,6 @@ RULES:
   ALWAYS use this workflow only for deterministic validation of code changes
   ALWAYS keep semantic review and authoring outside this thin entrypoint
   NEVER treat this workflow as permission to dispatch coding authoring by itself
+NOTES:
+  WorkflowBootstrapSimpleModeGate is intentionally omitted from coding-ci because this workflow is typically invoked programmatically after authoring, not interactively.
 ```

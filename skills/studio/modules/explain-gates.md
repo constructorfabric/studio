@@ -29,12 +29,15 @@ DO:
   DISPATCH storytelling-gate gate_id=artifact-disposition, WAIT user.reply, SET E1_GATE = audience, STOP_TURN WHEN E1_GATE == disposition
   DISPATCH storytelling-gate gate_id=audience, WAIT user.reply, SET E1_GATE = plan, STOP_TURN WHEN E1_GATE == audience
   DISPATCH storytelling-gate gate_id=plan to render the 4-option plan-approval menu (handle Edit/Pivot/Cancel per storytelling-gate), WAIT user.reply, STOP_TURN WHEN E1_GATE == plan AND the plan is NOT yet approved
-  CONTINUE ExplainE2Deliver WHEN E1_GATE == plan AND the plan is approved
+  SET E1_GATE = done WHEN E1_GATE == plan AND the plan is approved
+  STOP_TURN WHEN E1_GATE == plan AND the plan is NOT yet approved
+  CONTINUE ExplainE2Deliver WHEN E1_GATE == done
 RULES:
   ALWAYS under CF_HELP_PRESET == true, resolve the four gates from the STORYTELLING_* presets instead of prompting (preset resolution skips the prompts, not the phases) and NEVER emit a one-shot overview/command list — the next output is the E0/E1 opener, then E2 delivery
   ALWAYS run the gates in order mode -> disposition -> audience -> plan and keep each a separate user-interaction boundary
   ALWAYS resolve mode always-ask (intent/default only suggest, never auto-select)
   ALWAYS advance E1_GATE only after the current gate's user reply is received; NEVER re-ask an already-resolved gate
+  ALWAYS parse a single user reply that contains enough information to resolve multiple gates (e.g. "tutorial, chat only, developer") in one pass; prompt only for remaining unresolved gates rather than emitting each gate as a separate mandatory turn
   ALWAYS handle Edit/Pivot/Cancel from the plan gate per storytelling-gate
   ALWAYS on a plan-gate Cancel, RETURN an EXPLAIN_RESULT envelope with status="cancelled" and STOP_TURN
   NEVER enter E2 before the plan-approval gate resolves

@@ -41,5 +41,6 @@ TITLE: Explicit confirmation required before writing plan.toml + briefs. This wr
 OPTIONS:
   1 y | yes -> CONTINUE PlanPhase3Compile
   2 n | no -> EMIT "Decomposition declined — rework boundaries and re-run cf-plan when ready." and STOP_TURN
+  3 revise — describe what to change about this decomposition -> EMIT "Describe what to change (e.g. split phase 2, merge phases 3 and 4, adjust scope). I will rework and re-show."; WAIT user.reply; CONTINUE PlanPhase2Decompose
   INVALID -> EMIT_MENU DecompositionConfirmMenu
 ```

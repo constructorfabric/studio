@@ -17,7 +17,6 @@ UNIT KitGenBootstrap
 PURPOSE: Initialize thin kit generation and route into prerequisite-aware specialist delegation.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
-  SET REVIEW_LOOP_REQUESTED: true | false | unset (default false, scope workflow_run)
   SET AVAILABLE_ARTIFACTS: list | unset (default unset, scope workflow_run)
   SET REQUIRED_ARTIFACT_SPECS: list | unset (default unset, scope workflow_run)
 DO:
@@ -34,8 +33,8 @@ DO:
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
   SET ORIGINAL_INTENT = the user's triggering kit-gen request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  SET REVIEW_LOOP_REQUESTED = false WHEN REVIEW_LOOP_REQUESTED == unset
   CONTINUE KitGenPrerequisites
+NOTES: REVIEW_LOOP_REQUESTED is not consumed at the kit-gen routing layer; review-loop control lives in the specialist reviewer workflows.
 RULES:
   - ALWAYS keep this workflow authoring-only
   - NEVER route review requests into this workflow

@@ -25,10 +25,10 @@ RULES:
   - ALWAYS remember the Brave New World opt-in or skip decision for the whole session after the user answers it
   - NEVER run for `cf-debug-prompts` or `cf-help`
 MENU SimpleModeChoice
-TITLE: Choose workflow interaction mode for this session. Assistant mode acts like a visible guide in chat: it explains where you are, why this step is happening, what each option does next, and which path is recommended. Normal mode keeps existing workflow behavior. Debug loads the existing debugger overlay in run mode so traces/logs stay active and it pauses only on breakpoints, WAIT/menu, or error until you turn step mode back on. Reply with a number.
+TITLE: Choose interaction mode for this session — reply with a number. You can change mode any time by saying "change mode".
 OPTIONS:
-  1 assistant - guided assistant in chat -> SET SIMPLE_MODE = simple; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-simple.md; CONTINUE SimpleModeSimpleEntry
-  2 normal - existing workflow behavior -> SET SIMPLE_MODE = normal; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-normal.md; CONTINUE SimpleModeNormal
-  3 debug - debugger overlay in run mode -> SET SIMPLE_MODE = debug; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-debug.md; CONTINUE SimpleModeDebug
+  1 assistant — explains each step, why it is happening, and which path is recommended -> SET SIMPLE_MODE = simple; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-simple.md; CONTINUE SimpleModeSimpleEntry
+  2 normal — standard workflow behavior, no extra narration (suggested) -> SET SIMPLE_MODE = normal; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-normal.md; CONTINUE SimpleModeNormal
+  3 debug — debugger overlay in run mode, for workflow development only -> SET SIMPLE_MODE = debug; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-debug.md; CONTINUE SimpleModeDebug
   INVALID -> EMIT_MENU SimpleModeChoice
 ```

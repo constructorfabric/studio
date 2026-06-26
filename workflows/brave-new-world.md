@@ -39,6 +39,7 @@ RULES:
   ALWAYS remember git-commit-mode so any later commit request in this active overlay session runs GitCommitModeGate before routing, git use, or delegation
   ALWAYS keep all current and future underlying rules, prerequisites, menus, waits, hard stops, validation gates, and terminal shapes active, while allowing this overlay to answer eligible menus and questions by selecting one valid original option
   ALWAYS keep BRAVE_NEW_WORLD_DECISION_LOG append-only for the session across disable and re-enable cycles
+  ALWAYS resolve semantically equivalent phrases such as 'stop asking me', 'auto mode', 'autonomous', 'fewer questions', 'less interruptions' as BNW activation when context is unambiguous
   NEVER start substantive task work merely because this overlay was enabled
   NEVER require `cf` or `CFS_INIT == true` merely to enable or disable this overlay
 ```
@@ -53,6 +54,7 @@ DO:
   SET BRAVE_NEW_WORLD_ENABLED = false
   SET BRAVE_NEW_WORLD_LAST_STATUS = disabled
   EMIT "Brave New World disabled: original menus and questions will be shown normally."
+  EMIT a summary when BRAVE_NEW_WORLD_DECISION_LOG is non-empty: "During this BNW session, N autonomous choices were made. Reply 'show BNW log' to see the full list." WHEN BRAVE_NEW_WORLD_DECISION_LOG != empty
   STOP_TURN
 RULES:
   ALWAYS give disable intent precedence over activation intent

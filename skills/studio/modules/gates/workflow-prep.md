@@ -47,8 +47,9 @@ RULES:
   ALWAYS recommend skipping when existing resource_context still matches ORIGINAL_INTENT and no stale-context evidence is known
   ALWAYS show the stored RESOURCE_CONTEXT_TASK_KEY or concise provenance summary when asking whether to reuse context
   NEVER discard existing RESOURCE_CONTEXT unless the user chooses to run cf-explore again
+  ALWAYS auto-continue without emitting the menu when RESOURCE_CONTEXT == provided AND RESOURCE_CONTEXT_TASK_KEY matches the current normalized task key; emit a single-line status note "Using existing exploration context. Proceeding." when auto-continuing
 MENU WorkflowPrepExploreRepeatMenu
-TITLE: Existing cf-explore resource_context is already available for this workflow-prep task. Run cf-explore again only if the target changed or the context is stale; skip/reuse is suggested. Reply with a number.
+TITLE: Existing cf-explore resource_context is already available for this workflow-prep task. Run cf-explore again only if the target changed or the context is stale; skip/reuse is suggested. Stored context task key: [RESOURCE_CONTEXT_TASK_KEY] (explored [RESOURCE_CONTEXT_PROVENANCE summary if available]). Reply with a number.
 OPTIONS:
   1 skip-reuse -> CONTINUE WORKFLOW_PREP_BRAINSTORM_GATE
   2 explore-again -> SET RESOURCE_CONTEXT = unset; SET RESOURCE_CONTEXT_REF = unset; SET RESOURCE_CONTEXT_TASK_KEY = unset; SET RESOURCE_CONTEXT_PROVENANCE = unset; EMIT_MENU WORKFLOW_PREP_EXPLORE_MENU; WAIT user.reply; STOP_TURN

@@ -6,7 +6,7 @@ PURPOSE: Capture an analyze intent as a separate turn before routing.
 STATE:
   SET ANALYZE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
-  EMIT "Describe what you want to analyze, review, validate, or compare. I will match the relevant cf-* workflow(s), including companions when needed."
+  EMIT "Describe what you want to analyze, review, validate, or compare. I will match the relevant cf-* workflow(s), including companions when needed. Example: 'review PDSL compliance of all workflow files' or 'validate the kit manifest'. A sentence or two is enough."
   SET ANALYZE_INTENT_CAPTURE_STATE = resume
   WAIT user.reply
   STOP_TURN

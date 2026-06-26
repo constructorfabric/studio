@@ -12,7 +12,9 @@ DO:
 UNIT BrainstormOfferCancelled
 PURPOSE: Return a cancelled brainstorm result when the user declines the panel.
 DO:
-  EMIT "Brainstorm panel declined. No panel was started."
+  EMIT "Brainstorm panel skipped."
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+  RUN NextActionsOffer WITH context = brainstorm was skipped and ORIGINAL_INTENT is still live
   RETURN { "type": "BRAINSTORM_RESULT", "status": "cancelled", "decisions_count": 0, "open_questions_count": 0, "next_route": null }
   STOP_TURN
 ```
