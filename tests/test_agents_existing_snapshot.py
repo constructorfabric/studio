@@ -143,8 +143,8 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
                 "codex", "openai", entry["model"], entry["role"], entry["target"]
             )
             self.assertEqual(
-                got, "gpt-5.3-codex",
-                f"{name}: codex balanced generate/codebase → gpt-5.3-codex",
+                got, "gpt-5.4",
+                f"{name}: codex balanced generate/codebase → gpt-5.4",
             )
 
     def test_balanced_agents_emit_sonnet_on_claude(self):

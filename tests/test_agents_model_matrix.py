@@ -126,11 +126,11 @@ class TestResolveModelId(unittest.TestCase):
             "sonnet",
         )
 
-    def test_codex_balanced_generate_codebase_picks_codex_standard(self):
+    def test_codex_balanced_generate_codebase_stays_gpt54(self):
         from studio.commands.agents import _resolve_model_id
         self.assertEqual(
             _resolve_model_id("codex", "openai", "balanced", "generate", "codebase"),
-            "gpt-5.3-codex",
+            "gpt-5.4",
         )
 
     def test_codex_balanced_planning_codebase_stays_gpt54(self):
@@ -161,11 +161,11 @@ class TestResolveModelId(unittest.TestCase):
             "claude-sonnet-4-6",
         )
 
-    def test_cursor_openai_balanced_codebase_generate_codex(self):
+    def test_cursor_openai_balanced_codebase_generate_stays_gpt54(self):
         from studio.commands.agents import _resolve_model_id
         self.assertEqual(
             _resolve_model_id("cursor", "openai", "balanced", "generate", "codebase"),
-            "gpt-5.3-codex",
+            "gpt-5.4",
         )
 
     def test_copilot_anthropic_expensive(self):
@@ -327,7 +327,7 @@ class TestResolveModelIdCrossProduct(unittest.TestCase):
         # — explicit override kicks in for this (tier, role, target) triple.
         self.assertEqual(
             _resolve_model_id("cursor", "openai", "cf:tier:balanced", "generate", "codebase"),
-            "gpt-5.3-codex",  # regression anchor for matrix edits
+            "gpt-5.4",  # regression anchor for matrix edits
         )
 
 
@@ -419,10 +419,10 @@ class TestCursorTemplateNewFields(unittest.TestCase):
         out = self._build(model="balanced")
         self.assertIn("model: claude-sonnet-4-6", out)
 
-    def test_balanced_openai_codebase_generate_emits_codex_standard(self):
+    def test_balanced_openai_codebase_generate_emits_gpt54(self):
         out = self._build(model="balanced", provider="openai",
                           role="generate", **{"target": "codebase"})
-        self.assertIn("model: gpt-5.3-codex", out)
+        self.assertIn("model: gpt-5.4", out)
 
     def test_auto_emits_auto(self):
         out = self._build(model="auto")
@@ -506,9 +506,9 @@ class TestCodexTomlRender(unittest.TestCase):
         out = self._render(model="cf:tier:balanced")
         self.assertIn('model = "gpt-5.4"', out)
 
-    def test_balanced_codebase_generate_emits_codex_standard(self):
+    def test_balanced_codebase_generate_emits_gpt54(self):
         out = self._render(model="cf:tier:balanced", role="generate", **{"target": "codebase"})
-        self.assertIn('model = "gpt-5.3-codex"', out)
+        self.assertIn('model = "gpt-5.4"', out)
 
     def test_reasoning_effort_emits_field(self):
         out = self._render(reasoning_effort="high")
