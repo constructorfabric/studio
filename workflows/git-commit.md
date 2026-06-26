@@ -67,13 +67,18 @@ RULES:
 ```pdsl
 UNIT GitCommitBlocked
 PURPOSE: Emit an explicit blocked result when git finalization prerequisites are missing.
+STATE:
+  SET COMMIT_PATH_CAPTURE_STATE: prompt | unset (default unset, scope workflow_run)
 DO:
   WHEN COMMIT_TARGET_PATHS == unset OR COMMIT_TARGET_PATHS is empty:
+    WHEN COMMIT_PATH_CAPTURE_STATE == prompt:
+      SET COMMIT_TARGET_PATHS from user.reply
+      SET COMMIT_PATH_CAPTURE_STATE = unset
+      CONTINUE GitCommitResolve WHEN COMMIT_TARGET_PATHS != unset AND COMMIT_TARGET_PATHS is not empty
     EMIT "Which files should be committed? Reply with file paths (e.g. src/foo.py src/bar.py) or 'all staged' to commit all staged changes."
+    SET COMMIT_PATH_CAPTURE_STATE = prompt
     WAIT user.reply
-    SET COMMIT_TARGET_PATHS from user.reply
     STOP_TURN
-    CONTINUE GitCommitResolve WHEN COMMIT_TARGET_PATHS != unset AND COMMIT_TARGET_PATHS is not empty
   RUN BlockedReportContract
 RULES:
   ALWAYS handle missing COMMIT_TARGET_PATHS with a direct recovery prompt before running BlockedReportContract

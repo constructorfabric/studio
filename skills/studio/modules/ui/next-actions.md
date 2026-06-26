@@ -32,5 +32,5 @@ OPTIONS:
   N+2 done -> STOP_TURN
   INVALID -> EMIT_MENU NextActionsMenu
 NOTES:
-  Render each synthesized action as its own numbered line. back and done always occupy the last two positions after the synthesized actions. When cf-explain is included, its why should mention explaining what was done, what changed, or how to read the resulting artifacts.
+  When `back` is included, it occupies position N+1 and `done` occupies N+2. When `back` is omitted (no concrete prior decision point), `done` is the only exit and occupies position N+1. When cf-explain is included, its why should mention explaining what was done, what changed, or how to read the resulting artifacts.
 ```

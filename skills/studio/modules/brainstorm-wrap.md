@@ -10,8 +10,6 @@ DO:
   RUN TemplateVarResolution before any disk checkpoint path is resolved
   RUN synthesis of 3 to 5 routed next steps from the current context (decisions, open questions) and the available cf-* skills, marking exactly one (suggested) and giving each a one-line why
   EMIT_MENU WrapMenu
-  WAIT user.reply
-  STOP_TURN
 RULES:
   NEVER auto-route into a next step without the wrap menu
   NEVER treat a stop-token as implicit approval
@@ -27,8 +25,8 @@ NOTES:
 MENU WrapMenu
 TITLE: Brainstorm complete — keep the results or pick a context-grounded next step (one is suggested).
 OPTIONS:
-  1 session -> preserve results in session only, write no files, RETURN envelope with status="wrapped", decisions_count=<count>, open_questions_count=<count>, next_route=null, STOP_TURN
-  2 disk -> REQUIRE writes are allowed; EMIT "Disk save is not available in this context — choose 'session' to keep results in memory." and re-emit WrapMenu WHEN writes are not allowed; WRITE design + state under {cf-studio-path}/.cache/brainstorm/{session_id}/, RETURN envelope with status="checkpointed", decisions_count=<count>, open_questions_count=<count>, next_route=null, STOP_TURN
+  1 session -> preserve results in session only, write no files, RETURN envelope with status="wrapped", decisions_count=<count>, open_questions_count=<count>, next_route=null
+  2 disk -> REQUIRE writes are allowed; EMIT "Disk save is not available in this context — choose 'session' to keep results in memory." and re-emit WrapMenu WHEN writes are not allowed; WRITE design + state under {cf-studio-path}/.cache/brainstorm/{session_id}/, RETURN envelope with status="checkpointed", decisions_count=<count>, open_questions_count=<count>, next_route=null
   3 reopen -> reopen a topic for another round, SET round_kind = topic, SET round_dispatched = false, and CONTINUE BrainstormRounds
   4 route -> INVOKE the chosen synthesized cf-* skill with decisions + open questions pre-filled, RETURN envelope with status="handoff", decisions_count=<count>, open_questions_count=<count>, next_route="<chosen cf-* skill>"
   INVALID -> EMIT clarifier and EMIT_MENU WrapMenu

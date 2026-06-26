@@ -30,7 +30,6 @@ PURPOSE: Return a cancelled brainstorm result when the user declines to provide 
 DO:
   EMIT "Brainstorm cancelled before panel setup."
   RETURN { "type": "BRAINSTORM_RESULT", "status": "cancelled", "decisions_count": 0, "open_questions_count": 0, "next_route": null }
-  STOP_TURN
 ```
 
 ```pdsl

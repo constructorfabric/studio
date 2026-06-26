@@ -56,6 +56,7 @@ TITLE: This request spans multiple workflows. How do you want to proceed?
 OPTIONS:
   1 run in sequence — start [CURRENT_WORKFLOW] now, then I'll list the companion workflows to run after; this turn ends with the ordered list (suggested when cross-domain) -> SET COMPANION_SELECTION_APPLIED = true; EMIT the ordered launch list [CURRENT_WORKFLOW, resolved companion workflow names] with ORIGINAL_INTENT and a note that the user should invoke each in order after the previous completes; STOP_TURN
   2 continue with [CURRENT_WORKFLOW] only (suggested when no companion materially improves coverage) -> SET COMPANION_OFFER_RESOLVED = true; CONTINUE COMPANION_CONTINUE
+  3 cancel — stop without running any workflow -> STOP_TURN
   INVALID -> EMIT_MENU CompanionSkillOfferMenu
 ```
 

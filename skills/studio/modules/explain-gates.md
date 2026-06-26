@@ -30,7 +30,6 @@ DO:
   DISPATCH storytelling-gate gate_id=audience, WAIT user.reply, SET E1_GATE = plan, STOP_TURN WHEN E1_GATE == audience
   DISPATCH storytelling-gate gate_id=plan to render the 4-option plan-approval menu (handle Edit/Pivot/Cancel per storytelling-gate), WAIT user.reply, STOP_TURN WHEN E1_GATE == plan AND the plan is NOT yet approved
   SET E1_GATE = done WHEN E1_GATE == plan AND the plan is approved
-  STOP_TURN WHEN E1_GATE == plan AND the plan is NOT yet approved
   CONTINUE ExplainE2Deliver WHEN E1_GATE == done
 RULES:
   ALWAYS under CF_HELP_PRESET == true, resolve the four gates from the STORYTELLING_* presets instead of prompting (preset resolution skips the prompts, not the phases) and NEVER emit a one-shot overview/command list — the next output is the E0/E1 opener, then E2 delivery

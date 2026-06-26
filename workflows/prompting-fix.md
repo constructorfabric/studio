@@ -20,12 +20,12 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-fix-outcomes.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-review-run-fix.md
   SET REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset
-  WHEN ReviewFindingsReport == unset OR (REVIEW_FINDINGS_REMAINING != unset AND REVIEW_FINDINGS_REMAINING == 0):
+  WHEN ReviewFindingsReport == unset OR REVIEW_FINDINGS_REMAINING == 0:
     EMIT "No review findings are loaded. Run cf-prompting-review first to identify issues, then return here to apply fixes."
     EMIT suggested_next_skills = [cf-prompting-review]
     STOP_TURN
-  WHEN REVIEW_TARGET_PATHS == unset:
-    EMIT "No review target paths are set. Run cf-prompting-review first to identify the review scope."
+  WHEN REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset:
+    EMIT "No review target paths or slices are set. Run cf-prompting-review first to identify the review scope."
     EMIT suggested_next_skills = [cf-prompting-review]
     STOP_TURN
   CONTINUE WriteSkillsFixGate

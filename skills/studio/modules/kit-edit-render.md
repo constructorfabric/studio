@@ -14,6 +14,7 @@ DO:
   EMIT the revised public generated-name preview, revised manifest preview, and remaining ambiguities
   CONTINUE KitInitApplyUserEditsRenderLegacy WHEN PENDING_EDIT_BRANCH == legacy_manifest
   CONTINUE KitInitApplyUserEditsRenderDiscovery WHEN PENDING_EDIT_BRANCH == discovery
+  CONTINUE KitInitApplyUserEditsRenderCanonical WHEN PENDING_EDIT_BRANCH == canonical
 UNIT KitInitApplyUserEditsRenderLegacy
 PURPOSE: Return an edited legacy-source preview to its approval menu.
 DO:
@@ -25,6 +26,13 @@ UNIT KitInitApplyUserEditsRenderDiscovery
 PURPOSE: Return an edited discovery preview to its approval menu.
 DO:
   EMIT_MENU KitInitDiscoveryApprovalMenu
+  SET PENDING_EDIT_BRANCH = unset
+  WAIT user.reply
+  STOP_TURN
+UNIT KitInitApplyUserEditsRenderCanonical
+PURPOSE: Return an edited canonical manifest preview to the existing-manifest menu.
+DO:
+  EMIT_MENU KitInitExistingManifestMenu
   SET PENDING_EDIT_BRANCH = unset
   WAIT user.reply
   STOP_TURN

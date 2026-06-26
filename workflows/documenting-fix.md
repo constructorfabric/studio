@@ -19,7 +19,7 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-write-policy-fix.md
   SET REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset
-  WHEN ReviewFindingsReport == unset OR (REVIEW_FINDINGS_REMAINING != unset AND REVIEW_FINDINGS_REMAINING == 0):
+  WHEN ReviewFindingsReport == unset OR REVIEW_FINDINGS_REMAINING == 0:
     EMIT "No review findings are loaded. Run cf-documenting-review first to identify issues, then return here to apply fixes."
     EMIT suggested_next_skills = [cf-documenting-review]
     STOP_TURN

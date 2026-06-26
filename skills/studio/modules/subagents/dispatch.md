@@ -46,8 +46,8 @@ ON_ERROR:
 MENU SubAgentApprovalRequest
 TITLE: Ready to run a background task — native mode runs it in a separate process (faster, isolated); inline keeps everything in this chat. Recommended: native.
 OPTIONS:
-  1 native (this time) -> SET SUB_AGENT_GROUP_DECISION = approve-once; CONTINUE dispatch
-  2 native (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = approve-session; CONTINUE dispatch
+  1 native (this time) -> SET SUB_AGENT_GROUP_DECISION = approve-once; CONTINUE SubAgentDispatchExecute
+  2 native (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = approve-session; CONTINUE SubAgentDispatchExecute
   3 inline (this time) -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each synthesized prompt inline for this dispatch group
   4 inline (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = inline-session; RUN each synthesized prompt inline for this and later dispatch groups
   5 cancel -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN

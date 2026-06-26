@@ -39,6 +39,8 @@ WHEN:
   REQUIRE WORKFLOW_PREP_EXPLORE_MENU is set
   REQUIRE WORKFLOW_PREP_BRAINSTORM_GATE is set
 DO:
+  EMIT "Using existing exploration context. Proceeding." WHEN RESOURCE_CONTEXT == provided AND RESOURCE_CONTEXT_TASK_KEY exactly matches the current normalized workflow-prep task key
+  CONTINUE WORKFLOW_PREP_BRAINSTORM_GATE WHEN RESOURCE_CONTEXT == provided AND RESOURCE_CONTEXT_TASK_KEY exactly matches the current normalized workflow-prep task key
   EMIT_MENU WorkflowPrepExploreRepeatMenu
   WAIT user.reply
   STOP_TURN
@@ -47,7 +49,6 @@ RULES:
   ALWAYS recommend skipping when existing resource_context still matches ORIGINAL_INTENT and no stale-context evidence is known
   ALWAYS show the stored RESOURCE_CONTEXT_TASK_KEY or concise provenance summary when asking whether to reuse context
   NEVER discard existing RESOURCE_CONTEXT unless the user chooses to run cf-explore again
-  ALWAYS auto-continue without emitting the menu when RESOURCE_CONTEXT == provided AND RESOURCE_CONTEXT_TASK_KEY matches the current normalized task key; emit a single-line status note "Using existing exploration context. Proceeding." when auto-continuing
 MENU WorkflowPrepExploreRepeatMenu
 TITLE: Existing cf-explore resource_context is already available for this workflow-prep task. Run cf-explore again only if the target changed or the context is stale; skip/reuse is suggested. Stored context task key: [RESOURCE_CONTEXT_TASK_KEY] (explored [RESOURCE_CONTEXT_PROVENANCE summary if available]). Reply with a number.
 OPTIONS:

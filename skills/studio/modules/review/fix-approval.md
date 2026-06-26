@@ -236,13 +236,11 @@ WHEN:
 DO:
   EMIT the following prompt, replacing bracketed values with live data from the active ReviewFindingsReport: "Select findings to fix by ID. Available: [list all IDs with severity, e.g. F-001 CRITICAL, F-002 MAJOR, F-003 MINOR]. Reply with one or more IDs separated by spaces or commas (e.g. F-001 F-003), or reply `back` to return to the findings browser."
   SET PARTIAL_IDS_CAPTURE_STATE = validate
-  CONTINUE ReviewFindingsReportBrowser WHEN user.reply == "back"
   WAIT user.reply
   STOP_TURN
 RULES:
   ALWAYS emit the available finding IDs with their severities before waiting for input
   ALWAYS emit the expected format example (e.g. F-001 F-003) in the prompt
-  ALWAYS handle `back` by returning to ReviewFindingsReportBrowser without changing REVIEW_FIX_SCOPE
   ALWAYS advance PARTIAL_IDS_CAPTURE_STATE to validate before stopping so the resumed turn cannot treat the scope-menu reply as finding-ID input
 ```
 
@@ -265,6 +263,7 @@ WHEN:
   REQUIRE REVIEW_FIX_MENU_TOKEN == ready
   REQUIRE REVIEW_FIX_MENU_REPORT == current
 DO:
+  CONTINUE ReviewFindingsReportBrowser WHEN user.reply == "back"
   CONTINUE ReviewFixPartialIdsRetry WHEN user.reply is empty OR user.reply names no finding IDs from the active ReviewFindingsReport
   CONTINUE ReviewFixPartialIdsReturn WHEN user.reply names one or more finding IDs from the active ReviewFindingsReport
 RULES:

@@ -24,6 +24,8 @@ OPTIONS:
 ```pdsl
 UNIT WriteDocsBrainstormGate
 PURPOSE: Offer decision/design exploration via cf-brainstorm as the next step after the explore gate, before any document is authored or reviewed.
+WHEN:
+  REQUIRE ORIGINAL_INTENT != unset
 DO:
   SET WORKFLOW_PREP_BRAINSTORM_MENU = WriteDocsBrainstormMenu
   SET WORKFLOW_PREP_DISPATCH_UNIT = PlanFirstGate
@@ -36,7 +38,7 @@ NOTES: To reduce turn count, callers may collapse this gate and WriteDocsExplore
 MENU WriteDocsBrainstormMenu
 TITLE: Before writing or reviewing docs, brainstorm ambiguous decisions or framing options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open framing questions. Reply with a number.
 OPTIONS:
-  1 brainstorm -> INVOKE skill `cf-brainstorm`; require it to return brainstorm_decisions, SET BRAINSTORM_DECISIONS = provided, then SET PLAN_FIRST_CONTINUE = WriteDocsDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
-  2 skip (suggested when approach is clear) -> SET PLAN_FIRST_CONTINUE = WriteDocsDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
+  1 brainstorm -> INVOKE skill `cf-brainstorm`; require it to return brainstorm_decisions, SET BRAINSTORM_DECISIONS = provided, then SET PLAN_FIRST_CONTINUE = WriteDocsAuthorDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
+  2 skip (suggested when approach is clear) -> SET PLAN_FIRST_CONTINUE = WriteDocsAuthorDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
   INVALID -> EMIT_MENU WriteDocsBrainstormMenu
 ```
