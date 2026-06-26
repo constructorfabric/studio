@@ -41,10 +41,11 @@ DO:
     EMIT "Review complete — no findings. Your code passed all checks."
     RUN NextActionsOffer
     STOP_TURN
-  OTHERWISE:
+  WHEN REVIEW_FINDINGS_REMAINING > 0:
     LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
     RUN ReviewFindingsReportBrowser
     RUN NextActionsOffer
+    STOP_TURN
 RULES:
   - NEVER apply fixes from coding-review
 ```

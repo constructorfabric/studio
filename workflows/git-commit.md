@@ -122,6 +122,28 @@ DO:
   RUN NextActionsOffer WHEN GIT_COMMIT_MODE == commit
 RULES:
   ALWAYS honor GIT_COMMIT_MODE strictly: stage means no commit; commit means stage plus commit; none never reaches this unit
+```
+
+```pdsl
+UNIT GitCommitMessageEdit
+PURPOSE: Let the user revise the planned commit message before the commit is created.
+DO:
+  EMIT the current PLANNED_GIT_COMMIT_INVOCATION message and trailers for review
+  EMIT "Enter your revised commit message, or reply 'cancel' to stop."
+  WAIT user.reply
+  STOP_TURN WHEN user.reply == "cancel"
+  SET PLANNED_GIT_COMMIT_INVOCATION = updated commit message from user.reply
+  SET GIT_COMMIT_AUDIT_PHASE = preflight
+  RUN GitCommitCommitAudit
+  RUN create the git commit for COMMIT_TARGET_PATHS using PLANNED_GIT_COMMIT_INVOCATION
+  SET STUDIO_CREATED_COMMIT_SHA = the created commit sha
+  SET GIT_COMMIT_AUDIT_PHASE = postcommit
+  RUN GitCommitCommitAudit
+  EMIT a completed SKILL_RESULT envelope with skill = cf-git-commit, status = completed, produced_artifacts = commit-result describing the created commit sha and scoped paths, report_outputs = [], missing_artifacts = [], assumptions = [], and suggested_next_skills = []
+  RUN NextActionsOffer
+RULES:
+  ALWAYS use the user-supplied revised message verbatim; NEVER auto-append trailers that were not in the original PLANNED_GIT_COMMIT_INVOCATION
+  NEVER commit without a non-empty commit message
   ALWAYS scope git mutations to COMMIT_TARGET_PATHS only
   ALWAYS run trailer audit before and after a Studio-created commit
   ALWAYS show the planned commit message, trailers, and file scope to the user before executing the git commit; wait for explicit confirmation

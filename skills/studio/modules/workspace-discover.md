@@ -8,15 +8,16 @@ STATE:
 DO:
   RUN `{cfs_cmd} --json info` to identify the root
   RUN `{cfs_cmd} --json workspace-init --dry-run` to scan nested repos
-  EMIT the discovered repos — name/path, adapter found or missing, inferred role
   LOAD {cf-studio-path}/.core/skills/studio/modules/workspace-configure.md
-  EMIT_MENU ZeroResultsMenu WHEN no repos were discovered
-  EMIT_MENU RepoSelectionMenu WHEN one or more repos were discovered
+  EMIT the discovered repos — name/path, adapter found or missing, inferred role
+  EMIT_MENU ZeroResultsMenu WHEN no repos were discovered; EMIT_MENU RepoSelectionMenu WHEN one or more repos were discovered
   WAIT user.reply
   STOP_TURN
 RULES:
   NEVER proceed to configure or write any config when zero repos are discovered, and NEVER infer sources from unrelated directories
   ALWAYS force standalone when any selected source is a Git URL
+  ALWAYS emit the suggested selection derived from discovered repo data before the RepoSelectionMenu (e.g. "Suggested: all N repos — adapters detected in each."); NEVER defer the suggestion to 'see loaded reference'
+  NEVER show the inline option in StorageModeMenu when any source is a Git URL; preemptively remove it from the menu and note the reason
 MENU ZeroResultsMenu
 TITLE: No workspace sources were discovered under the scan root. Reply with a number.
 OPTIONS:
@@ -24,8 +25,6 @@ OPTIONS:
   2 manual -> WAIT a manual source (name + path or URL), add it to candidates, then EMIT_MENU StorageModeMenu
   3 stop -> EMIT "Workspace discovery stopped with no sources selected."; RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
   INVALID -> EMIT_MENU ZeroResultsMenu
-RULES:
-  ALWAYS emit the suggested selection derived from discovered repo data before the menu (e.g. "Suggested: all N repos — adapters detected in each."); NEVER defer the suggestion to 'see loaded reference'
 MENU RepoSelectionMenu
 TITLE: Which repos should be included as workspace sources? Reply with numbers/names or `all`.
 OPTIONS:
@@ -33,8 +32,6 @@ OPTIONS:
   2 select -> parse the selection into the included-sources list, then EMIT_MENU StorageModeMenu
   3 cancel -> EMIT "Workspace discovery cancelled before source selection was completed."; RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
   INVALID -> EMIT_MENU RepoSelectionMenu
-RULES:
-  NEVER show the inline option when any source is a Git URL; preemptively remove it from the menu and note the reason
 MENU StorageModeMenu
 TITLE: Where should the workspace config live — standalone (.studio-workspace.toml) or inline ([workspace] in config/core.toml)? standalone works with all source types and is easier to version independently. Choose inline only if all sources are local paths and you need config colocated with your core project.
 OPTIONS:

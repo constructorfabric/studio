@@ -57,9 +57,9 @@ RULES:
   ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent
   ALWAYS resolve cf-* skills via WorkflowResolution, never by guessing and never via a CLI skills-list command
   ALWAYS exclude `cf`, `cf-analyze`, and `cf-generate` from AVAILABLE_SKILLS and companion groups; these are routers/entrypoints and must never be offered as companions
-  ALWAYS pass ORIGINAL_INTENT into every invoked skill when an intent is present
-  ALWAYS render each offered skill as `<skill-name> — <short description>` from AVAILABLE_SKILLS
+  ALWAYS pass ORIGINAL_INTENT into every invoked skill and render each offered skill as `<skill-name> — <short description>` from AVAILABLE_SKILLS
   ALWAYS support compatible companion multi-select, invoking selected skills sequentially so each skill's prerequisites and gates run in order
+INVARIANTS:
   NEVER let a companion or multi-select route bypass any selected skill's WAIT, STOP_TURN, approval, brainstorm, plan, validation, or sub-agent gate
   NEVER load or run any legacy analyze phase logic; routing is the only behavior
 NOTES:
