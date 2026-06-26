@@ -27,7 +27,7 @@ DO:
   LOAD {cf-studio-path}/.core/workflows/planning.md as the controlling integrable planning workflow
   CONTINUE PlanningBootstrap
 RULES:
-  - ALWAYS disclose the 5-step mandatory phase lifecycle to the user before they approve the plan; allow 'lightweight' reply to opt out of git and phase-close for non-release iterations
+  - ALWAYS disclose the 5-step mandatory phase lifecycle to the user before they approve the plan
   - ALWAYS decompose mixed kit changes into domain-scoped phases before execution
   - ALWAYS use the existing prompting and documenting and coding workflows instead of inventing kit-local authoring or review loops
   - ALWAYS route manifest or kit-configuration work through cf-kit outside this thin planning family

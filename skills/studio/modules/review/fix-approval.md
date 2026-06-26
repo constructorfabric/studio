@@ -263,6 +263,7 @@ WHEN:
   REQUIRE REVIEW_FIX_MENU_TOKEN == ready
   REQUIRE REVIEW_FIX_MENU_REPORT == current
 DO:
+  SET PARTIAL_IDS_CAPTURE_STATE = unset WHEN user.reply == "back"
   CONTINUE ReviewFindingsReportBrowser WHEN user.reply == "back"
   CONTINUE ReviewFixPartialIdsRetry WHEN user.reply is empty OR user.reply names no finding IDs from the active ReviewFindingsReport
   CONTINUE ReviewFixPartialIdsReturn WHEN user.reply names one or more finding IDs from the active ReviewFindingsReport

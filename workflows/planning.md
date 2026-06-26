@@ -55,8 +55,6 @@ UNIT PlanningBlocked
 PURPOSE: Emit the canonical blocked result when integrable planning lacks required inputs.
 DO:
   RUN BlockedReportContract
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
-  RUN NextActionsOffer
 RULES:
   - ALWAYS keep the blocked recovery path explicit and skill-oriented
   - NEVER auto-run a suggested producer skill from this path
