@@ -3,7 +3,7 @@ cf: true
 type: workflow
 name: cf-help
 version: 0.1
-description: "Invoke for cf help, /cf help, cf-studio help, /cf-studio help, or cfs help — presets a cf-explain storytelling walkthrough of Constructor Studio itself."
+description: "Invoke when the user or another skill or workflow needs or asks for cf help, Constructor Studio help, /cf help, /cf-studio help, cfs help, or asks how to use the Studio workflows and skills."
 purpose: Thin help router that presets the cf-explain storytelling help session and delegates to cf-explain
 ---
 

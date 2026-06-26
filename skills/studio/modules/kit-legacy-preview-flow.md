@@ -6,6 +6,7 @@ PURPOSE: Convert a legacy manifest.toml or conf.toml + layout source into a cano
 WHEN:
   REQUIRE TARGET_SOURCE == legacy_manifest OR TARGET_SOURCE == legacy_layout
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/kit-legacy-preview-menus.md
   RUN KitInitLegacySourcePreviewGenerate
   CONTINUE KitInitLegacySourcePreviewSuccess WHEN PREVIEW_STATUS == pass
   CONTINUE KitInitLegacySourcePreviewFailure WHEN PREVIEW_STATUS != pass
@@ -16,6 +17,9 @@ RULES:
   ALWAYS verify the normalized preview contains top-level `manifest_version = "1.0"`; never approve or write an unversioned manifest
   ALWAYS follow KitGeneratedNamePreviewContract before the approval menu renders any public generated-name preview
   NEVER write the canonical manifest before the approval menu resolves
+```
+
+```pdsl
 UNIT KitInitLegacySourcePreviewGenerate
 PURPOSE: Generate the legacy-source preview and classify its status.
 DO:

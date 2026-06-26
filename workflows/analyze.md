@@ -2,9 +2,9 @@
 cf: true
 type: workflow
 name: cf-analyze
-description: Invoke when the user asks to analyze, validate, review, inspect, audit, check, or compare any artifact, code, or instruction document.
+description: Invoke when the user or another skill or workflow explicitly asks for `cf-analyze` or `analyze`, asks for help choosing the right analysis skill, or needs a generic analysis router because no concrete review, validation, or inspection workflow has been chosen yet.
 version: 2.0
-purpose: Backwards-compatible entry point that routes an analyze intent to the most relevant cf-* skill or companion skill group available in the session, or helps the user describe intent when none is given.
+purpose: Backward-compatible generic analysis router that selects the most relevant concrete cf-* skill or companion skill group available in the session, or helps clarify analysis intent when none is given.
 ---
 
 # cf-analyze

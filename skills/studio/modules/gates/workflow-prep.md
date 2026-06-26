@@ -8,6 +8,8 @@ STATE:
   SET RESOURCE_CONTEXT_REF: reference | unset (default unset, scope workflow_run)
   SET RESOURCE_CONTEXT_TASK_KEY: string | unset (default unset, scope workflow_run)
   SET RESOURCE_CONTEXT_PROVENANCE: object | unset (default unset, scope workflow_run)
+  SET WORKFLOW_PREP_EXPLORE_MENU: menu-name | unset (default unset, scope workflow_run)
+  SET WORKFLOW_PREP_BRAINSTORM_GATE: unit-name | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE ORIGINAL_INTENT != unset
   REQUIRE WORKFLOW_PREP_EXPLORE_MENU is set
@@ -58,6 +60,8 @@ UNIT WorkflowPrepBrainstormGate
 PURPOSE: Offer decision or design exploration after the explore gate and before workflow dispatch.
 STATE:
   SET BRAINSTORM_DECISIONS: unset | provided (default unset, scope workflow_run)
+  SET WORKFLOW_PREP_BRAINSTORM_MENU: menu-name | unset (default unset, scope workflow_run)
+  SET WORKFLOW_PREP_DISPATCH_UNIT: unit-name | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE WORKFLOW_PREP_BRAINSTORM_MENU is set
   REQUIRE WORKFLOW_PREP_DISPATCH_UNIT is set

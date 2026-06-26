@@ -34,15 +34,12 @@ RULES:
   ALWAYS when the user replies with free text instead of a listed workflow number, treat that reply as ORIGINAL_INTENT, run matching, and EMIT_MENU MatchedIntentSkillMenu
   ALWAYS prefer concrete non-router workflows over router entrypoints during intent matching; treat cf-analyze (backwards-compatible router name) and cf-generate (backwards-compatible router name) as router entrypoints only when explicitly selected or when no concrete workflow matches
   NEVER offer an already-selected cf-* workflow through cf-analyze or cf-generate when a concrete workflow can execute the intent
-  ALWAYS populate MatchedIntentSkillMenu with relevant single skills and loaded compatible companion groups, tagging exactly one option `(suggested)`, when the prompt contains a task intent
-  ALWAYS when returning a companion route, return an ordered launch list of every selected concrete workflow plus ORIGINAL_INTENT, not only the added companion names
-  ALWAYS filter companion groups and comma-separated multi-selects so `cf`, `cf-analyze`, and `cf-generate` can never appear in a companion launch list
-  NEVER tag a skill (suggested) when the prompt contains no task intent
-  ALWAYS allow multi-select replies for compatible companion skills, formatted as comma-separated menu numbers
+  ALWAYS when a companion route is returned, populate MatchedIntentSkillMenu with relevant single skills and compatible companion groups (tagging exactly one option (suggested)), return an ordered launch list of every selected concrete workflow plus ORIGINAL_INTENT, and filter companion groups and multi-selects so `cf`, `cf-analyze`, and `cf-generate` never appear in a companion launch list
   NEVER load workflow-specific rules, ask sub-agent permission, or run explore/brainstorm/plan/validation from this root router
   ALWAYS treat migration from cypilot as a root-routed special case and offer the migrate-from-cypilot cleanup orchestrator before generic workflow matching
   ALWAYS treat unambiguous shutdown as a root-routed special case and run StudioShutdown before generic workflow matching
   NEVER route Brave New World off, debug off, autonomous-default mode off, or workflow-local mode disablement to StudioShutdown
+INVARIANTS:
   ALWAYS continue RootActiveSessionGitCommitRequestGate before routing, matching, executing, or delegating when the current user message explicitly asks Studio to create a git commit
   NEVER invoke, route, or delegate a requested git commit until GitCommitModeGate has resolved the session git policy and commit footer contract
 MENU IntentSkillMenu
@@ -50,7 +47,7 @@ TITLE: Pick a cf-* workflow by number, or choose describe intent / help me choos
 OPTIONS:
   1 skill -> SET SELECTED_WORKFLOW = selected cf-* skill; CONTINUE IntentDescribeCapture
   2 describe-intent | help-me-choose -> CONTINUE IntentDescribeCapture
-  3 none -> STOP_TURN
+  3 none -> EMIT "No workflow was selected. Control is returning to free mode."; STOP_TURN
   INVALID -> treat non-empty free text as ORIGINAL_INTENT, load companion-skills module when the text spans domains, run matching, and EMIT_MENU MatchedIntentSkillMenu; otherwise EMIT_MENU IntentSkillMenu
 MENU MatchedIntentSkillMenu
 TITLE: Matched cf-* workflow(s) for your intent — pick one to launch next, or pick a loaded companion group / comma-separated skills when the task spans domains.
@@ -58,7 +55,7 @@ OPTIONS:
   1 skill -> RETURN selected cf-* skill name plus ORIGINAL_INTENT for launch by the host/user; STOP_TURN
   2 companion-group -> RETURN ordered launch list of selected concrete companion cf-* workflow names plus ORIGINAL_INTENT for launch by the host/user in listed order; STOP_TURN
   3 other -> CONTINUE IntentAllSkillsMenu
-  4 none -> STOP_TURN
+  4 none -> EMIT "No workflow was launched. Control is returning to free mode."; STOP_TURN
   INVALID -> EMIT_MENU MatchedIntentSkillMenu
 NOTES:
   The activation-only menu enumerates every available cf-* skill as `N <skill-name> — <what it does>`, includes `describe intent / help me choose`, and appends `none`. The matched menu enumerates matched skills or loaded companion groups as `N <skill-or-group> — <why it matches>`, tags exactly one `(suggested)`, allows comma-separated compatible multi-select, and appends `none`. Actual workflow execution belongs to the selected workflow, not to this router.
@@ -82,6 +79,7 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md WHEN WorkflowResolution is not yet loaded
   RUN WorkflowResolution to resolve the available cf-* skills
   LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the prompt contains a task intent that spans more than one cf-* domain
+  RUN CompanionSkillResolutionSetup WHEN the prompt contains a task intent that spans more than one cf-* domain
   RUN matching of the intent against the resolved cf-* skill list to find relevant skill(s) and any loaded compatible companion groups WHEN the prompt contains a task intent
 ```
 
@@ -137,7 +135,6 @@ STATE:
 WHEN:
   REQUIRE SELECTED_COMPANION_SELECTION != unset
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
   RETURN ordered launch list of SELECTED_COMPANION_SELECTION excluding `cf`, `cf-analyze`, and `cf-generate`, plus ORIGINAL_INTENT for launch by the host/user
   STOP_TURN
 ```
@@ -147,6 +144,7 @@ UNIT IntentDescribeMatchReply
 PURPOSE: Match the resumed free-text intent when no deferred workflow selection is waiting.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the reply spans domains
+  RUN CompanionSkillResolutionSetup WHEN the reply spans domains
   RUN matching of the intent against the resolved cf-* skill list to find relevant skill(s) and any loaded compatible companion groups
   EMIT_MENU MatchedIntentSkillMenu
   WAIT user.reply
@@ -164,7 +162,7 @@ MENU AllCfSkillsMenu
 TITLE: All available cf-* workflow(s) — pick one, or enter comma-separated compatible skills for a companion route.
 OPTIONS:
   1 skill -> RETURN selected cf-* skill name plus ORIGINAL_INTENT for launch by the host/user WHEN ORIGINAL_INTENT is present; otherwise SET SELECTED_WORKFLOW = selected cf-* skill and CONTINUE IntentDescribeCapture
-  2 companion-selection -> LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md; filter out `cf`, `cf-analyze`, and `cf-generate`; RETURN ordered launch list of selected compatible concrete cf-* workflow names plus ORIGINAL_INTENT for launch by the host/user WHEN ORIGINAL_INTENT is present; otherwise LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md; filter out `cf`, `cf-analyze`, and `cf-generate`; SET SELECTED_COMPANION_SELECTION = selected compatible concrete cf-* workflow names and CONTINUE IntentDescribeCapture
-  3 none -> STOP_TURN
+  2 companion-selection -> filter out `cf`, `cf-analyze`, and `cf-generate`; RETURN ordered launch list of selected compatible concrete cf-* workflow names plus ORIGINAL_INTENT for launch by the host/user WHEN ORIGINAL_INTENT is present; otherwise filter out `cf`, `cf-analyze`, and `cf-generate`; SET SELECTED_COMPANION_SELECTION = selected compatible concrete cf-* workflow names and CONTINUE IntentDescribeCapture
+  3 none -> EMIT "No workflow was selected. Control is returning to free mode."; STOP_TURN
   INVALID -> treat non-empty free text as ORIGINAL_INTENT, load companion-skills module when the text spans domains, run matching, and EMIT_MENU MatchedIntentSkillMenu; otherwise EMIT_MENU AllCfSkillsMenu
 ```

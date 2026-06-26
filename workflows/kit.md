@@ -2,7 +2,7 @@
 cf: true
 type: workflow
 name: cf-kit
-description: "Invoke when user intent is initializing a kit folder, creating or validating .cf-studio-kit.toml, converting legacy manifest.toml, normalizing conf.toml + layout, or discovering resources for a new kit manifest."
+description: "Invoke when the user or another skill or workflow needs or asks to create or fix a Studio kit, initialize a kit folder, validate or edit .cf-studio-kit.toml, migrate a legacy manifest, normalize kit layout, or discover resources for a new kit."
 version: 0.1
 purpose: Initialize or revise a kit root into an exact canonical .cf-studio-kit.toml contract through explicit preview, approval, write, and validation gates.
 ---
@@ -30,21 +30,33 @@ RULES:
   ALWAYS load context-memory before storing or consuming kit discovery resource_context
   ALWAYS verify the kit normalize command surface before previewing, writing, or validating a kit manifest
   NEVER require cf or CFS_INIT before kit; this workflow owns its prerequisite loads
+```
+
+```pdsl
 UNIT KitInitEntry
 PURPOSE: Load the entry router and hand off into the current cf-kit session branch.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/kit-entry-router.md
   CONTINUE KitInitEntryRoute
+```
+
+```pdsl
 UNIT KitInitPreflight
 PURPOSE: Load the preflight branch before validating and routing the target directory.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/kit-target-preflight-route.md
   CONTINUE KitInitPreflightRun
+```
+
+```pdsl
 UNIT KitInitDiscoveryRun
 PURPOSE: Load the discovery branch before invoking read-only candidate discovery.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/kit-discovery-run.md
   CONTINUE KitInitDiscoveryRunStart
+```
+
+```pdsl
 UNIT KitInitDiscoveryProposal
 PURPOSE: Load the discovery proposal modules before synthesizing a canonical manifest preview.
 DO:
@@ -53,6 +65,9 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/kit-discovery-synthesize.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/kit-discovery-proposal.md
   CONTINUE KitInitDiscoveryProposalRun
+```
+
+```pdsl
 UNIT KitInitValidateWrittenManifest
 PURPOSE: Load the post-write validation branch before reporting deterministic status.
 DO:

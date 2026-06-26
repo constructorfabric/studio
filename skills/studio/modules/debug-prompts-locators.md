@@ -3,6 +3,9 @@
 ```pdsl
 UNIT DebugLocators
 PURPOSE: Attach a filename.md:N locator to every action, menu, unit, and instruction the debugger names.
+STATE:
+  SET SOURCE_LOC: locator | unset (default unset, scope workflow_run)
+  SET TARGET_LOC: locator | "(no file touched)" | unset (default unset, scope workflow_run)
 DO:
   SET LOCATOR(x) = "<filename>.md:<N>" where <filename>.md is the file that defines x and <N> is its real 1-based line number (the start line; use "<N>-<M>" for an explicit span)
   SET SOURCE_LOC = LOCATOR(the PDSL instruction currently at the breakpoint)

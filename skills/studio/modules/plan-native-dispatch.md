@@ -3,13 +3,18 @@
 ```pdsl
 UNIT PlanNativeExecute
 PURPOSE: Run native same-chat phase execution via the phase runner when sub-agents are approved.
+STATE:
+  SET CF_PHASE_GATE: released_for_orchestrator_write | released_for_dispatch | armed | unset (default armed, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
   RUN GitCommitModeGate before preparing git policy for phase runner dispatch
   RUN SubAgentDispatch to re-probe sub-agent approval + inline-fallback for the selected phase runner dispatch group
   RUN select phase runner isolation policy from plan lifecycle, gitignore state, and whether plan.toml plus declared outputs are worktree-visible
   EMIT "Selected phase runner: {selected_phase_runner}. Rationale: {phase_agent_isolation_rationale}. This determines whether execution writes against main-checkout plan state or an isolated worktree-visible surface."
-  SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected phase runner with plan_dir, target_phase=1, git_commit_mode, contributing_guide, and git_constraint, SET CF_PHASE_GATE = armed, then STOP_TURN WHEN approved AND not inline-fallback
+  SET CF_PHASE_GATE = released_for_dispatch WHEN approved AND not inline-fallback
+  DISPATCH the selected phase runner with plan_dir, target_phase=1, git_commit_mode, contributing_guide, and git_constraint WHEN approved AND not inline-fallback
+  SET CF_PHASE_GATE = armed WHEN approved AND not inline-fallback
+  STOP_TURN WHEN approved AND not inline-fallback
   EMIT "Native same-chat execution is unavailable (sub-agents not approved or inline fallback active) — use the handoff prompt instead." then EMIT the new-chat startup prompt in a single fenced code block and STOP_TURN WHEN not approved OR inline-fallback active
 RULES:
   NEVER dispatch without a successful sub-agent / inline-fallback re-probe — fall back to the handoff prompt instead

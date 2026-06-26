@@ -2,9 +2,9 @@
 cf: true
 type: workflow
 name: cf-generate
-description: Invoke when the user asks to create, update, edit, fix, implement, refactor, add, set up, configure, or build any artifact or code.
+description: Invoke when the user or another skill or workflow explicitly asks for `cf-generate` or `generate`, asks for help choosing the right authoring skill, or needs a generic create-or-update router because no concrete coding, documenting, prompting, or kit workflow has been chosen yet.
 version: 2.0
-purpose: Backwards-compatible entry point that routes a generate intent to the most relevant cf-* skill or companion skill group available in the session, or helps the user describe intent when none is given.
+purpose: Backward-compatible generic authoring router that selects the most relevant concrete cf-* skill or companion skill group available in the session, or helps clarify create-or-update intent when none is given.
 ---
 
 # cf-generate

@@ -18,7 +18,9 @@ RULES:
   ALWAYS preserve decisions and open questions when routing
   ALWAYS synthesize the routed next steps from the current context and the available cf-* skills, never a fixed or guessed list, and mark exactly one (suggested)
   ALWAYS synthesize each routed next step by matching the current decisions, open questions, and unresolved topics to a cf-* skill's purpose, include only skills that fit the context, mark the best-fitting one (suggested), and NEVER offer a generic skill that does not align with the current context
+  ALWAYS include `cf-explain` as a routed next step when the decisions or open questions would benefit from a walkthrough or summary of the brainstorm result
   ALWAYS set status="handoff" and next_route to the chosen route's cf-* skill (for example generate, plan, or analyze) when a routed next step is chosen
+INVARIANTS:
   ALWAYS RETURN the BRAINSTORM_RESULT envelope on every terminal wrap option; human-facing wrap text is not a substitute for it
 NOTES:
   Envelope shape: { "type": "BRAINSTORM_RESULT", "status": "wrapped|handoff|checkpointed|cancelled", "decisions_count": <int>, "open_questions_count": <int>, "next_route": "<cf-* skill name (e.g. generate, plan, analyze)>|null" }
@@ -37,6 +39,8 @@ NOTES:
 ```pdsl
 UNIT BrainstormDispatch
 PURPOSE: Name the sub-agents and the cf-explore skill, and when each is used.
+NOTES:
+  BrainstormDispatch is the canonical source for brainstorm sub-agent dispatch policy. The bootstrap RULES in brainstorm.md defer to this unit for dispatch specifics.
 RULES:
   ALWAYS run cf-brainstorm-facilitator from {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-facilitator.md inline when PANEL_MODE == inline, else dispatch it natively to propose the panel + seed topic
   ALWAYS gather resource_context after panel confirmation by INVOKE skill `cf-explore` with intent=brainstorm and return_context=true (cf-explore returns resource_context and control returns here), NEVER by dispatching the cf-explorer sub-agent directly

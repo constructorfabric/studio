@@ -3,6 +3,8 @@
 ```pdsl
 UNIT PlanPhase3Compile
 PURPOSE: Write plan.toml and one brief per phase, then choose how to produce phase files (Phase 3).
+STATE:
+  SET CF_PHASE_GATE: released_for_orchestrator_write | released_for_dispatch | armed | unset (default armed, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/requirements/plan-template.md and {cf-studio-path}/.core/requirements/brief-template.md and follow them
   SET CF_PHASE_GATE = released_for_orchestrator_write (scope plan.toml), WRITE {cf-studio-path}/.plans/{task-slug}/plan.toml ([meta] + [plan] + [[phases]] per the template), SET CF_PHASE_GATE = armed

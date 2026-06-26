@@ -22,6 +22,8 @@ RULES:
 ```pdsl
 UNIT PlanPhaseCompilerDispatchRun
 PURPOSE: Open the phase gate, dispatch compiler agents, and persist the dispatched state.
+STATE:
+  SET CF_PHASE_GATE: released_for_orchestrator_write | released_for_dispatch | armed | unset (default armed, scope workflow_run)
 DO:
   SET CF_PHASE_GATE = released_for_dispatch
   DISPATCH the selected compiler agent per brief (gated), with dispatch_group_id recorded in plan.toml

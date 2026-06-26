@@ -15,12 +15,14 @@ DO:
   EMIT_MENU GenerateFailureMenu WHEN the CLI failed
 RULES:
   NEVER invoke the write CLI unless all_sources_confirmed == true and the location is valid; NEVER use --inline against a Git URL source set
-  ALWAYS set CF_PHASE_GATE (an external protocol var; see the loaded reference) to released_for_orchestrator_write (scoped) before the CLI and armed immediately after it returns
+  ALWAYS set CF_PHASE_GATE (defined in {cf-studio-path}/.core/skills/studio/modules/plan-compile.md; released_for_orchestrator_write = open for file write, armed = write blocked) to released_for_orchestrator_write (scoped) before the CLI and armed immediately after it returns
 ```
 
 ```pdsl
 UNIT WorkspaceGenerateWrite
 PURPOSE: Open the write gate, run the workspace generation CLIs, and re-arm the gate.
+STATE:
+  SET CF_PHASE_GATE: released_for_orchestrator_write | released_for_dispatch | armed | unset (default armed, scope workflow_run)
 DO:
   SET CF_PHASE_GATE = released_for_orchestrator_write (scope: workspace_config_path)
   RUN `{cfs_cmd} --json workspace-init [--root <super-root>] [--output <path>] [--inline] [--force] [--dry-run]`

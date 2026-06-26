@@ -3,6 +3,8 @@
 ```pdsl
 UNIT StudioShutdown
 PURPOSE: Turn the studio off only after explicit user confirmation, then forget all loaded `content` and `rules` for the session.
+STATE:
+  SET CFS_INIT: true | false | unset (default unset, scope session)
 WHEN:
   REQUIRE the user intent is an unambiguous request to turn off, disable, or shut down Constructor Studio itself
   REQUIRE the user intent is not only disabling an overlay, mode, debugger, autonomous defaults, or a workflow-local feature
@@ -22,6 +24,6 @@ MENU StudioShutdownConfirm
 TITLE: Confirm: turning the studio off will FORGET all loaded `content` and `rules` for this session.
 OPTIONS:
   1 confirm -> SET CFS_INIT = false; forget/unload all `content` and all `rules` from the session
-  2 cancel -> STOP_TURN
+  2 cancel -> EMIT "Studio shutdown cancelled. The current session remains active."; STOP_TURN
   INVALID -> EMIT_MENU StudioShutdownConfirm
 ```

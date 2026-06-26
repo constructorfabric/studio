@@ -19,6 +19,7 @@
   - [3.6 Interactions & Sequences](#36-interactions--sequences)
   - [3.7 Database schemas & tables](#37-database-schemas--tables)
 - [4. Additional context](#4-additional-context)
+  - [Thin Skill Runtime](#thin-skill-runtime)
   - [Performance Considerations](#performance-considerations)
   - [Extensibility Model](#extensibility-model)
   - [Migration Strategy](#migration-strategy)
@@ -36,6 +37,13 @@
 Studio uses a layered architecture with a thin global CLI proxy at the top, a deterministic skill engine at the core, and a kit system for domain-specific functionality. The architecture maximizes determinism: all validation, scanning, and transformation is handled by Python scripts with JSON output; LLMs are reserved only for reasoning tasks within agent workflows.
 
 The system separates concerns into five layers: Global CLI Proxy (installation, caching, version management), Core Skill Engine (command routing, deterministic execution), Kit System (GitHub-based kit installation, domain-specific file packages: rules, templates, checklists, constraints, workflows), Config Management (structured config directory, schema validation), and Agent Integration (multi-agent entry point generation). Each layer has clear boundaries and communicates through well-defined interfaces.
+
+Within the Core Skill Engine, the target AI runtime is module-first and
+artifact-centered: standalone skills stay thin and user-facing, while reusable
+behavior such as prerequisite resolution, blocked reporting, result-envelope
+contracts, review/report loops, and git policy handling lives in shared
+modules. Kits are expected to build on those modules rather than copying heavy
+workflow logic.
 
 Each kit is a file package: a collection of artifact definitions (rules, checklists, templates, examples, constraints, workflows, scripts) installable from GitHub repositories and copied into the kit's config directory (default: `{cf-studio-path}/config/kits/<slug>/`) during installation. Kit git ownership is per kit: tracked kits use file-level diff on update, while ignored kits are generated/ephemeral and may be overwritten without per-file prompts. `install.kit_tracking` is only a default/backcompat policy; each kit registration can override it with `kits.<slug>.tracking`. The core knows about kits through registration in `{cf-studio-path}/config/core.toml` with source provenance, display/backcompat version, verification state, tracking policy, install mode, and effective resource bindings or manifest-root state. Studio core does not bundle any domain-specific kits — all kits are external packages. During `cfs init`, the user is prompted to install the SDLC kit (`constructorfabric/studio-kit-sdlc`) with `[a]ccept / [d]ecline`. A plugin system for custom hooks and CLI subcommands is planned for p2.
 
@@ -300,6 +308,7 @@ The following architecture decision records (ADRs) drive the design:
 - `cpt-studio-adr-unified-manifest-hierarchy` — unified manifest.toml v2.0 with the currently approved four-layer walk-up discovery baseline for project-level extensibility (Core → Kit → Master Repo → Repo); broader organization/project layers remain deferred follow-up scope
 - `cpt-studio-adr-rebrand-and-mirror-override` — rebrand to Constructor Studio (`cfs`) and global mirror-override capability
 - `cpt-studio-adr-github-release-version-authority` — GitHub Release/tag provenance as the version authority for GitHub-backed proxy and kit state
+- `cpt-studio-adr-thin-skills-module-first` — thin standalone skills, shared runtime modules, canonical artifacts, and unified result envelopes for the AI runtime
 
 ### 1.3 Architecture Layers
 
@@ -1342,6 +1351,61 @@ Not applicable — Studio does not use a database. All persistent state is store
 
 ## 4. Additional context
 
+### Thin Skill Runtime
+
+Studio is moving from heavy end-to-end workflows toward a symmetric runtime for
+code, docs, and prompt/skill artifacts:
+
+- **standalone skills**: thin user-facing entrypoints such as `coding-gen`,
+  `coding-tests`, `coding-review`, `coding-fix`, `coding-ci`,
+  `documenting-gen`, `documenting-review`, `documenting-fix`,
+  `documenting-ci`, `prompting-gen`, `prompting-review`, `prompting-fix`, and
+  `prompting-ci`
+- **shared modules**: prerequisite checks, blocked reports, handoff
+  suggestions, assumption overrides, findings rendering, phase-close, and git
+  policy modules
+- **canonical artifacts**: `resource-context`, `phase-plan`, `phase-dod`,
+  `unit-tests`, `e2e-tests`, `review-findings`, `deterministic-report`, and
+  related artifacts shared across skill boundaries
+- **result envelope**: one canonical top-level shape with `type`, `skill`,
+  `status`, `produced_artifacts`, `report_outputs`, `missing_artifacts`,
+  `assumptions`, and `suggested_next_skills`
+
+The runtime registries are explicit rather than inferred:
+
+- the standalone skill set is named and source-controlled
+- the shared runtime module set is named and loaded intentionally by generated
+  shims
+- the canonical artifact set is the reserved cross-skill exchange vocabulary
+- every standalone skill `description` is a routing hint for the LLM, starts
+  with `Invoke when`, and describes trigger intent rather than compatibility or
+  implementation details
+- every standalone skill `purpose` describes internal responsibility and
+  execution role rather than routing intent or metadata labeling
+- every user-returning blocked, completed, completed-with-assumptions, and
+  failed state provides a clear numbered next-actions menu instead of
+  envelope-plus-prose only
+- every user-facing menu includes explicit `back` navigation to the previous
+  workflow-owned decision point, or a safe terminal return when no earlier menu
+  exists
+- when a workflow finishes with meaningful output, next actions include
+  `cf-explain` so the user can ask for a walkthrough of what was done, what
+  changed, or how to read the resulting artifacts
+
+Blocked behavior is also explicit. Missing prerequisite artifacts produce a
+visible `blocked` envelope that lists the missing artifact types, accepted
+shapes, suggested producer skills, and whether a user-visible override path is
+legal.
+
+Kits may add their own thin entrypoints, but they are expected to reuse the
+shared runtime modules and canonical result/artifact contracts rather than
+forking statuses or embedding heavy orchestration locally.
+
+This design is specified in
+[architecture/specs/thin-skill-runtime.md](./specs/thin-skill-runtime.md) and
+recorded in
+[ADR-0022](./ADR/0022-cpt-studio-adr-thin-skills-module-first-v1.md).
+
 ### Performance Considerations
 
 The validator uses single-pass scanning to meet the ≤ 3 second requirement. Artifacts are read once into memory, and all checks (template structure, ID format, constraints, cross-references) are performed in a single traversal. No external calls (network, database, LLM) are made during validation.
@@ -1448,6 +1512,7 @@ The following design domains do not require dedicated architecture sections. Eac
   - `cpt-studio-adr-git-style-conflict-markers` — git-style conflict markers for interactive merge
   - `cpt-studio-adr-prefer-cpt-cli-for-agents` — prefer `cpt` CLI over direct script invocation in agent prompts; graceful fallback to raw Python path
   - `cpt-studio-adr-ralphex-delegation-skill` — dedicated `cf-ralphex` skill with bounded delegation contract for autonomous plan execution via ralphex
+  - `cpt-studio-adr-thin-skills-module-first` — thin standalone skills with a module-first runtime and canonical artifact/result contracts
 - **Features**: [features/](./features/) — `core-infra.md`, `kit-management.md`, `traceability-validation.md`, `agent-integration.md`, `version-config.md`, `developer-experience.md`, `spec-coverage.md`, `v2-v3-migration.md`, `workspace.md`, `ralphex-delegation.md`, `subagent-registration.md`
 
 ### Specifications

@@ -2,7 +2,7 @@
 cf: true
 type: workflow
 name: cf-auto-config
-description: "Invoke for requests to auto-config, initialize a project, discover config, set up a kit, set up agent integration, configure a workspace, or scan a brownfield project."
+description: "Invoke when the user or another skill or workflow needs or asks to bootstrap or auto-config a project, initialize Constructor Studio, discover existing setup, wire agent integration, set up a kit, configure a workspace, or scan a brownfield repo to generate project rules."
 version: 0.1
 purpose: Scan a brownfield project and generate per-topic rule files plus AGENTS.md navigation and registry entries, confirming at every checkpoint and never writing without approval.
 ---
@@ -26,7 +26,12 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/auto-config.md as the phase-by-phase methodology reference
   RUN verify the methodology loaded; RETURN a failed AUTO_CONFIG_RESULT with reason="Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md" and recovery="reinstall or sync the studio kit, then retry auto-config" and STOP_TURN WHEN the load fails
   SET ORIGINAL_INTENT = the user's triggering auto-config request (verbatim or shortest faithful summary)
-  SET PLAN_FIRST_CONTINUE = AutoConfigPrecheckGate, SET CURRENT_WORKFLOW = cf-auto-config, SET COMPANION_CONTINUE = PlanFirstGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer
+  SET PLAN_FIRST_CONTINUE = AutoConfigPrecheckGate
+  SET CURRENT_WORKFLOW = cf-auto-config
+  SET COMPANION_CONTINUE = PlanFirstGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md
+  CONTINUE CompanionSkillOffer
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before auto-config prechecks, routing, scanning, or writes
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, or delegation

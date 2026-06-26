@@ -21,7 +21,11 @@ PURPOSE: Choose a lifecycle, decompose into phases, predict per-phase budget, an
 STATE:
   SET lifecycle: gitignore | cleanup | archive | manual (default unset, scope workflow_run)
 DO:
-  LOAD {cf-studio-path}/.core/requirements/plan-decomposition.md and follow it
+  LOAD {cf-studio-path}/.core/requirements/plan-decomposition.md
+  RUN follow the plan-decomposition.md methodology rules
+  LOAD {cf-studio-path}/.core/skills/studio/modules/planning-runtime.md
+  RUN PlanningPhaseContract
+  RUN PlanningChecklistContract
   RUN select a lifecycle from the STATE lifecycle options (gitignore | cleanup | archive | manual)
   RUN decompose by task-type strategy into phases (sections/categories/CDSL blocks), map intermediate results to out/ artifacts, insert review gates where the target workflow requires approval, and predict per-phase context budget — split any phase over 2000 lines
   LOAD {cf-studio-path}/.core/skills/studio/modules/plan-compile.md
@@ -31,6 +35,7 @@ DO:
   STOP_TURN
 RULES:
   NEVER write any file before this confirmation, and NEVER hide raw-input chunk estimates in vague totals
+  ALWAYS normalize decomposed phases against the shared PlanningPhaseContract and PlanningChecklistContract before standalone packaging begins
 MENU DecompositionConfirmMenu
 TITLE: Explicit confirmation required before writing plan.toml + briefs. This writes plan.toml + N brief files under .plans/{task-slug}/; after confirming you choose how to produce phase files. Proceed with this decomposition?
 OPTIONS:

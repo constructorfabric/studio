@@ -2,6 +2,8 @@
 ```pdsl
 UNIT DebugBreakpointMatch
 PURPOSE: Decide whether the pending action hits an enabled breakpoint.
+STATE:
+  SET BP_HIT: breakpoint | none | unset (default unset, scope workflow_run)
 DO:
   SET BP_HIT = the first enabled breakpoint in DEBUG_BREAKPOINTS that matches the pending action; else none
   RUN skip disabled breakpoints during matching

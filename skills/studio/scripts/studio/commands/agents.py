@@ -755,7 +755,6 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
             "cf:tier:expensive": "gpt-5.5",
         },
         "overrides": {
-            ("cf:tier:balanced", "generate", "codebase"): "gpt-5.3-codex",
             ("cf:tier:cheap", "analyze",  "codebase"):  "gpt-5.4",
             ("cf:tier:cheap", "planning", "codebase"):  "gpt-5.4",
             ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.4",

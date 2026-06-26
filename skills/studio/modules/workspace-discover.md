@@ -22,19 +22,19 @@ TITLE: No workspace sources were discovered under the scan root. Reply with a nu
 OPTIONS:
   1 new-root -> WAIT a new scan root and re-scan, then CONTINUE WorkspaceDiscover
   2 manual -> WAIT a manual source (name + path or URL), add it to candidates, then EMIT_MENU StorageModeMenu
-  3 stop -> RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
+  3 stop -> EMIT "Workspace discovery stopped with no sources selected."; RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
   INVALID -> EMIT_MENU ZeroResultsMenu
 MENU RepoSelectionMenu
 TITLE: Which repos should be included as workspace sources? Reply with numbers/names or `all` (see loaded reference for the suggested default).
 OPTIONS:
   1 select -> parse the selection into the included-sources list, then EMIT_MENU StorageModeMenu
-  2 cancel -> RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
+  2 cancel -> EMIT "Workspace discovery cancelled before source selection was completed."; RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
   INVALID -> EMIT_MENU RepoSelectionMenu
 MENU StorageModeMenu
 TITLE: Where should the workspace config live — standalone (.studio-workspace.toml) or inline ([workspace] in config/core.toml)? (see loaded reference; inline is unavailable with Git URL sources)
 OPTIONS:
   1 standalone -> SET location = standalone, RETURN a WORKSPACE_STATUS record (phase=discover, status=complete, next_route=configure), then CONTINUE WorkspaceConfigure
   2 inline -> EMIT "Inline storage is not supported for Git URL sources; please choose standalone storage or change the selected repos." and EMIT_MENU StorageModeMenu WHEN any selected source is a Git URL, else SET location = inline, RETURN a WORKSPACE_STATUS record (phase=discover, status=complete, next_route=configure), then CONTINUE WorkspaceConfigure
-  3 cancel -> RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
+  3 cancel -> EMIT "Workspace setup cancelled before choosing a storage mode."; RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
   INVALID -> EMIT_MENU StorageModeMenu
 ```

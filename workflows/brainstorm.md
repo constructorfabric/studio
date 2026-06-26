@@ -2,7 +2,7 @@
 cf: true
 type: workflow
 name: cf-brainstorm
-description: "REQUIRED before any creative task. Invoke for requests to brainstorm, ideate, explore options, explore design, discover requirements, map options, or compare decision tradeoffs."
+description: "Invoke when the user or another skill or workflow needs or asks to brainstorm, think through options, compare approaches, explore tradeoffs, shape a design, clarify requirements, figure out what to do, or work through an uncertain decision before implementation."
 version: 0.1
 purpose: Run an expert panel that explores a topic over rounds, walks questions one at a time, consolidates decisions, and routes to a next step.
 ---
@@ -27,8 +27,11 @@ DO:
   RUN WorkflowBootstrapStudioInstructionsMemory
   SET ORIGINAL_INTENT = the user's triggering brainstorm request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
-  SET CURRENT_WORKFLOW = cf-brainstorm, SET COMPANION_CONTINUE = BrainstormOffer and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset
-  CONTINUE BrainstormOffer WHEN ORIGINAL_INTENT == unset
+  SET CURRENT_WORKFLOW = cf-brainstorm WHEN ORIGINAL_INTENT != unset
+  SET COMPANION_CONTINUE = BrainstormOffer WHEN ORIGINAL_INTENT != unset
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN ORIGINAL_INTENT != unset
+  CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset
+  CONTINUE BrainstormTopicCapture WHEN ORIGINAL_INTENT == unset
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before brainstorm routing, panel setup, or rounds
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, or delegation

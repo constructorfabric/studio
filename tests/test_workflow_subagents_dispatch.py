@@ -1878,6 +1878,44 @@ def test_substantive_workflows_load_plan_first_at_relevant_stage() -> None:
         assert "modules/gates/plan-first.md" not in text
 
 
+def test_kit_thin_workflows_delegate_to_specialist_routes() -> None:
+    """Kit thin workflows should reuse prompting/documenting/coding and hand off manifest work to cf-kit."""
+    repo_root = Path(__file__).resolve().parents[1]
+
+    kit_planning = (repo_root / "workflows" / "kit-planning.md").read_text(encoding="utf-8")
+    assert "prompting-gen" in kit_planning
+    assert "documenting-gen" in kit_planning
+    assert "coding-gen" in kit_planning
+    assert "cf-kit" in kit_planning
+
+    kit_gen = (repo_root / "workflows" / "kit-gen.md").read_text(encoding="utf-8")
+    assert "LOAD {cf-studio-path}/.core/workflows/prompting-gen.md" in kit_gen
+    assert "LOAD {cf-studio-path}/.core/workflows/documenting-gen.md" in kit_gen
+    assert "LOAD {cf-studio-path}/.core/workflows/coding-gen.md" in kit_gen
+    assert "LOAD {cf-studio-path}/.core/workflows/kit.md" not in kit_gen
+    assert "KIT_WORK_DOMAIN == manifest" in kit_gen
+
+    kit_review = (repo_root / "workflows" / "kit-review.md").read_text(encoding="utf-8")
+    assert "LOAD {cf-studio-path}/.core/workflows/prompting-review.md" in kit_review
+    assert "LOAD {cf-studio-path}/.core/workflows/documenting-review.md" in kit_review
+    assert "LOAD {cf-studio-path}/.core/workflows/coding-review.md" in kit_review
+    assert "CONTINUE CodingReviewEntry" in kit_review
+    assert "KIT_WORK_DOMAIN == manifest" in kit_review
+
+    kit_ci = (repo_root / "workflows" / "kit-ci.md").read_text(encoding="utf-8")
+    assert "LOAD {cf-studio-path}/.core/workflows/prompting-ci.md" in kit_ci
+    assert "LOAD {cf-studio-path}/.core/workflows/documenting-ci.md" in kit_ci
+    assert "LOAD {cf-studio-path}/.core/workflows/coding-ci.md" in kit_ci
+    assert "KitThinRouteBlocked" in kit_ci
+    assert "{cfs_cmd} validate-kits" not in kit_ci
+
+    kit_fix = (repo_root / "workflows" / "kit-fix.md").read_text(encoding="utf-8")
+    assert "LOAD {cf-studio-path}/.core/workflows/prompting-fix.md" in kit_fix
+    assert "LOAD {cf-studio-path}/.core/workflows/documenting-fix.md" in kit_fix
+    assert "LOAD {cf-studio-path}/.core/workflows/coding-fix.md" in kit_fix
+    assert "KIT_WORK_DOMAIN == manifest" in kit_fix
+
+
 def test_explore_is_resource_context_prep_not_review_execution() -> None:
     """Explore must gather context for the selected workflow, not perform its review."""
     repo_root = Path(__file__).resolve().parents[1]

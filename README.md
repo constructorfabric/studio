@@ -282,7 +282,12 @@ Base Constructor Studio skills:
 | `cf-explain: ...` | Walk through a document, pull request, code area, or decision. |
 | `cf-map: ...` | Render or inspect the dependency map across documents and code. |
 | `cf-workspace: ...` | Configure or work across multiple repositories. |
-| `cf-kit: ...` | Create, validate, or update kit configuration. |
+| `cf-kit: ...` | Create, normalize, validate, or update kit manifests and kit configuration. |
+| `cf-kit-planning: ...` | Plan mixed kit work into prompt, document, code, and manifest phases. |
+| `cf-kit-gen: ...` | Write scoped kit assets by routing to prompting, documenting, coding, or manifest workflows. |
+| `cf-kit-review: ...` | Review scoped kit assets through the matching specialist workflow. |
+| `cf-kit-ci: ...` | Run deterministic validation for scoped kit assets or kit manifests. |
+| `cf-kit-fix: ...` | Apply approved findings for scoped kit assets through the matching specialist workflow. |
 | `cf-debug-prompts: ...` | Debug skill or workflow behavior live, either in full step mode or via the lighter session run-mode gate. |
 | `cf-brave-new-world` | Let Studio choose safe, reversible workflow defaults during a session. |
 

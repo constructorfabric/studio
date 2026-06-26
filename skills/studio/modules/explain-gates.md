@@ -38,4 +38,5 @@ RULES:
   ALWAYS handle Edit/Pivot/Cancel from the plan gate per storytelling-gate
   ALWAYS on a plan-gate Cancel, RETURN an EXPLAIN_RESULT envelope with status="cancelled" and STOP_TURN
   NEVER enter E2 before the plan-approval gate resolves
+  NEVER emit portion content or inline explanation text after plan approval — ALWAYS hand control to ExplainE2Deliver, which owns the portion-delivery loop; emitting all plan portions in one response from ExplainE1Gates is an AP#0 violation equivalent to skipping E2 entirely
 ```

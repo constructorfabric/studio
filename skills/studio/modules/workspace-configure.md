@@ -19,6 +19,6 @@ TITLE: Confirm source settings (fields + suggested defaults in the loaded refere
 OPTIONS:
   1 approve -> mark the source confirmed, then CONTINUE WorkspaceConfigure WHEN unconfirmed sources remain, else SET all_sources_confirmed = true, RETURN a WORKSPACE_STATUS record (phase=configure, status=complete, next_route=generate), then CONTINUE WorkspaceGenerate
   2 field-edits | edit -> apply edits to the named fields; SET all_sources_confirmed = unset (the edited source must be re-confirmed); reject and reset to standalone WHEN the edit changes location to inline AND any source is a Git URL; re-show the proposal and EMIT_MENU SourceConfirmMenu
-  3 cancel -> RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
+  3 cancel -> EMIT "Workspace configuration cancelled before all sources were confirmed."; RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
   INVALID -> EMIT_MENU SourceConfirmMenu
 ```

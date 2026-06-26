@@ -2,7 +2,7 @@
 cf: true
 type: workflow
 name: cf-map
-description: "Invoke when the user asks to build a dependency map, visualize cross-references, scan markdown/code, detect phantom cpts, or render the HTML map viewer."
+description: "Invoke when the user or another skill or workflow needs or asks to map dependencies, visualize cross-references, scan markdown and code links, inspect relationships between artifacts, detect phantom cpts, or render the interactive map viewer."
 version: 0.1
 purpose: Drive the cfs map CLI to scan markdown and source for dependencies and cpt cross-references, render an interactive HTML map or JSON graph, and detect dangling references, confirming scope before scanning and never writing config without approval.
 ---
@@ -24,7 +24,10 @@ DO:
   RUN WorkflowBootstrapStudioInstructionsMemory
   RUN WorkflowBootstrapCommandTemplateContext
   SET ORIGINAL_INTENT = the user's triggering map request (verbatim or shortest faithful summary)
-  SET CURRENT_WORKFLOW = cf-map, SET COMPANION_CONTINUE = MapIntentRouter and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer
+  SET CURRENT_WORKFLOW = cf-map
+  SET COMPANION_CONTINUE = MapIntentRouter
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
+  CONTINUE CompanionSkillOffer
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before map routing, preflight, scanning, config assist, or handoff
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, git use, or delegation
@@ -32,6 +35,9 @@ RULES:
   ALWAYS load template-vars before resolving map output paths or unknown template variables
   ALWAYS load context-memory before passing a generated map artifact as resource_context to another workflow
   NEVER require cf or CFS_INIT before map; this workflow owns its prerequisite loads
+```
+
+```pdsl
 UNIT MapNextActions
 PURPOSE: Load terminal next actions after map scan/render work is complete.
 DO:

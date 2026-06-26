@@ -2,7 +2,7 @@
 cf: true
 type: workflow
 name: cf-explore
-description: "Invoke for requests to explore, discover context, find relevant files, locate architecture docs, locate artifacts, search code references, or gather task-relevant resource context."
+description: "Invoke when the user or another skill or workflow needs or asks to explore the codebase, figure out where something lives, find relevant files, locate docs or artifacts, search references or call sites, map dependencies, or gather context before planning, writing, or reviewing."
 version: 0.1
 purpose: Discover task-relevant project resource context via a read-only sub-agent and return a controller-owned resource map without polluting the shared context pack.
 ---
