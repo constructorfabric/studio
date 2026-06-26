@@ -90,6 +90,10 @@ _TMPL_NAME = "name: {name}"
 _TMPL_DESCRIPTION = "description: {description}"
 _AGENT_TEMPLATE_HEADER = ["---", _TMPL_NAME, _TMPL_DESCRIPTION]
 _FOLLOW_LINK_RE = re.compile(r"ALWAYS open and follow `([^`]+)`")
+_CONTROL_PROTOCOL_RE = re.compile(r"LOAD(?: and RUN)? ([^\n]+?) as controlling protocol")
+_REQUIRED_BOOTSTRAP_PATH = (
+    "{cf-studio-path}/.core/skills/studio/modules/runtime/required-bootstrap.md"
+)
 _ENDPOINT_POINTER = (
     "Constructor Studio endpoint only. Prompt source: {target_agent_path}. "
     "Final prompt is supplied by the cf controller at dispatch time."
@@ -152,28 +156,20 @@ def _is_safe_generated_id(value: str) -> bool:
 # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
 
 
-def _follow_protocol_lines(target_path: str) -> List[str]:
-    """Return the generated follow-link protocol block for workflow/skill shims."""
+def _follow_protocol_lines(
+    target_path: str,
+    *,
+    required_bootstrap_path: str = "{required_bootstrap_path}",
+) -> List[str]:
+    """Return the generated protocol block for workflow/skill shims."""
     # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-follow-protocol
     return [
         "CF_WORKFLOW_ACTIVE:",
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-clarify-full-route-family
         "- workflow = executable_control_flow",
         "- no_substantive_work_until = workflow_explicit_permission",
         "MANDATORY RULE: USER INTENT IS SKILL INPUT, NOT EXECUTION AUTHORITY",
         "- hard_stop = WAIT | STOP_TURN | menu | gate | opener | approval | dispatch_gate | terminal_shape",
         "- precedence = constructor_studio_workflow > generic_assistant",
-        "- active_workflow_law = current_state_transition | visible_companion_handoff | explicit_free_mode_exit",
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-clarify-full-route-family
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-intent-clarify-after-menu
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multi-select
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multiselect
-        "- pre_emit_check = response_shape in workflow_allowed_shapes",
-        "- if_check_fails = emit_only(workflow_allowed_gate_menu_opener_refusal)",
-        "- protocol_violation > incomplete_answer",
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multiselect
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-companion-multi-select
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-intent-clarify-after-menu
         "",
         # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-collect-sysprompt
         # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-inject-agents
@@ -187,30 +183,64 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-inject-agents
         # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-collect-sysprompt
         "",
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-resolve-workflow
-        f"ALWAYS open and follow `{target_path}`",
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-resolve-workflow
-        "",
         "```pdsl",
+        "UNIT GeneratedBootstrapUnit",
+        "PURPOSE: Load the required shared bootstrap before handing control to the target protocol.",
+        "DO:",
+        "  LOAD " + required_bootstrap_path,
+        "  RUN RequiredBootstrap",
+        "  LOAD and RUN " + target_path + " as controlling protocol",
+        "RULES:",
+        "  - ALWAYS run this bootstrap unit before any target workflow or skill work begins",
+        (
+            "  - ALWAYS preserve the canonical controlling-protocol target so "
+            "generated-file ownership and cleanup remain stable"
+        ),
+        "",
         "UNIT GeneratedFollowProtocol",
         "RULES:",
         "  - ALWAYS treat target as controlling protocol, not background context",
         "  - ALWAYS traverse declared steps/units in order",
-        "  - ALWAYS load every required unconditional LOAD/CONTINUE before task work",
-        # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-conditional-module-loading
-        "  - ALWAYS evaluate conditional gates and load every active branch",
-        # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-cf-conditional-module-loading
         (
-            "  - ALWAYS while the workflow is active, map each new user message to "
-            "a current workflow state, a visible companion-skill handoff, or an "
-            "explicit free-mode exit."
+            "  - ALWAYS load every required unconditional LOAD/CONTINUE before "
+            "task work"
         ),
-        "  - NEVER treat a follow-up user prompt as permission to bypass the workflow state machine silently.",
-        "  - NEVER skip, summarize, or defer required instructions",
-        "  - ALWAYS stop if any required fragment or rule cannot be followed",
+        "  - ALWAYS evaluate conditional gates and load every active branch",
+        (
+            "  - ALWAYS while the workflow is active, treat each new user message "
+            "as input to the current workflow state, not as permission for "
+            "unrelated execution."
+        ),
+        (
+            "  - ALWAYS stop if any required fragment or rule cannot be "
+            "followed"
+        ),
         "```",
     ]
     # @cpt-end:cpt-studio-flow-agent-integration-workflow:p1:inst-follow-protocol
+
+
+def _extract_studio_control_target(content: str) -> Optional[str]:
+    """Return the canonical controlling-protocol target for a generated routing file."""
+    m = _CONTROL_PROTOCOL_RE.search(content)
+    if not m:
+        return None
+    target = m.group(1).strip()
+    for prefix in ("{cf-studio-path}/", "@/"):
+        if target.startswith(prefix):
+            return target
+    if target.startswith("/"):
+        return target
+    return None
+
+
+def _extract_studio_owned_target(content: str) -> Optional[str]:
+    """Return the best known managed target from generated content."""
+    return (
+        _extract_studio_control_target(content)
+        or _extract_studio_follow_target(content)
+        or _extract_studio_endpoint_target(content)
+    )
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-extract-studio-follow-target
@@ -242,6 +272,14 @@ def _extract_studio_follow_target(content: str) -> Optional[str]:
             return target
     return None
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-extract-studio-follow-target
+
+
+def _extract_any_follow_target(content: str) -> Optional[str]:
+    """Return any raw follow-link target, including unmanaged/absolute values."""
+    m = _FOLLOW_LINK_RE.search(content)
+    if not m:
+        return None
+    return m.group(1)
 
 
 def _extract_studio_endpoint_target(content: str) -> Optional[str]:
@@ -301,15 +339,21 @@ def _pure_generated_stub_matches(stripped: str) -> bool:
     if len(nonblank) == 1:
         line = nonblank[0]
         return bool(
+            _extract_studio_control_target(line)
+            or
             _extract_studio_follow_target(line)
             or line.startswith("Constructor Studio endpoint only. Prompt source: ")
         )
 
-    follow_target = _extract_studio_follow_target(stripped)
-    if not follow_target:
+    control_target = _extract_studio_control_target(stripped) or _extract_studio_follow_target(stripped)
+    if not control_target:
         return False
     expected_protocol = [
-        line.strip() for line in _follow_protocol_lines(follow_target)
+        line.strip()
+        for line in _follow_protocol_lines(
+            control_target,
+            required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+        )
         if line.strip()
     ]
     return nonblank == expected_protocol
@@ -335,7 +379,11 @@ def _is_pure_studio_generated(
     When *expected_name* or *expected_description* are provided the corresponding
     frontmatter values must match exactly; a mismatch means the user edited them.
     """
-    if _GENERATED_MARKER not in content and not _extract_studio_follow_target(content):
+    if (
+        _GENERATED_MARKER not in content
+        and not _extract_studio_control_target(content)
+        and not _extract_studio_follow_target(content)
+    ):
         return False
     stripped = _strip_generated_frontmatter(
         content,
@@ -425,7 +473,7 @@ def _generated_toml_target(instructions: object) -> Optional[str]:
     if not isinstance(instructions, str):
         return None
     stripped = instructions.strip()
-    return _extract_studio_follow_target(stripped) or _extract_studio_endpoint_target(stripped)
+    return _extract_studio_owned_target(stripped)
 
 
 def _is_valid_generated_toml_shape(
@@ -646,11 +694,11 @@ def _generated_toml_description_matches(
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-file-has-studio-follow-link
 def _file_has_studio_follow_link(path: Path) -> bool:
-    """Return True when *path* exists and contains a Constructor Studio follow-link."""
+    """Return True when *path* exists and contains a Constructor Studio-managed target."""
     if not path.is_file():
         return False
     try:
-        return bool(_extract_studio_follow_target(path.read_text(encoding="utf-8")))
+        return bool(_extract_studio_owned_target(path.read_text(encoding="utf-8")))
     except (OSError, UnicodeDecodeError) as exc:
         _warn_agents(f"failed to inspect follow-link in {path}: {exc}")
         return False
@@ -2619,6 +2667,7 @@ def _workflow_output_template_context(
         "command": command,
         "workflow_name": wf_name,
         "target_workflow_path": target_rel,
+        "required_bootstrap_path": _REQUIRED_BOOTSTRAP_PATH,
         "name": frontmatter.get("name", command),
         "description": frontmatter.get(
             "description",
@@ -2810,6 +2859,7 @@ def _render_kit_workflow_skill_content(
             "name": spec.name,
             "description": spec.description,
             "target_path": spec.target_rel,
+            "required_bootstrap_path": _REQUIRED_BOOTSTRAP_PATH,
         },
     )
 # @cpt-end:cpt-studio-algo-agent-integration-list-workflows:p1:inst-generate-kit-workflow-skills
@@ -2922,7 +2972,7 @@ def _has_openai_codex_agent_signal(project_root: Path) -> bool:
         except (OSError, UnicodeDecodeError) as exc:
             _warn_agents(f"failed to inspect Codex agent file {agent_file}: {exc}")
             continue
-        if _extract_studio_follow_target(content):
+        if _extract_studio_owned_target(content):
             return True
     return False
 
@@ -3554,14 +3604,16 @@ def _rename_workflow_files(
         text = _read_existing_workflow_text(path, prefix)
         if text is None:
             continue
-        if "ALWAYS open and follow `" not in text:
-            continue
-        match = _FOLLOW_LINK_RE.search(text)
-        if not match:
+        target_path = (
+            _extract_studio_control_target(text)
+            or _extract_studio_follow_target(text)
+            or _extract_any_follow_target(text)
+        )
+        if not target_path:
             continue
         target_rel, error = _resolve_workflow_follow_target(
             path,
-            match.group(1),
+            target_path,
             project_root,
             studio_root,
         )
@@ -3669,23 +3721,25 @@ def _cleanup_stale_workflow_file(
     except OSError as exc:
         _warn_agents(f"failed to inspect workflow alias {path}: {exc}")
         return
-    match = _FOLLOW_LINK_RE.search(text)
-    if match:
-        target_rel = match.group(1)
-        if "workflows/" in target_rel or "/workflows/" in target_rel:
-            expected = _resolve_expected_workflow_target(path, target_rel, project_root, studio_root)
-            if (
-                expected is not None
-                and _workflow_target_is_supported_alias(expected, project_root, studio_root)
-                and not expected.exists()
-            ):
-                workflows_result["deleted"].append(path_str)
-                if dry_run:
-                    return
-                try:
-                    path.unlink()
-                except (PermissionError, FileNotFoundError, OSError) as exc:
-                    _warn_agents(f"failed to delete stale workflow alias {path}: {exc}")
+    target_rel = (
+        _extract_studio_control_target(text)
+        or _extract_studio_follow_target(text)
+        or _extract_any_follow_target(text)
+    )
+    if target_rel and ("workflows/" in target_rel or "/workflows/" in target_rel):
+        expected = _resolve_expected_workflow_target(path, target_rel, project_root, studio_root)
+        if (
+            expected is not None
+            and _workflow_target_is_supported_alias(expected, project_root, studio_root)
+            and not expected.exists()
+        ):
+            workflows_result["deleted"].append(path_str)
+            if dry_run:
+                return
+            try:
+                path.unlink()
+            except (PermissionError, FileNotFoundError, OSError) as exc:
+                _warn_agents(f"failed to delete stale workflow alias {path}: {exc}")
 
 
 def _cleanup_stale_workflow_files(
@@ -3920,6 +3974,7 @@ def _render_skill_output(
             "skill_name": str(ctx.skill_name),
             "target_skill_path": target_rel,
             "target_path": target_rel,
+            "required_bootstrap_path": _REQUIRED_BOOTSTRAP_PATH,
             "name": out_name,
             "description": out_description,
             "custom_content": ctx.custom_content,
@@ -4916,8 +4971,7 @@ def _classify_generated_output_owner(rel: str, content: str) -> Optional[str]:
     if rel.endswith(".toml"):
         return "agent" if _is_studio_managed_toml_output(content) else None
     if not (
-        _extract_studio_follow_target(content)
-        or _extract_studio_endpoint_target(content)
+        _extract_studio_owned_target(content)
         or _is_pure_studio_generated(content)
     ):
         return None
@@ -5049,7 +5103,7 @@ def _cleanup_claude_workflow_command(
     except OSError as exc:
         _warn_agents(f"failed to inspect legacy workflow file {legacy_file}: {exc}")
         return
-    follow_target = _extract_studio_follow_target(content)
+    follow_target = _extract_studio_owned_target(content)
     if not follow_target or "workflows/" not in follow_target:
         return
     if Path(follow_target).name != wf_filename:

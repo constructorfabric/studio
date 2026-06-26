@@ -1572,7 +1572,7 @@ class TestEndToEndCapabilitySurface:
             skill_files = skills.get("created", []) + skills.get("updated", [])
             assert len(skill_files) > 0, "Windsurf must produce skill output"
             found = any(
-                "ALWAYS open and follow" in Path(f).read_text(encoding="utf-8")
+                "LOAD and RUN" in Path(f).read_text(encoding="utf-8")
                 and "SKILL.md" in Path(f).read_text(encoding="utf-8")
                 for f in skill_files
             )
