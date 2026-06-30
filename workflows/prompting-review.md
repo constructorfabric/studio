@@ -19,6 +19,7 @@ STATE:
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default true, scope workflow_run)
   SET SKILL_FILE_WRITTEN: true | false | unset (default false, scope workflow_run)
   SET REVIEW_ONLY_FINDINGS_GATE: true | false | unset (default true, scope workflow_run)
+  SET REVIEW_ONLY_FINDINGS_CONTINUE: unit-name | unset (default PromptingReviewFindingsGate, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   RUN WorkflowBootstrapRouterPrelude
@@ -28,6 +29,7 @@ DO:
   SET REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset
   SET SKILL_FILE_WRITTEN = false WHEN SKILL_FILE_WRITTEN == unset
   SET REVIEW_ONLY_FINDINGS_GATE = true WHEN REVIEW_ONLY_FINDINGS_GATE == unset
+  SET REVIEW_ONLY_FINDINGS_CONTINUE = PromptingReviewFindingsGate WHEN REVIEW_ONLY_FINDINGS_CONTINUE == unset
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-bootstrap-refs.md
   RUN WriteSkillsExecutionContextPrep
   RUN WriteSkillsExecutionReferenceLoad
@@ -57,11 +59,11 @@ UNIT PromptingReviewFixHandoff
 PURPOSE: Route to NextActionsOffer after the user approves a fix scope in prompting-review, with cf-prompting-fix as the suggested next action carrying approved finding context.
 DO:
   SET NEXT_ACTION_PINNED_SKILL = cf-prompting-fix
-  SET NEXT_ACTION_PAYLOAD = APPROVED_REVIEW_FINDING_IDS, REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, ReviewFindingsReport
+  SET NEXT_ACTION_PAYLOAD = APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, REVIEW_FIX_APPROVED, REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, ReviewFindingsReport
   EMIT "Fix scope approved. To apply these fixes, continue with cf-prompting-fix." with NEXT_ACTION_PAYLOAD as handoff context
   RUN NextActionsOffer
 RULES:
   ALWAYS mark cf-prompting-fix as (suggested) through NEXT_ACTION_PINNED_SKILL when APPROVED_REVIEW_FINDING_IDS is non-empty
-  ALWAYS preserve APPROVED_REVIEW_FINDING_IDS, REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, and ReviewFindingsReport in NEXT_ACTION_PAYLOAD for the cf-prompting-fix handoff
+  ALWAYS preserve APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, REVIEW_FIX_APPROVED, REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, and ReviewFindingsReport in NEXT_ACTION_PAYLOAD for the cf-prompting-fix handoff
   NEVER apply fixes from this unit
 ```

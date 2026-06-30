@@ -19,6 +19,7 @@ STATE:
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_SLICES: list | unset (default unset, scope workflow_run)
   SET GATE_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
+  SET VALIDATION_STATUS: pass | fail | not-run | unset (default unset, scope workflow_run)
   SET CI_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
   SET report_outputs: list | unset (default unset, scope workflow_run)
   SET NEXT_ACTION_PINNED_SKILL: cf-skill-name | unset (default unset, scope workflow_run)
@@ -42,6 +43,9 @@ DO:
   SET GATE_STATUS = fail WHEN any validation reports errors
   SET GATE_STATUS = pass WHEN every validation check passes
   SET GATE_STATUS = not-run WHEN no applicable PDSL checks were resolved or executed
+  SET VALIDATION_STATUS = pass WHEN GATE_STATUS == pass
+  SET VALIDATION_STATUS = fail WHEN GATE_STATUS == fail
+  SET VALIDATION_STATUS = not-run WHEN GATE_STATUS == not-run
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/ci-report-render.md
   SET CI_RESULT_STATUS = completed WHEN GATE_STATUS == pass
   SET CI_RESULT_STATUS = failed WHEN GATE_STATUS == fail
@@ -50,6 +54,6 @@ DO:
   RUN CiReportRenderContract
   EMIT the validation findings
   SET NEXT_ACTION_PINNED_SKILL = cf-prompting-review
-  SET NEXT_ACTION_PAYLOAD = REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, report_outputs, GATE_STATUS
+  SET NEXT_ACTION_PAYLOAD = REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, report_outputs, GATE_STATUS, VALIDATION_STATUS, CI_RESULT_STATUS
   RUN NextActionsOffer
 ```

@@ -19,6 +19,7 @@ DO:
   SET ReviewFindingsReport = FINDINGS_REPORT
   SET REVIEW_FINDINGS_REMAINING = FINDINGS_REPORT.total_count
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-fix-outcomes.md
+  CONTINUE REVIEW_ONLY_FINDINGS_CONTINUE WHEN REVIEW_ONLY_FINDINGS_GATE == true AND REVIEW_ONLY_FINDINGS_CONTINUE != unset
   CONTINUE WriteSkillsFixGate
 RULES:
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel
@@ -36,6 +37,7 @@ DO:
   CONTINUE WriteSkillsFixDispatch WHEN REVIEW_FIX_APPROVED == true
   CONTINUE WriteSkillsFixOutcomeNoChanges WHEN REVIEW_FIX_APPROVED != true
 RULES:
+  ALWAYS use this gate only for fix-capable review workflows; review-only workflows MUST set REVIEW_ONLY_FINDINGS_GATE == true and REVIEW_ONLY_FINDINGS_CONTINUE to their own non-writing findings gate
   NEVER dispatch cf-pdsl-author as a generic review-fix worker because its contract is for new PDSL authoring
 ```
 ```pdsl
