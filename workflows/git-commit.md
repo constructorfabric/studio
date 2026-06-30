@@ -71,7 +71,6 @@ DO:
   RUN GitCommitModeGate
   RUN CommitPolicyLoadContract
   SET COMMIT_POLICY_SOURCES = contributing-guide from CONTRIBUTING_GUIDE when present, trailer-requirements from COMMIT_FOOTER_CONTRACT when present, and commit-mode from GIT_COMMIT_MODE when present
-  SET COMMIT_TRAILER_REQUIREMENTS = required and optional trailers derived from COMMIT_FOOTER_CONTRACT when COMMIT_FOOTER_CONTRACT is present
   RUN CommitTrailerPrepareContract
   CONTINUE GitCommitBlocked WHEN COMMIT_INTENT == unset OR COMMIT_TARGET_PATHS == unset OR COMMIT_TARGET_PATHS is empty
   RUN CommitPreflightCheckContract
