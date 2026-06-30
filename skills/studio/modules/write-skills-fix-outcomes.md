@@ -62,7 +62,11 @@ PURPOSE: Report deterministic blockers and offer next actions when validation fa
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
   EMIT a summary of deterministic blockers that remain after semantic fix application
-  RUN NextActionsOffer with cf-prompting-ci or cf-coding-ci marked (suggested) depending on the target domain
+  SET NEXT_ACTION_PINNED_SKILL = cf-prompting-ci WHEN target domain is prompt
+  SET NEXT_ACTION_PINNED_SKILL = cf-coding-ci WHEN target domain is code
+  SET NEXT_ACTION_PAYLOAD = REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, VALIDATION_STATUS
+  RUN NextActionsOffer
 RULES:
+  ALWAYS set NEXT_ACTION_PINNED_SKILL to the domain-appropriate CI workflow before calling NextActionsOffer
   ALWAYS run NextActionsOffer before returning control to the user
 ```
