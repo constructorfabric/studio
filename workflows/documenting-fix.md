@@ -15,6 +15,8 @@ UNIT DocumentingFixBootstrap
 PURPOSE: Initialize thin document fixing and route into approved-finding application.
 STATE:
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default true, scope workflow_run)
+  SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_SLICES: list | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-write-policy-fix.md
@@ -26,9 +28,9 @@ DO:
   SET WRITE_DISPATCH_KIND = review-fix
   CONTINUE WriteDocsWritePolicySetup
 RULES:
-  - ALWAYS require explicit review findings before applying document fixes
-  - NEVER run semantic review from documenting-fix
-  - ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_producers on missing findings
+  ALWAYS require explicit review findings before applying document fixes
+  NEVER run semantic review from documenting-fix
+  ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_producers on missing findings
 ```
 
 ```pdsl

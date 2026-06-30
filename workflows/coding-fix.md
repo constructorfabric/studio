@@ -41,10 +41,10 @@ DO:
   STOP_TURN WHEN REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset
   CONTINUE CodingReviewFixGate
 RULES:
-  - ALWAYS require explicit review findings before applying code fixes
-  - ALWAYS hydrate ReviewFindingsReport, approved finding IDs, fix scope, approval state, target paths, and target slices from NEXT_ACTION_PAYLOAD before checking for missing findings or missing target scope
-  - NEVER run semantic review from coding-fix
-  - ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_next_skills on missing findings
+  ALWAYS require explicit review findings before applying code fixes
+  ALWAYS hydrate ReviewFindingsReport, approved finding IDs, fix scope, approval state, target paths, and target slices from NEXT_ACTION_PAYLOAD before checking for missing findings or missing target scope
+  NEVER run semantic review from coding-fix
+  ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_next_skills on missing findings
 ```
 
 ```pdsl

@@ -45,10 +45,10 @@ DO:
   CONTINUE WriteSkillsFixDispatch WHEN REVIEW_FIX_APPROVED == true AND APPROVED_REVIEW_FINDING_IDS != empty AND REVIEW_FIX_SCOPE != unset
   CONTINUE WriteSkillsFixGate
 RULES:
-  - ALWAYS require explicit review findings before applying prompt fixes
-  - ALWAYS hydrate ReviewFindingsReport, approved finding IDs, fix scope, approval state, target paths, and target slices from NEXT_ACTION_PAYLOAD before checking for missing findings or missing target scope
-  - NEVER run semantic review from prompting-fix
-  - ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_next_skills on missing findings
+  ALWAYS require explicit review findings before applying prompt fixes
+  ALWAYS hydrate ReviewFindingsReport, approved finding IDs, fix scope, approval state, target paths, and target slices from NEXT_ACTION_PAYLOAD before checking for missing findings or missing target scope
+  NEVER run semantic review from prompting-fix
+  ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_next_skills on missing findings
 ```
 
 ```pdsl
@@ -73,6 +73,6 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-completion.md
   CONTINUE WriteSkillsCompletion WHEN VALIDATION_STATUS == pass AND REVIEW_FINDINGS_REMAINING == 0
 RULES:
-  - ALWAYS rerun deterministic PDSL validation after approved prompt fixes before completion
-  - NEVER continue to WriteSkillsCompletion unless VALIDATION_STATUS == pass and REVIEW_FINDINGS_REMAINING == 0
+  ALWAYS rerun deterministic PDSL validation after approved prompt fixes before completion
+  NEVER continue to WriteSkillsCompletion unless VALIDATION_STATUS == pass and REVIEW_FINDINGS_REMAINING == 0
 ```
