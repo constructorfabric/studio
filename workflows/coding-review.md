@@ -50,5 +50,5 @@ DO:
     STOP_TURN
 RULES:
   - NEVER apply fixes from coding-review
-  - ALWAYS preserve approved finding IDs, fix scope, approval state, target paths, target slices, and ReviewFindingsReport in NEXT_ACTION_PAYLOAD when handing off to cf-coding-fix
+  - ALWAYS preserve approved finding IDs, fix scope, approval state, target paths, target slices, and ReviewFindingsReport in every NEXT_ACTION_PAYLOAD passed to cf-coding-fix
 ```
