@@ -30,6 +30,22 @@ STATE:
 DO:
   CONTINUE GitCommitExecuteConfirm WHEN GIT_COMMIT_CONFIRM_STATE == waiting
   CONTINUE GitCommitMessageEditExecute WHEN GIT_COMMIT_MSG_EDIT_STATE == waiting
+  RUN GitCommitContractLoad
+  RUN WorkflowBootstrapRouterPrelude
+  RUN GitCommitBootstrapRun
+  SET ORIGINAL_INTENT = the user's triggering git-commit request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
+  CONTINUE GitCommitResolve
+RULES:
+  ALWAYS keep this workflow focused on git finalization only
+  ALWAYS reuse GitCommitModeGate as the authoritative session git policy source
+  NEVER embed authoring, review, CI, or planning behavior in this workflow
+
+```
+
+```pdsl
+UNIT GitCommitContractLoad
+PURPOSE: Load all shared contract modules required by git finalization.
+DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/commit-policy-load.md
@@ -37,15 +53,15 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/commit-preflight-check.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/blocked-report.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/blocked-next-actions.md
-  RUN WorkflowBootstrapRouterPrelude
+
+```
+
+```pdsl
+UNIT GitCommitBootstrapRun
+PURPOSE: Run the workflow mode and studio-instructions bootstrap steps for git finalization.
+DO:
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
-  SET ORIGINAL_INTENT = the user's triggering git-commit request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  CONTINUE GitCommitResolve
-RULES:
-  ALWAYS keep this workflow focused on git finalization only
-  ALWAYS reuse GitCommitModeGate as the authoritative session git policy source
-  NEVER embed authoring, review, CI, or planning behavior in this workflow
 ```
 
 ```pdsl
@@ -123,17 +139,38 @@ RULES:
 
 ```pdsl
 UNIT GitCommitExecuteConfirm
-PURPOSE: Route the user's confirmation reply and execute the commit on 'yes'.
+PURPOSE: Route the user's confirmation reply to execute or re-prompt.
 DO:
   SET GIT_COMMIT_CONFIRM_STATE = unset
   STOP_TURN WHEN user.reply == "cancel"
   CONTINUE GitCommitMessageEdit WHEN user.reply == "edit"
-  EMIT "Please reply 'yes' to confirm the commit, 'edit' to change the message, or 'cancel' to stop." WHEN user.reply != "yes"
-  WAIT user.reply WHEN user.reply != "yes"
-  STOP_TURN WHEN user.reply != "yes"
+  CONTINUE GitCommitConfirmReprompt WHEN user.reply != "yes"
+  CONTINUE GitCommitCommitAndEmit
+RULES:
+  NEVER execute the commit unless user.reply == "yes"; re-prompt on any unrecognized reply
+
+```
+
+```pdsl
+UNIT GitCommitConfirmReprompt
+PURPOSE: Re-prompt the user when their reply was not yes, edit, or cancel.
+STATE:
+  SET GIT_COMMIT_CONFIRM_STATE: waiting | unset (default unset, scope workflow_run)
+DO:
+  SET GIT_COMMIT_CONFIRM_STATE = waiting
+  EMIT "Please reply 'yes' to confirm the commit, 'edit' to change the message, or 'cancel' to stop."
+  WAIT user.reply
+  STOP_TURN
+
+```
+
+```pdsl
+UNIT GitCommitCommitAndEmit
+PURPOSE: Run the commit audit, create the commit, and emit the result.
+DO:
   SET GIT_COMMIT_AUDIT_PHASE = preflight
   RUN GitCommitCommitAudit
-  RUN create the git commit for COMMIT_TARGET_PATHS using COMMIT_INTENT plus required project-policy and Studio trailers
+  RUN create the git commit for COMMIT_TARGET_PATHS using PLANNED_GIT_COMMIT_INVOCATION when set, otherwise COMMIT_INTENT, plus required project-policy and Studio trailers
   SET STUDIO_CREATED_COMMIT_SHA = the created commit sha
   SET GIT_COMMIT_AUDIT_PHASE = postcommit
   RUN GitCommitCommitAudit
@@ -143,7 +180,6 @@ DO:
 RULES:
   ALWAYS scope git mutations to COMMIT_TARGET_PATHS only
   ALWAYS run trailer audit before and after the commit
-  NEVER execute the commit unless user.reply == "yes"; re-prompt on any unrecognized reply
 ```
 
 ```pdsl
@@ -166,19 +202,8 @@ DO:
   SET GIT_COMMIT_MSG_EDIT_STATE = unset
   STOP_TURN WHEN user.reply == "cancel"
   SET PLANNED_GIT_COMMIT_INVOCATION = updated commit message from user.reply
-  SET GIT_COMMIT_AUDIT_PHASE = preflight
-  RUN GitCommitCommitAudit
-  RUN create the git commit for COMMIT_TARGET_PATHS using PLANNED_GIT_COMMIT_INVOCATION
-  SET STUDIO_CREATED_COMMIT_SHA = the created commit sha
-  SET GIT_COMMIT_AUDIT_PHASE = postcommit
-  RUN GitCommitCommitAudit
-  EMIT a completed SKILL_RESULT envelope with skill = cf-git-commit, status = completed, produced_artifacts = commit-result describing the created commit sha and scoped paths, report_outputs = [], missing_artifacts = [], assumptions = [], and suggested_next_skills = []
-  RUN NextActionsOffer
+  CONTINUE GitCommitCommitAndEmit
 RULES:
-  ALWAYS use the user-supplied revised message verbatim; NEVER auto-append trailers that were not in the original PLANNED_GIT_COMMIT_INVOCATION
+  ALWAYS use the user-supplied revised message verbatim; NEVER auto-append trailers
   NEVER commit without a non-empty commit message
-  ALWAYS scope git mutations to COMMIT_TARGET_PATHS only
-  ALWAYS run trailer audit before and after a Studio-created commit
-  ALWAYS show the planned commit message, trailers, and file scope to the user before executing the git commit; wait for explicit confirmation
-  NEVER stage or commit files outside the explicit commit scope
 ```

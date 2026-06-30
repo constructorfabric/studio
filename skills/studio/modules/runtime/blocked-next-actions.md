@@ -6,7 +6,7 @@ PURPOSE: Require a clear blocked-state next-actions menu before control returns 
 STATE:
   SET BLOCKED_NEXT_ACTION_OVERRIDE_AVAILABLE: true | false | unset (default unset, scope unit_run)
 WHEN:
-  REQUIRE status == blocked OR PREREQUISITE_STATUS == blocked OR missing_artifacts is non-empty OR MISSING_ARTIFACTS is non-empty
+  REQUIRE PREREQUISITE_STATUS == blocked OR MISSING_ARTIFACTS is non-empty
 DO:
   RUN BlockedNextActionsResolveContract
   RUN BlockedNextActionsMenuContract

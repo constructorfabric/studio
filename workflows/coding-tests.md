@@ -18,6 +18,7 @@ PURPOSE: Bind test-authoring scope and delegate to the canonical code-generation
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default false, scope workflow_run)
+  SET TESTS_SCOPE: string | unset (default unset, scope workflow_run)
 DO:
   SET ORIGINAL_INTENT = the user's verbatim coding-tests request WHEN ORIGINAL_INTENT == unset
   SET TESTS_SCOPE = "author or update unit-tests, e2e-tests, or test-spec only for the approved phase contract"
