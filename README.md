@@ -276,9 +276,11 @@ Base Constructor Studio skills:
 | `cf-brainstorm: ...` | Explore options before scope is fixed. |
 | `cf-auto-config` | Infer or refresh project rules and setup for an existing repository. |
 | `cf-plan: ...` | Split large or risky work into reviewable phases. |
-| `cf-coding: ...` | Write, refactor, fix, or review source code. |
-| `cf-write-docs: ...` | Write, revise, or review guides, reports, and README files. |
-| `cf-write-skills: ...` | Write or review skills, prompts, workflows, and agent instructions. |
+| `cf-coding: ...` | Write, refactor, fix, or review source code. Umbrella entrypoint — routes to `cf-coding-gen`, `cf-coding-review`, `cf-coding-fix`, `cf-coding-ci`, `cf-coding-tests`, or `cf-code-planning` based on intent. |
+| `cf-write-docs: ...` | Write, revise, or review guides, reports, and README files. Umbrella entrypoint — routes to `cf-documenting-gen`, `cf-documenting-review`, `cf-documenting-fix`, `cf-documenting-ci`, or `cf-documenting-planning` based on intent. |
+| `cf-write-skills: ...` | Write or review skills, prompts, workflows, and agent instructions. Umbrella entrypoint — routes to `cf-prompting-gen`, `cf-prompting-review`, `cf-prompting-fix`, `cf-prompting-ci`, or `cf-prompting-planning` based on intent. |
+| `cf-planning: ...` | Build a reusable phase plan and DoD for any domain (code, docs, prompts, kits). Used directly or as a prerequisite by other workflows. |
+| `cf-git-commit: ...` | Stage and commit scoped changes with a policy-compliant commit message. |
 | `cf-explain: ...` | Walk through a document, pull request, code area, or decision. |
 | `cf-map: ...` | Render or inspect the dependency map across documents and code. |
 | `cf-workspace: ...` | Configure or work across multiple repositories. |
@@ -292,6 +294,8 @@ Base Constructor Studio skills:
 | `cf-brave-new-world` | Let Studio choose safe, reversible workflow defaults during a session. |
 
 `cf-analyze` and `cf-generate` are stable router entrypoints. They preserve the legacy verbs, resolve the best matching `cf-*` skill or companion group for the request, and pass the intent through; they are not the concrete analysis or generation workers themselves.
+
+Each umbrella skill (`cf-coding`, `cf-write-docs`, `cf-write-skills`) can also be invoked with a route-specific sub-skill directly — for example `cf-coding-review: ...` or `cf-documenting-gen: ...` — when the intent is already clear.
 
 Software Development Life Cycle (SDLC) kit skills from [`constructorfabric/studio-kit-sdlc`](https://github.com/constructorfabric/studio-kit-sdlc):
 

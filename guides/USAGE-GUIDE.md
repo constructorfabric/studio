@@ -404,7 +404,7 @@ For these cases, lighter approaches or direct prompting can be a better starting
 
 ## 6. Choosing the right workflow
 
-`plan` is the general sequencing workflow. Concrete work should use the specific route that matches the target: `coding`, `write-docs`, `write-skills`, `explain`, `map`, `auto-config`, or an SDLC route.
+`plan` is the general sequencing workflow. Concrete work should use the specific route that matches the target: `coding`, `write-docs`, `write-skills`, `explain`, `map`, `auto-config`, or an SDLC route. Each of `coding`, `write-docs`, and `write-skills` also has specialized sub-routes (for example `cf-coding-review`, `cf-documenting-gen`, `cf-prompting-fix`) that you can invoke directly when the intent is already clear.
 
 ```mermaid
 flowchart TD
@@ -486,13 +486,19 @@ Use the portable workflow form by default:
 - 💬 `cf-explore: ...`
 - 💬 `cf-auto-config`
 - 💬 `cf-plan: ...`
+- 💬 `cf-planning: ...`
 - 💬 `cf-coding: ...`
 - 💬 `cf-write-docs: ...`
 - 💬 `cf-write-skills: ...`
 - 💬 `cf-brainstorm: ...`
 - 💬 `cf-map: ...`
-- 💬 `cf-coding: ...`
-- 💬 `cf-write-docs: ...`
+- 💬 `cf-git-commit: ...`
+
+Specialized sub-routes (invoke directly when the intent is clear):
+
+- 💬 `cf-coding-gen: ...` / `cf-coding-review: ...` / `cf-coding-fix: ...` / `cf-coding-ci: ...`
+- 💬 `cf-documenting-gen: ...` / `cf-documenting-review: ...` / `cf-documenting-fix: ...`
+- 💬 `cf-prompting-gen: ...` / `cf-prompting-review: ...` / `cf-prompting-fix: ...`
 
 Advanced maintainer routes exist for prompt, skill, and workflow authors:
 
@@ -641,6 +647,8 @@ Use `write-skills` when:
 - 💬 `cf-write-skills: transform this prose workflow into PDSL`
 - 💬 `cf-write-skills: author a new agent instruction file for code review`
 
+When the intent is already clear, invoke the sub-route directly: `cf-prompting-gen`, `cf-prompting-review`, `cf-prompting-fix`, `cf-prompting-ci`, or `cf-prompting-planning`.
+
 Use `debug-prompts` when you need to inspect execution live instead of editing the prompt file:
 
 - 💬 `cf-debug-prompts`
@@ -687,6 +695,8 @@ Use `coding` for **authoring, implementing, refactoring, fixing, or reviewing so
 
 Use `cf-coding` when the work is code-centric and you want code-quality checks as part of the same flow.
 
+When the intent is already clear, invoke the sub-route directly: `cf-coding-gen`, `cf-coding-review`, `cf-coding-fix`, `cf-coding-ci`, `cf-coding-tests`, or `cf-code-planning`.
+
 ### Use `write-docs` when
 
 Use `write-docs` for **writing, revising, or reviewing documentation** — guides, reports, READMEs, or other project documents.
@@ -697,6 +707,8 @@ Use `write-docs` for **writing, revising, or reviewing documentation** — guide
 Use `cf-write-docs` when the target is a human-facing document and you want documentation-quality checks, consistency review, and deterministic gate checks as part of the same flow.
 
 For review-first document work, `cf-write-docs` shows the aggregated findings before any fix is applied. Browse the findings, mark specific items if needed, then open the fix menu to approve the scope: critical/major findings, all findings, selected findings, or no fixes. The workflow should not jump from findings directly into edits without that approval step.
+
+When the intent is already clear, invoke the sub-route directly: `cf-documenting-gen`, `cf-documenting-review`, `cf-documenting-fix`, `cf-documenting-ci`, or `cf-documenting-planning`.
 
 ### Default routing rule
 
@@ -776,7 +788,7 @@ A final **human review is still required** before treating the result as done.
    - Use repeatable checks to improve consistency, but keep final engineering judgment with a human reviewer.
 
 9. **Use a fresh chat for new writing or review work**
-   - For substantial `cf-coding`, `cf-write-docs`, `cf-write-skills`, SDLC, or review tasks, prefer a new chat. If you stay in the same session, clear context before the next task.
+   - For substantial `cf-coding`, `cf-write-docs`, `cf-write-skills`, their specialized sub-routes, SDLC, or review tasks, prefer a new chat. If you stay in the same session, clear context before the next task.
 
 10. **Use autonomous defaults only for low-risk workflow friction**
    - `cf-brave-new-world` is for reversible workflow choices, not for approving edits, installs, git changes, or external actions.
