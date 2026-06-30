@@ -22,10 +22,7 @@ STATE:
   SET AVAILABLE_ARTIFACTS: list | unset (default unset, scope workflow_run)
   SET REQUIRED_ARTIFACT_SPECS: list | unset (default unset, scope workflow_run)
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/skill-io-contract-load.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/handoff-suggestions.md
-  RUN SkillIoContractLoad
+  RUN CodingGenRuntimeLoad
   RUN WorkflowBootstrapRouterPrelude
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
@@ -35,6 +32,17 @@ DO:
 RULES:
   - ALWAYS keep this workflow authoring-only
   - NEVER route review requests into this workflow
+
+```
+
+```pdsl
+UNIT CodingGenRuntimeLoad
+PURPOSE: Load the shared runtime contracts needed by coding-gen before prerequisite evaluation.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/skill-io-contract-load.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/handoff-suggestions.md
+  RUN SkillIoContractLoad
 ```
 
 ```pdsl

@@ -111,7 +111,7 @@ DO:
   EMIT "Proceed with this commit? Reply 'yes' to commit, 'edit' to change the message, or 'cancel' to stop." WHEN GIT_COMMIT_MODE == commit
   WAIT user.reply WHEN GIT_COMMIT_MODE == commit
   STOP_TURN WHEN GIT_COMMIT_MODE == commit
-  CONTINUE GitCommitExecuteConfirm WHEN GIT_COMMIT_MODE == commit
+  CONTINUE GitCommitExecuteConfirm
 RULES:
   ALWAYS honor GIT_COMMIT_MODE strictly: stage means no commit; commit means stage plus commit; none never reaches this unit
 ```
@@ -122,6 +122,10 @@ PURPOSE: Route the user's confirmation reply and execute the commit on 'yes'.
 DO:
   STOP_TURN WHEN user.reply == "cancel"
   CONTINUE GitCommitMessageEdit WHEN user.reply == "edit"
+  EMIT "Please reply 'yes' to confirm the commit, 'edit' to change the message, or 'cancel' to stop." WHEN user.reply != "yes"
+  WAIT user.reply WHEN user.reply != "yes"
+  STOP_TURN WHEN user.reply != "yes"
+  CONTINUE GitCommitExecuteConfirm WHEN user.reply != "yes"
   SET GIT_COMMIT_AUDIT_PHASE = preflight
   RUN GitCommitCommitAudit
   RUN create the git commit for COMMIT_TARGET_PATHS using COMMIT_INTENT plus required project-policy and Studio trailers
@@ -134,6 +138,7 @@ DO:
 RULES:
   ALWAYS scope git mutations to COMMIT_TARGET_PATHS only
   ALWAYS run trailer audit before and after the commit
+  NEVER execute the commit unless user.reply == "yes"; re-prompt on any unrecognized reply
 ```
 
 ```pdsl

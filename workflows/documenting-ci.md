@@ -17,6 +17,7 @@ PURPOSE: Run deterministic document validation without semantic review or author
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET GATE_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
+  SET CI_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
@@ -31,9 +32,15 @@ DO:
   SET CI_DISCOVERY_INTENT = "ci-documenting"
   RUN CiDiscoveryRunStart
   RUN the deterministic gate — dispatch cf-deterministic-validator for the applicable checks (validate --artifact / validate-toc / check-language) plus any project doc checks
-  EMIT the gate results
   SET GATE_STATUS = fail WHEN any check reports failures or errors
   SET GATE_STATUS = pass WHEN every applicable check passes
+  SET GATE_STATUS = not-run WHEN no applicable checks were resolved or executed
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/ci-report-render.md
+  SET CI_RESULT_STATUS = completed WHEN GATE_STATUS == pass
+  SET CI_RESULT_STATUS = failed WHEN GATE_STATUS == fail
+  SET CI_RESULT_STATUS = blocked WHEN GATE_STATUS == not-run
+  RUN CiReportRenderContract
+  EMIT the gate results
   RUN NextActionsOffer
 RULES:
   ALWAYS treat this workflow as deterministic validation only

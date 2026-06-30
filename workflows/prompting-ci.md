@@ -19,6 +19,8 @@ STATE:
   SET SKILL_FILE_WRITTEN: true | false (default true, scope workflow_run)
   SET REVIEW_FIXES_APPLIED: true | false | unset (default false, scope workflow_run)
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
+  SET GATE_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
+  SET CI_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   RUN WorkflowBootstrapRouterPrelude
@@ -36,6 +38,13 @@ DO:
   SET CI_DISCOVERY_INTENT = "ci-prompting"
   RUN CiDiscoveryRunStart
   RUN the deterministic PDSL check — dispatch cf-deterministic-validator for `{cfs_cmd} pdsl validate` on REVIEW_TARGET_PATHS; caller must provide REVIEW_TARGET_PATHS for validation-only runs
+  SET GATE_STATUS = fail WHEN any validation reports errors
+  SET GATE_STATUS = pass WHEN every validation check passes
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/ci-report-render.md
+  SET CI_RESULT_STATUS = completed WHEN GATE_STATUS == pass
+  SET CI_RESULT_STATUS = failed WHEN GATE_STATUS == fail
+  SET CI_RESULT_STATUS = blocked WHEN GATE_STATUS == not-run
+  RUN CiReportRenderContract
   EMIT the validation findings
   RUN NextActionsOffer
 ```

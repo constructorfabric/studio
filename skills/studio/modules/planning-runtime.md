@@ -8,18 +8,34 @@ contracts instead of compiling standalone plan packages.
 UNIT PlanningRuntimeContractLoad
 PURPOSE: Load the shared runtime contracts required by thin integrable planning skills.
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/skill-io-contract-load.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/resource-context-check.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/design-input-check.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/missing-inputs-report.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/handoff-suggestions.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/phase-artifact-linking.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/phase-status-mark.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/artifact-dod-check.md
+  RUN PlanningRuntimeCoreLoad
+  RUN PlanningRuntimePhaseLoad
   RUN SkillIoContractLoad
 RULES:
   ALWAYS use this load unit before a thin planning skill evaluates prerequisite artifacts or emits planning outputs
   NEVER treat this load unit as permission to invoke producer skills automatically
+
+```
+
+```pdsl
+UNIT PlanningRuntimeCoreLoad
+PURPOSE: Load the prerequisite and context contracts for planning.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/skill-io-contract-load.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/resource-context-check.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/design-input-check.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/missing-inputs-report.md
+
+```
+
+```pdsl
+UNIT PlanningRuntimePhaseLoad
+PURPOSE: Load the phase-tracking and artifact-linking contracts for planning.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/handoff-suggestions.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/phase-artifact-linking.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/phase-status-mark.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/artifact-dod-check.md
 ```
 
 ```pdsl

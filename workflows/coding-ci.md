@@ -19,6 +19,7 @@ STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default false, scope workflow_run)
   SET GATE_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
+  SET CI_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
@@ -38,9 +39,15 @@ DO:
   RUN resolve the deterministic gate commands from project config (package.json / Makefile / pyproject.toml / build files) or remembered {cfs_cmd}/project commands
   RUN the resolved deterministic gate commands in order
   RUN SubAgentDispatch for cf-deterministic-validator on studio-applicable checks (validate / validate-toc / check-language)
-  EMIT the gate results
   SET GATE_STATUS = fail WHEN any gate reports failures or errors
   SET GATE_STATUS = pass WHEN every applicable gate passes
+  SET GATE_STATUS = not-run WHEN no applicable gate commands were resolved or executed
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/ci-report-render.md
+  SET CI_RESULT_STATUS = completed WHEN GATE_STATUS == pass
+  SET CI_RESULT_STATUS = failed WHEN GATE_STATUS == fail
+  SET CI_RESULT_STATUS = blocked WHEN GATE_STATUS == not-run
+  RUN CiReportRenderContract
+  EMIT the gate results
   RUN NextActionsOffer
 RULES:
   ALWAYS use this workflow only for deterministic validation of code changes
