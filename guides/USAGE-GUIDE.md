@@ -18,6 +18,7 @@
 - [4. When Constructor Studio is a good fit](#4-when-constructor-studio-is-a-good-fit)
 - [5. When Constructor Studio is not the best first move](#5-when-constructor-studio-is-not-the-best-first-move)
 - [6. Choosing the right workflow](#6-choosing-the-right-workflow)
+  - [`cf-plan` vs `cf-planning`](#cf-plan-vs-cf-planning)
   - [Use `plan` when](#use-plan-when)
   - [What counts as a large task](#what-counts-as-a-large-task)
   - [Quick check: should you use `plan` first?](#quick-check-should-you-use-plan-first)
@@ -404,7 +405,7 @@ For these cases, lighter approaches or direct prompting can be a better starting
 
 ## 6. Choosing the right workflow
 
-`plan` is the general sequencing workflow. Concrete work should use the specific route that matches the target: `coding`, `write-docs`, `write-skills`, `explain`, `map`, `auto-config`, or an SDLC route. Each of `coding`, `write-docs`, and `write-skills` also has specialized sub-routes (for example `cf-coding-review`, `cf-documenting-gen`, `cf-prompting-fix`) that you can invoke directly when the intent is already clear.
+`plan` is the general sequencing workflow. Concrete work should use the specific route that matches the target: `coding`, `write-docs`, `write-skills`, `explain`, `map`, `auto-config`, or an SDLC route. Each of `coding`, `write-docs`, and `write-skills` is a compatibility alias that loads its `-gen` counterpart directly; invoke the specialized sub-routes (for example `cf-coding-review`, `cf-documenting-gen`, `cf-prompting-fix`) by name when the intent is already clear.
 
 ```mermaid
 flowchart TD
@@ -432,6 +433,10 @@ If you only need a quick route for the less-obvious cases:
 - need a rendered graph of docs, links, and code references -> use [`cfs map` / `cf-map`](#17-dependency-map-cfs-map--cf-map)
 
 After a concrete workflow captures your request, it may still pause before doing the work. Common gates are companion workflow selection for cross-domain tasks, optional `cf-explore` context discovery, optional `cf-brainstorm` for unclear decisions, and a plan-first prompt for multi-step work. These prompts are part of the workflow contract, not extra side conversations.
+
+### `cf-plan` vs `cf-planning`
+
+`cf-plan` is the legacy standalone planner — it produces a self-contained execution package with compiled phase files. `cf-planning` is the integrable thin planner — it produces a reusable `phase-plan` and `phase-dod` that downstream skills (coding, documenting, prompting) consume directly as prerequisites. Use `cf-plan` when you want an autonomous execution package; use `cf-planning` when you want a structured plan artifact that feeds into the next workflow step.
 
 ### Use `plan` when
 
@@ -489,16 +494,16 @@ Use the portable workflow form by default:
 - 💬 `cf-planning: ...`
 - 💬 `cf-coding: ...`
 - 💬 `cf-write-docs: ...`
-- 💬 `cf-write-skills: ...`
 - 💬 `cf-brainstorm: ...`
 - 💬 `cf-map: ...`
 - 💬 `cf-git-commit: ...`
+- 💬 `cf-testing: ...`
 
-Specialized sub-routes (invoke directly when the intent is clear):
+Specialized sub-routes (invoke directly when the intent is already clear — condensed format, one line per family):
 
-- 💬 `cf-coding-gen: ...` / `cf-coding-review: ...` / `cf-coding-fix: ...` / `cf-coding-ci: ...`
-- 💬 `cf-documenting-gen: ...` / `cf-documenting-review: ...` / `cf-documenting-fix: ...`
-- 💬 `cf-prompting-gen: ...` / `cf-prompting-review: ...` / `cf-prompting-fix: ...`
+- 💬 `cf-coding-gen: ...` / `cf-coding-review: ...` / `cf-coding-fix: ...` / `cf-coding-ci: ...` / `cf-coding-tests: ...` / `cf-code-planning: ...`
+- 💬 `cf-documenting-gen: ...` / `cf-documenting-review: ...` / `cf-documenting-fix: ...` / `cf-documenting-ci: ...` / `cf-documenting-planning: ...`
+- 💬 `cf-prompting-gen: ...` / `cf-prompting-review: ...` / `cf-prompting-fix: ...` / `cf-prompting-ci: ...` / `cf-prompting-planning: ...`
 
 Advanced maintainer routes exist for prompt, skill, and workflow authors:
 
@@ -647,7 +652,9 @@ Use `write-skills` when:
 - 💬 `cf-write-skills: transform this prose workflow into PDSL`
 - 💬 `cf-write-skills: author a new agent instruction file for code review`
 
-When the intent is already clear, invoke the sub-route directly: `cf-prompting-gen`, `cf-prompting-review`, `cf-prompting-fix`, `cf-prompting-ci`, or `cf-prompting-planning`.
+Note: `cf-write-skills` is a compatibility alias that loads `cf-prompting-gen` directly — it does not route based on intent.
+
+When the intent is already clear, invoke the sub-route directly: `cf-prompting-gen`, `cf-prompting-review`, `cf-prompting-fix`, `cf-prompting-ci`, or `cf-prompting-planning`. Compatibility aliases `cf-skills-review`, `cf-skills-ci`, and `cf-skills-planning` are also available as alternative names for `cf-prompting-review`, `cf-prompting-ci`, and `cf-prompting-planning` respectively.
 
 Use `debug-prompts` when you need to inspect execution live instead of editing the prompt file:
 
@@ -693,9 +700,9 @@ Use `coding` for **authoring, implementing, refactoring, fixing, or reviewing so
 - 💬 `cf-coding: refactor the auth module and check for correctness issues`
 - 💬 `cf-coding: review the changes in src/billing/ for logic bugs`
 
-Use `cf-coding` when the work is code-centric and you want code-quality checks as part of the same flow.
+Use `cf-coding` when the work is code-centric and you want code-quality checks as part of the same flow. Note: `cf-coding` is a compatibility alias that loads `cf-coding-gen` directly — it does not route based on intent.
 
-When the intent is already clear, invoke the sub-route directly: `cf-coding-gen`, `cf-coding-review`, `cf-coding-fix`, `cf-coding-ci`, `cf-coding-tests`, or `cf-code-planning`.
+When the intent is already clear, invoke the sub-route directly: `cf-coding-gen`, `cf-coding-review`, `cf-coding-fix`, `cf-coding-ci`, `cf-coding-tests`, or `cf-code-planning`. Compatibility alias `cf-testing` is also available as an alternative name for `cf-coding-tests`.
 
 ### Use `write-docs` when
 
@@ -704,9 +711,9 @@ Use `write-docs` for **writing, revising, or reviewing documentation** — guide
 - 💬 `cf-write-docs: write a usage guide for the billing API`
 - 💬 `cf-write-docs: review README.md for quality and correctness`
 
-Use `cf-write-docs` when the target is a human-facing document and you want documentation-quality checks, consistency review, and deterministic gate checks as part of the same flow.
+Use `cf-write-docs` when the target is a human-facing document and you want documentation-quality checks, consistency review, and deterministic gate checks as part of the same flow. Note: `cf-write-docs` is a compatibility alias that loads `cf-documenting-gen` directly — it does not route based on intent.
 
-For review-first document work, `cf-write-docs` shows the aggregated findings before any fix is applied. Browse the findings, mark specific items if needed, then open the fix menu to approve the scope: critical/major findings, all findings, selected findings, or no fixes. The workflow should not jump from findings directly into edits without that approval step.
+For review-first document work, use `cf-documenting-review` directly. It shows aggregated findings, lets you browse and mark specific items, and offers a fix-approval menu (critical/major findings, all findings, selected findings, or no fixes) before any edit is dispatched.
 
 When the intent is already clear, invoke the sub-route directly: `cf-documenting-gen`, `cf-documenting-review`, `cf-documenting-fix`, `cf-documenting-ci`, or `cf-documenting-planning`.
 
