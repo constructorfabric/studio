@@ -3,8 +3,8 @@ cf: true
 type: workflow
 name: cf-studio
 version: 0.1
-description: "Thin alias for the cf skill — /cf-studio, cf-studio help, and cfs studio behave identically to /cf (same skill, same routing, same gates)."
-purpose: Pass-through alias that delegates to the cf skill
+description: "Invoke when the user or another skill or workflow needs or asks for /cf-studio, cf-studio help, or cfs studio."
+purpose: Pass-through alias that delegates to the cf skill entrypoint.
 ---
 
 # cf-studio

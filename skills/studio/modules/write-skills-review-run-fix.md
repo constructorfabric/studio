@@ -10,8 +10,16 @@ DO:
   RUN SubAgentDispatch for the selected reviewer dispatch group before launching reviewer instances
   RUN prepare reviewer inputs for the chosen granularity: read each methodology's current Layer Map before per-layer or per-methodology dispatch, and synthesize into each reviewer instance only its assigned slice, declared REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, BRAINSTORM_DECISIONS, and explicit read-only resource_context references
   RUN the chosen review at REVIEW_GRANULARITY: single-pass = dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md in one combined dispatch group, then aggregate one report; per-methodology = dispatch cf-pdsl-reviewer over prompt-engineering plus prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories in parallel; per-layer = dispatch one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count
-  RUN aggregate every reviewer's findings into one deduplicated ReviewFindingsReport with stable finding IDs and every ReviewFindingContract field, then SET REVIEW_FINDINGS_REMAINING = count of findings in the deduplicated ReviewFindingsReport
+  SET REVIEWER_FINDING_SETS = the collected finding lists returned by every dispatched reviewer instance
+  RUN FindingsAggregateContract
+  SET FINDINGS = AGGREGATED_FINDINGS
+  SET FINDINGS_REPORT_TYPE = review-findings
+  SET FINDINGS_RESULT_STATUS = completed WHEN aggregation produced no errors; SET FINDINGS_RESULT_STATUS = failed WHEN aggregation produced errors
+  RUN FindingsRenderContract
+  SET ReviewFindingsReport = FINDINGS_REPORT
+  SET REVIEW_FINDINGS_REMAINING = FINDINGS_REPORT.total_count
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-fix-outcomes.md
+  CONTINUE REVIEW_ONLY_FINDINGS_CONTINUE WHEN REVIEW_ONLY_FINDINGS_GATE == true AND REVIEW_ONLY_FINDINGS_CONTINUE != unset
   CONTINUE WriteSkillsFixGate
 RULES:
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel
@@ -29,6 +37,7 @@ DO:
   CONTINUE WriteSkillsFixDispatch WHEN REVIEW_FIX_APPROVED == true
   CONTINUE WriteSkillsFixOutcomeNoChanges WHEN REVIEW_FIX_APPROVED != true
 RULES:
+  ALWAYS use this gate only for fix-capable review workflows; review-only workflows MUST set REVIEW_ONLY_FINDINGS_GATE == true and REVIEW_ONLY_FINDINGS_CONTINUE to their own non-writing findings gate
   NEVER dispatch cf-pdsl-author as a generic review-fix worker because its contract is for new PDSL authoring
 ```
 ```pdsl

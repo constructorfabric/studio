@@ -6,7 +6,7 @@ PURPOSE: Capture a generate intent as a separate turn before routing.
 STATE:
   SET GENERATE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
-  EMIT "Describe what you want to generate, change, or fix. I will match the relevant cf-* workflow(s), including companions when needed."
+  EMIT "Describe what you want to generate, change, or fix. I will match the relevant cf-* workflow(s), including companions when needed. Example: 'add a new skill for X', 'update the workflow to handle Y', or 'fix the routing bug in generate.md'. A sentence or two is enough."
   SET GENERATE_INTENT_CAPTURE_STATE = resume
   WAIT user.reply
   STOP_TURN

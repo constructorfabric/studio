@@ -16,7 +16,7 @@ RULES:
   ALWAYS pass ExplainExploreGate-resolved RESOURCE_CONTEXT to storytelling-context-pack as read-only context references, never as a gate verdict or inline bulk prompt text
   ALWAYS visualize-by-default with an audience-adapted constructed diagram unless there is an articulable reason not to
   ALWAYS use clickable Markdown link refs
-  NEVER combine multiple plan items into one mega-portion or require the user to scroll — decompose into sub-portions, summary first
+  NEVER combine multiple plan portions into one response or emit more than one portion per turn — each portion must end with WAIT user.reply and STOP_TURN before the next portion begins; the delivery loop is ExplainE2Deliver's responsibility and must never be bypassed by emitting all portions inline after plan approval
 ```
 
 ```pdsl

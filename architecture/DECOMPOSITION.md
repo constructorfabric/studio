@@ -22,6 +22,7 @@
   - [2.14 ralphex Delegation ⏳ HIGH](#214-ralphex-delegation--high)
   - [2.15 Project-Level Extensibility ⏳ HIGH](#215-project-level-extensibility--high)
   - [2.16 Dependency Mapping 🔶 HIGH](#216-dependency-mapping--high)
+  - [2.17 Thin Skill Runtime ⏳ HIGH](#217-thin-skill-runtime--high)
 - [3. Feature Dependencies](#3-feature-dependencies)
 
 <!-- /toc -->
@@ -841,6 +842,75 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `md-map.html.js` (optional sidecar) — JSON data payload
   - `md-map.toml` (optional override config) — category path overrides and styles
   - `artifacts.toml` — read-only: codebase entries and artifact paths for registry categorization
+
+
+### 2.17 Thin Skill Runtime ⏳ HIGH
+
+- [ ] `p1` - **ID**: `cpt-studio-feature-thin-skill-runtime`
+
+- **Purpose**: Reorganize the AI runtime around thin standalone skills, shared
+  modules, and canonical artifacts so kits can compose reusable behavior
+  without embedding heavy orchestration inside a few workflows.
+
+- **Depends On**:
+  - `cpt-studio-feature-core-infra`
+  - `cpt-studio-feature-agent-integration`
+  - `cpt-studio-feature-project-extensibility`
+
+- **Scope**:
+  - standalone skills for planning, authoring, review, and CI across code,
+    docs, and prompt/skill domains
+  - module-first extraction of prerequisite resolution, blocked reporting,
+    artifact/result contract loading, findings rendering, phase-close, and git
+    policy helpers
+  - explicit standalone skill, shared-module, and canonical artifact registries
+  - unified standalone skill result envelope with explicit blocked/override
+    semantics
+  - required bootstrap loading so generated shims and kit-owned thin skills
+    apply the same runtime contracts before skill-local logic
+
+- **Out of scope**:
+  - a mandatory single orchestration workflow for all tasks
+  - assumption-based review or CI verdicts
+  - legacy heavy workflow behavior remaining authoritative after migration
+
+- **Requirements Covered**:
+
+  - `p1` - `cpt-studio-fr-core-workflows`
+  - `p1` - `cpt-studio-fr-core-agents`
+  - `p1` - `cpt-studio-fr-core-config`
+
+- **Design Principles Covered**:
+
+  - `p1` - `cpt-studio-principle-dry`
+  - `p1` - `cpt-studio-principle-plugin-extensibility`
+  - `p1` - `cpt-studio-principle-determinism-first`
+
+- **Design Constraints Covered**:
+
+  - `p1` - `cpt-studio-constraint-markdown-contract`
+
+- **Domain Model Entities**:
+  - StandaloneSkill
+  - SharedModule
+  - CanonicalArtifactRegistry
+  - SkillResultEnvelope
+
+- **Design Components**:
+
+  - `p1` - `cpt-studio-component-agent-generator`
+  - `p1` - `cpt-studio-component-skill-engine`
+
+- **API**:
+  - generated agent-facing skill entrypoints
+  - workflow and module contracts loaded by generated shims
+
+- **Data**:
+  - workflow files under `workflows/`
+  - shared runtime modules under `skills/studio/modules/`
+  - runtime contract modules under `skills/studio/modules/runtime/`
+  - thin-skill runtime specification under
+    `architecture/specs/thin-skill-runtime.md`
 
 
 ---

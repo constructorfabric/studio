@@ -20,10 +20,14 @@ WHEN:
   REQUIRE edits have been applied to the document OR REVIEW_LOOP_REQUESTED == true
 DO:
   RUN resolve REVIEW_TARGET_PATHS to the declared read-only document path or paths under review, and REVIEW_TARGET_SLICES to the declared reviewed content slices for those targets, before reviewer dispatch or approved review-fix dispatch
-  EMIT "Review target resolution is required before document review can continue. Provide the reviewed document path(s) and declared content slice(s) for the target under review." and STOP_TURN WHEN REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset
+  WHEN REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset:
+    EMIT "Cannot start review — the document path or review scope is not set. Reply with the document path and optionally which section to review (e.g. `full-document` or `section: ## Architecture`), or reply `back` to return to the previous step."
+    CONTINUE the previous review setup step WHEN user.reply == "back"
+    STOP_TURN
   CONTINUE WriteDocsReviewRun
 RULES:
   NEVER dispatch reviewers or approved review-fix writers while REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset
+  NEVER emit the term 'slice' or 'content slice' to end users without a plain-language definition at the point of use
 ```
 
 ```pdsl

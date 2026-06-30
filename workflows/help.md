@@ -3,7 +3,7 @@ cf: true
 type: workflow
 name: cf-help
 version: 0.1
-description: "Invoke for cf help, /cf help, cf-studio help, /cf-studio help, or cfs help — presets a cf-explain storytelling walkthrough of Constructor Studio itself."
+description: "Invoke when the user or another skill or workflow needs or asks for cf help, Constructor Studio help, /cf help, /cf-studio help, cfs help, or asks how to use the Studio workflows and skills."
 purpose: Thin help router that presets the cf-explain storytelling help session and delegates to cf-explain
 ---
 
@@ -29,11 +29,13 @@ PURPOSE: Preset the storytelling help session about Constructor Studio and deleg
 DO:
   RUN HelpPresetStorytellingSession
   RUN HelpPresetStorytellingGoal
+  EMIT "Starting a guided walkthrough of Constructor Studio. I'll explain how it works in portions — you can navigate forward, back, or stop at any time by saying 'stop'."
   INVOKE skill `cf-explain` to run the preset storytelling session, then STOP_TURN
 RULES:
   NEVER render custom one-shot help, a command list, or a status summary here
   ALWAYS let the preset values resolve cf-explain's four E1 gates (mode/disposition/audience/plan) instead of prompting — preset resolution skips the prompts, not the phases
   ALWAYS keep the next user-visible output to the storytelling E0/E1 opener, then E2 portion delivery
+  ALWAYS emit a one-sentence preview and opt-out hint before invoking cf-explain from cf-help
 ```
 
 ```pdsl

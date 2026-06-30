@@ -13,6 +13,7 @@ RULES:
   ALWAYS re-render the panel and seed topic after each edit until the user replies start
   ALWAYS keep min 3 and max 6 personas
   ALWAYS pass resource_context to every later panel/expert execution, whether inline or native
+  ALWAYS SET PENDING_CLARIFICATION = unset and SET clarify_count = 0 before transitioning to BrainstormRounds, to prevent stale clarify-state from a prior round contaminating the new one
 ```
 
 ```pdsl

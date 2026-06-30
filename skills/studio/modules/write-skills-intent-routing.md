@@ -3,6 +3,8 @@
 ```pdsl
 UNIT WriteSkillsIntentCapture
 PURPOSE: Capture the skill-writing target before any context discovery or design gate runs.
+STATE:
+  SET WRITE_SKILLS_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE ORIGINAL_INTENT == unset
 DO:
@@ -18,6 +20,8 @@ RULES:
 ```pdsl
 UNIT WriteSkillsIntentResume
 PURPOSE: Resume the workflow after the user provides the skill-writing target.
+STATE:
+  SET WRITE_SKILLS_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE user.reply exists
   REQUIRE WRITE_SKILLS_INTENT_CAPTURE_STATE == resume
@@ -44,7 +48,7 @@ RULES:
 UNIT WriteSkillsCompanionSetup
 PURPOSE: Prepare the companion-skill and plan-first routing handoff for cf-write-skills.
 DO:
-  SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch
+  SET PLAN_FIRST_CONTINUE = WriteSkillsAuthorDispatch
   SET CURRENT_WORKFLOW = cf-write-skills
   SET COMPANION_CONTINUE = WriteSkillsExploreGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-prep-gates.md

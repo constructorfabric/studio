@@ -41,11 +41,18 @@ WHEN:
 DO:
   RUN verify the returned fix manifest accounts for every APPROVED_REVIEW_FINDING_IDS entry as applied or not-fixable; SET REVIEW_FIXES_APPLIED = true WHEN one or more approved fixes changed content; SET REVIEW_FIXES_APPLIED = false WHEN no content changed
   CONTINUE WriteDocsValidate WHEN REVIEW_FIXES_APPLIED == true
-  STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none) — re-reviewing unchanged content cannot change the result
-  STOP_TURN and report that deterministic blockers remain WHEN no review findings remain AND GATE_STATUS == fail
+  WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none):
+    LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+    EMIT a summary of remaining findings: count, IDs, and severities
+    RUN NextActionsOffer with cf-documenting-fix marked (suggested)
+  WHEN no review findings remain AND GATE_STATUS == fail:
+    LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+    EMIT a summary of deterministic blockers that remain after semantic fix application
+    RUN NextActionsOffer with cf-documenting-ci marked (suggested)
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-completion.md WHEN no review findings remain AND (GATE_STATUS == pass OR (REVIEW_LOOP_REQUESTED == true AND GATE_STATUS == not-run))
   CONTINUE WriteDocsCompletion WHEN no review findings remain AND GATE_STATUS == pass
   CONTINUE WriteDocsCompletion WHEN no review findings remain AND REVIEW_LOOP_REQUESTED == true AND GATE_STATUS == not-run
 RULES:
-  NEVER re-loop the review after an iteration with no applied fixes — STOP_TURN reporting the remaining findings so the loop cannot spin on unchanged content; only an applied fix re-runs WriteDocsValidate and re-reviews
+  NEVER re-loop the review after an iteration with no applied fixes
+  ALWAYS run NextActionsOffer as the terminal step when findings remain but no fixes were applied; mark cf-documenting-fix as (suggested)
 ```

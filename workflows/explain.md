@@ -3,7 +3,7 @@ cf: true
 type: workflow
 name: cf-explain
 version: 0.1
-description: "Invoke for requests to explain, walk through, teach, onboard, give a code tour, produce a source-grounded narrative, or summarize a decision."
+description: "Invoke when the user or another skill or workflow needs or asks to explain what was done, walk through code or docs, teach a subsystem, onboard someone, give a code tour, summarize a result, narrate changes, or produce a source-grounded explanation of an artifact or decision."
 purpose: Run an interactive, pedagogically-paced storytelling walkthrough of an artifact, codebase, or document via sub-agents — resolving mode/disposition/audience/plan through four gates before any answer-style content, and optionally exporting a Markdown package.
 ---
 
@@ -19,6 +19,17 @@ PURPOSE: Arm explain mode and load the storytelling methodology before any expla
 STATE:
   SET EXPLAIN_EXPORT: true | false (default false, scope workflow_run)
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
+  SET CF_HELP_PRESET: true | false | unset (default unset, scope workflow_run)
+  SET EXPLAIN_MODE: true | false | unset (default unset, scope workflow_run)
+  SET EXPLAIN_TARGET: path | ref | unset (default unset, scope workflow_run)
+  SET STORYTELLING_MODE: presentation | tutorial | audit | unset (default unset, scope workflow_run)
+  SET STORYTELLING_ARTIFACT_DISPOSITION: chat-only | export | both | unset (default unset, scope workflow_run)
+  SET STORYTELLING_AUDIENCE: string | unset (default unset, scope workflow_run)
+  SET STORYTELLING_CONTEXT_PACK_STRATEGY: hybrid | narrow | broad | unset (default unset, scope workflow_run)
+  SET STORYTELLING_PLAN_APPROVED: true | false | unset (default unset, scope workflow_run)
+  SET STORYTELLING_DIAGRAM_FORMAT: ascii | mermaid | none | unset (default unset, scope workflow_run)
+  SET STORYTELLING_DIAGRAM_FORMAT_PRESET: true | false | unset (default unset, scope workflow_run)
+  SET STORYTELLING_HELP_GOAL: string | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/explain-bootstrap-refs.md

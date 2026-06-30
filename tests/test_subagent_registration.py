@@ -415,6 +415,17 @@ class TestRenderTomlAgent(unittest.TestCase):
         result = _render_toml_agent(agent, "@/t.md")
         self.assertIn('description = "line one line two line three"', result)
 
+    def test_codex_generation_uses_supported_model_ids_only(self):
+        agent = _make_semantic_agent("cypilot-codegen", model="cf:tier:balanced")
+        agent["provider"] = "openai"
+        agent["role"] = "generate"
+        agent["target"] = "codebase"
+
+        result = _render_toml_agent(agent, "@/agents/cypilot-codegen.md")
+
+        self.assertIn('model = "gpt-5.4"', result)
+        self.assertNotIn("gpt-5.3-codex", result)
+
 
 # ── Integration tests ───────────────────────────────────────────────
 

@@ -29,7 +29,7 @@ DO:
 MENU KitInitDiscoveryFailureMenu
 TITLE: Discovery did not return candidate kit resources. Retry, provide manual guidance, or cancel.
 OPTIONS:
-  1 retry -> CONTINUE KitInitDiscoveryRun
+  1 retry -> CONTINUE KitInitDiscoveryRunStart
   2 guidance -> SET PENDING_MANUAL_GUIDANCE = true; EMIT "Reply with resource seed commands such as `add resource id=<id> kind=<kind> source=<path>`, `set metadata.name=<name>`, `set metadata.version=<semver>`, or `exclude source=<path>`."; WAIT user.reply; STOP_TURN
   3 cancel -> STOP_TURN
   INVALID -> EMIT "Reply 1-3." and EMIT_MENU KitInitDiscoveryFailureMenu

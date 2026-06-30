@@ -26,5 +26,17 @@ DO:
   SET REVIEW_TARGET_SLICES = full-file slices for REVIEW_TARGET_PATHS WHEN REVIEW_TARGET_PATHS != unset AND REVIEW_TARGET_SLICES == unset
   SET SKILL_FILE_WRITTEN = true WHEN PATHS_WRITTEN != unset
   CONTINUE WriteSkillsValidate WHEN SKILL_FILE_WRITTEN == true
-  STOP_TURN and report that the author sub-agent produced no output — request clarification or retry WHEN SKILL_FILE_WRITTEN != true
+  WHEN SKILL_FILE_WRITTEN != true:
+    LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+    EMIT "The author sub-agent produced no output."
+    EMIT_MENU WriteSkillsNoOutputMenu
+    WAIT user.reply
+    STOP_TURN
+MENU WriteSkillsNoOutputMenu
+TITLE: The author agent produced no output — how would you like to proceed?
+OPTIONS:
+  1 retry — retry with a clarified or narrowed scope -> CONTINUE WriteSkillsAuthorDispatch
+  2 brainstorm — refine the task with cf-brainstorm before retrying -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer with cf-brainstorm marked (suggested)
+  3 stop — return to free mode -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
+  INVALID -> EMIT_MENU WriteSkillsNoOutputMenu
 ```

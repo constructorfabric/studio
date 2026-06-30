@@ -9,7 +9,13 @@ DO:
   RUN verify every brief exists, each phase file matches its brief's load instructions, no unresolved {...} vars outside code fences, each phase file <= 1000 lines (split if oversized), and the union of all phase Rules sections covers 100% of applicable rules (re-split rather than drop rules)
   CONTINUE PlanPhase4Finalize
 ON_ERROR:
-  each phase file <= 1000 lines (split if oversized) check fails -> RUN auto-split the oversized phase file into ordered phase-NN-*.md parts (re-split rather than drop rules), update plan.toml [[phases]], then re-run the verify step; EMIT the oversized file path with explicit split instructions and STOP_TURN WHEN it still exceeds 1000 lines after the auto-split
+  each phase file <= 1000 lines (split if oversized) check fails -> RUN auto-split the oversized phase file into ordered phase-NN-*.md parts (re-split rather than drop rules), update plan.toml [[phases]], then re-run the verify step; WHEN it still exceeds 1000 lines after the auto-split: EMIT the oversized file path with explicit split instructions, EMIT_MENU OversizedPhaseRecoveryMenu, WAIT user.reply, STOP_TURN
+MENU OversizedPhaseRecoveryMenu
+TITLE: Phase file still exceeds 1000 lines after auto-split. How would you like to proceed?
+OPTIONS:
+  1 re-verify — I have made manual edits to the file, re-run the verify step -> CONTINUE PlanPhase3Validate
+  2 stop — keep the current files and return to free mode -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
+  INVALID -> EMIT_MENU OversizedPhaseRecoveryMenu
 RULES:
   NEVER drop rules to meet budget
 ```
@@ -38,8 +44,9 @@ TITLE: Plan passed self-validation — what next? Option 1 (analyze) is the sugg
 OPTIONS:
   1 analyze -> CONTINUE {cf-studio-path}/.core/workflows/analyze.md with ORIGINAL_INTENT="analyze the generated plan at {cf-studio-path}/.plans/{task-slug}/ for validation issues"
   2 execute -> CONTINUE PlanNativeExecute (native same-chat execution; if sub-agents are unavailable it falls back to the handoff prompt)
-  3 handoff -> EMIT the new-chat startup prompt in a single fenced code block (read plan.toml, execute Phase 1, then report and prompt for Phase 2), then STOP_TURN
-  4 review -> EMIT the plan file paths to inspect, then STOP_TURN
-  5 modify -> WAIT the user's plan changes (add/remove phases, adjust scope, update files), then STOP_TURN
+  3 handoff -> EMIT the new-chat startup prompt in a single fenced code block (read plan.toml, execute Phase 1, then report and prompt for Phase 2), EMIT "Paste the above prompt into a new chat to begin execution. Return here to continue with Phase 2.", then EMIT_MENU Phase4NextStepsMenu
+  4 review -> EMIT the plan file paths to inspect, then EMIT_MENU Phase4NextStepsMenu
+  5 modify -> WAIT the user's plan changes (add/remove phases, adjust scope, update files), then EMIT_MENU Phase4NextStepsMenu
+  6 done -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
   INVALID -> EMIT_MENU Phase4NextStepsMenu
 ```

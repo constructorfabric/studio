@@ -2,7 +2,7 @@
 cf: true
 type: workflow
 name: cf-explore
-description: "Invoke for requests to explore, discover context, find relevant files, locate architecture docs, locate artifacts, search code references, or gather task-relevant resource context."
+description: "Invoke when the user or another skill or workflow needs or asks to explore the codebase, figure out where something lives, find relevant files, locate docs or artifacts, search references or call sites, map dependencies, or gather context before planning, writing, or reviewing."
 version: 0.1
 purpose: Discover task-relevant project resource context via a read-only sub-agent and return a controller-owned resource map without polluting the shared context pack.
 ---
@@ -24,8 +24,10 @@ DO:
   RUN WorkflowBootstrapRouterPrelude
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
+  EMIT "Starting exploration — I'll scan the project for task-relevant files and context."
   CONTINUE ExploreEntry
 RULES:
+  ALWAYS emit a one-sentence orientation before ExploreEntry so the user knows the explore session is starting
   ALWAYS run StudioInstructionsMemoryGate before explore entry routing, scanning, or saved-context handling
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, or delegation
   ALWAYS load the sub-agent dispatch module before ExploreRun can dispatch cf-explorer

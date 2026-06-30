@@ -45,7 +45,7 @@ OPTIONS:
   5 table -> SET REVIEW_REPORT_VIEW = table and rerender ReviewFindingsReportBrowser
   6 detail -> SET REVIEW_REPORT_VIEW = detail and rerender ReviewFindingsReportBrowser
   7 fix-menu -> SET REVIEW_FINDINGS_BROWSER_ENTRY = unset; SET REVIEW_FIX_MENU_TOKEN = ready; SET REVIEW_FIX_MENU_REPORT = current; CONTINUE ReviewFixApprovalGate
-  8 none -> SET REVIEW_FINDINGS_BROWSER_ENTRY = unset; SET REVIEW_FIX_SCOPE = none; SET REVIEW_FIX_APPROVED = false; SET APPROVED_REVIEW_FINDING_IDS = empty; RETURN to the calling review loop without applying fixes
+  8 exit (skip all fixes) — leave findings open, return without fixing -> SET REVIEW_FINDINGS_BROWSER_ENTRY = unset; SET REVIEW_FIX_SCOPE = none; SET REVIEW_FIX_APPROVED = false; SET APPROVED_REVIEW_FINDING_IDS = empty; RETURN to the calling review loop without applying fixes  # RETURN is used here rather than CONTINUE because this option pops back to the calling review loop's dispatch context, not to a unit within the browser module; no ReviewFindingsReportBrowserExit unit exists and adding one would be a scope-widening change
   INVALID -> EMIT_MENU ReviewFindingsNavigation
 ```
 
@@ -102,13 +102,13 @@ RULES:
   NEVER present ReviewFixScope as a short findings table plus fix choices; the findings table belongs only to ReviewFindingsReportBrowser table view
   NEVER apply review fixes without explicit user approval of the chosen scope
 MENU ReviewFixScope
-TITLE: Review found issues — what should I fix? (nothing is changed until you choose)
+TITLE: Review found issues — what should I fix? Inject live counts before emitting: "N CRITICAL/MAJOR and M MINOR findings — nothing is changed until you choose."
 OPTIONS:
-  1 crit-major -> CONTINUE ReviewFixScopeApproveCriticalMajor
-  2 all -> CONTINUE ReviewFixScopeApproveAll
-  3 partial -> SET REVIEW_FIX_SCOPE = partial; SET REVIEW_FIX_APPROVED = true; CONTINUE ReviewFixPartialScopeResolve
-  4 browser -> SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; CONTINUE ReviewFindingsReportBrowser
-  5 none -> CONTINUE ReviewFixScopeApproveNone
+  1 critical + major only — fix the N highest-severity findings, then re-review (suggested when CRITICAL or MAJOR findings exist) -> CONTINUE ReviewFixScopeApproveCriticalMajor
+  2 all findings — fix all N+M findings including MINOR -> CONTINUE ReviewFixScopeApproveAll
+  3 select specific — choose individual findings by ID or browser selection -> SET REVIEW_FIX_SCOPE = partial; SET REVIEW_FIX_APPROVED = true; CONTINUE ReviewFixPartialScopeResolve
+  4 back to browser — review findings again before deciding -> SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; CONTINUE ReviewFindingsReportBrowser
+  5 skip fixes — close without applying any fixes -> CONTINUE ReviewFixScopeApproveNone
   INVALID -> EMIT_MENU ReviewFixScope
 ```
 
@@ -121,7 +121,7 @@ DO:
   SET APPROVED_REVIEW_FINDING_IDS = all-critical-major
   SET REVIEW_FIX_MENU_TOKEN = unset
   SET REVIEW_FIX_MENU_REPORT = unset
-  RETURN to the calling review loop to fix only CRITICAL and MAJOR findings, then re-review (suggested)
+  RETURN to the calling review loop to fix only CRITICAL and MAJOR findings, then re-review
 ```
 
 ```pdsl
@@ -234,12 +234,13 @@ WHEN:
   REQUIRE REVIEW_FIX_MENU_TOKEN == ready
   REQUIRE REVIEW_FIX_MENU_REPORT == current
 DO:
-  EMIT "Reply with the specific finding IDs to fix for this partial pass."
+  EMIT the following prompt, replacing bracketed values with live data from the active ReviewFindingsReport: "Select findings to fix by ID. Available: [list all IDs with severity, e.g. F-001 CRITICAL, F-002 MAJOR, F-003 MINOR]. Reply with one or more IDs separated by spaces or commas (e.g. F-001 F-003), or reply `back` to return to the findings browser."
   SET PARTIAL_IDS_CAPTURE_STATE = validate
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS emit the initial partial-ID prompt and stop the turn before any explicit-ID validation runs
+  ALWAYS emit the available finding IDs with their severities before waiting for input
+  ALWAYS emit the expected format example (e.g. F-001 F-003) in the prompt
   ALWAYS advance PARTIAL_IDS_CAPTURE_STATE to validate before stopping so the resumed turn cannot treat the scope-menu reply as finding-ID input
 ```
 
@@ -262,22 +263,30 @@ WHEN:
   REQUIRE REVIEW_FIX_MENU_TOKEN == ready
   REQUIRE REVIEW_FIX_MENU_REPORT == current
 DO:
+  SET PARTIAL_IDS_CAPTURE_STATE = unset WHEN user.reply == "back"
+  CONTINUE ReviewFindingsReportBrowser WHEN user.reply == "back"
   CONTINUE ReviewFixPartialIdsRetry WHEN user.reply is empty OR user.reply names no finding IDs from the active ReviewFindingsReport
   CONTINUE ReviewFixPartialIdsReturn WHEN user.reply names one or more finding IDs from the active ReviewFindingsReport
 RULES:
   ALWAYS keep the active ReviewFindingsReport guard in place while waiting for explicit partial finding IDs
   ALWAYS retry partial ID capture when user.reply is missing, empty, or names no finding IDs from the active ReviewFindingsReport
   ALWAYS return from partial ID capture only after parsing at least one valid finding ID from the active ReviewFindingsReport
-  ALWAYS set APPROVED_REVIEW_FINDING_IDS before clearing PARTIAL_IDS_CAPTURE_STATE, REVIEW_FIX_MENU_TOKEN, and REVIEW_FIX_MENU_REPORT
 ```
 
 ```pdsl
 UNIT ReviewFixPartialIdsRetry
 PURPOSE: Re-prompt for explicit finding IDs when the resumed reply does not name any valid current findings.
 DO:
-  EMIT "No valid finding IDs from the current review report were provided. Reply with one or more finding IDs from the current report."
+  EMIT_MENU ReviewFixPartialIdsRetryMenu
   WAIT user.reply
   STOP_TURN
+MENU ReviewFixPartialIdsRetryMenu
+TITLE: No valid finding IDs were recognised — how do you want to proceed?
+OPTIONS:
+  1 retry — enter IDs again (format: F-001 F-003, separated by spaces or commas) -> CONTINUE ReviewFixPartialIdsValidate
+  2 browser — return to the findings browser to check IDs -> SET PARTIAL_IDS_CAPTURE_STATE = unset; SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; CONTINUE ReviewFindingsReportBrowser
+  3 back — return to the fix-scope menu -> SET PARTIAL_IDS_CAPTURE_STATE = unset; SET REVIEW_FIX_SCOPE = unset; SET REVIEW_FIX_APPROVED = unset; CONTINUE ReviewFixApprovalGate
+  INVALID -> EMIT_MENU ReviewFixPartialIdsRetryMenu
 ```
 
 ```pdsl

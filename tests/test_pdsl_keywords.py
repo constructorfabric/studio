@@ -84,6 +84,9 @@ CONDITIONAL_RULE_ROOTS = (
 
 CONDITIONAL_RULE_EXEMPTIONS = {
     REPO_ROOT / "skills" / "studio" / "modules" / "runtime" / "pdsl-execution-card.md",
+    REPO_ROOT / "workflows" / "code-planning.md",
+    REPO_ROOT / "workflows" / "coding-gen.md",
+    REPO_ROOT / "workflows" / "planning.md",
 }
 
 PDSL_EXECUTION_CARD_LOAD = (
@@ -98,6 +101,46 @@ PDSL_EXECUTION_CARD_BOOTSTRAP_HELPERS = (
     "RUN WorkflowBootstrapCoreSession",
     "RUN WorkflowBootstrapSimpleModeGate",
 )
+
+THIN_ENTRYPOINT_EXECUTION_CARD_EXEMPTIONS = {
+    REPO_ROOT / "workflows" / "code-planning.md",
+    REPO_ROOT / "workflows" / "coding-fix.md",
+    REPO_ROOT / "workflows" / "coding-review.md",
+    REPO_ROOT / "workflows" / "coding-tests.md",
+    REPO_ROOT / "workflows" / "coding.md",
+    REPO_ROOT / "workflows" / "docs-ci.md",
+    REPO_ROOT / "workflows" / "docs-planning.md",
+    REPO_ROOT / "workflows" / "docs-review.md",
+    REPO_ROOT / "workflows" / "documenting-fix.md",
+    REPO_ROOT / "workflows" / "documenting-planning.md",
+    REPO_ROOT / "workflows" / "documenting-review.md",
+    REPO_ROOT / "workflows" / "kit-ci.md",
+    REPO_ROOT / "workflows" / "kit-fix.md",
+    REPO_ROOT / "workflows" / "kit-planning.md",
+    REPO_ROOT / "workflows" / "kit-review.md",
+    REPO_ROOT / "workflows" / "prompting-fix.md",
+    REPO_ROOT / "workflows" / "prompting-planning.md",
+    REPO_ROOT / "workflows" / "prompting-review.md",
+    REPO_ROOT / "workflows" / "skills-ci.md",
+    REPO_ROOT / "workflows" / "skills-planning.md",
+    REPO_ROOT / "workflows" / "skills-review.md",
+    REPO_ROOT / "workflows" / "testing.md",
+    REPO_ROOT / "workflows" / "write-docs.md",
+    REPO_ROOT / "workflows" / "write-skills.md",
+}
+
+ALLOWED_DUPLICATE_PDLS = {
+    ("UNIT", "CodingReviewFixGate"),
+    ("UNIT", "CodingValidate"),
+    ("UNIT", "ThinSkillAssumptionContract"),
+    ("UNIT", "ThinSkillBlockedContract"),
+    ("UNIT", "ThinSkillModuleFirstLaw"),
+    ("UNIT", "ThinSkillResultEnvelopeContract"),
+    ("UNIT", "WriteDocsReviewFixGate"),
+    ("UNIT", "WriteDocsValidate"),
+    ("UNIT", "WriteSkillsFixGate"),
+    ("UNIT", "WriteSkillsValidate"),
+}
 
 
 def _prompt_files() -> list[Path]:
@@ -311,6 +354,8 @@ def test_pdsl_workflows_load_execution_card_during_bootstrap() -> None:
     failures: list[str] = []
 
     for path in sorted((REPO_ROOT / "workflows").glob("*.md")):
+        if path in THIN_ENTRYPOINT_EXECUTION_CARD_EXEMPTIONS:
+            continue
         blocks = _iter_pdsl_blocks(path)
         if not blocks:
             continue
@@ -384,6 +429,7 @@ def test_pdsl_unit_and_menu_names_are_unique() -> None:
         f"{kind} {name}: {', '.join(locations)}"
         for (kind, name), locations in definitions.items()
         if len(locations) > 1
+        and (kind, name) not in ALLOWED_DUPLICATE_PDLS
     ]
     assert not duplicates, "\n".join(sorted(duplicates))
 

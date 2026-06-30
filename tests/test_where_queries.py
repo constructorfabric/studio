@@ -83,7 +83,10 @@ def _with_context(root: Path):
 
 
 class _ContextTestBase(unittest.TestCase):
-    """Base that cleans up global context after each test."""
+    """Base that isolates global context around each test."""
+
+    def setUp(self):
+        set_context(None)
 
     def tearDown(self):
         set_context(None)

@@ -8,6 +8,8 @@ STATE:
   SET RESOURCE_CONTEXT_REF: reference | unset (default unset, scope workflow_run)
   SET RESOURCE_CONTEXT_TASK_KEY: string | unset (default unset, scope workflow_run)
   SET RESOURCE_CONTEXT_PROVENANCE: object | unset (default unset, scope workflow_run)
+  SET WORKFLOW_PREP_EXPLORE_MENU: menu-name | unset (default unset, scope workflow_run)
+  SET WORKFLOW_PREP_BRAINSTORM_GATE: unit-name | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE ORIGINAL_INTENT != unset
   REQUIRE WORKFLOW_PREP_EXPLORE_MENU is set
@@ -37,6 +39,7 @@ WHEN:
   REQUIRE WORKFLOW_PREP_EXPLORE_MENU is set
   REQUIRE WORKFLOW_PREP_BRAINSTORM_GATE is set
 DO:
+  CONTINUE WORKFLOW_PREP_BRAINSTORM_GATE WHEN RESOURCE_CONTEXT_TASK_KEY exactly matches the current normalized workflow-prep task key
   EMIT_MENU WorkflowPrepExploreRepeatMenu
   WAIT user.reply
   STOP_TURN
@@ -46,7 +49,7 @@ RULES:
   ALWAYS show the stored RESOURCE_CONTEXT_TASK_KEY or concise provenance summary when asking whether to reuse context
   NEVER discard existing RESOURCE_CONTEXT unless the user chooses to run cf-explore again
 MENU WorkflowPrepExploreRepeatMenu
-TITLE: Existing cf-explore resource_context is already available for this workflow-prep task. Run cf-explore again only if the target changed or the context is stale; skip/reuse is suggested. Reply with a number.
+TITLE: Existing cf-explore resource_context is already available for this workflow-prep task. Run cf-explore again only if the target changed or the context is stale; skip/reuse is suggested. Stored context task key: [RESOURCE_CONTEXT_TASK_KEY] (explored [RESOURCE_CONTEXT_PROVENANCE summary if available]). Reply with a number.
 OPTIONS:
   1 skip-reuse -> CONTINUE WORKFLOW_PREP_BRAINSTORM_GATE
   2 explore-again -> SET RESOURCE_CONTEXT = unset; SET RESOURCE_CONTEXT_REF = unset; SET RESOURCE_CONTEXT_TASK_KEY = unset; SET RESOURCE_CONTEXT_PROVENANCE = unset; EMIT_MENU WORKFLOW_PREP_EXPLORE_MENU; WAIT user.reply; STOP_TURN
@@ -58,6 +61,8 @@ UNIT WorkflowPrepBrainstormGate
 PURPOSE: Offer decision or design exploration after the explore gate and before workflow dispatch.
 STATE:
   SET BRAINSTORM_DECISIONS: unset | provided (default unset, scope workflow_run)
+  SET WORKFLOW_PREP_BRAINSTORM_MENU: menu-name | unset (default unset, scope workflow_run)
+  SET WORKFLOW_PREP_DISPATCH_UNIT: unit-name | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE WORKFLOW_PREP_BRAINSTORM_MENU is set
   REQUIRE WORKFLOW_PREP_DISPATCH_UNIT is set

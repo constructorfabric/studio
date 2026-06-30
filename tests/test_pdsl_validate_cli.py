@@ -160,17 +160,16 @@ def test_pdsl_unsupported_scaffold_is_error() -> None:
 
 
 # Migration note (legacy multi-phase workflow removal + routing update):
-# test_cf_pdsl_workflow_reuses_pdsl_validate_command was REWRITTEN. It previously
-# opened workflows/pdsl.md (deleted; there is no standalone pdsl workflow) and
+# test_cf_pdsl_workflow_reuses_pdsl_validate_command previously opened
+# workflows/pdsl.md (deleted; there is no standalone pdsl workflow) and
 # asserted a UNIT PdslCommandValidationReuse that no longer exists. The
-# `cfs pdsl validate` command is now reused by workflows/write-skills.md
-# (UNIT WriteSkillsValidate runs `{cfs_cmd} pdsl validate`), so the test is
-# re-grounded there. All other tests in this file are unchanged.
+# `cfs pdsl validate` command now lives in the deterministic prompt-validation
+# workflow, workflows/prompting-ci.md, so this test is grounded there.
 def test_cf_pdsl_workflow_reuses_pdsl_validate_command() -> None:
-    workflow = Path(__file__).resolve().parents[1] / "workflows" / "write-skills.md"
+    workflow = Path(__file__).resolve().parents[1] / "workflows" / "prompting-ci.md"
     text = workflow.read_text(encoding="utf-8")
 
-    assert "UNIT WriteSkillsValidate" in text
+    assert "UNIT PromptingCiPreset" in text
     assert "{cfs_cmd} pdsl validate" in text
 
 

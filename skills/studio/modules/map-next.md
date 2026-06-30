@@ -10,10 +10,11 @@ DO:
 MENU MapNextStepsMenu
 TITLE: What would you like to do next? Option 1 is the suggested default. Reply with a number or a short custom instruction.
 OPTIONS:
-  1 open-viewer | open -> EMIT guidance to open the generated HTML map in a browser, then STOP_TURN
-  2 export-json | json -> RUN `{cfs_cmd} map --format json --out map.json` (re-runs the map), then STOP_TURN
-  3 diagnose -> WAIT a cpt-id, RUN `{cfs_cmd} where-used <cpt-id>`, then STOP_TURN
+  1 open-viewer | open -> EMIT guidance to open the generated HTML map in a browser, then EMIT_MENU MapNextStepsMenu
+  2 export-json | json -> RUN `{cfs_cmd} map --format json --out map.json` (re-runs the map), then EMIT_MENU MapNextStepsMenu
+  3 diagnose -> WAIT a cpt-id, RUN `{cfs_cmd} where-used <cpt-id>`, then EMIT_MENU MapNextStepsMenu
   4 config-assist | config -> LOAD {cf-studio-path}/.core/skills/studio/modules/map-config-assist.md; CONTINUE MapConfigAssist
-  5 custom -> WAIT the user's next map action, then STOP_TURN
+  5 custom -> WAIT the user's next map action, then EMIT_MENU MapNextStepsMenu
+  6 done -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
   INVALID -> EMIT_MENU MapNextStepsMenu
 ```

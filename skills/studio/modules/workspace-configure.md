@@ -14,11 +14,13 @@ DO:
 RULES:
   ALWAYS confirm every source field listed in the loaded reference and track confirmation per source individually (defaults, incl. cross_repo/resolve_remote_ids, come from the reference)
   NEVER enter generate until every source is confirmed and the location is final; the primary source is always the cwd (no `primary` field), and NEVER allow inline location with any Git URL source
+  ALWAYS include one-line plain-English descriptions of cross_repo and resolve_remote_ids in the emitted proposal, showing current value and consequence
+  ALWAYS emit 'Note: the primary source is always this working directory and cannot be changed.' before the confirm menu
 MENU SourceConfirmMenu
-TITLE: Confirm source settings (fields + suggested defaults in the loaded reference). Reply approve or list fields to change.
+TITLE: Confirm source settings (fields shown with their current values — reply 'approve' to use them or name fields to change).
 OPTIONS:
   1 approve -> mark the source confirmed, then CONTINUE WorkspaceConfigure WHEN unconfirmed sources remain, else SET all_sources_confirmed = true, RETURN a WORKSPACE_STATUS record (phase=configure, status=complete, next_route=generate), then CONTINUE WorkspaceGenerate
   2 field-edits | edit -> apply edits to the named fields; SET all_sources_confirmed = unset (the edited source must be re-confirmed); reject and reset to standalone WHEN the edit changes location to inline AND any source is a Git URL; re-show the proposal and EMIT_MENU SourceConfirmMenu
-  3 cancel -> RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
+  3 cancel -> EMIT "Workspace configuration cancelled before all sources were confirmed."; RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
   INVALID -> EMIT_MENU SourceConfirmMenu
 ```

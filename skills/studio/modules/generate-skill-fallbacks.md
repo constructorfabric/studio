@@ -12,7 +12,7 @@ TITLE: All available cf-* workflow(s) for generate — pick one, or enter comma-
 OPTIONS:
   1 skill -> INVOKE the user-selected cf-* skill, passing ORIGINAL_INTENT
   2 companion-selection -> INVOKE each selected compatible cf-* skill sequentially, passing ORIGINAL_INTENT
-  3 cancel -> STOP_TURN
+  3 cancel -> EMIT "Generate routing cancelled. Control is returning to free mode."; STOP_TURN
   INVALID -> EMIT_MENU GenerateOtherSkillsMenu
 ```
 
@@ -33,6 +33,6 @@ TITLE: No match — load listed cf-* skill(s), describe intent again, or cancel.
 OPTIONS:
   1 skill -> INVOKE the user-selected cf-* skill(s), passing ORIGINAL_INTENT when present else load only
   2 describe-intent | help-me-choose -> LOAD {cf-studio-path}/.core/skills/studio/modules/generate-intent-capture.md; CONTINUE GenerateDescribeIntent
-  3 cancel -> STOP_TURN
+  3 cancel -> EMIT "No generate workflow was launched. Control is returning to free mode."; STOP_TURN
   INVALID -> EMIT_MENU GenerateNoMatchMenu
 ```

@@ -18,22 +18,36 @@ RULES:
   NEVER disarm the debugger or clear DEBUG_TRACE on dump; exporting is read-only over the session state.
 ON_ERROR:
   write_failed -> EMIT "Could not write the trace dump to <DUMP_PATH>. Check that {cf-studio-path} is writable."; RUN DebugCheatsheet; WAIT user.reply; STOP_TURN
+```
+
+```pdsl
 UNIT DebugExportTracePrepare
 PURPOSE: Resolve the output path for the current debug trace export.
+STATE:
+  SET DUMP_PATH: path | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
   RUN TemplateVarResolution before resolving DUMP_PATH; this resolver is the mechanism that substitutes <YYYY-MM-DD> and <HHMMSS> from the current local timestamp and slugifies DEBUG_SLUG to lowercase kebab-case
   SET DUMP_PATH = "{cf-studio-path}/.debug-skill/<DEBUG_SLUG>-<YYYY-MM-DD>-<HHMMSS>.md"
+```
+
+```pdsl
 UNIT DebugExportTraceWrite
 PURPOSE: Materialize the trace export file on disk.
 DO:
   RUN ensure the directory {cf-studio-path}/.debug-skill/ exists, creating it if missing
   RUN render the trace report (see DebugTraceReport) into DUMP_PATH
+```
+
+```pdsl
 UNIT DebugExportTraceAnnounce
 PURPOSE: Announce the completed trace export and surface the written file reference.
 DO:
   EMIT "Trace written to <DUMP_PATH> (<count> steps)."
   EMIT the written file as a clickable reference: <ref_file file="<absolute DUMP_PATH>" />
+```
+
+```pdsl
 UNIT DebugTraceReport
 PURPOSE: Define the Markdown shape of an exported debug trace.
 NOTES:

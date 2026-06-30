@@ -10,11 +10,14 @@ DO:
   SET WORKFLOW_PREP_BRAINSTORM_GATE = WriteSkillsBrainstormGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/workflow-prep.md
   CONTINUE WorkflowPrepExploreGate
+RULES:
+  ALWAYS use WorkflowPrepExploreGate for the shared explore prompt mechanics
+  ALWAYS auto-skip and CONTINUE WriteSkillsBrainstormGate when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping context discovery — target is clear." when auto-skipping
 MENU WriteSkillsExploreMenu
-TITLE: Before writing or reviewing a skill, discover task-relevant project context (sibling skills, workflows, agent contracts, referenced requirements, PDSL conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting prompt work. Reply with a number.
+TITLE: Before writing or reviewing a skill, discover task-relevant project context (sibling skills, workflows, agent contracts, referenced requirements, PDSL conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting prompt work. cf-explore scans the project and returns a summary of relevant files and context. Reply with a number.
 OPTIONS:
   1 explore -> INVOKE skill `cf-explore` with intent=workflow-prep, task=ORIGINAL_INTENT, return_context=true; require it to return resource_context only and not perform review/authoring, SET RESOURCE_CONTEXT = provided, then CONTINUE WriteSkillsBrainstormGate
-  2 skip -> CONTINUE WriteSkillsBrainstormGate
+  2 skip (suggested when task is not clearly cross-cutting) -> CONTINUE WriteSkillsBrainstormGate
   INVALID -> EMIT_MENU WriteSkillsExploreMenu
 ```
 
@@ -28,10 +31,14 @@ DO:
   SET WORKFLOW_PREP_DISPATCH_UNIT = PlanFirstGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/workflow-prep.md
   CONTINUE WorkflowPrepBrainstormGate
+RULES:
+  ALWAYS use WorkflowPrepBrainstormGate for the shared brainstorm prompt mechanics
+  ALWAYS auto-skip and CONTINUE PlanFirstGate when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping brainstorm — approach is clear." when auto-skipping
+NOTES: To reduce turn count, callers may collapse this gate and WriteSkillsExploreGate into a single preparation menu offering explore, brainstorm, both, or skip.
 MENU WriteSkillsBrainstormMenu
 TITLE: Before writing or reviewing a skill, brainstorm ambiguous decisions or design options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open design questions. Reply with a number.
 OPTIONS:
-  1 brainstorm -> INVOKE skill `cf-brainstorm`; require it to return brainstorm_decisions, then SET BRAINSTORM_DECISIONS = provided, SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
-  2 skip -> SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
+  1 brainstorm -> INVOKE skill `cf-brainstorm`; require it to return brainstorm_decisions, then SET BRAINSTORM_DECISIONS = provided, SET PLAN_FIRST_CONTINUE = WriteSkillsAuthorDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-author-dispatch.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
+  2 skip (suggested when approach is clear) -> SET PLAN_FIRST_CONTINUE = WriteSkillsAuthorDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-author-dispatch.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
   INVALID -> EMIT_MENU WriteSkillsBrainstormMenu
 ```

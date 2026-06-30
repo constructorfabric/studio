@@ -16,6 +16,7 @@ version: 1.0
 - [Test Layout](#test-layout)
 - [Common Test Patterns](#common-test-patterns)
 - [Naming and Assertions](#naming-and-assertions)
+- [Prompting CI Gate](#prompting-ci-gate)
 - [Coverage and Quality Gates](#coverage-and-quality-gates)
 
 <!-- /toc -->
@@ -68,6 +69,14 @@ Keep new tests in `tests/`, named `test_<subject>.py`, aligned with the subsyste
 - Test functions use `test_<behavior>` naming
 - Test classes, when used, follow `Test<Area>` naming
 - Assert on exit codes, JSON `status`, and observable filesystem changes rather than incidental implementation details
+
+## Prompting CI Gate
+
+ALWAYS run `make test` as part of `cf-prompting-ci` WHEN any prompt, skill, workflow, or agent instruction file is modified.
+
+`make test` is the project's canonical deterministic test gate — it must pass before prompt changes are considered validated.
+
+NEVER report `cf-prompting-ci` as PASS without first executing and confirming a clean `make test` run.
 
 ## Coverage and Quality Gates
 

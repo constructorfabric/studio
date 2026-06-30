@@ -22,4 +22,8 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/semantic-loop-skeleton.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/findings-aggregate.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/findings-render.md
+NOTES:
+  findings-aggregate.md and findings-render.md are loaded here for availability; their contracts (FindingsAggregateContract, FindingsRenderContract) are consumed in WriteSkillsReviewRun after reviewer dispatch completes.
 ```
