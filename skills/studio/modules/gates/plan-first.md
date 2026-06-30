@@ -43,7 +43,7 @@ DO:
   STOP_TURN
 RULES:
   ALWAYS recommend disk storage in the storage prompt when the plan is phase-decomposed, has more than 10 actions, or needs resume-safe execution
-  ALWAYS end the reviewed plan with `CONTINUE workflow protocol: CONTINUE PLAN_FIRST_CONTINUE`
+  ALWAYS end the reviewed plan with the exit directive `CONTINUE PLAN_FIRST_CONTINUE` as the final step in the plan body, so plan execution returns through PLAN_FIRST_CONTINUE after the last phase completes
   ALWAYS present the plan for user review before executing it
   ALWAYS offer to save the plan to disk or keep it in session memory
   ALWAYS set accepted_plan_active before continuing planned work

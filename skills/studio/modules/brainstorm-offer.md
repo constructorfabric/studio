@@ -2,18 +2,34 @@
 
 ```pdsl
 UNIT BrainstormTopicCapture
-PURPOSE: Capture the topic to brainstorm before offering a panel when activation started without an explicit topic.
+PURPOSE: Emit the topic prompt and stop the turn; routing on resume is handled by BrainstormTopicCaptureResume.
+STATE:
+  SET BRAINSTORM_TOPIC_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
+  SET BRAINSTORM_TOPIC_CAPTURE_STATE = resume WHEN BRAINSTORM_TOPIC_CAPTURE_STATE == unset
   EMIT "What should we brainstorm? Describe the topic, decision, or design question — e.g. 'auth strategy for the mobile app' or 'whether to use event sourcing'. A phrase or sentence is enough. Reply with your topic, or `cancel` to stop."
   WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS capture a concrete topic before offering a brainstorm panel when the workflow was activated without explicit topic text
+  ALWAYS stop the turn after emitting the prompt; routing on the reply happens in BrainstormTopicCaptureResume
+
+```
+
+```pdsl
+UNIT BrainstormTopicCaptureResume
+PURPOSE: Route the resumed topic reply from BrainstormTopicCapture.
+STATE:
+  SET BRAINSTORM_TOPIC_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
+WHEN:
+  REQUIRE BRAINSTORM_TOPIC_CAPTURE_STATE == resume
+DO:
   RUN parse the reply into topic_status = accepted | cancelled | invalid and topic_text = the user's reply trimmed
+  SET BRAINSTORM_TOPIC_CAPTURE_STATE = unset
   CONTINUE BrainstormTopicCaptureInvalid WHEN topic_status == invalid
   CONTINUE BrainstormTopicCaptureCancelled WHEN topic_status == cancelled
   SET ORIGINAL_INTENT = topic_text
   CONTINUE BrainstormOffer
-RULES:
-  ALWAYS capture a concrete topic before offering a brainstorm panel when the workflow was activated without explicit topic text
-  ALWAYS reject empty topic replies with a one-line clarifier and re-prompt
 ```
 
 ```pdsl

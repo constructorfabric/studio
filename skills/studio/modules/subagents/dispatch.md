@@ -98,7 +98,6 @@ DO:
   RUN SubAgentSelectionRegistry WHEN the workflow has not already selected a dispatch group
   LOAD each sub-agent contract from the selected registry entry's prompt_file when present, else from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
 ```
-
 ```pdsl
 UNIT SubAgentDispatchApprovalGate
 PURPOSE: Ask for native-vs-inline dispatch approval when no saved session preference exists.

@@ -32,7 +32,7 @@ DO:
 RULES:
   - ALWAYS require explicit review findings before applying prompt fixes
   - NEVER run semantic review from prompting-fix
-  - ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_producers when missing
+  - ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_producers on missing findings
 ```
 
 ```pdsl

@@ -39,7 +39,7 @@ DO:
 MENU WriteDocsAuthorTargetMissingMenu
 TITLE: Provide output path or choose a next step.
 OPTIONS:
-  1 provide path — reply with the output file path
+  1 provide path — reply with the output file path -> SET AUTHOR_TARGET_PATHS = user.reply; CONTINUE WriteDocsAuthorDispatch
   2 plan first — run cf-documenting-planning to define document scope first -> LOAD and CONTINUE cf-documenting-planning
   3 cancel -> STOP_TURN
   INVALID -> EMIT_MENU WriteDocsAuthorTargetMissingMenu

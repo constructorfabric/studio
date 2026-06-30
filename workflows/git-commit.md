@@ -110,18 +110,30 @@ DO:
   EMIT the planned commit message, trailer set, and scoped paths for review WHEN GIT_COMMIT_MODE == commit
   EMIT "Proceed with this commit? Reply 'yes' to commit, 'edit' to change the message, or 'cancel' to stop." WHEN GIT_COMMIT_MODE == commit
   WAIT user.reply WHEN GIT_COMMIT_MODE == commit
-  STOP_TURN WHEN GIT_COMMIT_MODE == commit AND user.reply == "cancel"
-  CONTINUE GitCommitMessageEdit WHEN GIT_COMMIT_MODE == commit AND user.reply == "edit"
-  SET GIT_COMMIT_AUDIT_PHASE = preflight WHEN GIT_COMMIT_MODE == commit
-  RUN GitCommitCommitAudit WHEN GIT_COMMIT_MODE == commit
-  RUN create the git commit for COMMIT_TARGET_PATHS using COMMIT_INTENT plus required project-policy and Studio trailers WHEN GIT_COMMIT_MODE == commit
-  SET STUDIO_CREATED_COMMIT_SHA = the created commit sha WHEN GIT_COMMIT_MODE == commit
-  SET GIT_COMMIT_AUDIT_PHASE = postcommit WHEN GIT_COMMIT_MODE == commit
-  RUN GitCommitCommitAudit WHEN GIT_COMMIT_MODE == commit
-  EMIT a completed SKILL_RESULT envelope with skill = cf-git-commit, status = completed, produced_artifacts = commit-result describing the created commit sha and scoped paths, report_outputs = [], missing_artifacts = [], assumptions = [], and suggested_next_skills = [] WHEN GIT_COMMIT_MODE == commit
-  RUN NextActionsOffer WHEN GIT_COMMIT_MODE == commit
+  STOP_TURN WHEN GIT_COMMIT_MODE == commit
+  CONTINUE GitCommitExecuteConfirm WHEN GIT_COMMIT_MODE == commit
 RULES:
   ALWAYS honor GIT_COMMIT_MODE strictly: stage means no commit; commit means stage plus commit; none never reaches this unit
+```
+
+```pdsl
+UNIT GitCommitExecuteConfirm
+PURPOSE: Route the user's confirmation reply and execute the commit on 'yes'.
+DO:
+  STOP_TURN WHEN user.reply == "cancel"
+  CONTINUE GitCommitMessageEdit WHEN user.reply == "edit"
+  SET GIT_COMMIT_AUDIT_PHASE = preflight
+  RUN GitCommitCommitAudit
+  RUN create the git commit for COMMIT_TARGET_PATHS using COMMIT_INTENT plus required project-policy and Studio trailers
+  SET STUDIO_CREATED_COMMIT_SHA = the created commit sha
+  SET GIT_COMMIT_AUDIT_PHASE = postcommit
+  RUN GitCommitCommitAudit
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
+  EMIT a completed SKILL_RESULT envelope with skill = cf-git-commit, status = completed, produced_artifacts = commit-result describing the created commit sha and scoped paths, report_outputs = [], missing_artifacts = [], assumptions = [], and suggested_next_skills = []
+  RUN NextActionsOffer
+RULES:
+  ALWAYS scope git mutations to COMMIT_TARGET_PATHS only
+  ALWAYS run trailer audit before and after the commit
 ```
 
 ```pdsl
@@ -131,6 +143,16 @@ DO:
   EMIT the current PLANNED_GIT_COMMIT_INVOCATION message and trailers for review
   EMIT "Enter your revised commit message, or reply 'cancel' to stop."
   WAIT user.reply
+  STOP_TURN
+  CONTINUE GitCommitMessageEditExecute
+RULES:
+  ALWAYS stop the turn after emitting the message prompt; execution happens in GitCommitMessageEditExecute on resume
+```
+
+```pdsl
+UNIT GitCommitMessageEditExecute
+PURPOSE: Execute the commit with the user's revised message.
+DO:
   STOP_TURN WHEN user.reply == "cancel"
   SET PLANNED_GIT_COMMIT_INVOCATION = updated commit message from user.reply
   SET GIT_COMMIT_AUDIT_PHASE = preflight

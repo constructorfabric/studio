@@ -1537,11 +1537,11 @@ def test_skill_requires_dispatch_group_approval_before_native_subagent_dispatch(
     ) in dispatch
     assert "ALWAYS ask before every dispatch group unless SUB_AGENT_DISPATCH_MODE" in dispatch
     assert "NEVER dispatch a sub-agent silently" in dispatch
-    assert "1 approve-once -> SET SUB_AGENT_GROUP_DECISION = approve-once" in dispatch
-    assert "2 approve-session -> SET SUB_AGENT_DISPATCH_MODE = approve-session" in dispatch
-    assert "3 inline-once -> SET SUB_AGENT_GROUP_DECISION = inline-once" in dispatch
-    assert "4 inline-session -> SET SUB_AGENT_DISPATCH_MODE = inline-session" in dispatch
-    assert "5 stop -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN" in dispatch
+    assert "1 native (this time) -> SET SUB_AGENT_GROUP_DECISION = approve-once" in dispatch
+    assert "2 native (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = approve-session" in dispatch
+    assert "3 inline (this time) -> SET SUB_AGENT_GROUP_DECISION = inline-once" in dispatch
+    assert "4 inline (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = inline-session" in dispatch
+    assert "5 cancel -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN" in dispatch
     assert "RUN SubAgentDispatchIntentNormalize" in dispatch
     assert (
         "LOAD each sub-agent contract from the selected registry entry's prompt_file when present"
@@ -1735,7 +1735,7 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
     assert "UNIT GenerateOtherSkills" in generate
     assert "ALWAYS preserve ORIGINAL_INTENT when it was already set by GenerateDescribeIntent" in generate
     assert "WHEN ORIGINAL_INTENT == unset" in generate
-    assert "2 other ->" in generate and "CONTINUE GenerateOtherSkills" in generate
+    assert "2 browse all generate workflows ->" in generate and "CONTINUE GenerateOtherSkills" in generate
     assert "2 describe-intent | help-me-choose ->" in generate and "CONTINUE GenerateDescribeIntent" in generate
     assert "EMIT_MENU listing" not in generate
     assert "WAIT user.reply; SET ORIGINAL_INTENT" not in generate
@@ -1744,7 +1744,7 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
     assert "UNIT AnalyzeOtherSkills" in analyze
     assert "ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent" in analyze
     assert "WHEN ORIGINAL_INTENT == unset" in analyze
-    assert "2 other ->" in analyze and "CONTINUE AnalyzeOtherSkills" in analyze
+    assert "2 browse all analyze workflows ->" in analyze and "CONTINUE AnalyzeOtherSkills" in analyze
     assert "2 describe-intent | help-me-choose ->" in analyze and "CONTINUE AnalyzeDescribeIntent" in analyze
     assert "EMIT_MENU listing" not in analyze
     assert "WAIT user.reply; SET ORIGINAL_INTENT" not in analyze
@@ -2184,14 +2184,14 @@ def test_review_fix_approval_gate_returns_scope_to_caller() -> None:
     assert "SET REVIEW_FINDINGS_BROWSER_CONFIRMED: true | false | unset" in module
     assert "SET REVIEW_FINDINGS_BROWSER_CONFIRMED = true" in module
     assert "CONTINUE ReviewFindingsReportBrowser WHEN REVIEW_FINDINGS_BROWSER_CONFIRMED != true" in module
-    assert "4 browser ->" in module and "CONTINUE ReviewFindingsReportBrowser" in module
+    assert "4 back to browser — review findings again before deciding ->" in module and "CONTINUE ReviewFindingsReportBrowser" in module
     assert "ALWAYS set REVIEW_FIX_SCOPE and REVIEW_FIX_APPROVED from the resolved menu option" in module
     assert "ALWAYS include a browser option in ReviewFixScope" in module
     assert "SET APPROVED_REVIEW_FINDING_IDS = all-critical-major" in module
     assert "SET APPROVED_REVIEW_FINDING_IDS = all" in module
     assert "SET APPROVED_REVIEW_FINDING_IDS = SELECTED_FINDING_IDS" in module
     assert "REVIEW_FIX_SCOPE == none" in module
-    assert "5 none -> CONTINUE ReviewFixScopeApproveNone" in module
+    assert "5 skip fixes — close without applying any fixes -> CONTINUE ReviewFixScopeApproveNone" in module
     assert "4 none -> STOP_TURN" not in module
 
 
@@ -3278,7 +3278,7 @@ def test_runtime_instruction_modules_stay_compact() -> None:
         (repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode.md", 120),
         (repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode-rules.md", 40),
         (repo_root / "skills" / "studio" / "modules" / "gates" / "plan-first.md", 120),
-        (repo_root / "skills" / "studio" / "modules" / "routing" / "companion-skills.md", 70),
+        (repo_root / "skills" / "studio" / "modules" / "routing" / "companion-skills.md", 100),
         (repo_root / "workflows" / "generate.md", 180),
         (repo_root / "workflows" / "analyze.md", 180),
         (repo_root / "workflows" / "coding.md", 310),

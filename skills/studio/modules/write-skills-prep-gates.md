@@ -12,7 +12,7 @@ DO:
   CONTINUE WorkflowPrepExploreGate
 RULES:
   ALWAYS use WorkflowPrepExploreGate for the shared explore prompt mechanics
-  ALWAYS auto-skip and CONTINUE the next unit when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping context discovery — target is clear." when auto-skipping
+  ALWAYS auto-skip and CONTINUE WriteSkillsBrainstormGate when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping context discovery — target is clear." when auto-skipping
 MENU WriteSkillsExploreMenu
 TITLE: Before writing or reviewing a skill, discover task-relevant project context (sibling skills, workflows, agent contracts, referenced requirements, PDSL conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting prompt work. cf-explore scans the project and returns a summary of relevant files and context. Reply with a number.
 OPTIONS:
@@ -33,7 +33,7 @@ DO:
   CONTINUE WorkflowPrepBrainstormGate
 RULES:
   ALWAYS use WorkflowPrepBrainstormGate for the shared brainstorm prompt mechanics
-  ALWAYS auto-skip and CONTINUE the next unit when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping context discovery — target is clear." when auto-skipping
+  ALWAYS auto-skip and CONTINUE PlanFirstGate when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping brainstorm — approach is clear." when auto-skipping
 NOTES: To reduce turn count, callers may collapse this gate and WriteSkillsExploreGate into a single preparation menu offering explore, brainstorm, both, or skip.
 MENU WriteSkillsBrainstormMenu
 TITLE: Before writing or reviewing a skill, brainstorm ambiguous decisions or design options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open design questions. Reply with a number.

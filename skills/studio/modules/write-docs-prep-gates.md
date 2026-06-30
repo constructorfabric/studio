@@ -12,7 +12,7 @@ DO:
   CONTINUE WorkflowPrepExploreGate
 RULES:
   ALWAYS use WorkflowPrepExploreGate for the shared explore prompt mechanics
-  ALWAYS auto-skip and CONTINUE the next unit when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping context discovery — target is clear." when auto-skipping
+  ALWAYS auto-skip and CONTINUE WriteDocsBrainstormGate when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping context discovery — target is clear." when auto-skipping
 MENU WriteDocsExploreMenu
 TITLE: Before writing or reviewing docs, discover task-relevant project context (existing docs, related guides, source material, conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting documentation. cf-explore scans the project and returns a summary of relevant files and context. Reply with a number.
 OPTIONS:
@@ -33,7 +33,7 @@ DO:
   CONTINUE WorkflowPrepBrainstormGate
 RULES:
   ALWAYS use WorkflowPrepBrainstormGate for the shared brainstorm prompt mechanics
-  ALWAYS auto-skip and CONTINUE the next unit when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping context discovery — target is clear." when auto-skipping
+  ALWAYS auto-skip and CONTINUE PlanFirstGate when ORIGINAL_INTENT resolves to a single known file with no cross-cutting references; emit a single-line note "Skipping brainstorm — approach is clear." when auto-skipping
 NOTES: To reduce turn count, callers may collapse this gate and WriteDocsExploreGate into a single preparation menu offering explore, brainstorm, both, or skip.
 MENU WriteDocsBrainstormMenu
 TITLE: Before writing or reviewing docs, brainstorm ambiguous decisions or framing options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open framing questions. Reply with a number.

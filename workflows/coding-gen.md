@@ -52,6 +52,17 @@ RULES:
 ```
 
 ```pdsl
+UNIT CodingGenBlocked
+PURPOSE: Emit an explicit blocked result when coding-gen prerequisites are missing.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/blocked-report.md
+  RUN BlockedReportContract
+RULES:
+  - ALWAYS keep the blocked recovery path explicit and skill-oriented
+  - NEVER auto-run a suggested producer skill from this path
+```
+
+```pdsl
 UNIT CodingGenDispatch
 PURPOSE: Author or update production code only.
 DO:
