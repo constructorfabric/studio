@@ -101,8 +101,8 @@ UNIT SubAgentDispatchApprovalGate
 PURPOSE: Ask for native-vs-inline dispatch approval when no saved session preference exists.
 DO:
   EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
-  WAIT user.reply
-  STOP_TURN
+  WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
+  STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
 ```
 
 ```pdsl

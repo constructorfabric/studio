@@ -48,13 +48,31 @@ RULES:
   - ALWAYS require explicit review findings before applying prompt fixes
   - ALWAYS hydrate ReviewFindingsReport, approved finding IDs, fix scope, approval state, target paths, and target slices from NEXT_ACTION_PAYLOAD before checking for missing findings or missing target scope
   - NEVER run semantic review from prompting-fix
-  - ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_producers on missing findings
+  - ALWAYS check REVIEW_FINDINGS_REMAINING > 0 before proceeding to fix dispatch; block with explicit message and suggested_next_skills on missing findings
 ```
 
 ```pdsl
 UNIT WriteSkillsValidate
-PURPOSE: Terminate the thin prompt-fix workflow after approved fixes are applied.
+PURPOSE: Run deterministic prompt validation after approved fixes before completion.
+STATE:
+  SET VALIDATION_STATUS: pass | fail | unset (default unset, scope workflow_run)
+  SET REVIEW_FINDINGS_REMAINING: integer | unset (default unset, scope workflow_run)
+  SET report_outputs: list | unset (default unset, scope workflow_run)
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  RUN CommandResolution to resolve {cfs_cmd}
+  RUN deterministic PDSL validation via `{cfs_cmd} pdsl validate` on REVIEW_TARGET_PATHS
+  SET VALIDATION_STATUS = fail WHEN validation reports errors
+  SET VALIDATION_STATUS = pass WHEN validation passes
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/ci-report-render.md
+  SET report_outputs = deterministic-report and ci-findings entries for the post-fix PDSL validation command, REVIEW_TARGET_PATHS, and VALIDATION_STATUS
+  RUN CiReportRenderContract
+  CONTINUE WriteSkillsFixOutcomeDeterministicBlocker WHEN VALIDATION_STATUS == fail
+  CONTINUE WriteSkillsFixOutcomeNoChanges WHEN VALIDATION_STATUS == pass AND REVIEW_FINDINGS_REMAINING != 0
+  RUN WriteSkillsCleanExitGate WHEN VALIDATION_STATUS == pass AND REVIEW_FINDINGS_REMAINING == 0
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-completion.md
-  CONTINUE WriteSkillsCompletion
+  CONTINUE WriteSkillsCompletion WHEN VALIDATION_STATUS == pass AND REVIEW_FINDINGS_REMAINING == 0
+RULES:
+  - ALWAYS rerun deterministic PDSL validation after approved prompt fixes before completion
+  - NEVER continue to WriteSkillsCompletion unless VALIDATION_STATUS == pass and REVIEW_FINDINGS_REMAINING == 0
 ```

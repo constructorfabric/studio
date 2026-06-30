@@ -55,4 +55,5 @@ RULES:
   NEVER treat this workflow as permission to dispatch coding authoring by itself
 NOTES:
   WorkflowBootstrapSimpleModeGate is intentionally omitted from coding-ci because this workflow is typically invoked programmatically after authoring, not interactively.
+  NOTE: coding-ci does not set VALIDATION_STATUS or NEXT_ACTION_PAYLOAD because cf-coding-review has its own review loop independent of CI output; see prompting-ci.md for an example of CI-to-review handoff via NEXT_ACTION_PAYLOAD.
 ```

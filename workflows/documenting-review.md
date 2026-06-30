@@ -26,7 +26,7 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-review-run.md
   CONTINUE WriteDocsReviewSetup
 RULES:
-  - ALWAYS treat this workflow as semantic review only
+  ALWAYS treat this workflow as semantic review only
 ```
 
 ```pdsl
@@ -40,5 +40,5 @@ DO:
   RUN ReviewFindingsReportBrowser
   RUN NextActionsOffer
 RULES:
-  - NEVER apply fixes from documenting-review
+  NEVER apply fixes from documenting-review
 ```

@@ -44,4 +44,6 @@ DO:
   RUN NextActionsOffer
 RULES:
   ALWAYS treat this workflow as deterministic validation only
+NOTES:
+  NOTE: documenting-ci does not set VALIDATION_STATUS or NEXT_ACTION_PAYLOAD because cf-documenting-review has its own review loop independent of CI output; see prompting-ci.md for an example of CI-to-review handoff via NEXT_ACTION_PAYLOAD.
 ```

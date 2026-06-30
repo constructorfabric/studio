@@ -4,6 +4,7 @@ type: workflow
 name: cf-prompting-review
 description: "Invoke when the user or another skill or workflow needs or asks to review prompts, skills, workflows, agent instructions, or system prompts for logic bugs, unclear routing, missing cases, risky behavior, or prompt-quality problems and report findings without applying fixes."
 version: 0.1
+purpose: Run semantic review for prompt and skill artifacts without owning authoring or deterministic validation.
 ---
 
 # cf-prompting-review
@@ -50,8 +51,8 @@ DO:
   RUN NextActionsOffer
   STOP_TURN
 RULES:
-  - NEVER apply fixes from prompting-review
-  - NEVER continue to shared WriteSkillsFixDispatch from this review-only gate
+  NEVER apply fixes from prompting-review
+  NEVER continue to shared WriteSkillsFixDispatch from this review-only gate
 ```
 
 ```pdsl
