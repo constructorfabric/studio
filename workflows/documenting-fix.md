@@ -19,14 +19,10 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-write-policy-fix.md
   SET REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset
-  WHEN ReviewFindingsReport == unset OR REVIEW_FINDINGS_REMAINING == 0:
-    EMIT "No review findings are loaded. Run cf-documenting-review first to identify issues, then return here to apply fixes."
-    EMIT suggested_next_skills = [cf-documenting-review]
-    STOP_TURN
-  WHEN REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset:
-    EMIT "No document review targets are set. Run cf-documenting-review first to identify the review scope."
-    EMIT suggested_next_skills = [cf-documenting-review]
-    STOP_TURN
+  EMIT "No review findings are loaded. Run cf-documenting-review first to identify issues, then return here to apply fixes." WHEN ReviewFindingsReport == unset OR REVIEW_FINDINGS_REMAINING == 0
+  STOP_TURN WHEN ReviewFindingsReport == unset OR REVIEW_FINDINGS_REMAINING == 0
+  EMIT "No document review targets are set. Run cf-documenting-review first to identify the review scope." WHEN REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset
+  STOP_TURN WHEN REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset
   SET WRITE_DISPATCH_KIND = review-fix
   CONTINUE WriteDocsWritePolicySetup
 RULES:

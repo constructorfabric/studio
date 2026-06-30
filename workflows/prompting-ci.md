@@ -16,11 +16,13 @@ UNIT PromptingCiPreset
 PURPOSE: Run deterministic prompt validation without semantic review or authoring.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
-  SET SKILL_FILE_WRITTEN: true | false (default true, scope workflow_run)
-  SET REVIEW_FIXES_APPLIED: true | false | unset (default false, scope workflow_run)
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_SLICES: list | unset (default unset, scope workflow_run)
   SET GATE_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
   SET CI_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
+  SET report_outputs: list | unset (default unset, scope workflow_run)
+  SET NEXT_ACTION_PINNED_SKILL: cf-skill-name | unset (default unset, scope workflow_run)
+  SET NEXT_ACTION_PAYLOAD: object | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   RUN WorkflowBootstrapRouterPrelude
@@ -28,8 +30,6 @@ DO:
   RUN WorkflowBootstrapCommandResolution
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
   SET ORIGINAL_INTENT = the user's triggering prompting-ci request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  SET SKILL_FILE_WRITTEN = true
-  SET REVIEW_FIXES_APPLIED = false WHEN REVIEW_FIXES_APPLIED == unset
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-bootstrap-refs.md
   RUN WriteSkillsExecutionContextPrep
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
@@ -37,14 +37,19 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ci-discovery-run.md
   SET CI_DISCOVERY_INTENT = "ci-prompting"
   RUN CiDiscoveryRunStart
+  SET REVIEW_TARGET_SLICES = full-file slices for every REVIEW_TARGET_PATHS entry WHEN REVIEW_TARGET_PATHS != unset AND REVIEW_TARGET_SLICES == unset
   RUN the deterministic PDSL check — dispatch cf-deterministic-validator for `{cfs_cmd} pdsl validate` on REVIEW_TARGET_PATHS; caller must provide REVIEW_TARGET_PATHS for validation-only runs
   SET GATE_STATUS = fail WHEN any validation reports errors
   SET GATE_STATUS = pass WHEN every validation check passes
+  SET GATE_STATUS = not-run WHEN no applicable PDSL checks were resolved or executed
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/ci-report-render.md
   SET CI_RESULT_STATUS = completed WHEN GATE_STATUS == pass
   SET CI_RESULT_STATUS = failed WHEN GATE_STATUS == fail
   SET CI_RESULT_STATUS = blocked WHEN GATE_STATUS == not-run
+  SET report_outputs = deterministic-report and ci-findings entries for the PDSL validation command, REVIEW_TARGET_PATHS, error count, warning count, and GATE_STATUS WHEN CI_RESULT_STATUS == completed OR CI_RESULT_STATUS == failed
   RUN CiReportRenderContract
   EMIT the validation findings
+  SET NEXT_ACTION_PINNED_SKILL = cf-prompting-review
+  SET NEXT_ACTION_PAYLOAD = REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, report_outputs, GATE_STATUS
   RUN NextActionsOffer
 ```

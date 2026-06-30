@@ -7,24 +7,16 @@ STATE:
   REVIEW_TARGET_PATHS: list | unset                                # populated by discovery or supplied by caller
   CI_DISCOVERY_STATUS: provided | empty | skipped | error | unset  # unset by default
   CI_TOOL_SOURCES: list | unset                                    # paths of discovered CI tool definition files; populated by CiToolSourcesProbe
+  CI_TARGET_CAPTURE_STATE: resume | unset                          # set while waiting for manually provided targets
 WHEN:
   REQUIRE CI_DISCOVERY_INTENT is set
 DO:
-  IF REVIEW_TARGET_PATHS is already provided THEN
-    SET CI_DISCOVERY_STATUS = provided
-    CONTINUE CiDiscoveryRunClassifyResult
-  ELSE
-    EMIT_MENU CiDiscoverySkipMenu
-    WAIT user.reply
-    STOP_TURN
-  IF user chose option 2 (skip) THEN
-    SET CI_DISCOVERY_STATUS = skipped
-    CONTINUE CiDiscoveryRunClassifyResult
-  ELSE
-    RUN CiToolSourcesProbe
-    INVOKE skill `cf-explore` with intent="discover CI targets and all available CI tools (linting, testing, formatting, type-checking, deterministic validation) for CI_DISCOVERY_INTENT" and return_context=true, scoped to project root, known_paths = union of project root and CI_TOOL_SOURCES
-    SET REVIEW_TARGET_PATHS from cf-explore result resource_context
-    CONTINUE CiDiscoveryRunClassifyResult
+  CONTINUE CiDiscoveryProvideTargetsResume WHEN CI_TARGET_CAPTURE_STATE == resume
+  SET CI_DISCOVERY_STATUS = provided WHEN REVIEW_TARGET_PATHS is already provided
+  CONTINUE CiDiscoveryRunClassifyResult WHEN CI_DISCOVERY_STATUS == provided
+  EMIT_MENU CiDiscoverySkipMenu
+  WAIT user.reply
+  STOP_TURN
 RULES:
   ALWAYS require the calling CI skill to SET CI_DISCOVERY_INTENT before loading this module
   ALWAYS run CiToolSourcesProbe before invoking cf-explore so that CI definition files are included in known_paths
@@ -36,9 +28,19 @@ RULES:
 MENU CiDiscoverySkipMenu
 TITLE: CI discovery — find relevant CI targets automatically or skip?
 OPTIONS:
-  1 discover -> run CiToolSourcesProbe then cf-explore to find CI targets and available tools, then continue
-  2 skip -> skip discovery; use caller-supplied REVIEW_TARGET_PATHS or inline heuristic
+  1 discover -> CONTINUE CiDiscoveryRunExecute
+  2 skip -> SET CI_DISCOVERY_STATUS = skipped; CONTINUE CiDiscoveryRunClassifyResult
   INVALID -> EMIT_MENU CiDiscoverySkipMenu
+
+UNIT CiDiscoveryRunExecute
+PURPOSE: Run CiToolSourcesProbe then invoke cf-explore to populate REVIEW_TARGET_PATHS.
+DO:
+  RUN CiToolSourcesProbe
+  INVOKE skill `cf-explore` with intent="discover CI targets and all available CI tools (linting, testing, formatting, type-checking, deterministic validation) for CI_DISCOVERY_INTENT" and return_context=true, scoped to project root, known_paths = union of project root and CI_TOOL_SOURCES
+  SET CI_DISCOVERY_STATUS = error WHEN cf-explore invocation fails
+  CONTINUE CiDiscoveryRunFailure WHEN CI_DISCOVERY_STATUS == error
+  SET REVIEW_TARGET_PATHS from cf-explore result resource_context
+  CONTINUE CiDiscoveryRunClassifyResult
 
 UNIT CiToolSourcesProbe
 PURPOSE: Scan the project root for well-known CI tool definition files and populate CI_TOOL_SOURCES so cf-explore reads them during discovery.
@@ -69,7 +71,6 @@ RULES:
 UNIT CiDiscoveryRunClassifyResult
 PURPOSE: Classify the discovery or skip outcome and determine whether to proceed or escalate to failure handling.
 DO:
-  SET CI_DISCOVERY_STATUS = provided WHEN CI_DISCOVERY_STATUS == provided
   SET CI_DISCOVERY_STATUS = provided WHEN CI_DISCOVERY_STATUS == skipped AND REVIEW_TARGET_PATHS is provided
   RETURN to calling CI skill WHEN CI_DISCOVERY_STATUS == provided
   SET CI_DISCOVERY_STATUS = empty WHEN CI_DISCOVERY_STATUS == skipped AND REVIEW_TARGET_PATHS is unset
@@ -88,7 +89,18 @@ MENU CiDiscoveryFailureMenu
 TITLE: CI discovery found no targets. Choose how to proceed.
 OPTIONS:
   1 retry -> SET CI_DISCOVERY_STATUS = unset; CONTINUE CiDiscoveryRunStart
-  2 provide -> EMIT "Reply with the REVIEW_TARGET_PATHS you want to use (one path per line)."; WAIT user.reply; SET REVIEW_TARGET_PATHS from user reply; CONTINUE CiDiscoveryRunClassifyResult
+  2 provide -> SET CI_TARGET_CAPTURE_STATE = resume; EMIT "Reply with the REVIEW_TARGET_PATHS you want to use (one path per line)."; WAIT user.reply; STOP_TURN
   3 stop -> STOP_TURN and return blocked to the calling CI skill
   INVALID -> EMIT_MENU CiDiscoveryFailureMenu
+
+UNIT CiDiscoveryProvideTargetsResume
+PURPOSE: Resume CI discovery after the user manually supplies target paths.
+WHEN:
+  REQUIRE CI_TARGET_CAPTURE_STATE == resume
+  REQUIRE user.reply exists
+DO:
+  SET REVIEW_TARGET_PATHS = file paths parsed from user.reply WHEN user.reply names one or more files
+  SET CI_TARGET_CAPTURE_STATE = unset WHEN REVIEW_TARGET_PATHS is provided
+  CONTINUE CiDiscoveryRunClassifyResult WHEN REVIEW_TARGET_PATHS is provided
+  CONTINUE CiDiscoveryRunFailure WHEN REVIEW_TARGET_PATHS is unset
 ```

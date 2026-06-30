@@ -45,7 +45,7 @@ OPTIONS:
   5 table -> SET REVIEW_REPORT_VIEW = table and rerender ReviewFindingsReportBrowser
   6 detail -> SET REVIEW_REPORT_VIEW = detail and rerender ReviewFindingsReportBrowser
   7 fix-menu -> SET REVIEW_FINDINGS_BROWSER_ENTRY = unset; SET REVIEW_FIX_MENU_TOKEN = ready; SET REVIEW_FIX_MENU_REPORT = current; CONTINUE ReviewFixApprovalGate
-  8 exit (skip all fixes) — leave findings open, return without fixing -> SET REVIEW_FINDINGS_BROWSER_ENTRY = unset; SET REVIEW_FIX_SCOPE = none; SET REVIEW_FIX_APPROVED = false; SET APPROVED_REVIEW_FINDING_IDS = empty; RETURN to the calling review loop without applying fixes
+  8 exit (skip all fixes) — leave findings open, return without fixing -> SET REVIEW_FINDINGS_BROWSER_ENTRY = unset; SET REVIEW_FIX_SCOPE = none; SET REVIEW_FIX_APPROVED = false; SET APPROVED_REVIEW_FINDING_IDS = empty; RETURN to the calling review loop without applying fixes  # RETURN is used here rather than CONTINUE because this option pops back to the calling review loop's dispatch context, not to a unit within the browser module; no ReviewFindingsReportBrowserExit unit exists and adding one would be a scope-widening change
   INVALID -> EMIT_MENU ReviewFindingsNavigation
 ```
 

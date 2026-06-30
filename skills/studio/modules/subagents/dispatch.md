@@ -33,16 +33,14 @@ DO:
   RUN SubAgentDispatchApprovalGate
   REQUIRE SUB_AGENT_GROUP_DECISION != stop
   RUN SubAgentDispatchExecute
+  EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails AND SUB_AGENT_RETRY_COUNT < 2
+  EMIT_MENU SubAgentFallbackLimitRequest WHEN native dispatch fails AND SUB_AGENT_RETRY_COUNT >= 2
 RULES:
   ALWAYS ask before every dispatch group unless SUB_AGENT_DISPATCH_MODE is already approve-session or inline-session
   ALWAYS let the user choose native once, native for session, inline once, inline for session, or cancel
   ALWAYS treat explicit user language such as "no sub-agents", "without subagents", or "inline only" as inline-once unless the user asks to save it for the session
   ALWAYS reset SUB_AGENT_DISPATCH_MODE to unset when the user asks to revoke or change the saved dispatch preference
   ALWAYS allow the calling workflow to set SUB_AGENT_GROUP_DECISION = approve-once before reaching SubAgentDispatch when the user's original message is an explicit imperative with a named target artifact or operation (e.g. 'run cf-review on X', 'fix these findings') and no conditional or questioning language; NEVER allow pre-setting SUB_AGENT_DISPATCH_MODE = approve-session on behalf of the user — session-wide preference must only be set by the user via SubAgentApprovalRequest option 2
-ON_ERROR:
-  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
-  EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails AND SUB_AGENT_RETRY_COUNT < 2
-  EMIT_MENU SubAgentFallbackLimitRequest WHEN native dispatch fails AND SUB_AGENT_RETRY_COUNT >= 2
 MENU SubAgentApprovalRequest
 TITLE: Ready to run a background task — native mode runs it in a separate process (faster, isolated); inline keeps everything in this chat. Recommended: native.
 OPTIONS:
@@ -103,8 +101,8 @@ UNIT SubAgentDispatchApprovalGate
 PURPOSE: Ask for native-vs-inline dispatch approval when no saved session preference exists.
 DO:
   EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
-  WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
-  STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
+  WAIT user.reply
+  STOP_TURN
 ```
 
 ```pdsl
@@ -112,7 +110,6 @@ UNIT SubAgentDispatchExecute
 PURPOSE: Synthesize the initial prompts and run the dispatch group using the resolved execution mode.
 DO:
   RUN SubAgentPromptSynthesisContract
-  RUN synthesis of each initial prompt according to SubAgentPromptSynthesisContract
   DISPATCH the dispatch group natively WHEN SUB_AGENT_DISPATCH_MODE == approve-session OR SUB_AGENT_GROUP_DECISION == approve-once
   RUN each synthesized prompt inline WHEN SUB_AGENT_DISPATCH_MODE == inline-session OR SUB_AGENT_GROUP_DECISION == inline-once
 RULES:

@@ -4,6 +4,7 @@ type: workflow
 name: cf-documenting-review
 description: "Invoke when the user or another skill or workflow needs or asks to review documentation for gaps, ambiguity, inconsistency, missing context, bad structure, design mismatch, or other content problems and report findings without applying fixes."
 version: 0.1
+purpose: Run semantic review for document artifacts without owning authoring or deterministic validation.
 ---
 
 # cf-documenting-review
@@ -34,6 +35,7 @@ PURPOSE: Present findings in the browser, then stop at next-actions without appl
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
   RUN NextActionsOffer WHEN REVIEW_FINDINGS_REMAINING == 0
+  STOP_TURN WHEN REVIEW_FINDINGS_REMAINING == 0
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
   RUN ReviewFindingsReportBrowser
   RUN NextActionsOffer

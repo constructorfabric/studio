@@ -17,9 +17,17 @@ PURPOSE: Run semantic prompt review and stop at findings.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default true, scope workflow_run)
+  SET SKILL_FILE_WRITTEN: true | false | unset (default false, scope workflow_run)
+  SET REVIEW_ONLY_FINDINGS_GATE: true | false | unset (default true, scope workflow_run)
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapStudioInstructionsMemory
+  RUN WorkflowBootstrapCommandResolution
   SET ORIGINAL_INTENT = the user's triggering prompting-review request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
   SET REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset
+  SET SKILL_FILE_WRITTEN = false WHEN SKILL_FILE_WRITTEN == unset
+  SET REVIEW_ONLY_FINDINGS_GATE = true WHEN REVIEW_ONLY_FINDINGS_GATE == unset
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-bootstrap-refs.md
   RUN WriteSkillsExecutionContextPrep
   RUN WriteSkillsExecutionReferenceLoad
@@ -29,26 +37,31 @@ DO:
 ```
 
 ```pdsl
-UNIT WriteSkillsFixGate
+UNIT PromptingReviewFindingsGate
 PURPOSE: Present findings in the browser, then stop at next-actions without applying fixes.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
   CONTINUE WriteSkillsFixOutcomeClean WHEN REVIEW_FINDINGS_REMAINING == 0
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
   RUN ReviewFindingsReportBrowser
-  CONTINUE WriteSkillsReviewFixHandoff WHEN REVIEW_FIX_APPROVED == true
+  CONTINUE PromptingReviewFixHandoff WHEN REVIEW_FIX_APPROVED == true
   RUN NextActionsOffer
+  STOP_TURN
 RULES:
   - NEVER apply fixes from prompting-review
+  - NEVER continue to shared WriteSkillsFixDispatch from this review-only gate
 ```
 
 ```pdsl
-UNIT WriteSkillsReviewFixHandoff
+UNIT PromptingReviewFixHandoff
 PURPOSE: Route to NextActionsOffer after the user approves a fix scope in prompting-review, with cf-prompting-fix as the suggested next action carrying approved finding context.
 DO:
-  EMIT "Fix scope approved. To apply these fixes, continue with cf-prompting-fix." with APPROVED_REVIEW_FINDING_IDS and REVIEW_TARGET_PATHS as context
-  RUN NextActionsOffer with cf-prompting-fix marked (suggested) and APPROVED_REVIEW_FINDING_IDS pre-filled
+  SET NEXT_ACTION_PINNED_SKILL = cf-prompting-fix
+  SET NEXT_ACTION_PAYLOAD = APPROVED_REVIEW_FINDING_IDS, REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, ReviewFindingsReport
+  EMIT "Fix scope approved. To apply these fixes, continue with cf-prompting-fix." with NEXT_ACTION_PAYLOAD as handoff context
+  RUN NextActionsOffer
 RULES:
-  ALWAYS mark cf-prompting-fix as (suggested) in NextActionsOffer when APPROVED_REVIEW_FINDING_IDS is non-empty
+  ALWAYS mark cf-prompting-fix as (suggested) through NEXT_ACTION_PINNED_SKILL when APPROVED_REVIEW_FINDING_IDS is non-empty
+  ALWAYS preserve APPROVED_REVIEW_FINDING_IDS, REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, and ReviewFindingsReport in NEXT_ACTION_PAYLOAD for the cf-prompting-fix handoff
   NEVER apply fixes from this unit
 ```

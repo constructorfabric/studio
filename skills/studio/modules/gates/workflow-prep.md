@@ -39,8 +39,7 @@ WHEN:
   REQUIRE WORKFLOW_PREP_EXPLORE_MENU is set
   REQUIRE WORKFLOW_PREP_BRAINSTORM_GATE is set
 DO:
-  EMIT "Using existing exploration context. Proceeding." WHEN RESOURCE_CONTEXT == provided AND RESOURCE_CONTEXT_TASK_KEY exactly matches the current normalized workflow-prep task key
-  CONTINUE WORKFLOW_PREP_BRAINSTORM_GATE WHEN RESOURCE_CONTEXT == provided AND RESOURCE_CONTEXT_TASK_KEY exactly matches the current normalized workflow-prep task key
+  CONTINUE WORKFLOW_PREP_BRAINSTORM_GATE WHEN RESOURCE_CONTEXT_TASK_KEY exactly matches the current normalized workflow-prep task key
   EMIT_MENU WorkflowPrepExploreRepeatMenu
   WAIT user.reply
   STOP_TURN

@@ -13,6 +13,7 @@ entrypoint is `cf-documenting-gen`.
 UNIT WriteDocsAlias
 PURPOSE: Redirect legacy cf-write-docs invocations into the canonical thin document-generation workflow.
 DO:
+  EMIT "Note: write-docs is now an alias for documenting-gen. Continuing with the canonical workflow."
   LOAD {cf-studio-path}/.core/workflows/documenting-gen.md as the controlling generation workflow
   CONTINUE DocumentingGenBootstrap
 RULES:

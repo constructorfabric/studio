@@ -24,9 +24,9 @@ DO:
   RUN verify the returned fix manifest accounts for every APPROVED_REVIEW_FINDING_IDS entry as applied or not-fixable; SET REVIEW_FIXES_APPLIED = true WHEN one or more approved fixes changed skill/prompt/workflow files; SET REVIEW_FIXES_APPLIED = false WHEN no files changed; SET REVIEW_FINDINGS_REMAINING = count of findings not yet resolved after this fix iteration
   CONTINUE WriteSkillsValidate WHEN REVIEW_FIXES_APPLIED == true
   CONTINUE WriteSkillsFixOutcomeNoChanges WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none)
+  CONTINUE WriteSkillsValidate WHEN REVIEW_FINDINGS_REMAINING == 0 AND VALIDATION_STATUS == unset
   CONTINUE WriteSkillsFixOutcomeDeterministicBlocker WHEN REVIEW_FINDINGS_REMAINING == 0 AND VALIDATION_STATUS == fail
   RUN WriteSkillsCleanExitGate WHEN REVIEW_FINDINGS_REMAINING == 0 AND (SKILL_FILE_WRITTEN == true OR REVIEW_FIXES_APPLIED == true)
-  CONTINUE WriteSkillsCompletion WHEN REVIEW_FINDINGS_REMAINING == 0 AND VALIDATION_STATUS == pass
 ```
 
 ```pdsl
@@ -51,6 +51,7 @@ WHEN:
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-completion.md
   RUN WriteSkillsCleanExitGate WHEN SKILL_FILE_WRITTEN == true OR REVIEW_FIXES_APPLIED == true
+  CONTINUE WriteSkillsCompletion WHEN REVIEW_LOOP_REQUESTED == true AND SKILL_FILE_WRITTEN != true AND REVIEW_FIXES_APPLIED != true
   CONTINUE WriteSkillsCompletion WHEN SKILL_FILE_WRITTEN == false AND REVIEW_FIXES_APPLIED != true
   CONTINUE WriteSkillsCompletion WHEN VALIDATION_STATUS == pass
 ```

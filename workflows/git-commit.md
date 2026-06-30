@@ -204,6 +204,6 @@ DO:
   SET PLANNED_GIT_COMMIT_INVOCATION = updated commit message from user.reply
   CONTINUE GitCommitCommitAndEmit
 RULES:
-  ALWAYS use the user-supplied revised message verbatim; NEVER auto-append trailers
+  ALWAYS preserve the user-supplied revised message text verbatim; ALWAYS apply required project-policy and Studio trailers after the user-supplied message body; NEVER modify the body text the user typed
   NEVER commit without a non-empty commit message
 ```

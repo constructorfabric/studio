@@ -2,7 +2,7 @@
 cf: true
 type: workflow
 name: cf-skills-planning
-description: "Invoke when the user explicitly asks for `skills-planning` or `cf-skills-planning` by name."
+description: "Invoke when the user or another skill or workflow needs or asks to plan skill, prompt, or workflow work, define a prompting phase plan, break a skills task into steps, or spell out the implementation checklist and definition of done for prompt artifacts."
 version: 0.1
 purpose: Thin preset that binds skill/prompt-planning prerequisites and default phase checklist sections, then delegates planning to the integrable cf-planning workflow.
 ---

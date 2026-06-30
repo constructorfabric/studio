@@ -22,4 +22,5 @@ DO:
 RULES:
   ALWAYS preserve caller intent and ORIGINAL_INTENT when redirecting to the target workflow
   NEVER introduce new gates, menus, or behavior changes in the alias itself
+  NEVER silently continue when the target workflow LOAD fails; EMIT an error and STOP_TURN
 ```
