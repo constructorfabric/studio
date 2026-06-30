@@ -15,5 +15,6 @@ OPTIONS:
   3 diagnose -> WAIT a cpt-id, RUN `{cfs_cmd} where-used <cpt-id>`, then EMIT_MENU MapNextStepsMenu
   4 config-assist | config -> LOAD {cf-studio-path}/.core/skills/studio/modules/map-config-assist.md; CONTINUE MapConfigAssist
   5 custom -> WAIT the user's next map action, then EMIT_MENU MapNextStepsMenu
+  6 done -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
   INVALID -> EMIT_MENU MapNextStepsMenu
 ```

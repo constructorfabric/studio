@@ -55,5 +55,4 @@ DO:
 RULES:
   NEVER re-loop the review after an iteration with no applied fixes
   ALWAYS run NextActionsOffer as the terminal step when findings remain but no fixes were applied; mark cf-documenting-fix as (suggested)
-  ALWAYS run NextActionsOffer before STOP_TURN when findings remain but no fixes were applied; mark cf-documenting-fix as (suggested)
 ```

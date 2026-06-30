@@ -36,6 +36,7 @@ MENU WriteSkillsNoOutputMenu
 TITLE: The author agent produced no output — how would you like to proceed?
 OPTIONS:
   1 retry — retry with a clarified or narrowed scope -> CONTINUE WriteSkillsAuthorDispatch
-  2 brainstorm — refine the task with cf-brainstorm before retrying -> RUN NextActionsOffer with cf-brainstorm marked (suggested)
-  3 stop — return to free mode -> RUN NextActionsOffer
+  2 brainstorm — refine the task with cf-brainstorm before retrying -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer with cf-brainstorm marked (suggested)
+  3 stop — return to free mode -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
+  INVALID -> EMIT_MENU WriteSkillsNoOutputMenu
 ```

@@ -27,7 +27,7 @@ RULES:
 UNIT KitInitNextActions
 PURPOSE: Offer context-grounded next actions after a kit manifest write validates successfully.
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
   RUN NextActionsOffer
 RULES:
   ALWAYS run only after KitInitValidateWrittenManifest reports a passing dry-run validation

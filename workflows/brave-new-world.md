@@ -55,7 +55,7 @@ DO:
   SET BRAVE_NEW_WORLD_LAST_STATUS = disabled
   EMIT "Brave New World disabled: original menus and questions will be shown normally."
   EMIT a summary when BRAVE_NEW_WORLD_DECISION_LOG is non-empty: "During this BNW session, N autonomous choices were made. Reply 'show BNW log' to see the full list." WHEN BRAVE_NEW_WORLD_DECISION_LOG != empty
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
   RUN NextActionsOffer
 RULES:
   ALWAYS give disable intent precedence over activation intent

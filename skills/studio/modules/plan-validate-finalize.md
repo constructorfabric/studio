@@ -47,5 +47,6 @@ OPTIONS:
   3 handoff -> EMIT the new-chat startup prompt in a single fenced code block (read plan.toml, execute Phase 1, then report and prompt for Phase 2), EMIT "Paste the above prompt into a new chat to begin execution. Return here to continue with Phase 2.", then EMIT_MENU Phase4NextStepsMenu
   4 review -> EMIT the plan file paths to inspect, then EMIT_MENU Phase4NextStepsMenu
   5 modify -> WAIT the user's plan changes (add/remove phases, adjust scope, update files), then EMIT_MENU Phase4NextStepsMenu
+  6 done -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
   INVALID -> EMIT_MENU Phase4NextStepsMenu
 ```
