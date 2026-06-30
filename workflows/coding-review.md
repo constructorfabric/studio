@@ -44,8 +44,11 @@ DO:
   WHEN REVIEW_FINDINGS_REMAINING > 0:
     LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
     RUN ReviewFindingsReportBrowser
+    SET NEXT_ACTION_PINNED_SKILL = cf-coding-fix WHEN REVIEW_FIX_APPROVED == true
+    SET NEXT_ACTION_PAYLOAD = APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, REVIEW_FIX_APPROVED, REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, ReviewFindingsReport WHEN REVIEW_FIX_APPROVED == true
     RUN NextActionsOffer
     STOP_TURN
 RULES:
   - NEVER apply fixes from coding-review
+  - ALWAYS preserve approved finding IDs, fix scope, approval state, target paths, target slices, and ReviewFindingsReport in NEXT_ACTION_PAYLOAD when handing off to cf-coding-fix
 ```
