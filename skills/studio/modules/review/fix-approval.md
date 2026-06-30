@@ -284,8 +284,8 @@ MENU ReviewFixPartialIdsRetryMenu
 TITLE: No valid finding IDs were recognised — how do you want to proceed?
 OPTIONS:
   1 retry — enter IDs again (format: F-001 F-003, separated by spaces or commas) -> CONTINUE ReviewFixPartialIdsValidate
-  2 browser — return to the findings browser to check IDs -> SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; CONTINUE ReviewFindingsReportBrowser
-  3 back — return to the fix-scope menu -> SET REVIEW_FIX_SCOPE = unset; SET REVIEW_FIX_APPROVED = unset; CONTINUE ReviewFixApprovalGate
+  2 browser — return to the findings browser to check IDs -> SET PARTIAL_IDS_CAPTURE_STATE = unset; SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; CONTINUE ReviewFindingsReportBrowser
+  3 back — return to the fix-scope menu -> SET PARTIAL_IDS_CAPTURE_STATE = unset; SET REVIEW_FIX_SCOPE = unset; SET REVIEW_FIX_APPROVED = unset; CONTINUE ReviewFixApprovalGate
   INVALID -> EMIT_MENU ReviewFixPartialIdsRetryMenu
 ```
 

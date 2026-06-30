@@ -46,7 +46,9 @@ RULES:
 UNIT ResourceContextAcceptedInputContract
 PURPOSE: Validate accepted resource-context style inputs without deep exploration semantics.
 DO:
-  SET REQUIRED_INPUT_SPECS = resource-context declarations accepted as context-ref or context-map, plus any caller-declared relevant-files-map declaration accepted as path-map or path-list, WHEN RESOURCE_CONTEXT_REQUIREMENT != not-needed
+  SET REQUIRED_INPUT_SPECS = [resource-context declaration in context-ref or context-map shape] WHEN RESOURCE_CONTEXT_REQUIREMENT != not-needed AND caller declared resource-context as the required input
+  SET REQUIRED_INPUT_SPECS = [relevant-files-map declaration in path-map or path-list shape] WHEN RESOURCE_CONTEXT_REQUIREMENT != not-needed AND caller declared relevant-files-map as the required input
+  SET REQUIRED_INPUT_SPECS = [resource-context declaration, relevant-files-map declaration] WHEN RESOURCE_CONTEXT_REQUIREMENT != not-needed AND caller declared both as independently required
   RUN MissingInputsReportContract WHEN RESOURCE_CONTEXT_REQUIREMENT != not-needed
 RULES:
   ALWAYS accept canonical resource-context only in ArtifactAcceptedShapeContract shapes context-ref or context-map

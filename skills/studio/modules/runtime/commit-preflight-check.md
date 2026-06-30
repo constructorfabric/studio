@@ -4,11 +4,11 @@
 UNIT CommitPreflightCheckContract
 PURPOSE: Validate shared commit prerequisites before git delegation or commit authoring finalization.
 STATE:
-  SET COMMIT_INTENT: object | unset (default unset, scope unit_run)
-  SET COMMIT_POLICY_SOURCES: list | unset (default unset, scope unit_run)
-  SET PREPARED_COMMIT_TRAILERS: list | unset (default unset, scope unit_run)
-  SET COMMIT_PREFLIGHT_STATUS: ready | blocked | failed | unset (default unset, scope unit_run)
-  SET GIT_COMMIT_MODE: commit | stage | none | unset (default unset, scope unit_run)
+  SET COMMIT_INTENT: object | unset (default unset, scope workflow_run)
+  SET COMMIT_POLICY_SOURCES: list | unset (default unset, scope workflow_run)
+  SET PREPARED_COMMIT_TRAILERS: list | unset (default unset, scope workflow_run)
+  SET COMMIT_PREFLIGHT_STATUS: ready | blocked | failed | unset (default unset, scope workflow_run)
+  SET GIT_COMMIT_MODE: commit | stage | none | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/commit-policy-load.md WHEN CommitPolicyLoadContract is not yet loaded
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/commit-trailer-prepare.md WHEN CommitTrailerPrepareContract is not yet loaded

@@ -6,6 +6,7 @@ PURPOSE: Classify the scoped kit work so the kit thin workflows can delegate to 
 STATE:
   SET KIT_WORK_DOMAIN: prompting | documenting | coding | manifest | mixed | unset (default unset, scope workflow_run)
 DO:
+  SET KIT_WORK_DOMAIN = mixed WHEN explicit target paths, author targets, or review targets collectively span more than one domain category (prompting, documenting, coding, manifest) AND KIT_WORK_DOMAIN == unset
   SET KIT_WORK_DOMAIN = manifest WHEN explicit target paths, author targets, review targets, or the user's request name `.cf-studio-kit.toml`, `manifest.toml`, `conf.toml`, or other kit registration/config files directly
   SET KIT_WORK_DOMAIN = prompting WHEN KIT_WORK_DOMAIN == unset AND explicit target paths, author targets, or review targets point to workflow, skill, agent-instruction, or other prompt-contract files such as `workflows/`, `skills/`, `agents/`, `SKILL.md`, or `AGENTS.md`
   SET KIT_WORK_DOMAIN = documenting WHEN KIT_WORK_DOMAIN == unset AND explicit target paths, author targets, or review targets point to README, guide, checklist, example, template, or other human-facing documentation files

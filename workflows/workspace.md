@@ -38,7 +38,7 @@ RULES:
   ALWAYS load and follow the workspace-setup reference for field lists, decision framing, suggested defaults, and terminal-record shapes
   ALWAYS treat the workspace workflow as an intent router first, not a menu-first wizard
   ALWAYS prefer the narrowest sufficient operation: read-only CLI for inspection, targeted write CLI when available, direct config edit when the CLI has no matching mutation
-  ALWAYS prefer `workspace-sync --source <name>` when the user names a source or one relevant Git URL source can be inferred from the request; run full sync only when explicitly requested or no narrower target exists
+  ALWAYS prefer `workspace-sync --source <name>` when the user names a Git URL source or one relevant Git URL source can be inferred from the request; run full sync only when explicitly requested or no narrower Git URL target exists
   ALWAYS inspect the current workspace config shape before editing it, then update only the smallest required section or source entry
   ALWAYS validate after a workspace write with at least `workspace-info`, and additionally use `list-ids`, `validate`, `where-defined`, or `map` when the request or edited fields affect cross-repo resolution
   NEVER force a setup menu, approval menu, or phase gate when the user's intent already specifies a safe read-only operation or a non-destructive edit with complete inputs

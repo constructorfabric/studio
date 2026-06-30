@@ -24,10 +24,10 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/plan-decomposition.md
   RUN follow the plan-decomposition.md methodology rules
   LOAD {cf-studio-path}/.core/skills/studio/modules/planning-runtime.md
-  RUN PlanningPhaseContract
-  RUN PlanningChecklistContract
   RUN select a lifecycle from the STATE lifecycle options (gitignore | cleanup | archive | manual)
   RUN decompose by task-type strategy into phases (sections/categories/CDSL blocks), map intermediate results to out/ artifacts, insert review gates where the target workflow requires approval, and predict per-phase context budget — split any phase over 2000 lines
+  RUN PlanningPhaseContract
+  RUN PlanningChecklistContract
   LOAD {cf-studio-path}/.core/skills/studio/modules/plan-compile.md
   EMIT the decomposition summary — phases, est. lines, budget
   EMIT_MENU DecompositionConfirmMenu

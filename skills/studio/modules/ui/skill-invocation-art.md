@@ -62,21 +62,17 @@ NOTES:
 
   Minimal correct example — cf-brainstorm with an owl:
 
-  ```
-    (o,o)
-    (   )
-   --"-"--
-  cf-brainstorm | the owl
-  ```
+      (o,o)
+      (   )
+     --"-"--
+    cf-brainstorm | the owl
 
   Incorrect example (VIOLATION — large-letter ASCII-font text, not a pictorial illustration):
 
-  ```
-   ____  _____
-  | __ )/ ____|
-  |  _ \\___ \
-  | |_) |___) |
-  |____/|____/
-  cf-brainstorm | letters
-  ```
+       ____  _____
+      | __ )/ ____|
+      |  _ \\___ \
+      | |_) |___) |
+      |____/|____/
+      cf-brainstorm | letters
 ```

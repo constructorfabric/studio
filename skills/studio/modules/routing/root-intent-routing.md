@@ -48,7 +48,7 @@ OPTIONS:
   1 skill -> SET SELECTED_WORKFLOW = selected cf-* skill; CONTINUE IntentDescribeCapture
   2 describe-intent | help-me-choose -> CONTINUE IntentDescribeCapture
   3 none -> EMIT "No workflow was selected. Control is returning to free mode."; STOP_TURN
-  INVALID -> treat non-empty free text as ORIGINAL_INTENT, load companion-skills module when the text spans domains, run matching, and EMIT_MENU MatchedIntentSkillMenu; otherwise EMIT_MENU IntentSkillMenu
+  INVALID -> EMIT_MENU IntentSkillMenu WHEN user.reply is empty or whitespace-only; otherwise treat as ORIGINAL_INTENT, load companion-skills module when the text spans domains, run matching, and EMIT_MENU MatchedIntentSkillMenu
 MENU MatchedIntentSkillMenu
 TITLE: Matched cf-* workflow(s) for your intent — pick one to launch next, or pick a loaded companion group / comma-separated skills when the task spans domains.
 OPTIONS:

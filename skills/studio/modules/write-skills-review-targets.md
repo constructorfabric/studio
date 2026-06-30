@@ -3,7 +3,7 @@
 UNIT WriteSkillsReviewSetupMissingTargets
 PURPOSE: Stop when review target paths or slices were not resolved.
 STATE:
-  SET REVIEW_TARGET_CAPTURE_STATE: resume | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
   SET REVIEW_TARGET_CAPTURE_STATE = resume
   EMIT "Review target resolution is required before reviewer dispatch. Provide the reviewed target path(s) and declared content slice(s) for the existing skill/prompt/workflow/agent instruction/system prompt under review."
@@ -14,7 +14,7 @@ DO:
 UNIT WriteSkillsReviewTargetResume
 PURPOSE: Resume review target capture after the user supplies missing review paths or slices.
 STATE:
-  SET REVIEW_TARGET_CAPTURE_STATE: resume | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_SLICES: list | unset (default unset, scope workflow_run)
 WHEN:
@@ -33,7 +33,7 @@ DO:
 UNIT WriteSkillsReviewTargetResolve
 PURPOSE: Resolve concrete review target paths and slices before reviewer or fix dispatch.
 STATE:
-  SET REVIEW_TARGET_CAPTURE_STATE: resume | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_SLICES: list | unset (default unset, scope workflow_run)
   SET PATHS_WRITTEN: list | unset (default unset, scope workflow_run)

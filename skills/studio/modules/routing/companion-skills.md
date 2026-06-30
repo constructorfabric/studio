@@ -67,6 +67,7 @@ STATE:
   SET COMPANION_ROUTING_SINGLE_TARGET: cf-workflow-name | unset (default unset, scope workflow_run)
   SET COMPANION_ROUTING_GROUP_TARGETS: list | unset (default unset, scope workflow_run)
 DO:
+  CONTINUE COMPANION_CONTINUE WHEN ranked companion candidates is empty
   SET COMPANION_ROUTING_SINGLE_TARGET = the best single resolved skill name from ranked companion candidates
   SET COMPANION_ROUTING_GROUP_TARGETS = the best companion group resolved skill names from ranked companion candidates
   EMIT_MENU CompanionRoutingMenuOptions

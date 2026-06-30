@@ -92,7 +92,8 @@ STATE:
 DO:
   WHEN COMMIT_TARGET_PATHS == unset OR COMMIT_TARGET_PATHS is empty:
     WHEN COMMIT_PATH_CAPTURE_STATE == prompt:
-      SET COMMIT_TARGET_PATHS from user.reply
+      SET COMMIT_TARGET_PATHS = all currently staged file paths WHEN user.reply == "all staged"
+      SET COMMIT_TARGET_PATHS = file paths parsed from user.reply WHEN user.reply != "all staged"
       SET COMMIT_PATH_CAPTURE_STATE = unset
       CONTINUE GitCommitResolve WHEN COMMIT_TARGET_PATHS != unset AND COMMIT_TARGET_PATHS is not empty
     EMIT "Which files should be committed? Reply with file paths (e.g. src/foo.py src/bar.py) or 'all staged' to commit all staged changes."

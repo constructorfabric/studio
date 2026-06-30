@@ -28,8 +28,8 @@ OPTIONS:
 MENU RepoSelectionMenu
 TITLE: Which repos should be included as workspace sources? Reply with numbers/names or `all`.
 OPTIONS:
-  1 all — include all N discovered repos (suggested) -> parse the selection as all repos into the included-sources list, then EMIT_MENU StorageModeMenu
-  2 select -> parse the selection into the included-sources list, then EMIT_MENU StorageModeMenu
+  1 all — include all N discovered repos (suggested) -> parse the selection as all repos into the included-sources list, then SET STORAGE_MODE = standalone WHEN any selected source is a Git URL; EMIT "Inline storage is not available for Git URL sources — standalone mode will be used automatically." WHEN any selected source is a Git URL; CONTINUE WorkspaceConfigureEntry WHEN any selected source is a Git URL; EMIT_MENU StorageModeMenu
+  2 select -> parse the selection into the included-sources list, then SET STORAGE_MODE = standalone WHEN any selected source is a Git URL; EMIT "Inline storage is not available for Git URL sources — standalone mode will be used automatically." WHEN any selected source is a Git URL; CONTINUE WorkspaceConfigureEntry WHEN any selected source is a Git URL; EMIT_MENU StorageModeMenu
   3 cancel -> EMIT "Workspace discovery cancelled before source selection was completed."; RETURN a WORKSPACE_STATUS record (status=pending) and STOP_TURN
   INVALID -> EMIT_MENU RepoSelectionMenu
 MENU StorageModeMenu

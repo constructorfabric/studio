@@ -4,7 +4,7 @@
 UNIT WriteSkillsIntentCapture
 PURPOSE: Capture the skill-writing target before any context discovery or design gate runs.
 STATE:
-  SET WRITE_SKILLS_INTENT_CAPTURE_STATE: resume | unset (default unset, scope workflow_run)
+  SET WRITE_SKILLS_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE ORIGINAL_INTENT == unset
 DO:
@@ -21,7 +21,7 @@ RULES:
 UNIT WriteSkillsIntentResume
 PURPOSE: Resume the workflow after the user provides the skill-writing target.
 STATE:
-  SET WRITE_SKILLS_INTENT_CAPTURE_STATE: resume | unset (default unset, scope workflow_run)
+  SET WRITE_SKILLS_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE user.reply exists
   REQUIRE WRITE_SKILLS_INTENT_CAPTURE_STATE == resume

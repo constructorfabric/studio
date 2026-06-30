@@ -23,6 +23,8 @@ STATE:
 WHEN:
   REQUIRE EXPLAIN_INTENT_CAPTURE_STATE == resume
 DO:
+  SET EXPLAIN_INTENT_CAPTURE_STATE = unset WHEN user.reply == "cancel"
+  STOP_TURN WHEN user.reply == "cancel"
   SET ORIGINAL_INTENT = user.reply
   SET EXPLAIN_INTENT_CAPTURE_STATE = unset
   CONTINUE ExplainExploreGate
