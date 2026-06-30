@@ -4,7 +4,7 @@
 UNIT BrainstormTopicCapture
 PURPOSE: Emit the topic prompt and stop the turn; routing on resume is handled by BrainstormTopicCaptureResume.
 STATE:
-  SET BRAINSTORM_TOPIC_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
+  SET BRAINSTORM_TOPIC_CAPTURE_STATE: resume | unset (default unset, scope workflow_run)
 DO:
   SET BRAINSTORM_TOPIC_CAPTURE_STATE = resume WHEN BRAINSTORM_TOPIC_CAPTURE_STATE == unset
   EMIT "What should we brainstorm? Describe the topic, decision, or design question — e.g. 'auth strategy for the mobile app' or 'whether to use event sourcing'. A phrase or sentence is enough. Reply with your topic, or `cancel` to stop."
@@ -21,7 +21,7 @@ RULES:
 UNIT BrainstormTopicCaptureResume
 PURPOSE: Route the resumed topic reply from BrainstormTopicCapture.
 STATE:
-  SET BRAINSTORM_TOPIC_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
+  SET BRAINSTORM_TOPIC_CAPTURE_STATE: resume | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE BRAINSTORM_TOPIC_CAPTURE_STATE == resume
 DO:
@@ -78,6 +78,7 @@ DO:
   CONTINUE BrainstormOfferCancelled WHEN reply_status == cancelled
   CONTINUE BrainstormOfferSaveRejected WHEN reply_status == save_rejected
   CONTINUE BrainstormOfferAccepted WHEN reply_status == accepted
+  CONTINUE BrainstormOfferInvalid
 NOTES:
   BrainstormOfferText: "Want a brainstorm panel? I'll assemble a 3-6 expert panel for cross-discipline pushback when the design space is open, run one topic per round, and walk the resulting questions one by one. Reply `yes` (recommended when the design space is open or you want pushback), `no` (skip straight ahead), or `save` (run the panel and persist transcript + design under {cf-studio-path}/.cache/brainstorm/{slug}-{ISO}/ — only when file writes are allowed). Optional modifiers: `:N` custom round cap e.g. yes:15 (default 10); `mode=inline` (default; run facilitator and panel contracts inline without sub-agents); `mode=single-agent` (one cf-brainstorm-panel native dispatch per round); `mode=fan-out` (each expert a separate parallel cf-brainstorm-expert sub-agent). Examples: yes, yes:15, yes mode=single-agent, yes mode=fan-out, save:20 mode=fan-out"
 ```

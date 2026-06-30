@@ -10,7 +10,6 @@ PURPOSE: Load the shared runtime contracts required by thin integrable planning 
 DO:
   RUN PlanningRuntimeCoreLoad
   RUN PlanningRuntimePhaseLoad
-  RUN SkillIoContractLoad
 RULES:
   ALWAYS use this load unit before a thin planning skill evaluates prerequisite artifacts or emits planning outputs
   NEVER treat this load unit as permission to invoke producer skills automatically
@@ -19,12 +18,13 @@ RULES:
 
 ```pdsl
 UNIT PlanningRuntimeCoreLoad
-PURPOSE: Load the prerequisite and context contracts for planning.
+PURPOSE: Load the prerequisite and context contracts for planning, then run the IO contract.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/skill-io-contract-load.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/resource-context-check.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/design-input-check.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/missing-inputs-report.md
+  RUN SkillIoContractLoad
 
 ```
 

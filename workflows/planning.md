@@ -44,10 +44,12 @@ DO:
   RUN PlanningInputContract
   RUN PlanningPrerequisiteResolution
   CONTINUE PlanningBlocked WHEN DESIGN_INPUT_STATUS == blocked OR RESOURCE_CONTEXT_STATUS == blocked
+  CONTINUE PlanningBlocked WHEN DESIGN_INPUT_STATUS == unset
   CONTINUE PlanningBuild WHEN DESIGN_INPUT_STATUS == ready AND RESOURCE_CONTEXT_STATUS != blocked
 RULES:
   - ALWAYS allow RESOURCE_CONTEXT_STATUS == skipped or ready on the build path when the caller declared resource context optional or not-needed
   - NEVER continue to planning synthesis while a required prerequisite remains blocked
+  - ALWAYS treat DESIGN_INPUT_STATUS == unset as blocked; never leave the dispatch unit with no continuation path
 ```
 
 ```pdsl

@@ -36,7 +36,19 @@ DO:
   CONTINUE WriteSkillsFixOutcomeClean WHEN REVIEW_FINDINGS_REMAINING == 0
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md
   RUN ReviewFindingsReportBrowser
+  CONTINUE WriteSkillsReviewFixHandoff WHEN REVIEW_FIX_APPROVED == true
   RUN NextActionsOffer
 RULES:
   - NEVER apply fixes from prompting-review
+```
+
+```pdsl
+UNIT WriteSkillsReviewFixHandoff
+PURPOSE: Route to NextActionsOffer after the user approves a fix scope in prompting-review, with cf-prompting-fix as the suggested next action carrying approved finding context.
+DO:
+  EMIT "Fix scope approved. To apply these fixes, continue with cf-prompting-fix." with APPROVED_REVIEW_FINDING_IDS and REVIEW_TARGET_PATHS as context
+  RUN NextActionsOffer with cf-prompting-fix marked (suggested) and APPROVED_REVIEW_FINDING_IDS pre-filled
+RULES:
+  ALWAYS mark cf-prompting-fix as (suggested) in NextActionsOffer when APPROVED_REVIEW_FINDING_IDS is non-empty
+  NEVER apply fixes from this unit
 ```

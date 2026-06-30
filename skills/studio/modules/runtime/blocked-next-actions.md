@@ -47,11 +47,11 @@ MENU BlockedNextActionsMenu
 TITLE: This skill is blocked. Choose the next step. Reply with a number.
 OPTIONS:
   1 provide-inputs -> WAIT for the user to provide the missing artifact references, paths, or descriptors called out in missing_artifacts, then STOP_TURN
-  2 suggested-skill -> the rendered menu lists each suggested_next_skills entry on its own numbered line as `N <skill> - resolves <artifact types>`; selecting one explicitly chooses that producer skill as the next step and returns control at the handoff boundary
-  3 override -> WAIT for explicit override approval naming the missing artifacts to bypass, then STOP_TURN WHEN BLOCKED_NEXT_ACTION_OVERRIDE_AVAILABLE == true
-  4 back -> STOP_TURN and return to the nearest previous workflow-owned decision point when one exists, otherwise STOP_TURN as a safe terminal return
-  5 stop -> STOP_TURN
+  2..N <skill-name> (suggested for first entry) — resolves <artifact types> -> each suggested_next_skills entry occupies its own numbered option starting at 2; the rendered menu expands one entry per line in declaration order, marks the first (suggested), and the numbers continue sequentially
+  N+1 override -> WAIT for explicit override approval naming the missing artifacts to bypass, then STOP_TURN WHEN BLOCKED_NEXT_ACTION_OVERRIDE_AVAILABLE == true
+  N+2 back -> STOP_TURN and return to the nearest previous workflow-owned decision point when one exists, otherwise STOP_TURN as a safe terminal return
+  N+3 stop -> STOP_TURN
   INVALID -> EMIT_MENU BlockedNextActionsMenu
 NOTES:
-  The rendered menu must enumerate every suggested_next_skills entry on its own line after `provide-inputs`, preserve stable order, append `override` only when legal, then append `back` and a final `stop` option.
+  The option numbers 2..N are dynamic: each suggested_next_skills entry gets its own slot. override, back, and stop always follow the last skill slot. The minimum menu (no skills) is: 1 provide-inputs, 2 override (if available), 3 back, 4 stop. The OPTIONS block above uses N notation as a template; runtime must expand to concrete integers.
 ```

@@ -2005,7 +2005,7 @@ def test_write_skills_review_loop_matches_fix_then_validate_contract() -> None:
     ) in text
     assert "cf-generate-prompt-engineer-smart when fixes affect state, routing, handoffs, validation, sub-agent dispatch, or output contracts" in text
     assert "CONTINUE WriteSkillsValidate WHEN REVIEW_FIXES_APPLIED == true" in text
-    assert "STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration" in text
+    assert "CONTINUE WriteSkillsFixOutcomeNoChanges WHEN findings remain but no fixes were applied this iteration" in text
     assert "NEVER re-loop the review after an iteration with no applied fixes" in text
     assert "CONTINUE WriteSkillsReviewLoop WHEN review findings remain" not in text
     assert "DISPATCH cf-pdsl-author to apply only REVIEW_FIX_SCOPE-approved review fixes" not in text

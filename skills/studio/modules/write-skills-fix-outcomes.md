@@ -31,11 +31,14 @@ DO:
 
 ```pdsl
 UNIT WriteSkillsFixOutcomeNoChanges
-PURPOSE: Stop when no approved fixes were applied and findings still remain.
+PURPOSE: Report remaining findings and offer next actions when no approved fixes were applied.
 DO:
-  STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration — re-reviewing unchanged skill files cannot change the result
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+  EMIT a summary of remaining findings: count, IDs, and severities
+  RUN NextActionsOffer
 RULES:
   NEVER re-loop the review after an iteration with no applied fixes
+  ALWAYS run NextActionsOffer before returning control to the user
 ```
 
 ```pdsl
@@ -54,7 +57,11 @@ DO:
 
 ```pdsl
 UNIT WriteSkillsFixOutcomeDeterministicBlocker
-PURPOSE: Stop when semantic findings are clear but deterministic validation still fails.
+PURPOSE: Report deterministic blockers and offer next actions when validation fails after all semantic findings are resolved.
 DO:
-  STOP_TURN and report that deterministic blockers remain
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+  EMIT a summary of deterministic blockers that remain after semantic fix application
+  RUN NextActionsOffer with cf-prompting-ci or cf-coding-ci marked (suggested) depending on the target domain
+RULES:
+  ALWAYS run NextActionsOffer before returning control to the user
 ```

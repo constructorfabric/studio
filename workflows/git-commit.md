@@ -106,12 +106,13 @@ DO:
   RUN stage only COMMIT_TARGET_PATHS when GIT_COMMIT_MODE == stage or GIT_COMMIT_MODE == commit
   EMIT a completed SKILL_RESULT envelope with skill = cf-git-commit, status = completed, produced_artifacts = commit-result describing the staged-path set when GIT_COMMIT_MODE == stage, report_outputs = [], missing_artifacts = [], assumptions = [], and suggested_next_skills = []
   RUN NextActionsOffer WHEN GIT_COMMIT_MODE == stage
+  STOP_TURN WHEN GIT_COMMIT_MODE == stage
   RUN prepare PLANNED_GIT_COMMIT_INVOCATION from COMMIT_INTENT, COMMIT_TARGET_PATHS, CONTRIBUTING_GUIDE requirements, and PREPARED_COMMIT_TRAILERS WHEN GIT_COMMIT_MODE == commit
   EMIT the planned commit message, trailer set, and scoped paths for review WHEN GIT_COMMIT_MODE == commit
   EMIT "Proceed with this commit? Reply 'yes' to commit, 'edit' to change the message, or 'cancel' to stop." WHEN GIT_COMMIT_MODE == commit
   WAIT user.reply WHEN GIT_COMMIT_MODE == commit
   STOP_TURN WHEN GIT_COMMIT_MODE == commit
-  CONTINUE GitCommitExecuteConfirm
+  CONTINUE GitCommitExecuteConfirm WHEN GIT_COMMIT_MODE == commit
 RULES:
   ALWAYS honor GIT_COMMIT_MODE strictly: stage means no commit; commit means stage plus commit; none never reaches this unit
 ```
@@ -125,7 +126,6 @@ DO:
   EMIT "Please reply 'yes' to confirm the commit, 'edit' to change the message, or 'cancel' to stop." WHEN user.reply != "yes"
   WAIT user.reply WHEN user.reply != "yes"
   STOP_TURN WHEN user.reply != "yes"
-  CONTINUE GitCommitExecuteConfirm WHEN user.reply != "yes"
   SET GIT_COMMIT_AUDIT_PHASE = preflight
   RUN GitCommitCommitAudit
   RUN create the git commit for COMMIT_TARGET_PATHS using COMMIT_INTENT plus required project-policy and Studio trailers
