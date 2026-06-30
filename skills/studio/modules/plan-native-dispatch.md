@@ -14,8 +14,15 @@ DO:
   SET CF_PHASE_GATE = released_for_dispatch WHEN approved AND not inline-fallback
   DISPATCH the selected phase runner with plan_dir, target_phase=1, git_commit_mode, contributing_guide, and git_constraint WHEN approved AND not inline-fallback
   SET CF_PHASE_GATE = armed WHEN approved AND not inline-fallback
+  EMIT "Phase execution dispatched. The phase runner will complete its work and report back. Resume this conversation when Phase 1 is done to continue with Phase 2." WHEN approved AND not inline-fallback
   STOP_TURN WHEN approved AND not inline-fallback
-  EMIT "Native same-chat execution is unavailable (sub-agents not approved or inline fallback active) — use the handoff prompt instead." then EMIT the new-chat startup prompt in a single fenced code block and STOP_TURN WHEN not approved OR inline-fallback active
+  WHEN not approved OR inline-fallback active:
+    EMIT "Native same-chat execution is unavailable (sub-agents not approved or inline fallback active) — use the handoff prompt instead."
+    EMIT the new-chat startup prompt in a single fenced code block
+    EMIT "Paste this into a new chat to begin execution. Return here after Phase 1 completes to continue with Phase 2."
+    EMIT_MENU Phase4NextStepsMenu
+    WAIT user.reply
+    STOP_TURN
 RULES:
   NEVER dispatch without a successful sub-agent / inline-fallback re-probe — fall back to the handoff prompt instead
   ALWAYS set CF_PHASE_GATE released_for_dispatch before dispatch and armed immediately after, and ALWAYS include plan_dir, target_phase, git_commit_mode, contributing_guide, and git_constraint

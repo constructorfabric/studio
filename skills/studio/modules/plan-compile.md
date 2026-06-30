@@ -21,8 +21,8 @@ MENU BriefCheckpointMenu
 TITLE: Brief package prepared (plan.toml + N briefs, 0/N phase files) — choose how to produce phase files: 1 inline (uses this chat's budget); 2 prompts (skips validation); 3 subagents (needs sub-agent approval); 4 stop (keep briefs). Reply with a number.
 OPTIONS:
   1 inline -> LOAD {cf-studio-path}/.core/skills/studio/modules/plan-validate-finalize.md; compile each phase file inline from its on-disk brief (apply a context boundary, read brief from disk, WRITE phase-NN-*.md with CF_PHASE_GATE released/armed), then CONTINUE PlanPhase3Validate
-  2 prompts -> emit one self-contained downstream compilation prompt per brief (no phase files written), SET plan.execution_status="prompts_emitted", and STOP_TURN (Phase 3.4 validation skipped in this mode)
+  2 prompts -> emit one self-contained downstream compilation prompt per brief (no phase files written), SET plan.execution_status="prompts_emitted", EMIT "Start a new chat and paste Phase 1's prompt to begin compilation. Each prompt is self-contained and independent.", then LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer (Phase 3.4 validation skipped in this mode)
   3 subagents -> LOAD {cf-studio-path}/.core/skills/studio/modules/plan-compiler-dispatch.md; CONTINUE PlanPhaseCompilerDispatch
-  4 stop -> SET plan.execution_status="briefs_only" and STOP_TURN
+  4 stop -> SET plan.execution_status="briefs_only"; LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
   INVALID -> EMIT_MENU BriefCheckpointMenu
 ```

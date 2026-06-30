@@ -25,11 +25,9 @@ RULES:
 MENU ExploreSaveMenu
 TITLE: Save this exploration bundle?
 OPTIONS:
-  1 save -> WRITE the bundle to default_save_dir, then STOP_TURN
-  2 folder:<path> | folder -> WRITE the bundle to the user path, then STOP_TURN
+  1 save -> WRITE the bundle to default_save_dir, then CONTINUE ExploreNextActions
+  2 folder:<path> | folder -> WRITE the bundle to the user path, then CONTINUE ExploreNextActions
   3 skip -> write nothing, then CONTINUE ExploreNextActions
-  4 cancel -> write nothing and STOP_TURN
+  4 cancel -> write nothing, then CONTINUE ExploreNextActions
   INVALID -> EMIT "Reply with 1-4, save, skip, or folder: <path> (e.g., folder: /tmp/explore)." and EMIT_MENU ExploreSaveMenu
-NOTES:
-  Save and folder options write the bundle then stop because persistence is the selected terminal action. Skip continues to next actions because no file write is pending.
 ```

@@ -23,8 +23,8 @@ RULES:
 MENU StudioShutdownConfirm
 TITLE: Confirm: turning the studio off will FORGET all loaded skills, workflows, and session configuration.
 OPTIONS:
-  1 confirm -> SET CFS_INIT = false; forget/unload all `content` and all `rules` from the session
+  1 confirm -> SET CFS_INIT = false; forget/unload all `content` and all `rules` from the session; STOP_TURN
   2 cancel -> EMIT "Studio shutdown cancelled. The current session remains active."; STOP_TURN
   3 what will be forgotten? -> EMIT a plain-language list of currently loaded skills, workflows, session configuration, and content; then re-emit StudioShutdownConfirm
-  INVALID -> EMIT_MENU StudioShutdownConfirm
+  INVALID -> EMIT_MENU StudioShutdownConfirm; WAIT user.reply; STOP_TURN
 ```

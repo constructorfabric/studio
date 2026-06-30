@@ -271,7 +271,6 @@ RULES:
   ALWAYS keep the active ReviewFindingsReport guard in place while waiting for explicit partial finding IDs
   ALWAYS retry partial ID capture when user.reply is missing, empty, or names no finding IDs from the active ReviewFindingsReport
   ALWAYS return from partial ID capture only after parsing at least one valid finding ID from the active ReviewFindingsReport
-  ALWAYS set APPROVED_REVIEW_FINDING_IDS before clearing PARTIAL_IDS_CAPTURE_STATE, REVIEW_FIX_MENU_TOKEN, and REVIEW_FIX_MENU_REPORT
 ```
 
 ```pdsl

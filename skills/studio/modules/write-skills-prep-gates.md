@@ -38,7 +38,7 @@ NOTES: To reduce turn count, callers may collapse this gate and WriteSkillsExplo
 MENU WriteSkillsBrainstormMenu
 TITLE: Before writing or reviewing a skill, brainstorm ambiguous decisions or design options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open design questions. Reply with a number.
 OPTIONS:
-  1 brainstorm -> INVOKE skill `cf-brainstorm`; require it to return brainstorm_decisions, then SET BRAINSTORM_DECISIONS = provided, SET PLAN_FIRST_CONTINUE = WriteSkillsAuthorDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
-  2 skip (suggested when approach is clear) -> SET PLAN_FIRST_CONTINUE = WriteSkillsAuthorDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
+  1 brainstorm -> INVOKE skill `cf-brainstorm`; require it to return brainstorm_decisions, then SET BRAINSTORM_DECISIONS = provided, SET PLAN_FIRST_CONTINUE = WriteSkillsAuthorDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-author-dispatch.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
+  2 skip (suggested when approach is clear) -> SET PLAN_FIRST_CONTINUE = WriteSkillsAuthorDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-author-dispatch.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
   INVALID -> EMIT_MENU WriteSkillsBrainstormMenu
 ```

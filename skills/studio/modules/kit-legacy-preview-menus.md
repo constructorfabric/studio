@@ -21,10 +21,10 @@ OPTIONS:
   2 re-show manifest — display the proposed manifest again -> EMIT CURRENT_PREVIEW_TOML in a fenced `toml` block; EMIT CURRENT_PREVIEW_REPORT; EMIT_MENU KitInitLegacyApprovalMenu; WAIT user.reply; STOP_TURN
   3 edit -> SET PENDING_EDIT_BRANCH = legacy_manifest; EMIT "You are editing the proposed canonical manifest shown above. Send one field edit at a time. When you are finished, reply `done` to see the updated preview and return to this menu. Examples:\n- Change kit name: `set metadata.name = My Kit`\n- Change version: `set metadata.version = 1.2.0`\n- Remove a resource: `remove resource id = <id>`\n- Change a resource field: `set resource <id>.kind = skill`"; WAIT user.reply; STOP_TURN
   4 cancel -> STOP_TURN
-  INVALID -> EMIT "Reply 1-4." and EMIT_MENU KitInitLegacyApprovalMenu
+  INVALID -> EMIT "Reply 1-4."; EMIT_MENU KitInitLegacyApprovalMenu; WAIT user.reply; STOP_TURN
 RULES:
-  ALWAYS when PENDING_EDIT_BRANCH == legacy_manifest and user.reply == "done": apply all pending edits, EMIT the updated preview TOML, reset PENDING_EDIT_BRANCH = unset, and EMIT_MENU KitInitLegacyApprovalMenu; WAIT user.reply; STOP_TURN
-  ALWAYS when PENDING_EDIT_BRANCH == legacy_manifest and user.reply is a field edit command: apply the edit, update CURRENT_PREVIEW_TOML, and EMIT "Edit applied. Send another edit or reply `done` to finish."
+  ALWAYS when PENDING_EDIT_BRANCH == legacy_manifest and user.reply == "done": apply all pending edits, EMIT the updated preview TOML, reset PENDING_EDIT_BRANCH = unset, EMIT_MENU KitInitLegacyApprovalMenu, WAIT user.reply, STOP_TURN
+  ALWAYS when PENDING_EDIT_BRANCH == legacy_manifest and user.reply is a field edit command: apply the edit, update CURRENT_PREVIEW_TOML, EMIT "Edit applied. Send another edit or reply `done` to finish.", WAIT user.reply, STOP_TURN
 MENU KitInitPreviewFailureMenu
 TITLE: Preview failed — see the findings above. Fix the source file shown then retry, or cancel.
 OPTIONS:

@@ -43,5 +43,5 @@ OPTIONS:
   1 revise -> WAIT user.reply; STOP_TURN
   2 keep-preview -> EMIT CURRENT_PREVIEW_TOML; EMIT CURRENT_PREVIEW_REPORT; EMIT_MENU KitInitLegacyApprovalMenu WHEN PENDING_EDIT_BRANCH == legacy_manifest; EMIT_MENU KitInitDiscoveryApprovalMenu WHEN PENDING_EDIT_BRANCH == discovery; EMIT_MENU KitInitExistingManifestMenu WHEN PENDING_EDIT_BRANCH == canonical; WAIT user.reply; STOP_TURN
   3 cancel -> SET PENDING_EDIT_BRANCH = unset; STOP_TURN
-  INVALID -> EMIT "Reply 1-3." and EMIT_MENU KitInitEditRetryMenu
+  INVALID -> EMIT "Reply 1-3."; EMIT_MENU KitInitEditRetryMenu; WAIT user.reply; STOP_TURN
 ```

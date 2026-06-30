@@ -25,7 +25,11 @@ STATE:
   SET COMMIT_TRAILER_REQUIREMENTS: list | unset (default unset, scope workflow_run)
   SET PREPARED_COMMIT_TRAILERS: list | unset (default unset, scope workflow_run)
   SET COMMIT_PREFLIGHT_STATUS: ready | blocked | failed | unset (default unset, scope workflow_run)
+  SET GIT_COMMIT_CONFIRM_STATE: waiting | unset (default unset, scope workflow_run)
+  SET GIT_COMMIT_MSG_EDIT_STATE: waiting | unset (default unset, scope workflow_run)
 DO:
+  CONTINUE GitCommitExecuteConfirm WHEN GIT_COMMIT_CONFIRM_STATE == waiting
+  CONTINUE GitCommitMessageEditExecute WHEN GIT_COMMIT_MSG_EDIT_STATE == waiting
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/commit-policy-load.md
@@ -110,9 +114,9 @@ DO:
   RUN prepare PLANNED_GIT_COMMIT_INVOCATION from COMMIT_INTENT, COMMIT_TARGET_PATHS, CONTRIBUTING_GUIDE requirements, and PREPARED_COMMIT_TRAILERS WHEN GIT_COMMIT_MODE == commit
   EMIT the planned commit message, trailer set, and scoped paths for review WHEN GIT_COMMIT_MODE == commit
   EMIT "Proceed with this commit? Reply 'yes' to commit, 'edit' to change the message, or 'cancel' to stop." WHEN GIT_COMMIT_MODE == commit
+  SET GIT_COMMIT_CONFIRM_STATE = waiting WHEN GIT_COMMIT_MODE == commit
   WAIT user.reply WHEN GIT_COMMIT_MODE == commit
   STOP_TURN WHEN GIT_COMMIT_MODE == commit
-  CONTINUE GitCommitExecuteConfirm WHEN GIT_COMMIT_MODE == commit
 RULES:
   ALWAYS honor GIT_COMMIT_MODE strictly: stage means no commit; commit means stage plus commit; none never reaches this unit
 ```
@@ -121,6 +125,7 @@ RULES:
 UNIT GitCommitExecuteConfirm
 PURPOSE: Route the user's confirmation reply and execute the commit on 'yes'.
 DO:
+  SET GIT_COMMIT_CONFIRM_STATE = unset
   STOP_TURN WHEN user.reply == "cancel"
   CONTINUE GitCommitMessageEdit WHEN user.reply == "edit"
   EMIT "Please reply 'yes' to confirm the commit, 'edit' to change the message, or 'cancel' to stop." WHEN user.reply != "yes"
@@ -147,9 +152,9 @@ PURPOSE: Let the user revise the planned commit message before the commit is cre
 DO:
   EMIT the current PLANNED_GIT_COMMIT_INVOCATION message and trailers for review
   EMIT "Enter your revised commit message, or reply 'cancel' to stop."
+  SET GIT_COMMIT_MSG_EDIT_STATE = waiting
   WAIT user.reply
   STOP_TURN
-  CONTINUE GitCommitMessageEditExecute
 RULES:
   ALWAYS stop the turn after emitting the message prompt; execution happens in GitCommitMessageEditExecute on resume
 ```
@@ -158,6 +163,7 @@ RULES:
 UNIT GitCommitMessageEditExecute
 PURPOSE: Execute the commit with the user's revised message.
 DO:
+  SET GIT_COMMIT_MSG_EDIT_STATE = unset
   STOP_TURN WHEN user.reply == "cancel"
   SET PLANNED_GIT_COMMIT_INVOCATION = updated commit message from user.reply
   SET GIT_COMMIT_AUDIT_PHASE = preflight

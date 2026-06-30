@@ -45,7 +45,9 @@ DO:
   RUN `{cfs_cmd} --json where-used --id <id>` WHEN the user asks where an ID is referenced across the workspace
   RUN `{cfs_cmd} --json validate [--source <name> | --local-only]` WHEN the user asks to validate workspace-wide behavior, validate one source, or compare local-only vs cross-repo validation
   RUN `{cfs_cmd} --json map [--local-only]` WHEN the user asks for workspace-aware dependency or traceability mapping
-  RETURN a WORKSPACE_STATUS record (phase=inspect, status=complete, next_route=null), then STOP_TURN
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+  RETURN a WORKSPACE_STATUS record (phase=inspect, status=complete, next_route=null)
+  RUN NextActionsOffer
 RULES:
   ALWAYS prefer read-only CLI over manual config reading when a CLI command already answers the question
   ALWAYS include `workspace-info` before or after another read-only command when config context is needed to interpret the result
@@ -60,7 +62,9 @@ DO:
   RUN `{cfs_cmd} --json workspace-sync --source <name>` WHEN the user names a source, repo, URL, branch, or path that maps to one Git URL source
   RUN `{cfs_cmd} --json workspace-sync` WHEN the user explicitly asks to sync all Git URL sources or no narrower target can be inferred
   EMIT the planned force command and EMIT_MENU WorkspaceForceSyncConfirm WHEN the user requests `--force` or a dirty worktree makes force the only viable path
-  RETURN a WORKSPACE_STATUS record (phase=sync, status=complete, next_route=null), then STOP_TURN
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+  RETURN a WORKSPACE_STATUS record (phase=sync, status=complete, next_route=null)
+  RUN NextActionsOffer
 RULES:
   ALWAYS prefer `workspace-sync --source <name>` over full sync when a targeted source is available
   ALWAYS inspect `workspace-info` first when source targeting is ambiguous and needs disambiguation
@@ -68,8 +72,8 @@ RULES:
 MENU WorkspaceForceSyncConfirm
 TITLE: `workspace-sync --force` may discard uncommitted changes in the target worktree. Continue?
 OPTIONS:
-  1 confirm -> RUN the planned force sync CLI, RETURN a WORKSPACE_STATUS record (phase=sync, status=complete, next_route=null), then STOP_TURN
-  2 cancel -> RETURN a WORKSPACE_STATUS record (phase=sync, status=pending, next_route=null), then STOP_TURN
+  1 confirm -> RUN the planned force sync CLI, RETURN a WORKSPACE_STATUS record (phase=sync, status=complete, next_route=null), then RUN NextActionsOffer
+  2 cancel -> RETURN a WORKSPACE_STATUS record (phase=sync, status=pending, next_route=null), then RUN NextActionsOffer
   INVALID -> EMIT_MENU WorkspaceForceSyncConfirm
 ```
 
@@ -81,7 +85,9 @@ DO:
   LOAD the current workspace config, schema, and setup reference; then edit the smallest matching config section WHEN the user asks to change source fields, remove or rename a source, migrate between inline and standalone storage, or edit `[traceability]`, `[resolve]`, or `[validation]`
   RUN `{cfs_cmd} --json workspace-info` after every successful write
   RUN `{cfs_cmd} --json list-ids [--source <name>]`, `{cfs_cmd} --json validate [--source <name>]`, or `{cfs_cmd} --json where-defined --id <id>` when the edit changes cross-repo resolution, source targeting, or remote-ID visibility
-  RETURN a WORKSPACE_STATUS record (phase=write, status=complete, next_route=null), then STOP_TURN
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
+  RETURN a WORKSPACE_STATUS record (phase=write, status=complete, next_route=null)
+  RUN NextActionsOffer
 RULES:
   ALWAYS prefer workspace CLI for `workspace-init`, `workspace-add`, `workspace-info`, and `workspace-sync`
   ALWAYS prefer direct config edits for mutations the CLI does not expose: source removal, source rename, source field rewrites, storage migration, `[traceability]`, `[resolve]`, and `[validation]`
