@@ -104,7 +104,7 @@ PURPOSE: Stage or commit the explicit target paths under the resolved session gi
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
   RUN stage only COMMIT_TARGET_PATHS when GIT_COMMIT_MODE == stage or GIT_COMMIT_MODE == commit
-  EMIT a completed SKILL_RESULT envelope with skill = cf-git-commit, status = completed, produced_artifacts = commit-result describing the staged-path set when GIT_COMMIT_MODE == stage, report_outputs = [], missing_artifacts = [], assumptions = [], and suggested_next_skills = []
+  EMIT a completed SKILL_RESULT envelope with skill = cf-git-commit, status = completed, produced_artifacts = commit-result describing the staged-path set, report_outputs = [], missing_artifacts = [], assumptions = [], and suggested_next_skills = [] WHEN GIT_COMMIT_MODE == stage
   RUN NextActionsOffer WHEN GIT_COMMIT_MODE == stage
   STOP_TURN WHEN GIT_COMMIT_MODE == stage
   RUN prepare PLANNED_GIT_COMMIT_INVOCATION from COMMIT_INTENT, COMMIT_TARGET_PATHS, CONTRIBUTING_GUIDE requirements, and PREPARED_COMMIT_TRAILERS WHEN GIT_COMMIT_MODE == commit
