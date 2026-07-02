@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document describes the six primary cross-cutting user journeys in Constructor Studio v1.5.9 using CDSL (Constructor Domain Specification Language) algorithms. Each journey traces the full path a user takes from intent to outcome, showing how Studio's monolithic workflows chain together.
+This document describes the fifteen primary cross-cutting user journeys in Constructor Studio v1.5.9 using CDSL (Constructor Domain Specification Language) algorithms. Each journey traces the full path a user takes from intent to outcome, showing how Studio's monolithic workflows chain together.
 
 **How to read ALGORITHM blocks**
 
@@ -33,6 +33,15 @@ All workflows in v1.5.9 are monolithic. Each workflow owns its full lifecycle �
 | 4 | Review and fix existing code | Developer / Reviewer | Identify, approve, and apply fixes for code issues, then commit | `cf-explore` → `cf-coding` (review-first) | — |
 | 5 | Create and publish a behavior kit | Platform engineer | Package reusable behaviors into a validated, installable kit | `cf-kit` | `cfs kit install` → `cfs generate-agents` |
 | 6 | Generate project documentation | Technical writer / Developer | Produce audience-tuned, reviewed, committed documentation | `cf-explore` → `cf-write-docs` | — |
+| 7 | Author a Product Requirements Document (PRD) | Product Manager | Produce a validated PRD with actors, FR/NFR, use cases, success criteria, and cpt-IDs | `cf-sdlc-doc-prd` → `cf-write-docs` | `cfs validate --artifact` |
+| 8 | Record an Architecture Decision (ADR) | Architect / Tech Lead | Capture a technology or design decision with context, options, consequences, and a cpt-adr-* ID | `cf-sdlc-doc-adr` → `cf-write-docs` | `cfs validate --artifact` |
+| 9 | Author a System DESIGN Document | Architect / Tech Lead | Document system architecture: components, interfaces, boundaries, principles, constraints | `cf-sdlc-doc-design` → `cf-write-docs` | `cfs validate --artifact` |
+| 10 | Decompose DESIGN into Feature List (DECOMPOSITION) | Tech Lead / PM | Break a DESIGN into an ordered, dependency-linked FEATURE list with PRD/DESIGN coverage | `cf-sdlc-decompose` → `cf-write-docs` | `cfs validate --artifact` |
+| 11 | Author a FEATURE Specification | Tech Lead / Developer | Write a precise, implementable FEATURE spec with CDSL flows, algorithms, states, and test scenarios | `cf-sdlc-doc-feature` → `cf-write-docs` | `cfs validate --artifact` |
+| 12 | Implement a FEATURE with Traceability | Developer | Write production code implementing a FEATURE spec with @cpt-* markers linking code to FEATURE IDs | `cf-sdlc-implement` → `cf-coding` | `cfs validate --artifact` |
+| 13 | Analyze Change Impact Across the Artifact Pipeline | Tech Lead / PM / Release Manager | Understand which downstream artifacts and code markers are affected by a change to an upstream artifact | `cf-sdlc-change-impact-analysis` | `cfs where-used` → `cfs spec-coverage` |
+| 14 | Review a GitHub Pull Request | Tech Lead / Reviewer / Team Lead | Get a structured, checklist-based review of a GitHub PR against code and artifact quality standards | `cf-sdlc-pr-review` | — |
+| 15 | Reconstruct SDLC Artifacts from Existing Code | Tech Lead / Architect | Reconstruct missing PRD/DESIGN/DECOMPOSITION/FEATURE artifacts from existing code using @cpt-* markers as evidence | `cf-sdlc-reverse-engineer` → `cf-write-docs` | `cfs validate --artifact` |
 
 ---
 
@@ -570,6 +579,530 @@ ALGORITHM GenerateProjectDocumentation
       verification if significant structural changes are made
   ]
   NEXT: Documentation committed; deployment or publishing pipeline (external to Studio)
+```
+
+---
+
+### Journey 7: Author a Product Requirements Document (PRD)
+
+```cdsl
+ALGORITHM AuthorPRD
+  ACTOR: Product Manager
+  GOAL: Produce a validated PRD with actors, FR/NFR, use cases, success
+        criteria, and cpt-IDs that can gate downstream SDLC artifact authoring
+  INPUTS: [
+    Product concept or problem description,
+    Stakeholder context
+  ]
+  OUTPUTS: [
+    Validated PRD markdown file with cpt-fr-* and cpt-nfr-* IDs,
+    cfs validate --artifact PASS
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-doc-prd and describe the product or feature area.
+    2. Studio binds PRD template + rules + checklist + example from the
+       SDLC kit before any authoring begins.
+    3. DECISION: Explore context first?
+       - YES: Studio discovers existing docs or related artifacts for
+         grounding; exploration summary flows into authoring.
+       - SKIP: proceed directly to authoring with user-supplied context.
+    4. DECISION: Brainstorm requirements framing?
+       - YES: Studio explores actors and requirements framing options;
+         panel produces a structured framing summary.
+       - SKIP: proceed to authoring with stated intent.
+    5. Studio authors PRD sections via cf-write-docs engine:
+         5a. Overview — product context and problem statement.
+         5b. Actors — all user and system roles.
+         5c. Goals — business and user goals.
+         5d. Functional Requirements — each FR assigned a unique
+             cpt-{system}-fr-* ID; written in RFC 2119 MUST/SHALL language.
+         5e. Non-Functional Requirements — each NFR assigned a unique
+             cpt-{system}-nfr-* ID.
+         5f. Use Cases — actor-goal-scenario triples referencing FR IDs.
+         5g. Success Criteria — measurable acceptance conditions per FR.
+    6. Deterministic gate: run `cfs validate --artifact` on the PRD file.
+       Validation fails halt authoring; findings must be resolved.
+    7. Semantic review using PRD checklist; structured findings presented
+       to user with severity and location.
+    8. DECISION: Fix which findings?
+       - Per-finding selection: user approves or skips each finding
+         individually before fixes are applied.
+    9. Re-validate after fixes; iterate until `cfs validate --artifact`
+       returns PASS and user marks the PRD done.
+  DECISION_POINTS:
+    - ExploreContextFirst: yes (discover existing docs) / skip
+    - BrainstormRequirementsFraming: yes / skip
+    - FixWhichFindings: per-finding selection
+  GUARDS: [
+    PRD template and rules must be loaded before authoring begins,
+    cpt-IDs must be unique within the system namespace,
+    All FRs must be written in RFC 2119 MUST/SHALL/SHOULD language,
+    cfs validate --artifact must return PASS before PRD is considered complete
+  ]
+  NEXT: cf-sdlc-doc-design or cf-sdlc-doc-adr
+```
+
+---
+
+### Journey 8: Record an Architecture Decision (ADR)
+
+```cdsl
+ALGORITHM RecordADR
+  ACTOR: Architect or Tech Lead
+  GOAL: Capture a technology or design decision with context, options,
+        consequences, and a cpt-adr-* ID that can be cross-referenced
+        in the system DESIGN document
+  INPUTS: [
+    Decision description,
+    Considered alternatives,
+    DESIGN artifact (optional, for cross-reference)
+  ]
+  OUTPUTS: [
+    ADR markdown file with cpt-adr-* ID,
+    ADR ID registered and cross-referenced in DESIGN
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-doc-adr and describe the decision to capture.
+    2. Studio binds ADR template + rules + checklist + example from the
+       SDLC kit before any authoring begins.
+    3. Studio authors the ADR via cf-write-docs engine:
+         3a. Context and Problem Statement — what situation forces this
+             decision; constraints and forces in play.
+         3b. Decision Drivers — criteria used to evaluate options.
+         3c. Considered Options — at least two alternatives with
+             pros/cons analysis for each.
+         3d. Decision Outcome — chosen option with rationale.
+         3e. Consequences — positive, negative, and neutral effects;
+             risks introduced; follow-on actions.
+         3f. cpt-adr-* ID — assigned and embedded in front-matter.
+    4. Deterministic gate: run `cfs validate --artifact` on the ADR file.
+    5. Semantic review against ADR checklist; findings presented by severity.
+    6. DECISION: Fix which findings?
+       - Per-finding selection: user approves or skips each finding.
+    7. Re-validate after fixes; iterate until PASS.
+  DECISION_POINTS:
+    - FixWhichFindings: per-finding selection
+  GUARDS: [
+    Decision must have at least two considered options before authoring is complete,
+    cpt-adr-* ID must be assigned before the ADR file is written,
+    Consequences section must be non-empty,
+    cfs validate --artifact must return PASS before the ADR is considered complete
+  ]
+  NEXT: Register ADR ID in DESIGN § Architecture Drivers
+```
+
+---
+
+### Journey 9: Author a System DESIGN Document
+
+```cdsl
+ALGORITHM AuthorSystemDesign
+  ACTOR: Architect or Tech Lead
+  GOAL: Document system architecture covering components, interfaces,
+        boundaries, principles, and constraints, with IDs that downstream
+        decomposition and implementation can reference
+  INPUTS: [
+    PRD (for FRs and NFRs to satisfy),
+    ADRs (for architecture drivers),
+    High-level architecture knowledge
+  ]
+  OUTPUTS: [
+    DESIGN markdown with cpt-component-*, cpt-principle-*, and
+    cpt-constraint-* IDs,
+    cfs validate --artifact PASS
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-doc-design.
+    2. Studio binds DESIGN template + rules + checklist + example from
+       the SDLC kit before any authoring begins.
+    3. Studio authors the DESIGN via cf-write-docs engine:
+         3a. Architecture Vision — purpose, scope, and quality attributes.
+         3b. Architecture Drivers — links to ADR IDs and PRD NFR IDs.
+         3c. Principles and Constraints — each assigned a unique
+             cpt-{system}-principle-* or cpt-{system}-constraint-* ID.
+         3d. Component Model — each component assigned a unique
+             cpt-{system}-component-* ID; responsibilities and
+             boundaries described.
+         3e. Interfaces — contracts between components; input/output
+             schemas, protocols, error semantics.
+         3f. DECISION: Include sequence diagrams?
+             - YES: Studio generates Mermaid sequence diagrams for key
+               interaction flows and embeds them inline.
+             - SKIP: diagram placeholders inserted; user authors separately.
+    4. Deterministic gate: run `cfs validate --artifact` on the DESIGN file.
+    5. Semantic review against DESIGN checklist; findings presented.
+    6. DECISION: Fix which findings?
+       - Per-finding selection: user approves or skips each finding.
+    7. Re-validate after fixes; iterate until PASS.
+  DECISION_POINTS:
+    - IncludeSequenceDiagrams: yes (auto-embed Mermaid) / skip (placeholders)
+    - FixWhichFindings: per-finding selection
+  GUARDS: [
+    All cpt-component-* IDs must be unique within the system namespace,
+    DESIGN must reference existing ADR IDs for every major technology choice,
+    PRD FR coverage must be noted in the component model or interface descriptions,
+    cfs validate --artifact must return PASS before DESIGN is considered complete
+  ]
+  NEXT: cf-sdlc-decompose
+```
+
+---
+
+### Journey 10: Decompose DESIGN into Feature List (DECOMPOSITION)
+
+```cdsl
+ALGORITHM DecomposeDesign
+  ACTOR: Tech Lead or PM
+  GOAL: Break a DESIGN into an ordered, dependency-linked FEATURE list
+        with full PRD and DESIGN coverage so that implementation can
+        proceed feature by feature
+  INPUTS: [
+    DESIGN document (for components and interfaces to decompose),
+    PRD (for coverage links back to FRs)
+  ]
+  OUTPUTS: [
+    DECOMPOSITION markdown with cpt-feature-* IDs, ordering,
+    dependency graph, and coverage links,
+    cfs validate --artifact PASS
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-decompose with the DESIGN document as primary input.
+    2. Studio binds DECOMPOSITION template + rules + checklist + example
+       from the SDLC kit before any authoring begins.
+    3. Studio authors the DECOMPOSITION via cf-write-docs engine:
+         3a. Feature entries — for each deliverable unit of work:
+             - Assign a unique cpt-{system}-feature-* ID.
+             - Write a one-paragraph description of scope and boundaries.
+             - Record dependency links to other cpt-feature-* IDs.
+             - Record coverage links to PRD cpt-fr-* IDs and DESIGN
+               cpt-component-* IDs.
+             - Set initial status (planned).
+             - Define a measurable Definition of Done.
+         3b. DECISION: Ordering strategy?
+             - DEPENDENCY: features ordered by dependency graph
+               (no feature before its dependencies).
+             - RISK: high-risk or high-uncertainty features pulled forward.
+             - VALUE: highest business value features prioritized first.
+    4. Deterministic gate: run `cfs validate --artifact` on the
+       DECOMPOSITION file.
+    5. Semantic review for completeness, ordering correctness, and
+       coverage gaps; findings presented.
+    6. DECISION: Fix which findings?
+       - Per-finding selection: user approves or skips each finding.
+    7. Re-validate after fixes; iterate until PASS.
+  DECISION_POINTS:
+    - OrderingStrategy: dependency / risk / value priority
+    - FixWhichFindings: per-finding selection
+  GUARDS: [
+    Every cpt-feature-* entry must reference at least one PRD cpt-fr-* ID,
+    Dependency graph must have no cycles,
+    All features must have a non-empty Definition of Done,
+    cfs validate --artifact must return PASS before DECOMPOSITION is complete
+  ]
+  NEXT: cf-sdlc-doc-feature (per feature entry)
+```
+
+---
+
+### Journey 11: Author a FEATURE Specification
+
+```cdsl
+ALGORITHM AuthorFeatureSpec
+  ACTOR: Tech Lead or Developer
+  GOAL: Write a precise, implementable FEATURE specification with CDSL
+        flows, algorithms, state diagrams, and test scenarios that
+        developers can implement with full traceability
+  INPUTS: [
+    DECOMPOSITION entry (cpt-feature-* ID and description),
+    DESIGN (for interface contracts),
+    PRD (for acceptance criteria)
+  ]
+  OUTPUTS: [
+    FEATURE markdown with cpt-flow-*, cpt-algo-*, and cpt-state-* IDs
+    and test scenarios,
+    cfs validate --artifact PASS
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-doc-feature with the target cpt-feature-* ID.
+    2. Studio binds FEATURE template + rules + checklist + example from
+       the SDLC kit before any authoring begins.
+    3. Studio authors the FEATURE spec via cf-write-docs engine:
+         3a. Overview — feature purpose, scope, and link to DECOMPOSITION
+             entry.
+         3b. CDSL Flows — each flow assigned a unique cpt-{system}-flow-*
+             ID; written as GIVEN/WHEN/THEN scenarios covering the nominal
+             path and primary alternates.
+         3c. Algorithms — each algorithm assigned a unique
+             cpt-{system}-algo-* ID; pseudocode or CDSL ALGORITHM block.
+         3d. DECISION: Include state diagrams?
+             - YES: Studio generates Mermaid state diagrams for stateful
+               entities; each state assigned a cpt-{system}-state-* ID.
+             - SKIP: state diagram section omitted.
+         3e. Test Scenarios — at least one happy-path scenario and one
+             error/edge-case scenario per cpt-flow-* ID.
+         3f. Definition of Done — measurable, checkable criteria derived
+             from PRD acceptance conditions.
+    4. Deterministic gate: run `cfs validate --artifact` on the FEATURE file.
+    5. Semantic review against FEATURE checklist for implementability,
+       test coverage, and completeness; findings presented.
+    6. DECISION: Fix which findings?
+       - Per-finding selection: user approves or skips each finding.
+    7. Re-validate after fixes; iterate until PASS.
+  DECISION_POINTS:
+    - IncludeStateDiagrams: yes (Mermaid state diagrams) / skip
+    - FixWhichFindings: per-finding selection
+  GUARDS: [
+    Every cpt-flow-* ID must be unique within the system namespace,
+    Test scenarios must cover at least one happy-path and one error case
+      per flow,
+    Definition of Done must be measurable and checkable,
+    cfs validate --artifact must return PASS before FEATURE spec is complete
+  ]
+  NEXT: cf-sdlc-implement
+```
+
+---
+
+### Journey 12: Implement a FEATURE with Traceability
+
+```cdsl
+ALGORITHM ImplementFeatureWithTraceability
+  ACTOR: Developer
+  GOAL: Write production code that implements a FEATURE specification,
+        with @cpt-* markers in source linking every code unit back to
+        the FEATURE flow and algorithm IDs it satisfies
+  INPUTS: [
+    FEATURE spec (cpt-feature-* ID and cpt-flow-* IDs),
+    Codebase rules (codebase_rules),
+    Codebase checklist (codebase_checklist)
+  ]
+  OUTPUTS: [
+    Production code with @cpt-{kind}:{id}:p{N} markers,
+    cfs validate --artifact PASS (traceability check),
+    CI green (project tests, lint, typecheck, build)
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-implement with the source FEATURE spec.
+    2. Studio binds CODE artifact kind + codebase_rules +
+       codebase_checklist + source FEATURE before authoring begins.
+    3. cf-coding explore gate: Studio discovers relevant files, modules,
+       and interfaces in the codebase that the FEATURE will touch.
+    4. DECISION: Write tests first?
+       - YES (test-first): developer (or Studio) writes failing tests
+         for each cpt-flow-* scenario before implementation code.
+       - NO: implementation code written first; tests follow.
+    5. Author dispatch — cf-coding writes implementation with
+       @cpt-{kind}:{id}:p{N} markers on every function, class, or
+       block that satisfies a cpt-flow-* or cpt-algo-* ID per
+       codebase_rules.
+    6. Deterministic gate: run project tests + lint + typecheck + build
+       + `cfs validate --artifact` (traceability check). Any failure
+       halts and feeds back into the fix phase.
+    7. Semantic review: code-checklist + bug-finding review +
+       consistency-checklist against the FEATURE contract; findings
+       presented by severity.
+    8. DECISION: Fix which review findings?
+       - Per-finding selection: user approves or skips each finding.
+    9. Re-validate after fixes; iterate until `cfs validate --artifact`
+       returns PASS and CI is green.
+  DECISION_POINTS:
+    - TestFirstPath: yes (test-first) / no (implementation-first)
+    - FixWhichFindings: per-finding selection
+  GUARDS: [
+    @cpt-* markers must be present for all cpt-flow-* IDs declared
+      in the FEATURE spec,
+    cfs validate --artifact must return PASS before implementation is done,
+    CI (tests + lint + typecheck + build) must be green before done,
+    No @cpt-* marker may reference an ID not declared in the source FEATURE
+  ]
+  NEXT: cf-sdlc-pr-review or cf-sdlc-change-impact-analysis
+```
+
+---
+
+### Journey 13: Analyze Change Impact Across the Artifact Pipeline
+
+```cdsl
+ALGORITHM AnalyzeChangeImpact
+  ACTOR: Tech Lead, PM, or Release Manager
+  GOAL: Understand which downstream artifacts and @cpt-* code markers
+        are affected by a change to an upstream artifact, and surface
+        stale or uncovered dependencies before they reach production
+  INPUTS: [
+    Changed artifact ID (e.g. cpt-{system}-fr-login),
+    Baseline ref (prior tag or main branch HEAD),
+    Current ref (HEAD or feature branch)
+  ]
+  OUTPUTS: [
+    Impact report at .change-impact/{ID}/report.md containing:
+    cascade tree of affected artifacts, coverage gaps, stale @cpt-*
+    flags, and optional version bump recommendation
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-change-impact-analysis with the changed artifact ID,
+       baseline ref, and current ref.
+    2. DECISION: Analysis mode?
+       - CASCADE-TRACKING: Studio flags all artifacts and code markers
+         downstream of the changed ID as affected or stale; no scoring.
+       - RELEASE-READINESS-ESTIMATION: Studio additionally scores
+         completeness and produces a version bump recommendation
+         (patch / minor / major) based on the breadth and depth of impact.
+    3. Studio diffs the upstream artifact between baseline ref and current
+       ref; identifies which IDs, sections, or contracts changed.
+    4. Studio runs `cfs where-used` on the changed ID to trace all
+       downstream dependents, bounded by cascade depth rules per artifact
+       type (PRD → DESIGN → DECOMPOSITION → FEATURE → CODE).
+    5. Studio runs `cfs spec-coverage` on the affected downstream artifact
+       set to identify coverage gaps introduced by the upstream change.
+    6. Studio flags stale @cpt-* markers: any code marker referencing an
+       ID whose upstream artifact changed more recently than the code was
+       last updated (within the configured staleness threshold).
+    7. Studio aggregates findings into the impact report and emits a
+       structured summary to the user.
+  DECISION_POINTS:
+    - AnalysisMode: cascade-tracking / release-readiness-estimation
+  GUARDS: [
+    Read-only operation — Studio must never edit artifacts or code files
+      during this workflow,
+    Report must be written only under .change-impact/ and not overwrite
+      any artifact in the main docs tree,
+    cfs where-used and cfs spec-coverage must complete before the report
+      is written
+  ]
+  NEXT: Update affected downstream artifacts, or cf-sdlc-pr-review
+```
+
+---
+
+### Journey 14: Review a GitHub Pull Request
+
+```cdsl
+ALGORITHM ReviewGitHubPullRequest
+  ACTOR: Tech Lead, Reviewer, or Team Lead
+  GOAL: Obtain a structured, checklist-based review of a GitHub PR
+        against code quality, design, ADR, and PRD standards, with
+        severity-rated findings persisted for the team
+  INPUTS: [
+    GitHub PR number or URL (or "ALL" to review all open PRs),
+    Access to the GitHub repository (read-only)
+  ]
+  OUTPUTS: [
+    Structured review report at .prs/{ID}/review.md with findings
+    grouped by domain (code, design, ADR, PRD) and rated by severity
+    (critical / major / minor / info)
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-pr-review with a PR number, URL, or "ALL".
+    2. DECISION: Single PR or all open PRs?
+       - SINGLE: Studio fetches the specified PR diff and metadata.
+       - ALL: Studio fetches all open PRs in the repository and reviews
+         each in sequence, producing a report per PR.
+    3. Studio fetches PR diff and metadata fresh from GitHub; prior run
+       data is never reused.
+    4. Studio analyzes the diff against each configured review domain:
+         4a. Code review — correctness, security, performance, style per
+             codebase_rules and codebase_checklist.
+         4b. Design review — consistency with DESIGN component model,
+             interface contracts, and principles.
+         4c. ADR review — implementation choices consistent with recorded
+             ADR decisions; no silent overrides of decided options.
+         4d. PRD review — changed behavior traceable to PRD FRs; no
+             scope creep or uncovered requirements.
+    5. Studio applies severity classification to each finding:
+       critical (blocks merge) / major (should fix before merge) /
+       minor (can fix post-merge) / info (observation only).
+    6. Studio writes the structured report to .prs/{ID}/review.md.
+  DECISION_POINTS:
+    - ReviewScope: single PR / all open PRs
+  GUARDS: [
+    Read-only operation — Studio must never modify local files during
+      this workflow,
+    PR diff must always be re-fetched from GitHub; cached or prior run
+      data must not be used,
+    Report must be written only under .prs/ and must not modify any
+      artifact in the main docs or source tree
+  ]
+  NEXT: cf-sdlc-pr-status or address findings in a fix branch
+```
+
+---
+
+### Journey 15: Reconstruct SDLC Artifacts from Existing Code
+
+```cdsl
+ALGORITHM ReconstructSDLCArtifacts
+  ACTOR: Tech Lead or Architect (working with legacy or undocumented code)
+  GOAL: Reconstruct missing PRD, DESIGN, DECOMPOSITION, and FEATURE
+        artifacts from existing code, using @cpt-* markers as primary
+        evidence and flagging gaps where evidence is insufficient
+  INPUTS: [
+    Code scope (directory or file list),
+    Existing @cpt-* markers in code (or structural patterns if none exist)
+  ]
+  OUTPUTS: [
+    Reconstructed SDLC artifact files with IDs grounded in actual code
+    behavior,
+    @cpt-gap flags in artifacts where code evidence is missing or
+    ambiguous,
+    cfs validate --artifact PASS on each reconstructed artifact
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-reverse-engineer with the code scope.
+    2. DECISION: Marker strategy?
+       - MARKER-FIRST: Studio extracts existing @cpt-* markers from
+         the code scope as the primary source of artifact structure;
+         marker IDs become the skeleton of reconstructed artifacts.
+       - PATTERN-INFERENCE: Studio infers artifact structure from code
+         patterns (module boundaries, function names, test names) when
+         no @cpt-* markers exist or are insufficient.
+    3. DECISION: Execution mode?
+       - SUBAGENTS: Studio dispatches parallel sub-agents per artifact
+         kind for higher throughput.
+       - PLAN: Studio produces a reconstruction plan for user review
+         before executing.
+       - PLAN-RALPHEX: Studio produces a plan, executes it, then runs
+         a senior-reviewer pass (ralphex) to validate the reconstruction.
+    4. Studio extracts @cpt-* markers from the code scope; builds a
+       marker-to-location index.
+    5. DECISION: Target artifact kinds?
+       - FEATURE ONLY (default): reconstruct FEATURE specs only,
+         grounded directly in code behavior.
+       - FULL PIPELINE: reconstruct PRD, DESIGN, DECOMPOSITION, and
+         FEATURE artifacts in pipeline order, each grounded in the
+         artifact below it and ultimately in code.
+    6. Studio delegates artifact authoring to cf-write-docs under the
+       reverse-engineering methodology for each targeted artifact kind:
+         6a. For each artifact: Studio authors content grounded in code
+             evidence (marker locations, function signatures, test cases,
+             module interfaces).
+         6b. Where code evidence is absent or ambiguous, Studio inserts
+             a @cpt-gap flag with a description of what is missing and
+             why it could not be inferred.
+    7. Deterministic gate: run `cfs validate --artifact` on each
+       reconstructed artifact file.
+    8. Semantic review of reconstructed content for accuracy,
+       completeness, and gap coverage; findings presented.
+    9. DECISION: Fix which findings?
+       - Per-finding selection: user approves or skips each finding.
+   10. Re-validate after fixes; iterate until PASS on all artifacts.
+  DECISION_POINTS:
+    - MarkerStrategy: marker-first / pattern-inference
+    - ExecutionMode: subagents / plan / plan-ralphex
+    - TargetArtifactKinds: FEATURE only (default) / full pipeline
+      (PRD + DESIGN + DECOMPOSITION + FEATURE)
+    - FixWhichFindings: per-finding selection
+  GUARDS: [
+    Every reconstructed requirement or flow must be grounded in actual
+      code behavior observable in the code scope,
+    Discrepancies between inferred spec and actual code must be flagged
+      explicitly as @cpt-gap or a finding — never silently omitted,
+    cfs validate --artifact must return PASS on each artifact before
+      reconstruction is declared complete,
+    Studio must never delete or overwrite existing SDLC artifacts without
+      explicit user confirmation
+  ]
+  NEXT: Register reconstructed artifacts in artifacts.toml; run
+        cfs validate for full pipeline traceability check
 ```
 
 ---
