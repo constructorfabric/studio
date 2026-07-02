@@ -1339,7 +1339,20 @@ cf.studio.core.package.v1~
 cf.studio.core.package_version.v1~
 cf.studio.core.container_image.v1~
 cf.studio.core.container_image_tag.v1~
-cf.studio.core.sbom.v1~                  // Software Bill of Materials
+```
+
+### Domain 8a — SBOM (Software Bill of Materials)
+
+```
+cf.studio.core.sbom.v1~                  // SBOM document (SPDX / CycloneDX / SWID)
+cf.studio.core.sbom_component.v1~        // a package/library entry within an SBOM
+cf.studio.core.sbom_relationship.v1~     // directed relationship between sbom_components
+                                         // kinds: CONTAINS, DEPENDS_ON, DESCRIBES,
+                                         //        GENERATED_FROM, VARIANT_OF, PATCH_OF
+cf.studio.core.sbom_license.v1~          // license declaration for an sbom_component
+                                         // (SPDX expression: MIT, Apache-2.0, GPL-3.0-only)
+cf.studio.core.sbom_checksum.v1~         // cryptographic hash of an sbom_component
+                                         // (SHA256, SHA1, MD5, BLAKE2)
 ```
 
 ### Domain 9 — Release
@@ -2119,6 +2132,104 @@ flowchart TD
     LIC -->|checked by| CC["compliance_check"]
     TS -->|scanned into| SBOM["sbom\n(bill of materials)"]
     SBOM -->|input to| SR["security_review\n→ document"]
+```
+
+---
+
+### D44 — SBOM Structure
+
+```mermaid
+classDiagram
+    class sbom {
+        format: spdx|cyclonedx|swid
+        version: string
+        createdAt: datetime
+        artifactId: ref build_artifact
+        releaseId: ref release?
+    }
+    class sbom_component {
+        sbomId: ref sbom
+        name: string
+        version: string
+        supplier: string?
+    }
+    class sbom_relationship {
+        sbomId: ref sbom
+        sourceId: ref sbom_component
+        targetId: ref sbom_component
+        kind: CONTAINS|DEPENDS_ON|DESCRIBES|GENERATED_FROM|VARIANT_OF
+    }
+
+    sbom "1" --> "many" sbom_component : DESCRIBES
+    sbom "1" --> "many" sbom_relationship
+    sbom_relationship --> sbom_component : sourceId
+    sbom_relationship --> sbom_component : targetId
+```
+
+---
+
+### D45 — SBOM Component Details
+
+```mermaid
+classDiagram
+    class sbom_component {
+        sbomId: ref sbom
+        name: string
+        version: string
+    }
+    class sbom_license {
+        componentId: ref sbom_component
+        spdxExpression: string
+        concluded: string?
+        declared: string?
+    }
+    class sbom_checksum {
+        componentId: ref sbom_component
+        algorithm: SHA256|SHA1|MD5|BLAKE2
+        value: string
+    }
+    class library_version {
+        libraryId: ref library
+        version: semver
+    }
+    class dependency_vulnerability {
+        packageName: string
+        affectedVersions: string[]
+    }
+
+    sbom_component "1" --> "many" sbom_license
+    sbom_component "1" --> "many" sbom_checksum
+    sbom_component --> library_version : maps to
+    sbom_component --> dependency_vulnerability : may have
+```
+
+---
+
+### D46 — SBOM Cross-References
+
+```mermaid
+flowchart LR
+    ART["build_artifact"] -->|generates| SBOM["sbom"]
+    REL["release"] -->|attaches| SBOM
+    SBOM -->|lists| COMP["sbom_component[]"]
+    COMP -->|license| LIC["sbom_license\n(MIT, Apache-2.0)"]
+    COMP -->|maps to| LV["library_version"]
+    LV -->|has| DV["dependency_vulnerability"]
+    DV -->|creates| TASK["task\n(remediation)"]
+```
+
+---
+
+### D47 — SBOM ↔ Security & Compliance
+
+```mermaid
+flowchart TD
+    SBOM["sbom"] -->|scanned by| SCAN["security_review\n(SCA scan)"]
+    SCAN -->|finds| DV["dependency_vulnerability[]"]
+    DV -->|references| CVE["cve"]
+    SBOM -->|license audit| CC["compliance_check\n(license policy)"]
+    CC -->|pass/fail| CCR["compliance_check_result"]
+    CCR -->|fail creates| PE["policy_exception\n(GPL in proprietary)"]
 ```
 
 ---
