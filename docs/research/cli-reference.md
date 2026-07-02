@@ -94,7 +94,7 @@ COMMAND_GROUP Validation
 
 ```cdsl
 COMMAND_GROUP Traceability Navigation
-  PURPOSE: Explore, query, and retrieve content associated with CPT (Constructor Part Traceability) IDs throughout a project.
+  PURPOSE: Explore, query, and retrieve content associated with CPT (Canonical Provenance Trace) IDs throughout a project.
   COMMANDS:
     COMMAND list-ids
       USER_ACTION: Run to get a full inventory of traceability IDs, or to find all IDs of a particular kind.
@@ -221,7 +221,7 @@ COMMAND_GROUP Delegation & Diagnostics
 
 ## Notes
 
-**CPT** — Constructor Part Traceability ID. A structured identifier (e.g., `CPT-FEAT-001`) embedded in source code and artifact files to create a bidirectional traceability link. Commands in the Traceability Navigation category operate on these IDs.
+**CPT** — Canonical Provenance Trace ID. A structured identifier (e.g., `CPT-FEAT-001`) embedded in source code and artifact files to create a bidirectional traceability link. Commands in the Traceability Navigation category operate on these IDs.
 
 **PDSL** — Prompt Domain Specification Language. A contract syntax used inside skill and workflow Markdown files to declare what an AI prompt block expects as input and produces as output. The `pdsl` command validates these contracts.
 
