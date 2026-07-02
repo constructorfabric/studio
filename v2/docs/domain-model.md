@@ -1248,7 +1248,9 @@ cf.studio.core.decomposition.v1~         // → document (Studio SDLC DECOMPOSIT
 ```
 cf.studio.core.design.v1~                // → document (Studio SDLC DESIGN)
 cf.studio.core.adr.v1~                   // → document (Architecture Decision Record)
-cf.studio.core.component.v1~
+cf.studio.core.component.v1~             // architectural component (service, module, library, subsystem)
+cf.studio.core.component_version.v1~     // versioned snapshot of a component
+cf.studio.core.component_dependency.v1~  // directed dependency between two components
 cf.studio.core.interface_definition.v1~
 cf.studio.core.api_spec.v1~              // OpenAPI / GraphQL / gRPC
 cf.studio.core.data_model.v1~
@@ -1333,6 +1335,7 @@ cf.studio.core.release_notes.v1~         // → document
 cf.studio.core.changelog.v1~             // → document
 cf.studio.core.version.v1~
 cf.studio.core.release_candidate.v1~
+cf.studio.core.release_component.v1~     // join: which component_version is included in a release
 ```
 
 ### Domain 10 — Operations / Incidents
@@ -1834,6 +1837,162 @@ flowchart TD
         INC --> PM["postmortem"]
         PM --> TASK
     end
+```
+
+---
+
+### D32 — Component Cross-References
+
+```mermaid
+classDiagram
+    class component {
+        name: string
+        kind: service|library|module|subsystem
+        ownerId: ref team
+        repositoryId: ref repository
+    }
+    class component_version {
+        componentId: ref component
+        version: semver
+        commitId: ref commit
+    }
+    class component_dependency {
+        sourceId: ref component
+        targetId: ref component
+        kind: uses|implements|extends|calls
+    }
+    class team {
+        name: string
+    }
+    class repository {
+        url: string
+    }
+
+    component "1" --> "many" component_version
+    component "1" --> "many" component_dependency : sourceId
+    component_dependency --> component : targetId
+    component --> team : ownerId
+    component --> repository : repositoryId
+```
+
+---
+
+### D33 — Component ↔ Documentation & Architecture
+
+```mermaid
+flowchart LR
+    COMP["component"] -->|documented by| DES["design\n→ document"]
+    COMP -->|decided by| ADR["adr\n→ document"]
+    COMP -->|specifies| IFACE["interface_definition"]
+    COMP -->|exposes| API["api_spec"]
+    COMP -->|visualized in| DIAG["architecture_diagram"]
+    COMP -->|traces to| REQ["requirement"]
+```
+
+---
+
+### D34 — Component ↔ People & Teams
+
+```mermaid
+classDiagram
+    class component {
+        ownerId: ref team
+        kind: service|library|module
+    }
+    class team {
+        name: string
+    }
+    class person {
+        userId: ref User
+    }
+    class on_call_schedule {
+        teamId: ref team
+    }
+    class role {
+        name: string
+    }
+
+    component --> team : owned by
+    team "1" --> "many" person : members
+    team --> on_call_schedule : on-call
+    person --> role : has
+```
+
+---
+
+### D35 — Release Cross-References
+
+```mermaid
+classDiagram
+    class release {
+        version: semver
+        state: draft|rc|published
+        repositoryId: ref repository
+    }
+    class release_component {
+        releaseId: ref release
+        componentVersionId: ref component_version
+    }
+    class component_version {
+        componentId: ref component
+        version: semver
+        commitId: ref commit
+    }
+    class build_artifact {
+        version: string
+    }
+    class deployment {
+        environmentId: ref environment
+    }
+
+    release "1" --> "many" release_component
+    release_component --> component_version
+    component_version --> build_artifact : built as
+    build_artifact --> deployment : deployed as
+```
+
+---
+
+### D36 — Release ↔ Work Items & Traceability
+
+```mermaid
+flowchart LR
+    REL["release"] -->|includes| RC["release_component"]
+    RC -->|points to| CV["component_version"]
+    CV -->|tagged at| CMT["commit"]
+    CMT -->|closes| PR["pull_request"]
+    PR -->|resolves| TASK["task / bug"]
+    TASK -->|traces to| REQ["requirement"]
+    REL -->|documents| RN["release_notes\n→ document"]
+```
+
+---
+
+### D37 — Full Component → Release → Deployment Chain
+
+```mermaid
+flowchart TD
+    TEAM["team"] -->|owns| COMP["component"]
+    COMP -->|lives in| REPO["repository"]
+    REPO -->|triggers| PIPE["pipeline_run"]
+    PIPE -->|produces| ART["build_artifact"]
+    COMP -->|versioned as| CV["component_version"]
+    CV -->|included in| REL["release"]
+    REL -->|deployed via| DEP["deployment"]
+    DEP -->|targets| ENV["environment"]
+```
+
+---
+
+### D38 — Dependency Graph Between Components
+
+```mermaid
+flowchart LR
+    A["component A\n(frontend)"] -->|uses| B["component B\n(API gateway)"]
+    B -->|calls| C["component C\n(auth)"]
+    B -->|calls| D["component D\n(data)"]
+    D -->|extends| E["component E\n(shared lib)"]
+    C -->|extends| E
 ```
 
 ---
