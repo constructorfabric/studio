@@ -56,7 +56,7 @@ ALGORITHM PlanAndImplementFeature
     CI pass confirmation
   ]
   STEPS:
-    1. Activate Studio in the project root (Studio reads .bootstrap config,
+    1. Activate Studio in the project root (Studio reads Studio config,
        loads rule files, resolves agent kit).
     2. DECISION: Explore first?
        - YES (target area unclear): invoke cf-explore to map relevant
@@ -142,13 +142,13 @@ ALGORITHM OnboardBrownfieldProject
     Optional: existing CyPilot project configuration
   ]
   OUTPUTS: [
-    .bootstrap directory populated with Studio config and rule files,
+    .cf-studio/ directory (configurable via cf-studio-path) populated with Studio config and rule files,
     Generated agent kit(s) appropriate to detected stack,
     Validation report confirming kits are consistent with codebase
   ]
   STEPS:
     1. Run `cfs init` in the repository root.
-       Studio creates the .bootstrap scaffold and reads any existing
+       Studio creates the .cf-studio/ scaffold and reads any existing
        configuration fragments.
     2. DECISION: Existing CyPilot project detected?
        - YES: Studio offers migration path; user accepts to import
@@ -156,7 +156,7 @@ ALGORITHM OnboardBrownfieldProject
        - NO: proceed to step 3.
     3. Invoke cf-auto-config. cf-auto-config runs its internal phases:
          3a. Precheck — validate that prerequisites are met (repo root
-             found, .bootstrap scaffold present, required tools available).
+             found, .cf-studio/ scaffold present, required tools available).
          3b. Scan — agent traverses the repository; collects language,
              framework, toolchain, and structural signals.
          3c. Detect — agent classifies detected stack; identifies applicable
@@ -171,7 +171,7 @@ ALGORITHM OnboardBrownfieldProject
              - REPORT-ONLY: generate a diff report of proposed changes
                without writing files.
              - CANCEL: abort; leave existing rules unchanged.
-         3e. Integrate — agent writes accepted rule files into .bootstrap;
+         3e. Integrate — agent writes accepted rule files into .cf-studio/;
              updates Studio manifest to reference new files.
              DECISION: Accept proposed rule files or edit per-topic?
              - ACCEPT ALL: all proposed files written as generated.
@@ -441,7 +441,7 @@ ALGORITHM CreateAndPublishBehaviorKit
     2. Kit artifact is ready. User chooses the publication path.
     3. In the consumer project, run `cfs kit install`.
        DECISION: Install mode?
-       - COPY: kit files are copied into the consumer project's .bootstrap
+       - COPY: kit files are copied into the consumer project's .cf-studio/
          directory; consumer owns a local copy.
        - REGISTER: kit is registered by reference (path or URL); consumer
          project resolves kit at runtime without copying files.
