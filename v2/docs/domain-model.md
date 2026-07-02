@@ -1266,6 +1266,21 @@ cf.studio.core.module.v1~               // package, namespace, library
 cf.studio.core.complexity_metric.v1~    // cyclomatic/cognitive complexity
 ```
 
+### Domain 3a — Technology Stack
+
+```
+cf.studio.core.tech_stack.v1~           // declared technology stack of a component/project
+cf.studio.core.library.v1~              // software library / package (npm, PyPI, Maven, etc.)
+cf.studio.core.library_version.v1~      // specific pinned version of a library
+cf.studio.core.framework.v1~            // framework (React, Django, Spring, Rails, etc.)
+cf.studio.core.runtime.v1~              // runtime environment (Node.js v20, Python 3.11, JVM 21)
+cf.studio.core.database.v1~             // database technology (PostgreSQL, MongoDB, Redis, etc.)
+cf.studio.core.database_instance.v1~    // specific deployed database instance
+cf.studio.core.third_party_service.v1~  // external SaaS dependency (Stripe, SendGrid, Auth0)
+cf.studio.core.cloud_service.v1~        // managed cloud service (AWS S3, GCP Pub/Sub, Azure SB)
+cf.studio.core.tech_dependency.v1~      // directed: component uses library_version / database / service
+```
+
 ### Domain 4 — Work Items
 
 ```
@@ -1993,6 +2008,117 @@ flowchart LR
     B -->|calls| D["component D\n(data)"]
     D -->|extends| E["component E\n(shared lib)"]
     C -->|extends| E
+```
+
+---
+
+### D39 — Technology Stack Types
+
+```mermaid
+classDiagram
+    class tech_stack {
+        componentId: ref component
+        description: string
+    }
+    class library {
+        name: string
+        ecosystem: npm|pypi|maven|cargo|nuget|gem
+    }
+    class library_version {
+        libraryId: ref library
+        version: semver
+        licenseId: string?
+    }
+    class framework {
+        name: string
+        language: string
+    }
+    class runtime {
+        name: string
+        version: string
+    }
+
+    tech_stack --> library_version : uses
+    tech_stack --> framework : uses
+    tech_stack --> runtime : targets
+    library_version --> library : libraryId
+```
+
+---
+
+### D40 — Data & External Service Dependencies
+
+```mermaid
+classDiagram
+    class tech_stack {
+        componentId: ref component
+    }
+    class database {
+        engine: postgres|mongo|redis|mysql|elastic
+        kind: relational|document|kv|search|timeseries
+    }
+    class database_instance {
+        databaseId: ref database
+        environmentId: ref environment
+        host: string
+    }
+    class third_party_service {
+        name: string
+        category: payments|email|auth|analytics|crm
+        url: string
+    }
+    class cloud_service {
+        provider: aws|gcp|azure
+        service: s3|pubsub|sqs|rds|bigquery
+    }
+
+    tech_stack --> database : uses
+    tech_stack --> third_party_service : depends on
+    tech_stack --> cloud_service : uses
+    database "1" --> "many" database_instance
+    database_instance --> environment : deployed in
+```
+
+---
+
+### D41 — Component ↔ Technology Stack
+
+```mermaid
+flowchart LR
+    COMP["component"] -->|has| TS["tech_stack"]
+    TS -->|runtime| RUN["runtime\n(Node.js 20, JVM 21)"]
+    TS -->|framework| FW["framework\n(React, Django)"]
+    TS -->|libraries| LV["library_version\n(lodash 4.17)"]
+    TS -->|database| DB["database\n(PostgreSQL, Redis)"]
+    TS -->|external| SVC["third_party_service\n(Stripe, Auth0)"]
+    TS -->|cloud| CSC["cloud_service\n(AWS S3, GCP Pub/Sub)"]
+```
+
+---
+
+### D42 — Library Version ↔ Security
+
+```mermaid
+flowchart LR
+    LV["library_version\n(lodash 4.17.20)"] -->|has| DV["dependency_vulnerability"]
+    DV -->|references| CVE["cve\n(CVE-2021-23337)"]
+    CVE -->|severity| SEV["critical / high / medium"]
+    DV -->|fixed in| FLV["library_version\n(lodash 4.17.21)"]
+    FLV -->|upgrade via| TASK["task\n(remediation)"]
+```
+
+---
+
+### D43 — Tech Stack ↔ Release & Compliance
+
+```mermaid
+flowchart TD
+    REL["release"] -->|pins| TS["tech_stack\n(versions locked)"]
+    TS -->|includes| LV["library_version[]"]
+    LV -->|license| LIC["license info"]
+    LIC -->|checked by| CC["compliance_check"]
+    TS -->|scanned into| SBOM["sbom\n(bill of materials)"]
+    SBOM -->|input to| SR["security_review\n→ document"]
 ```
 
 ---
