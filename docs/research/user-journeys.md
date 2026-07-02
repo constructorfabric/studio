@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document describes the fifteen primary cross-cutting user journeys in Constructor Studio v1.5.9 using CDSL (Constructor Domain Specification Language) algorithms. Each journey traces the full path a user takes from intent to outcome, showing how Studio's monolithic workflows chain together.
+This document describes the twenty-two primary cross-cutting user journeys in Constructor Studio v1.5.9 using CDSL (Constructor Domain Specification Language) algorithms. Each journey traces the full path a user takes from intent to outcome, showing how Studio's monolithic workflows chain together.
 
 **How to read ALGORITHM blocks**
 
@@ -42,6 +42,13 @@ All workflows in v1.5.9 are monolithic. Each workflow owns its full lifecycle �
 | 13 | Analyze Change Impact Across the Artifact Pipeline | Tech Lead / PM / Release Manager | Understand which downstream artifacts and code markers are affected by a change to an upstream artifact | `cf-sdlc-change-impact-analysis` | `cfs where-used` → `cfs spec-coverage` |
 | 14 | Review a GitHub Pull Request | Tech Lead / Reviewer / Team Lead | Get a structured, checklist-based review of a GitHub PR against code and artifact quality standards | `cf-sdlc-pr-review` | — |
 | 15 | Reconstruct SDLC Artifacts from Existing Code | Tech Lead / Architect | Reconstruct missing PRD/DESIGN/DECOMPOSITION/FEATURE artifacts from existing code using @cpt-* markers as evidence | `cf-sdlc-reverse-engineer` → `cf-write-docs` | `cfs validate --artifact` |
+| 16 | Full SDLC Pipeline End-to-End | Product Manager, Architect, Developer | Deliver a fully traced feature from product requirement to production code with all artifacts linked by CPT IDs | `cf-sdlc-doc-prd` → `cf-sdlc-doc-adr` → `cf-sdlc-doc-design` → `cf-sdlc-decompose` → `cf-sdlc-doc-feature` → `cf-sdlc-implement` | `cfs validate --artifact` → `cfs spec-coverage` |
+| 17 | Release Readiness Estimation | Release Manager, Tech Lead | Assess downstream impact of artifact changes and get a version bump recommendation before a release | `cf-sdlc-change-impact-analysis` | `cfs where-used` → `cfs spec-coverage` |
+| 18 | PR Status Monitoring | Team Lead, PM, Release Manager | Get a current status snapshot of one or all open GitHub PRs — CI state, open comments, severity, resolved-comment audit | `cf-sdlc-pr-status` | — |
+| 19 | Spec Coverage Gate in CI | Tech Lead, Developer, DevOps | Enforce a minimum @cpt-* marker coverage threshold as a quality gate in the CI pipeline | — | `cfs spec-coverage` |
+| 20 | Cross-Repo Traceability Navigation | Tech Lead, Architect | Trace a CPT ID from its definition in one repo to all usages across all registered workspace sources | `cf-sdlc-change-impact-analysis` | `cfs workspace-info` → `cfs list-ids` → `cfs where-defined` → `cfs where-used` → `cfs get-content` |
+| 21 | Interactive Kit Update Cycle | Developer, Tech Lead | Update an installed kit to the latest version, reviewing each changed file individually before accepting changes | — | `cfs kit check-updates` → `cfs kit update` → `cfs generate-agents` → `cfs validate-kits` |
+| 22 | CDSL ID Navigation Workflow | Developer, Architect | Enumerate CPT IDs for a feature area, find definitions and usages, read content — before making a change | `cf-sdlc-change-impact-analysis` | `cfs list-id-kinds` → `cfs list-ids` → `cfs where-defined` → `cfs where-used` → `cfs get-content` |
 
 ---
 
@@ -1103,6 +1110,342 @@ ALGORITHM ReconstructSDLCArtifacts
   ]
   NEXT: Register reconstructed artifacts in artifacts.toml; run
         cfs validate for full pipeline traceability check
+```
+
+---
+
+### Journey 16: Full SDLC Pipeline End-to-End
+
+```cdsl
+ALGORITHM FullSDLCPipelineEndToEnd
+  ACTOR: Product Manager, Architect, Developer (team)
+  GOAL: Deliver a fully traced feature from product requirement to
+        production code, with every artifact linked by CPT IDs and
+        validated at each stage
+  INPUTS: [
+    Product idea or problem statement,
+    Constructor Studio initialized with SDLC kit,
+    Codebase accessible
+  ]
+  OUTPUTS: [
+    PRD + ADR(s) + DESIGN + DECOMPOSITION + FEATURE spec(s) +
+    production code with @cpt-* markers,
+    all artifacts passing cfs validate --artifact,
+    CI green
+  ]
+  STEPS:
+    1. PM invokes cf-sdlc-doc-prd — authors PRD with cpt-fr-* and
+       cpt-nfr-* IDs; cfs validate --artifact PASS.
+    2. Architect invokes cf-sdlc-doc-adr for each major technology
+       decision — ADRs with cpt-adr-* IDs cross-referenced in DESIGN.
+    3. Architect invokes cf-sdlc-doc-design — DESIGN with
+       cpt-component-*, cpt-principle-*, cpt-constraint-* IDs;
+       cfs validate --artifact PASS.
+    4. Tech lead invokes cf-sdlc-decompose — DECOMPOSITION with ordered
+       cpt-feature-* IDs linking back to PRD FRs and DESIGN components.
+    5. For each feature: developer invokes cf-sdlc-doc-feature — FEATURE
+       spec with cpt-flow-*, cpt-algo-*, cpt-state-* IDs and test
+       scenarios.
+    6. Developer invokes cf-sdlc-implement — code written with @cpt-*
+       markers; cfs validate --artifact + CI gate PASS.
+    7. cfs spec-coverage run to confirm marker coverage meets project
+       threshold.
+    8. cf-sdlc-pr-review run on the implementation PR; findings
+       addressed.
+  DECISION_POINTS:
+    - ADRCount: one ADR per major decision (architecture, library
+      choice, API design)
+    - FeatureGranularity: split or merge DECOMPOSITION entries based on
+      estimated effort
+    - TestFirst: write FEATURE test scenarios before implementation?
+  GUARDS: [
+    Every FEATURE references its parent DECOMPOSITION entry,
+    Every @cpt-* marker in code traces to a cpt-flow-* in a FEATURE
+      spec,
+    cfs validate --artifact PASS at every artifact stage,
+    CI green before PR review
+  ]
+  NEXT: cf-sdlc-change-impact-analysis (for future changes),
+        cf-sdlc-pr-status (ongoing monitoring)
+```
+
+---
+
+### Journey 17: Release Readiness Estimation
+
+```cdsl
+ALGORITHM ReleaseReadinessEstimation
+  ACTOR: Release Manager, Tech Lead
+  GOAL: Before a release, assess the downstream impact of all artifact
+        changes and get a version bump recommendation
+        (major / minor / patch)
+  INPUTS: [
+    Upstream artifact ID that changed,
+    Baseline ref (prior release tag),
+    Current ref (HEAD or release branch)
+  ]
+  OUTPUTS: [
+    Impact report at .change-impact/{ID}/report.md: cascade tree,
+    stale @cpt-* flags, coverage gaps, version bump recommendation
+  ]
+  STEPS:
+    1. Identify the upstream artifact that changed most significantly
+       (e.g. a PRD FR was revised).
+    2. Invoke cf-sdlc-change-impact-analysis, choose mode:
+       release-readiness-estimation.
+    3. Studio diffs upstream artifact between baseline tag and HEAD.
+    4. Studio runs cfs where-used to trace all downstream dependents
+       (bounded per artifact type).
+    5. Studio runs cfs spec-coverage on affected downstream set.
+    6. Studio flags stale @cpt-* markers (not updated within threshold
+       since the upstream change).
+    7. Studio aggregates cascade tree, coverage gaps, and stale flags.
+    8. Studio derives version bump recommendation from impact severity
+       (breaking → major, new behavior → minor, fix → patch).
+    9. Release manager reviews report and decides go / no-go.
+  DECISION_POINTS:
+    - BaselineRef: prior release tag vs main branch tip
+    - MultipleChangedArtifacts: run analysis per artifact or pick
+      highest-impact one
+  GUARDS: [
+    Read-only — report only, never edits artifacts or code,
+    Report written under .change-impact/ only
+  ]
+  NEXT: Update stale downstream artifacts, then re-run analysis to
+        confirm clean; proceed to release
+```
+
+---
+
+### Journey 18: PR Status Monitoring
+
+```cdsl
+ALGORITHM PRStatusMonitoring
+  ACTOR: Team Lead, PM, Release Manager
+  GOAL: Get a current status snapshot of one or all open GitHub PRs —
+        CI state, open comments, severity of unresolved feedback,
+        resolved-comment audit
+  INPUTS: [
+    GitHub PR number or "ALL",
+    Access to GitHub repo
+  ]
+  OUTPUTS: [
+    Status report at .prs/{ID}/status.md per PR: CI status, open
+    comment count, severity assessment, resolved-comment audit
+  ]
+  STEPS:
+    1. Invoke cf-sdlc-pr-status with PR number or ALL.
+    2. Studio re-fetches PR data from GitHub fresh (never reuses prior
+       run).
+    3. Studio generates status report: CI checks, open vs resolved
+       comments, severity of open feedback (critical / major / minor).
+    4. Studio audits resolved comments: flags any that were resolved
+       without a corresponding code change.
+    5. Studio emits report to .prs/{ID}/status.md.
+    6. Team lead reviews: decide to merge, request changes, or escalate.
+  DECISION_POINTS:
+    - ReviewScope: single PR or all open PRs?
+    - ResolvedCommentAudit: surface all or only suspicious resolutions?
+  GUARDS: [
+    Always re-fetched from scratch — never reuses prior conversation
+      data,
+    Read-only: no local file modifications
+  ]
+  NEXT: cf-sdlc-pr-review (for deeper review of a specific PR),
+        or merge / close decision
+```
+
+---
+
+### Journey 19: Spec Coverage Gate in CI
+
+```cdsl
+ALGORITHM SpecCoverageGateInCI
+  ACTOR: Tech Lead, Developer, DevOps
+  GOAL: Enforce a minimum @cpt-* marker coverage threshold as a quality
+        gate — fail the pipeline if coverage or granularity drops below
+        the configured floor
+  INPUTS: [
+    Configured min-coverage and min-granularity thresholds in project
+    config,
+    Codebase with @cpt-* markers
+  ]
+  OUTPUTS: [
+    Coverage report (JSON or human-readable): per-file coverage %,
+    aggregate coverage %, granularity score;
+    exit code 0 (PASS) or non-zero (FAIL)
+  ]
+  STEPS:
+    1. Developer adds or modifies code with @cpt-* markers after
+       implementing a FEATURE.
+    2. CI pipeline (or developer locally) runs
+       cfs spec-coverage --min-coverage 80 --min-granularity 0.7.
+    3. Studio scans codebase for @cpt-* markers; computes per-file and
+       aggregate coverage.
+    4. Studio computes granularity score (ratio of instruction-level
+       markers to block-level markers).
+    5. Studio compares results against thresholds; emits PASS or FAIL
+       with per-file breakdown.
+    6. On FAIL: developer identifies uncovered files, adds missing
+       @cpt-* markers, re-runs.
+    7. Optional: cfs spec-coverage --output report.json for CI artifact
+       storage.
+  DECISION_POINTS:
+    - ScanScope: run against full codebase or specific system
+      (--source filter)?
+    - FailMode: fail pipeline or warn only?
+      (--min-* flags control hard failure)
+  GUARDS: [
+    Thresholds configured before enforcement,
+    Report always emitted even on failure for diagnosis
+  ]
+  NEXT: Add missing markers → re-run → merge when PASS
+```
+
+---
+
+### Journey 20: Cross-Repo Traceability Navigation
+
+```cdsl
+ALGORITHM CrossRepoTraceabilityNavigation
+  ACTOR: Tech Lead, Architect
+  GOAL: In a multi-repo workspace, trace a CPT ID from its definition
+        in one repo to all its usages across all registered workspace
+        sources
+  INPUTS: [
+    Initialized multi-repo workspace (.cf-workspace.toml),
+    CPT ID to investigate,
+    All sources reachable
+  ]
+  OUTPUTS: [
+    Definition location (file:line in source repo),
+    All usage locations across workspace repos,
+    Content of the ID's text block
+  ]
+  STEPS:
+    1. Confirm workspace is initialized and sources are synced
+       (cfs workspace-info, cfs workspace-sync if needed).
+    2. Run cfs list-ids to enumerate all CPT IDs across the workspace
+       (or filter by kind with --kind).
+    3. Run cfs where-defined <ID> --source <workspace-source> to find
+       the definition file and line.
+    4. Run cfs where-used <ID> across all workspace sources to find
+       downstream references.
+    5. Run cfs get-content <ID> to read the full text block associated
+       with that ID.
+    6. Assess blast radius: how many files and repos reference this ID.
+    7. DECISION: Planning a change?
+       - YES: run cf-sdlc-change-impact-analysis on the upstream
+         artifact containing this ID.
+       - NO: navigation complete; use findings for review or
+         documentation.
+  DECISION_POINTS:
+    - NavigationScope: single ID deep-dive vs scan all IDs of a kind?
+    - IncludeCodeScan: include code file scan in where-used
+      (--code flag)?
+  GUARDS: [
+    All workspace sources must be reachable before cross-repo query,
+    Queries are read-only
+  ]
+  NEXT: cf-sdlc-change-impact-analysis (if change is planned),
+        or update artifact referencing this ID
+```
+
+---
+
+### Journey 21: Interactive Kit Update Cycle
+
+```cdsl
+ALGORITHM InteractiveKitUpdateCycle
+  ACTOR: Developer, Tech Lead
+  GOAL: Update an installed kit to the latest version, reviewing each
+        changed file individually before accepting changes
+  INPUTS: [
+    Installed kit (copy or register mode),
+    Upstream kit source (local path, GitHub, or Git)
+  ]
+  OUTPUTS: [
+    Updated kit files on disk (only accepted files),
+    Preserved files for declined changes,
+    .cf-studio-kit.toml reflecting new version
+  ]
+  STEPS:
+    1. Run cfs kit check-updates to see which installed kits have
+       upstream changes available.
+    2. Review the update summary (new version, changed files, breaking
+       changes noted).
+    3. Run cfs kit update for the target kit.
+    4. For each changed file, Studio presents a diff and asks:
+       accept / decline / modify.
+         - accept: upstream version replaces local file.
+         - decline: local file kept as-is.
+         - modify: user edits the merged result before writing.
+    5. After all files reviewed, Studio writes only accepted / modified
+       files.
+    6. Run cfs generate-agents to refresh IDE agent integrations
+       reflecting kit changes.
+    7. Run cfs validate-kits to confirm updated kit structure is valid.
+  DECISION_POINTS:
+    - PerFileDecision: accept / decline / modify (per changed file)
+    - RegenerateAgents: regenerate agent integrations after update?
+      (recommended yes)
+  GUARDS: [
+    Declined files are never overwritten,
+    Modified files written only after user confirms edit,
+    validate-kits run after update
+  ]
+  NEXT: cfs generate-agents, then test updated kit behavior in a
+        workflow run
+```
+
+---
+
+### Journey 22: CDSL ID Navigation Workflow
+
+```cdsl
+ALGORITHM CDSLIDNavigationWorkflow
+  ACTOR: Developer, Architect
+  GOAL: Understand the full traceability picture for a given feature
+        area — enumerate IDs, find definitions, find usages, read
+        content — before making a change
+  INPUTS: [
+    Feature area or subsystem of interest,
+    Constructor Studio initialized with registered artifacts
+  ]
+  OUTPUTS: [
+    List of all CPT IDs in the area,
+    Definition locations,
+    Usage locations across artifacts and code,
+    Content of relevant ID blocks
+  ]
+  STEPS:
+    1. Run cfs list-id-kinds to understand what ID kinds exist in the
+       project (feature, flow, component, etc.).
+    2. Run cfs list-ids --kind feature --pattern <area> to enumerate all
+       feature IDs in the subsystem.
+    3. For each ID of interest: run cfs where-defined <ID> to locate the
+       defining artifact and line.
+    4. Run cfs where-used <ID> to find all artifacts and code that
+       reference this ID.
+    5. Run cfs get-content <ID> to read the full specification block for
+       that ID.
+    6. DECISION: Include code-level inspection?
+       - YES: run cfs get-content <ID> --code --inst to read
+         instruction-level marker content.
+       - NO: artifact-level navigation complete.
+    7. Build a mental map of the subsystem's artifact → code
+       traceability before deciding what to change.
+  DECISION_POINTS:
+    - NavigationDepth: single ID deep-dive vs breadth scan of all IDs
+      in an area?
+    - IncludeCodeScan: include code file scan? (adds --code flag to
+      where-used and get-content)
+  GUARDS: [
+    All commands are read-only,
+    No files modified
+  ]
+  NEXT: cf-sdlc-change-impact-analysis (to assess impact of planned
+        change), or cf-sdlc-implement (to add missing markers)
 ```
 
 ---

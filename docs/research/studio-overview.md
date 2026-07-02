@@ -97,6 +97,15 @@ CAPABILITY ContextDiscovery
     THEN: Studio partitions the scan across parallel agents, merges results into
       a single resource map (resource-map.md + summary.md), and flags which
       packages are most relevant
+
+  SCENARIO CrossRepoContextGathering
+    GIVEN: A developer needs to understand how a shared library is used across three
+      separate repositories in the workspace before adding a breaking API change
+    WHEN: They invoke cf-explore with the workspace sources included
+    THEN: Studio dispatches partitioned explorers across all workspace sources in parallel,
+      aggregates the resource maps into a single deduplicated context, and surfaces every
+      file, artifact, and @cpt-* marker that references the shared library — giving the
+      developer a federated impact picture before writing a single line
 ```
 
 ---
@@ -137,6 +146,14 @@ CAPABILITY DependencyMapping
       'config-assist' from cf-map's next-steps menu
     THEN: Studio scans existing markdown, infers likely category groupings, and
       proposes a starter md-map.toml for the user to review and approve
+
+  SCENARIO RefactorSafetyCheck
+    GIVEN: A developer is about to rename or split a core module that many artifacts reference
+    WHEN: They invoke cf-map before starting the refactor
+    THEN: Studio builds the full CPT dependency graph, highlights every artifact and code file
+      that references the affected module's IDs, flags any already-dangling references,
+      and exports the map as JSON so the developer can script targeted updates — giving
+      a complete blast-radius picture before a single line of code changes
 ```
 
 ---
@@ -448,6 +465,14 @@ CAPABILITY KitManagement
     THEN: Studio scans the folder, detects whether it is a canonical, legacy, or
       greenfield layout, proposes a manifest.toml with a dry-run preview, and
       writes the manifest after user approval
+
+  SCENARIO KitUpdateWithPerFileDiffReview
+    GIVEN: The SDLC kit has a new upstream version with updated workflow files
+    WHEN: The developer runs cfs kit check-updates then cfs kit update
+    THEN: Studio presents the version diff summary, then walks through each changed file
+      one at a time — showing a diff and asking accept/decline/modify per file; declined
+      files are kept as-is, modified files use the developer's merged version; at the end
+      cfs validate-kits confirms the updated kit structure is valid
 ```
 
 ---
@@ -490,6 +515,15 @@ CAPABILITY MultiRepoWorkspace
     WHEN: A developer runs cfs workspace sync at the start of the day
     THEN: Studio pulls the latest commits for all remote-backed repos in the
       workspace and reports any repos that could not be synced cleanly
+
+  SCENARIO WorkspaceSyncForDistributedTeam
+    GIVEN: A team works across three Git-hosted repositories federated in a workspace,
+      and the shared architecture repo was updated by another team member
+    WHEN: They run cfs workspace-sync (or cfs workspace-sync --source arch-repo)
+    THEN: Studio fetches and updates the Git worktree for the URL-based source,
+      reports sync results per source (updated / already-current / failed), and
+      makes the updated cross-repo CPT IDs immediately available for cfs where-used
+      and cfs validate queries — no manual git pull required
 ```
 
 ---
@@ -581,6 +615,24 @@ CAPABILITY ProjectSetupAndBrownfieldOnboarding
     THEN: Studio detects the legacy CyPilot layout, maps legacy configuration
       to the current Studio format, generates updated rule files, and reports
       any constructs that could not be migrated automatically
+
+  SCENARIO AutoConfigRefreshAfterReorg
+    GIVEN: A team reorganized their codebase into new modules six months after initial Studio onboarding
+    WHEN: They invoke cf-auto-config again on the evolved project
+    THEN: Studio detects existing rule files and offers a refresh menu (refresh all /
+      selective / report-only / cancel); in selective mode, the developer picks which
+      topics to regenerate, Studio re-scans only those areas and proposes updated rule
+      files grounded in the new file:line evidence — without touching topics that did not change
+
+  SCENARIO IdeIntegrationSetupAfterKitInstall
+    GIVEN: A team installed a new behavior kit (e.g. the SDLC kit) and wants their
+      Cursor and Windsurf IDEs to know about the new workflows
+    WHEN: They run cfs generate-agents after the kit install
+    THEN: Studio discovers the kit's public skills and agent proxies, composes an updated
+      SKILL.md from all kit @cpt:skill sections, generates proxy agent files for each
+      configured IDE target (Cursor, Windsurf, Claude, Copilot, OpenAI), updates the
+      managed gitignore block, and reports which files were written or updated — all
+      verified via cfs agents afterward
 ```
 
 ---
