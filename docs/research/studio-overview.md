@@ -266,6 +266,21 @@ CAPABILITY SourceCodeWork
     THEN: Studio runs the explore gate for full context, breaks the refactor
       into logical sub-steps, applies each in sequence with CI validation
       after each step, and presents a per-layer review at the end
+
+  SCENARIO CodeReviewWithMethodologyDepth
+    GIVEN: A tech lead wants a thorough review of a complex refactor beyond a quick pass
+    WHEN: They invoke cf-coding in review mode and choose per-layer granularity
+    THEN: Studio dispatches reviewers in parallel for each methodology layer
+      (code-checklist, bug-finding, consistency-checklist), aggregates deduplicated
+      findings, lets the user select which to fix, and dispatches a fix agent only
+      for the approved finding set before re-running CI
+
+  SCENARIO TestFirstWorkflow
+    GIVEN: A developer is starting a new feature and wants to write tests before code
+    WHEN: They invoke cf-coding and describe the feature behavior to test
+    THEN: Studio authors test files only (unit tests and/or e2e tests) against the
+      feature description, runs the test suite to confirm tests are red, then hands
+      off to the implementation path — ensuring tests exist before any production code
 ```
 
 ---
@@ -312,6 +327,21 @@ CAPABILITY DocumentationWork
     THEN: Studio diffs the current doc against the codebase via the explore gate,
       identifies outdated sections, proposes targeted revisions, and presents
       them as findings for the user to approve before writing
+
+  SCENARIO MultiAudienceDocumentReview
+    GIVEN: A senior engineer wants to verify that existing architecture docs are still accurate
+    WHEN: They invoke cf-write-docs in review-first mode on an existing DESIGN document
+    THEN: Studio runs a semantic review using the artifact checklist and consistency
+      methodology, presents findings categorized by severity, and gates any fixes on
+      explicit per-finding approval before applying changes
+
+  SCENARIO LanguagePolicyEnforcement
+    GIVEN: A team maintains English-only documentation but suspects a recent commit
+      introduced non-English characters
+    WHEN: They invoke cf-write-docs or cfs check-language on the affected files
+    THEN: Studio scans for characters outside the allowed Unicode script set,
+      reports violations with exact file and line references, and prompts the author
+      to resolve them before the document passes validation
 ```
 
 ---
@@ -360,6 +390,21 @@ CAPABILITY SkillAndWorkflowAuthoring
     THEN: Studio runs the consistency-checklist methodology across all files in
       parallel per-layer mode and produces a findings report without making
       any changes until the author approves each one
+
+  SCENARIO NewStudioSkillCreation
+    GIVEN: A Studio developer wants to add a new custom workflow to their project kit
+    WHEN: They invoke cf-write-skills and describe the skill's purpose and gate structure
+    THEN: Studio authors a PDSL-formatted skill file, validates it with cfs pdsl validate,
+      runs a prompt-engineering semantic review (checking routing logic, missing cases,
+      unclear gates), applies approved fixes, and re-validates PDSL after each fix cycle
+
+  SCENARIO WorkflowBugInvestigation
+    GIVEN: A workflow behaved unexpectedly — a gate fired when it should not have
+    WHEN: The developer invokes cf-debug-prompts, arms the debugger, then triggers
+      the faulty workflow
+    THEN: The debugger intercepts each PDSL instruction, shows the current location
+      (file:line:unit), displays the active state, and pauses for approval — allowing
+      the developer to step through the exact gate condition and identify the root cause
 ```
 
 ---
@@ -589,6 +634,72 @@ CAPABILITY SessionOverlays
 
 ---
 
+### 14. SDLC Artifact Pipeline
+
+```cdsl
+CAPABILITY SdlcArtifactPipeline
+  ACTOR: Product Manager, Tech Lead, Architect, Developer
+  PURPOSE: The SDLC kit adds a structured artifact pipeline on top of Constructor
+    Studio: PRD → ADR + DESIGN → DECOMPOSITION → FEATURE → CODE, with templates,
+    checklists, and traceability enforcement at every stage. Each artifact kind
+    has a dedicated authoring workflow that delegates to cf-write-docs or cf-coding
+    and enforces deterministic validation plus semantic review.
+  KEY_OPERATIONS:
+    - Author a PRD with actors, FR/NFR, use cases, and success criteria (cf-sdlc-doc-prd)
+    - Record an Architecture Decision Record — context/options/decision/consequences (cf-sdlc-doc-adr)
+    - Author a system DESIGN — components, interfaces, boundaries, architecture drivers (cf-sdlc-doc-design)
+    - Break down a DESIGN into an ordered FEATURE list with dependency links (cf-sdlc-decompose)
+    - Author a FEATURE spec with CDSL flows, algorithms, states, and test scenarios (cf-sdlc-doc-feature)
+    - Implement a FEATURE in code with @cpt-* traceability markers (cf-sdlc-implement)
+    - Analyze downstream impact of an upstream artifact change — cascade tracking or release-readiness estimation (cf-sdlc-change-impact-analysis)
+    - Review a GitHub PR against artifact checklists and code review prompts (cf-sdlc-pr-review)
+    - Generate a PR status report with severity assessment and resolved-comment audit (cf-sdlc-pr-status)
+    - Reconstruct SDLC artifacts from existing code using @cpt-* markers — marker-first strategy (cf-sdlc-reverse-engineer)
+    - Migrate OpenSpec artifacts to Studio SDLC format in 8 phases with code verification (cf-sdlc-migrate-openspec)
+  SCENARIO PrdAuthoringFromScratch
+    GIVEN: A PM has a new product idea and needs a formal requirements document
+    WHEN: They invoke cf-sdlc-doc-prd and describe their product concept
+    THEN: Studio guides them through the PRD template (actors, functional requirements
+      with cpt-IDs, non-functional requirements, use cases, success criteria), runs
+      cfs validate --artifact on the result, and performs a semantic review against
+      the PRD checklist before the document is considered done
+  SCENARIO ArchitectureDecisionRecord
+    GIVEN: A tech lead chose a specific database technology and must document why
+    WHEN: They invoke cf-sdlc-doc-adr and describe the decision context
+    THEN: Studio authors an ADR with context, considered options, the chosen option,
+      consequences, and a unique cpt-adr-* traceability ID; the ADR is validated
+      and cross-referenced into the DESIGN artifact automatically
+  SCENARIO ChangeImpactAnalysis
+    GIVEN: A product requirement (PRD FR) was updated to change behavior
+    WHEN: They invoke cf-sdlc-change-impact-analysis with the changed artifact ID
+    THEN: Studio traces the blast radius downstream (PRD → DESIGN → DECOMPOSITION
+      → FEATURE → CODE markers), flags stale @cpt-* markers in code, reports
+      coverage gaps, and — in release-readiness mode — recommends a version bump
+      based on impact severity
+  SCENARIO PrReviewWithChecklists
+    GIVEN: A developer opened a GitHub PR with code and a FEATURE implementation
+    WHEN: They invoke cf-sdlc-pr-review with the PR number
+    THEN: Studio fetches the diff from GitHub, analyzes it against the codebase
+      checklist and per-domain review prompts (code, design, ADR, PRD), and
+      produces a structured review report at .prs/{ID}/review.md with severity-rated
+      findings — without modifying any local files
+  SCENARIO ReverseEngineerFeatureFromCode
+    GIVEN: A team has legacy code with @cpt-* markers but no FEATURE spec documents
+    WHEN: They invoke cf-sdlc-reverse-engineer with the code scope
+    THEN: Studio extracts all @cpt-* markers, reconstructs FEATURE specs with
+      CDSL flows and test scenarios grounded in the actual code behavior,
+      and flags @cpt-gap markers where evidence is missing
+  SCENARIO OpenSpecMigration
+    GIVEN: A team has existing OpenSpec proposals, specs, and design documents
+    WHEN: They invoke cf-sdlc-migrate-openspec with the OpenSpec root directory
+    THEN: Studio runs an 8-phase migration (inventory → PRD → DESIGN → ADRs →
+      DECOMPOSITION → FEATURE specs → @cpt-* code markers → registration + validation),
+      verifies every claim against actual source code, and flags discrepancies where
+      the spec contradicts the implementation
+```
+
+---
+
 ## Summary Table
 
 | Capability | Primary Actor | Workflow / Command | Key CLI |
@@ -606,3 +717,4 @@ CAPABILITY SessionOverlays
 | Narrative Explanation | Developer, any team member | cf-explain | `/cf explain` |
 | Project Setup and Brownfield Onboarding | Developer, tech lead | cf-auto-config | `cfs init / update / generate-agents` |
 | Session Overlays | Any user / Studio author | cf-brave-new-world, cf-debug-prompts | (activated at session start) |
+| 14 | SDLC Artifact Pipeline | PM, Tech Lead, Architect, Developer | cf-sdlc-doc-prd, cf-sdlc-doc-adr, cf-sdlc-doc-design, cf-sdlc-decompose, cf-sdlc-doc-feature, cf-sdlc-implement, cf-sdlc-change-impact-analysis, cf-sdlc-pr-review, cf-sdlc-pr-status, cf-sdlc-reverse-engineer, cf-sdlc-migrate-openspec | cfs validate --artifact, cfs spec-coverage |
