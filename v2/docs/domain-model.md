@@ -380,7 +380,11 @@ classDiagram
 
 ---
 
-### D17 — Security & Vulnerability Objects
+### D17 — Security & Vulnerability Objects (type hierarchy)
+
+> See D24 for cross-references between security objects and the rest of the graph.
+
+
 
 ```mermaid
 classDiagram
@@ -473,7 +477,12 @@ gts.cf.studio.core.object.v1~      ← base Object (all Studio domain objects)
 gts.cf.studio.core.worker.v1~      ← base Worker
 gts.cf.studio.core.flow.v1~        ← base Flow
 gts.cf.studio.core.obj_ext.v1~     ← attribute extension
-gts.cf.studio.core.event.v1~       ← base Event type
+```
+
+Studio event types extend the **Gears platform event base type**:
+
+```
+gts.cf.core.events.type.v1~        ← Gears platform event base type (DO NOT redefine)
 ```
 
 ### 2.2 Gears Base Types Extended by Studio
@@ -1102,26 +1111,36 @@ Studio defines event types via GTS.
 
 ### 16.1 Studio Event Types
 
+Studio event types extend the Gears platform event base type
+`gts.cf.core.events.type.v1~` — Studio does **not** define its own base
+event type.
+
 ```
 // Object lifecycle
-gts.cf.studio.core.event.v1~cf.studio.core.object_created.v1~
-gts.cf.studio.core.event.v1~cf.studio.core.object_updated.v1~
-gts.cf.studio.core.event.v1~cf.studio.core.object_deleted.v1~
+gts.cf.core.events.type.v1~cf.studio.core.object_created.v1~
+gts.cf.core.events.type.v1~cf.studio.core.object_updated.v1~
+gts.cf.core.events.type.v1~cf.studio.core.object_deleted.v1~
 
 // State transitions
-gts.cf.studio.core.event.v1~cf.studio.core.state_changed.v1~
+gts.cf.core.events.type.v1~cf.studio.core.state_changed.v1~
 
 // WorkerRun
-gts.cf.studio.core.event.v1~cf.studio.core.worker_run_started.v1~
-gts.cf.studio.core.event.v1~cf.studio.core.worker_run_completed.v1~
+gts.cf.core.events.type.v1~cf.studio.core.worker_run_started.v1~
+gts.cf.core.events.type.v1~cf.studio.core.worker_run_completed.v1~
 
 // Recommendations
-gts.cf.studio.core.event.v1~cf.studio.core.recommendation_created.v1~
-gts.cf.studio.core.event.v1~cf.studio.core.recommendation_invalidated.v1~
+gts.cf.core.events.type.v1~cf.studio.core.recommendation_created.v1~
+gts.cf.core.events.type.v1~cf.studio.core.recommendation_invalidated.v1~
 
 // Kit lifecycle
-gts.cf.studio.core.event.v1~cf.studio.core.kit_installed.v1~
-gts.cf.studio.core.event.v1~cf.studio.core.kit_updated.v1~
+gts.cf.core.events.type.v1~cf.studio.core.kit_installed.v1~
+gts.cf.core.events.type.v1~cf.studio.core.kit_updated.v1~
+```
+
+Wildcard-based authz example (per Gears GTS guidelines):
+```
+gts.cf.core.events.type.v1~cf.studio.core.*   ← all Studio events
+gts.cf.core.events.type.v1~cf.studio.core.object_*  ← only Object lifecycle events
 ```
 
 Gears Events Broker has built-in authz — subscribers receive only events
@@ -1461,6 +1480,360 @@ gts.cf.studio.core.object.v1~cf.studio.core.vulnerability.v1~snyk.studio.core.sn
 
 // Confluence Kit
 gts.cf.studio.core.object.v1~cf.studio.core.wiki_page.v1~confluence.studio.core.confluence_page.v1~
+```
+
+---
+
+## Object Reference Diagrams
+
+> These diagrams show **cross-references** between Studio Objects — who points to whom in the live graph.
+
+---
+
+### D18 — WorkerRun Cross-References
+
+```mermaid
+classDiagram
+    class WorkerRun {
+        workerId: ref Worker
+        parentRunId: ref WorkerRun?
+        state: pending|running|done|failed
+    }
+    class Worker {
+        id: GTS Type ID
+    }
+    class Object {
+        id: GTS Instance ID
+    }
+    class FlowRun {
+        flowId: ref Flow
+    }
+
+    WorkerRun --> Worker : workerId
+    WorkerRun --> WorkerRun : parentRunId (sub-call tree)
+    WorkerRun --> Object : inputData references
+    WorkerRun --> Object : outputData produces
+    FlowRun --> WorkerRun : completedSteps
+```
+
+---
+
+### D19 — SDLC Traceability Chain
+
+```mermaid
+flowchart LR
+    REQ["requirement"] -->|implemented by| TASK["task"]
+    TASK -->|closed by| PR["pull_request"]
+    PR -->|triggers| BUILD["build"]
+    BUILD -->|produces| ART["build_artifact"]
+    ART -->|deployed as| DEP["deployment"]
+    DEP -->|targets| ENV["environment"]
+```
+
+---
+
+### D20 — Design-to-Code Traceability
+
+```mermaid
+flowchart LR
+    PRD["prd"] -->|elaborated by| DES["design"]
+    DES -->|decomposed into| DEC["decomposition"]
+    DEC -->|specifies| FS["feature_spec"]
+    FS -->|implemented in| SF["source_file"]
+    SF -->|lives in| REPO["repository"]
+```
+
+---
+
+### D21 — Version Control Cross-References
+
+```mermaid
+classDiagram
+    class repository {
+        url: string
+        defaultBranch: string
+    }
+    class branch {
+        repositoryId: ref repository
+        name: string
+    }
+    class commit {
+        branchId: ref branch
+        sha: string
+        authorId: ref person
+    }
+    class pull_request {
+        repositoryId: ref repository
+        sourceBranch: ref branch
+        targetBranch: ref branch
+    }
+    class tag {
+        commitId: ref commit
+        name: string
+    }
+
+    repository "1" --> "many" branch
+    branch "1" --> "many" commit
+    commit "many" --> "1" pull_request : included in
+    commit "1" --> "many" tag
+```
+
+---
+
+### D22 — CI/CD Chain Cross-References
+
+```mermaid
+flowchart TD
+    CMT["commit"] -->|triggers| PR["pipeline_run"]
+    PR -->|contains| JOB["pipeline_job"]
+    JOB -->|runs on| RUN["runner"]
+    JOB -->|executes| TST["test_run"]
+    JOB -->|produces| ART["build_artifact"]
+    TST -->|results in| TR["test_result"]
+    TR -->|references| TC["test_case"]
+```
+
+---
+
+### D23 — Deployment & Environment Cross-References
+
+```mermaid
+classDiagram
+    class deployment {
+        artifactId: ref build_artifact
+        environmentId: ref environment
+        state: pending|running|done|failed
+    }
+    class build_artifact {
+        jobId: ref pipeline_job
+        version: string
+    }
+    class environment {
+        name: dev|staging|prod
+        tenantId: ref Tenant
+    }
+    class deployment_status {
+        deploymentId: ref deployment
+        state: string
+        workerRunId: ref WorkerRun
+    }
+
+    deployment --> build_artifact : artifactId
+    deployment --> environment : environmentId
+    deployment "1" --> "many" deployment_status
+```
+
+---
+
+### D24 — Incident & Operations Cross-References
+
+```mermaid
+flowchart LR
+    ALERT["alert"] -->|escalates to| INC["incident"]
+    INC -->|assigned via| ESC["escalation_policy"]
+    ESC -->|references| OCS["on_call_schedule"]
+    OCS -->|assigns| PER["person"]
+    INC -->|produces| PM["postmortem\n→ document"]
+    PM -->|creates| TASK["task\n(prevention)"]
+```
+
+---
+
+### D25 — Security Cross-References
+
+```mermaid
+flowchart LR
+    SF["source_file"] -->|contains| DV["dependency_vulnerability"]
+    DV -->|references| CVE["cve"]
+    CVE -->|details in| VUL["vulnerability"]
+    VUL -->|found by| SR["security_finding"]
+    VUL -->|remediated by| TASK["task"]
+    SR -->|reported in| SREP["security_review\n→ document"]
+```
+
+---
+
+### D26 — Recommendation Cross-References
+
+```mermaid
+classDiagram
+    class Recommendation {
+        sourceRunId: ref WorkerRun
+        suggestedWorker: ref Worker
+        validationWorker: ref Worker?
+        severityWorker: ref Worker?
+        confidence: full|partial|low
+    }
+    class WorkerRun {
+        workerId: ref Worker
+    }
+    class Worker {
+        id: GTS Type ID
+    }
+    class Object {
+        id: GTS Instance ID
+    }
+
+    Recommendation --> WorkerRun : sourceRunId (Analyzer that found gap)
+    Recommendation --> Worker : suggestedWorker (actionable fix)
+    Recommendation --> Worker : validationWorker (re-check)
+    WorkerRun --> Object : gap detected in (input/output)
+    Worker --> Object : fix will produce (output Contract)
+```
+
+---
+
+### D27 — Workspace & Kit Cross-References
+
+```mermaid
+classDiagram
+    class Workspace {
+        tenantId: ref Tenant
+        sources: SourceEntry[]
+    }
+    class SourceEntry {
+        path: string
+        url: string?
+        role: string
+    }
+    class repository {
+        url: string
+    }
+    class Kit {
+        scope: local|project|workspace|published
+        requiredPermissions: Permission[]
+    }
+    class Tenant {
+        parentId: ref Tenant?
+    }
+
+    Workspace "1" --> "many" SourceEntry : sources
+    SourceEntry --> repository : resolves to
+    Tenant "1" --> "many" Kit : installed Kits
+    Workspace --> Tenant : tenantId
+```
+
+---
+
+### D28 — Role & Identity Cross-References
+
+```mermaid
+classDiagram
+    class User {
+        tenantId: ref Tenant
+    }
+    class Role {
+        tenantId: ref Tenant
+        name: string
+    }
+    class RoleAssignment {
+        userId: ref User
+        roleId: ref Role
+        assignedBy: ref User
+    }
+    class IdentityMapping {
+        externalPattern: object
+        roleId: ref Role
+        tenantId: ref Tenant
+    }
+    class PolicyOverride {
+        policyId: ref Policy
+        tenantId: ref Tenant
+    }
+
+    User "many" --> "many" Role : via RoleAssignment
+    IdentityMapping --> Role : maps external identity to
+    Role --> PolicyOverride : governed by
+    Tenant --> IdentityMapping : scoped to
+```
+
+---
+
+### D29 — AuditLog & SavedQuery Cross-References
+
+```mermaid
+classDiagram
+    class WorkerRun {
+        workerId: ref Worker
+        inputData: any
+        outputData: any
+        externalEvents: ExternalEvent[]
+    }
+    class ExternalEvent {
+        source: string
+        externalId: string
+        url: string
+    }
+    class SavedAuditQuery {
+        createdBy: ref User
+        tenantId: ref Tenant
+        query: QuerySpec
+    }
+    class AuditLog {
+        materialized view
+        over WorkerRun tree
+    }
+
+    WorkerRun "1" --> "many" ExternalEvent : write-ahead
+    WorkerRun ..> AuditLog : materializes into
+    SavedAuditQuery ..> AuditLog : queries
+```
+
+---
+
+### D30 — Notification Cross-References
+
+```mermaid
+classDiagram
+    class NotificationRule {
+        trigger: EventPattern
+        audience: RolePattern
+        channel: string
+    }
+    class NotificationRuleOverride {
+        ruleId: ref NotificationRule
+        active: boolean
+        expiresAt: datetime?
+    }
+    class NotificationSubscription {
+        userId: ref User
+        tenantId: ref Tenant
+        urgency: immediate|digest|muted
+    }
+    class User {
+        tenantId: ref Tenant
+    }
+
+    NotificationRuleOverride --> NotificationRule : ruleId
+    NotificationSubscription --> User : userId
+    User --> NotificationSubscription : personal subscriptions
+    NotificationRule --> NotificationRuleOverride : overridden by
+```
+
+---
+
+### D31 — Full Object Reference Map (top-level)
+
+```mermaid
+flowchart TD
+    subgraph Requirements
+        REQ["requirement"] --> TASK["task"]
+    end
+    subgraph Code
+        TASK --> PR["pull_request"]
+        PR --> CMT["commit"]
+        CMT --> REPO["repository"]
+    end
+    subgraph CICD
+        CMT --> BUILD["build"]
+        BUILD --> ART["build_artifact"]
+        ART --> DEP["deployment"]
+    end
+    subgraph Ops
+        DEP --> INC["incident"]
+        INC --> PM["postmortem"]
+        PM --> TASK
+    end
 ```
 
 ---
