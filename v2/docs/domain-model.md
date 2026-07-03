@@ -437,12 +437,23 @@ The base type for all domain objects in the system.
 
 ```
 Object {
-  id:        GTS Instance Identifier
-  typeId:    GTS Type Identifier
-  tenantId:  ref → Tenant
-  state:     string
-  createdAt: datetime
-  updatedAt: datetime
+  id:               GTS Instance Identifier
+  typeId:           GTS Type Identifier
+  tenantId:         ref → Tenant
+  state:            string
+  createdAt:        datetime
+  updatedAt:        datetime
+  // Vision-required attributes (gap analysis, staleness, ownership, external sync):
+  ownerId:          ref team | person?
+  validationStatus: none|pending|pass|fail
+  stalenessScore:   float?              // 0.0 = fresh, 1.0 = stale
+                                        // = max(timeStaleness, dependencyStaleness, syncStaleness)
+  externalRef?: {
+    connectorId:  ref Connector
+    externalId:   string
+    externalUrl:  string
+    lastSyncedAt: datetime
+  }
 }
 ```
 
@@ -455,10 +466,13 @@ Outside the graph. Describe rules and configurations, not data.
 | Entity | Purpose |
 |---|---|
 | `Worker` | Executor — consumes and produces Objects |
+| `Validator` | Extends Worker; adds retry loop, escalation, maxRetries semantics |
 | `WorkerImplementation` | Runtime configuration of a Worker (model, prompt, script) |
 | `Flow` | Configuration of constraints and mandatory steps |
-| `Kit` | Extension packaging unit (types, Workers, Flows) |
+| `Connector` | Integration with external system via Gears OAGW (field mapping, write-back, sync) |
+| `Kit` | Extension packaging unit (types, Workers, Validators, Flows, Connectors) |
 | `obj_ext` | Attribute extension for existing types |
+| `StatePolicy` | Per-property transition rules (separate from type schema) |
 
 ---
 
@@ -475,7 +489,10 @@ Studio-owned base types:
 ```
 gts.cf.studio.core.object.v1~      ← base Object (all Studio domain objects)
 gts.cf.studio.core.worker.v1~      ← base Worker
+gts.cf.studio.core.validator.v1~   ← extends Worker; adds retry/escalation semantics
 gts.cf.studio.core.flow.v1~        ← base Flow
+gts.cf.studio.core.connector.v1~   ← registry entity; uses Gears OAGW as infrastructure
+gts.cf.studio.core.kit.v1~         ← extension packaging unit
 gts.cf.studio.core.obj_ext.v1~     ← attribute extension
 ```
 
@@ -1213,6 +1230,347 @@ for credentials; Tenant fills via Gears Settings Service. No secrets in Kit.
 
 ---
 
+## 18. Validator & Validation Loop
+
+### 18.1 Validator
+
+Derived from Worker. Adds retry/escalation semantics.
+
+```
+Validator extends Worker {
+  // GTS: gts.cf.studio.core.worker.v1~cf.studio.core.validator.v1~
+  maxRetries:   int            // default: 3 (Kit) → Tenant override → call
+  escalateTo:   RolePattern?   // who decides on limit reached
+  abortOnLimit: boolean        // default: false
+  // output Contract always includes ValidationResult
+}
+```
+
+Three-level policy: Kit defaults → Tenant override (narrowing only) → call (narrowing only).
+
+### 18.2 ValidationSession
+
+Aggregates the full retry loop for one Validator run on one Object.
+
+```
+ValidationSession extends Object {
+  typeId:      gts.cf.studio.core.object.v1~cf.studio.core.validation_session.v1~
+  validatorId: ref Validator
+  targetId:    ref Object          // what is being validated
+  state:       running|pass|fail|escalated|aborted
+  retryCount:  int
+  maxRetries:  int
+  runs:        WorkerRun[]         // all attempts
+  evidenceId:  ref Evidence?       // final Evidence on pass
+}
+```
+
+### 18.3 ValidationResult
+
+Output of one Validator WorkerRun. Independent lifecycle.
+
+```
+ValidationResult extends Object {
+  typeId:      gts.cf.studio.core.object.v1~cf.studio.core.validation_result.v1~
+  sessionId:   ref ValidationSession
+  validatorId: ref Validator
+  targetId:    ref Object
+  workerRunId: ref WorkerRun
+  state:       pass|fail|superseded|revoked
+  reason:      string
+  evidenceId:  ref Evidence?
+  revokedBy:   ref User?
+  revokedAt:   datetime?
+}
+```
+
+### 18.4 Evidence
+
+Structured proof that an action or validation occurred and is valid.
+
+```
+Evidence extends Object {
+  typeId:      gts.cf.studio.core.object.v1~cf.studio.core.evidence.v1~
+  workerRunId: ref WorkerRun      // who produced it
+  targetId:    ref Object         // what it proves
+  kind:        validation|approval|execution|review
+  payload:     GTS Type Schema    // structured proof data
+  state:       valid|superseded|revoked
+}
+```
+
+Worker output Contract declares `produces: evidence` when it generates Evidence.
+
+### 18.5 WorkerRun State Machine (updated)
+
+```
+pending → running → done
+                 → failed     (error, can retry)
+                 → escalated  (awaiting Approval from human)
+                 → aborted    (limit reached or human rejected)
+```
+
+### 18.6 Escalation Flow
+
+```
+ValidationSession.retryCount >= maxRetries
+  → CREATE Approval {
+      kind:         "risk_acceptance" | custom
+      sessionId:    ref ValidationSession
+      requiredRole: Validator.escalateTo
+      question:     "Validation failed N times. Proceed?"
+    }
+  → ValidationSession.state = escalated
+  → WorkerRun.state = escalated
+
+Human approves  → resume → new WorkerRun
+Human rejects   → ValidationSession.state = aborted
+```
+
+---
+
+## 19. Connector
+
+Registry entity in Kit. Uses Gears OAGW as networking infrastructure.
+
+```
+Connector (registry) {
+  id:           GTS Type Identifier  (gts.cf.studio.core.connector.v1~...)
+  sourceSystem: string               // "jira", "github", "datadog"
+  oagwUpstreamRef: string            // reference to OAGW upstream (created at Kit install)
+  rateLimit: {
+    requestsPerHour: int
+    burstSize:       int
+    retryAfter:      duration
+  }
+  syncProtocol: {
+    push?: {
+      webhookPath:     string
+      secret:          ref requiredSettings
+      supportedEvents: string[]
+    }
+    pull?: {
+      interval:    duration
+      pageSize:    int
+      incremental: boolean
+    }
+    preferred: push|pull             // default: push if available
+  }
+  fieldMappings: FieldMapping[]
+  writeBackPolicy: WriteBackPolicy
+  workerIds:    Worker[]
+}
+```
+
+### 19.1 FieldMapping
+
+```
+FieldMapping {
+  externalField:    string
+  studioField:      string         // dot-notation: "obj_ext.jira_priority"
+  kind:             direct|lookup|transform
+  lookupTable?:     { [externalValue]: studioValue }
+  transformWorker?: ref Worker
+}
+```
+
+### 19.2 WriteBackPolicy
+
+```
+WriteBackPolicy {
+  allowedActions:   string[]       // ["create:task", "update:task.state"]
+  requiresApproval: boolean        // default: false
+  conflictStrategy: overwrite|skip|merge|escalate  // default: escalate
+}
+```
+
+### 19.3 Scope Filter (per Tenant)
+
+Configured at Kit installation time. Schema declared by Connector Kit via GTS Type Schema.
+
+```
+// example: Jira Connector scopeFilter
+scopeFilter: {
+  "projects":   ["STUDIO", "PLATFORM"],
+  "issueTypes": ["Bug", "Story", "Epic"],
+  "maxAge":     "180d"
+}
+```
+
+---
+
+## 20. Staleness Model
+
+### 20.1 stalenessScore Formula
+
+```
+timeStaleness       = (now - updatedAt) / type.stalenessPolicy.timeTTL
+dependencyStaleness = 1.0 if any linked Object in dependencyTypes changed after updatedAt
+syncStaleness       = (now - externalRef.lastSyncedAt) / connector.syncExpectedInterval
+                      // only for Objects with externalRef
+
+stalenessScore = max(timeStaleness, dependencyStaleness, syncStaleness)
+```
+
+### 20.2 Staleness Policy (in x-gts-traits)
+
+Declared per Object type. Tenant can override via `obj_ext`.
+
+```json
+"x-gts-traits": {
+  "stalenessPolicy": {
+    "timeTTL":                 "14d",
+    "dependencyTypes":         ["gts...design.v1~", "gts...requirement.v1~"],
+    "recommendationThreshold": 0.7
+  }
+}
+```
+
+### 20.3 Staleness Analyzer
+
+`stale_artifact_detection` Analyzer Worker (from Flow Library):
+- Updates `stalenessScore` on affected Objects
+- Profile: `realtime`; trigger: `schedule: "*/15 * * * *"` + `onEvent` with `debounce: 5m`
+- Creates `Recommendation` when `stalenessScore >= recommendationThreshold`
+
+---
+
+## 21. Approval & Human Control Points
+
+```
+Approval extends Object {
+  typeId:          gts.cf.studio.core.object.v1~cf.studio.core.approval.v1~
+  kind:            risk_acceptance|security_exception|release_approval
+                   |architecture_decision|custom
+  requiredRole:    RolePattern
+  state:           pending|approved|rejected|expired
+  payload:         GTS Type Schema (typed per kind)
+  sessionId?:      ref ValidationSession   // if from Validator escalation
+  decidedBy:       ref User?
+  decidedAt:       datetime?
+  expiresAt:       datetime?
+  customerImpact?: {
+    scope:         none|internal|subset|all
+    affectedUsers: string?
+    rollbackPlan:  string?
+  }
+}
+```
+
+### 21.1 Security Exception Payload
+
+```json
+{
+  "expiresAt":        "2026-10-01T00:00:00Z",
+  "acceptedRisk":     "Known XSS in legacy component",
+  "mitigations":      ["WAF rule", "monitoring alert"],
+  "secondaryApprover": "user-456",
+  "autoReviewAfter":  "90d"
+}
+```
+
+`autoReviewAfter` triggers a new `Approval` via scheduled Worker.
+
+---
+
+## 22. Flow Library Catalog
+
+### 22.1 Analyzer Workers (12) — detect gaps → create Recommendations
+
+| Name | Runtime | Profile | Input Objects |
+|---|---|---|---|
+| `gap_analysis` | hybrid | scheduled | requirement, task, test_case, pull_request |
+| `traceability_analysis` | hybrid | scheduled | requirement, design, task, pull_request, test_case |
+| `contradiction_detection` | llm | on_demand | document[] (any two or more) |
+| `bloat_detection` | hybrid | on_demand | requirement[], task[] |
+| `stale_artifact_detection` | script | realtime | Object (wildcard — any type) |
+| `ownership_gap_analysis` | script | realtime | Object (wildcard — ownerId == null) |
+| `duplicate_work_detection` | llm | on_demand | task[], requirement[] |
+| `architecture_drift_detection` | hybrid | scheduled | component, component_dependency, design |
+| `security_impact_analysis` | hybrid | scheduled | pull_request, vulnerability, security_finding |
+| `test_gap_detection` | hybrid | scheduled | requirement, test_case |
+| `operations_metrics_analysis` | hybrid | scheduled | slo, sli, metric_definition, alert |
+| `ai_cost_efficiency_analysis` | script | scheduled | WorkerRun[], cost_report |
+
+### 22.2 Flows (2) — mandatory step sequences
+
+**`bug_to_fix_pr_flow`** — Killer Workflow 1:
+```
+entryConstraints:  bug (state: open)
+mandatorySteps:    bug_description_validator
+                   confirm_test_fails_validator
+                   confirm_test_passes_validator
+allowedNextSteps:
+  bug_description_validator   → find_suspected_component
+  find_suspected_component    → deploy_test_environment
+  deploy_test_environment     → reproduce_bug
+  reproduce_bug               → create_failing_test
+  create_failing_test         → confirm_test_fails_validator
+  confirm_test_fails_validator → implement_fix
+  implement_fix               → confirm_test_passes_validator
+  confirm_test_passes_validator → create_pr
+```
+
+**`release_readiness_review`** — Killer Workflow 2 gate:
+```
+entryConstraints:  release (state: candidate)
+mandatorySteps:    gap_analysis_validator
+                   test_coverage_validator   (>= 80%)
+                   security_scan_validator
+                   tech_lead_approval
+```
+
+### 22.3 Worker Metadata
+
+All Workers and Flows carry UI metadata:
+```
+metadata: {
+  displayName: string
+  description: string
+  category:    quality|security|ops|ai-cost|traceability
+  icon?:       string
+  profile:     realtime|scheduled|on_demand
+}
+```
+
+---
+
+## 23. Traceability Cross-References (Killer Workflows)
+
+### 23.1 pull_request references
+
+```
+pull_request {
+  closesIssues:          task[]           // tasks resolved by this PR
+  implementsRequirements: requirement[]   // requirements implemented
+  conformsToDesign:      design[]         // design documents validated against
+  verifiedBy:            test_case[]      // tests that verify the fix
+}
+```
+
+### 23.2 test_case references
+
+```
+test_case {
+  verifiesRequirements: requirement[]    // direct coverage link
+  verifiesFeature?:     feature_spec     // optional detailed spec
+}
+```
+
+### 23.3 pr_design_validator (SDLC Kit)
+
+```
+pr_design_validator extends Validator {
+  runtime: hybrid
+  profile: realtime
+  trigger: { onEvent: { pattern: state_changed, filter: "pull_request → review" } }
+  input:   { pull_request, design[], acceptance_criteria[] }
+  output:  { validation_result, evidence }
+}
+```
+
+---
+
 ## Appendix A — Studio v2 Object Type Catalog
 
 All types follow the pattern:
@@ -1291,14 +1649,16 @@ cf.studio.core.tech_debt_item.v1~
 cf.studio.core.change_request.v1~
 ```
 
-### Domain 5 — Collaboration
+### Domain 5 — Collaboration & Human Control
 
 ```
 cf.studio.core.comment.v1~
 cf.studio.core.review_comment.v1~
 cf.studio.core.decision.v1~
 cf.studio.core.meeting_note.v1~          // → document
-cf.studio.core.approval.v1~
+cf.studio.core.approval.v1~              // generic: kind=risk_acceptance|security_exception|
+                                         //   release_approval|architecture_decision|custom
+                                         // payload typed per kind via GTS Type Schema
 ```
 
 ### Domain 6 — Version Control
@@ -1456,6 +1816,20 @@ cf.studio.core.ai_tool.v1~
 cf.studio.core.evaluation_run.v1~
 cf.studio.core.evaluation_result.v1~
 // llm_model → reference to Gears Models Registry (no separate Object type)
+```
+
+---
+
+### Domain 19 — Validation & Evidence
+
+```
+cf.studio.core.validation_session.v1~    // aggregates retry loop for one Validator run
+                                         // on one Object: retryCount, state, runs[]
+cf.studio.core.validation_result.v1~     // output of one Validator WorkerRun
+                                         // state: pass|fail|superseded|revoked
+cf.studio.core.evidence.v1~              // structured proof of action/validation
+                                         // state: valid|superseded|revoked
+                                         // produced by Worker output Contract
 ```
 
 ---
