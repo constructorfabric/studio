@@ -1091,19 +1091,18 @@ def _build_host_registration_description(description: str, prompt_source_path: s
 
 
 def _target_path_from_root(target: Path, project_root: Path, studio_root: Optional[Path] = None) -> str:
-    """Return agent-instruction path using ``{cf-studio-path}/`` variable prefix.
+    """Return agent-instruction path using ``{cf-studio-path}/`` or ``@/`` prefix.
 
-    If *target* is inside *studio_root*, returns ``{cf-studio-path}/<relative>``
-    which is portable — the variable is defined in root AGENTS.md.
-
-    Falls back to ``@/<project-root-relative>`` for paths outside studio_root.
+    Paths inside *studio_root* use the portable ``{cf-studio-path}/<relative>`` form.
+    Paths inside *project_root* but outside *studio_root* use ``@/<relative>``.
+    Warns and falls back to an absolute path only when *target* escapes *project_root*.
     """
     if studio_root is not None:
         try:
             rel = target.relative_to(studio_root).as_posix()
             return "{cf-studio-path}/" + rel
-        except ValueError as exc:
-            _warn_agents(f"path {target} is not relative to studio root {studio_root}: {exc}")
+        except ValueError:
+            pass  # path is outside studio_root but may still be inside project_root
     try:
         rel = target.relative_to(project_root).as_posix()
         return "{cf-studio-path}/" + rel if studio_root is None else f"@/{rel}"

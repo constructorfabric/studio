@@ -1400,5 +1400,98 @@ class TestAdapterInfoResolveVarsFailure(unittest.TestCase):
             self.assertEqual(out["artifacts_registry_error"], "MISSING_OR_INVALID_TOML")
 
 
+class TestKitResourceDriftContainmentWarning(unittest.TestCase):
+    """Regression tests for register-mode containment warning boundary.
+
+    Paths outside adapter_dir but inside project_root are valid for register-mode kits
+    and must not produce a warning. Paths that escape project_root are always wrong and
+    must produce a warning.
+    """
+
+    def _make_bindings(self, path: Path) -> dict:
+        return {"skill": {"path": str(path)}}
+
+    def test_register_mode_path_inside_project_root_no_warning(self):
+        """No warning when path is outside adapter_dir but still inside project_root."""
+        from studio.commands.adapter_info import _kit_resource_drift
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            adapter_dir = project_root / ".cf-studio"
+            kit_dir = project_root / "src" / "my-kit"
+            skill_file = kit_dir / "SKILL.md"
+            skill_file.parent.mkdir(parents=True)
+            skill_file.write_text("# skill\n", encoding="utf-8")
+
+            resource_bindings = self._make_bindings(skill_file)
+            with self.assertLogs("studio.commands.adapter_info", level="WARNING") as log_ctx:
+                # emit a harmless sentinel so assertLogs doesn't fail on zero records
+                import logging
+                logging.getLogger("studio.commands.adapter_info").warning("sentinel")
+                missing, violations = _kit_resource_drift(
+                    adapter_dir,
+                    {"skill"},
+                    resource_bindings,
+                    project_root=project_root,
+                )
+
+            # path is outside adapter_dir → containment violation recorded
+            self.assertIn("skill", violations)
+            # but no warning about the kit path — only our sentinel appears
+            real_warnings = [r for r in log_ctx.output if "sentinel" not in r]
+            self.assertEqual(real_warnings, [], msg=f"Unexpected warnings: {real_warnings}")
+            # file exists → not missing
+            self.assertNotIn("skill", missing)
+
+    def test_register_mode_path_escaping_project_root_logs_warning(self):
+        """Warning is logged when a resource path escapes the project root entirely."""
+        from studio.commands.adapter_info import _kit_resource_drift
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            adapter_dir = project_root / ".cf-studio"
+            project_root.mkdir()
+
+            # file lives completely outside project_root
+            outside_dir = Path(tmp_dir) / "outside"
+            outside_dir.mkdir()
+            skill_file = outside_dir / "SKILL.md"
+            skill_file.write_text("# skill\n", encoding="utf-8")
+
+            resource_bindings = self._make_bindings(skill_file)
+            with self.assertLogs("studio.commands.adapter_info", level="WARNING") as log_ctx:
+                missing, violations = _kit_resource_drift(
+                    adapter_dir,
+                    {"skill"},
+                    resource_bindings,
+                    project_root=project_root,
+                )
+
+            self.assertIn("skill", violations)
+            real_warnings = [r for r in log_ctx.output if "is not relative to" in r]
+            self.assertTrue(real_warnings, msg="Expected a warning about path escaping project root")
+
+    def test_no_project_root_falls_back_to_adapter_dir_boundary(self):
+        """When project_root is not supplied, adapter_dir is used as the warning boundary."""
+        from studio.commands.adapter_info import _kit_resource_drift
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            adapter_dir = project_root / ".cf-studio"
+            outside_dir = project_root / "src"
+            outside_dir.mkdir(parents=True)
+            skill_file = outside_dir / "SKILL.md"
+            skill_file.write_text("# skill\n", encoding="utf-8")
+
+            resource_bindings = self._make_bindings(skill_file)
+            with self.assertLogs("studio.commands.adapter_info", level="WARNING") as log_ctx:
+                _kit_resource_drift(
+                    adapter_dir,
+                    {"skill"},
+                    resource_bindings,
+                    # no project_root → falls back to adapter_dir as boundary
+                )
+
+            real_warnings = [r for r in log_ctx.output if "is not relative to" in r]
+            self.assertTrue(real_warnings, msg="Expected warning when no project_root and path is outside adapter_dir")
+
+
 if __name__ == "__main__":
     unittest.main()

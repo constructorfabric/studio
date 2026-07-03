@@ -267,12 +267,13 @@ def _resolve_info_binding_path(adapter_dir: Path, raw_path: object) -> Optional[
 
 
 # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
-def _is_relative_to(path: Path, parent: Path) -> bool:
+def _is_relative_to(path: Path, parent: Path, *, warn: bool = True) -> bool:
     try:
         path.resolve().relative_to(parent.resolve())
         return True
     except ValueError as exc:
-        _warn_adapter_info(f"path {path} is not relative to {parent}: {exc}")
+        if warn:
+            _warn_adapter_info(f"path {path} is not relative to {parent}: {exc}")
         return False
 # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
 
@@ -339,18 +340,24 @@ def _kit_resource_drift(
     adapter_dir: Path,
     model_resource_ids: set[str],
     resource_bindings: dict,
+    project_root: Optional[Path] = None,
 ) -> tuple[list[str], list[str]]:
     missing_resources: list[str] = []
     containment_violations: list[str] = []
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift-resource-scan
+    # containment_violations tracks paths outside adapter_dir (for status reporting).
+    # Warnings fire only when a path also escapes project_root — paths inside the project
+    # but outside .cf-studio are valid for register-mode kits.
+    warn_boundary = project_root if project_root is not None else adapter_dir
     for resource_id in sorted(model_resource_ids):
         binding = resource_bindings.get(resource_id)
         binding_path = binding.get("path") if isinstance(binding, dict) else None
         resolved = _resolve_info_binding_path(adapter_dir, binding_path)
         if resolved is None:
             continue
-        if not _is_relative_to(resolved, adapter_dir):
+        if not _is_relative_to(resolved, adapter_dir, warn=False):
             containment_violations.append(resource_id)
+            _is_relative_to(resolved, warn_boundary)
         if not resolved.exists():
             missing_resources.append(resource_id)
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift-resource-scan
@@ -375,6 +382,7 @@ def _kit_model_drift(
     model: object,
     core_kit: dict,
     resource_bindings: dict,
+    project_root: Optional[Path] = None,
 ) -> dict:
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift
     install_mode = str(core_kit.get("install_mode", "copy")) if isinstance(core_kit, dict) else "copy"
@@ -384,6 +392,7 @@ def _kit_model_drift(
         adapter_dir,
         model_resource_ids,
         resource_bindings,
+        project_root=project_root,
     )
     stale_resources = sorted(bound_resource_ids - model_resource_ids)
     disabled_public_components = sorted(
@@ -410,6 +419,7 @@ def _kit_model_to_info(  # pylint: disable=too-many-locals
     kit_slug: str,
     kit_root: Path,
     core_kit: dict,
+    project_root: Optional[Path] = None,
 ) -> tuple[dict, dict]:
     """Return canonical kit model info plus legacy kit_details compatibility."""
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-info
@@ -424,7 +434,7 @@ def _kit_model_to_info(  # pylint: disable=too-many-locals
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-installed-source-truth
 
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape
-    drift = _kit_model_drift(adapter_dir, model, core_kit, resource_bindings)
+    drift = _kit_model_drift(adapter_dir, model, core_kit, resource_bindings, project_root=project_root)
     disabled_public_components = _disabled_public_component_ids(drift)
     active_targets = sorted({
         target
@@ -784,14 +794,14 @@ def _collect_kit_entries(core_data: Optional[dict]) -> dict:
 # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-collect-kit-entries
 
 
-def _collect_kit_info(adapter_dir: Path, core_data: Optional[dict]) -> tuple[dict, dict]:
+def _collect_kit_info(adapter_dir: Path, core_data: Optional[dict], project_root: Optional[Path] = None) -> tuple[dict, dict]:
     kit_models: dict = {}
     kit_details: dict = {}
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-collect-kit-info
     for slug, core_kit in sorted(_collect_kit_entries(core_data).items()):
         kit_dir = _resolve_info_kit_root(adapter_dir, slug, core_kit)
         try:
-            model_info, kit_detail = _kit_model_to_info(adapter_dir, slug, kit_dir, core_kit)
+            model_info, kit_detail = _kit_model_to_info(adapter_dir, slug, kit_dir, core_kit, project_root=project_root)
             kit_models[slug] = model_info
             kit_details[slug] = kit_detail
         except (OSError, ValueError) as exc:
@@ -976,7 +986,7 @@ def cmd_adapter_info(argv: list[str]) -> int:
     config["has_config"] = _has_config_file(adapter_dir)
     if core_data and isinstance(core_data.get("version"), str):
         config["config_version"] = core_data["version"]
-    config["kit_models"], config["kit_details"] = _collect_kit_info(adapter_dir, core_data)
+    config["kit_models"], config["kit_details"] = _collect_kit_info(adapter_dir, core_data, project_root=project_root)
     config["agent_integrations"] = _collect_agent_integrations(project_root)
     config["directories"] = _collect_directory_status(adapter_dir)
     _apply_variables_metadata(
