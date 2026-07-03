@@ -221,7 +221,7 @@ COMMAND_GROUP Delegation & Diagnostics
 
 ## Notes
 
-**CPT** — Canonical Provenance Trace ID. A structured identifier (e.g., `CPT-FEAT-001`) embedded in source code and artifact files to create a bidirectional traceability link. Commands in the Traceability Navigation category operate on these IDs.
+**CPT** — Canonical Provenance Trace ID. A structured identifier with the format `cpt-{system-slug}-{kind}-{slug}` (e.g., `cpt-studio-fr-session-routing`) embedded in source code and artifact files to create a bidirectional traceability link. Commands in the Traceability Navigation category operate on these IDs.
 
 **PDSL** — Prompt Domain Specification Language. A contract syntax used inside skill and workflow Markdown files to declare what an AI prompt block expects as input and produces as output. The `pdsl` command validates these contracts.
 
