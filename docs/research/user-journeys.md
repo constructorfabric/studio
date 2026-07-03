@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document describes the twenty-two primary cross-cutting user journeys in Constructor Studio v1.5.9 using CDSL (Constructor Domain Specification Language) algorithms. Each journey traces the full path a user takes from intent to outcome, showing how Studio's monolithic workflows chain together.
+This document describes the twenty-two primary cross-cutting user journeys in Constructor Studio v1.5.9. Each journey traces the full path a user takes from intent to outcome, showing how Studio's monolithic workflows chain together.
 
 **How to read ALGORITHM blocks**
 
