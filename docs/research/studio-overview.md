@@ -18,7 +18,7 @@ The goal is to answer three questions for each capability: **what it does**, **w
 
 ### 1. Session Entry and Routing
 
-```cdsl
+```text
 CAPABILITY SessionEntryAndRouting
   ACTOR: Any team member (developer, tech writer, PM)
   PURPOSE: Provides a single activation point for all Studio capabilities. Free-text
@@ -62,7 +62,7 @@ CAPABILITY SessionEntryAndRouting
 
 ### 2. Context Discovery
 
-```cdsl
+```text
 CAPABILITY ContextDiscovery
   ACTOR: Developer, tech writer, or any contributor starting a complex task
   PURPOSE: Scans the project read-only to find every file and artifact relevant
@@ -112,7 +112,7 @@ CAPABILITY ContextDiscovery
 
 ### 3. Dependency Mapping
 
-```cdsl
+```text
 CAPABILITY DependencyMapping
   ACTOR: Tech lead, architect, or PM assessing impact of a refactor
   PURPOSE: Builds a visual and queryable map of how CPT traceability IDs connect
@@ -160,7 +160,7 @@ CAPABILITY DependencyMapping
 
 ### 4. Design Exploration
 
-```cdsl
+```text
 CAPABILITY DesignExploration
   ACTOR: Developer, architect, or PM evaluating design options before committing
   PURPOSE: Runs a structured expert panel discussion on any design topic, surfacing
@@ -201,7 +201,7 @@ CAPABILITY DesignExploration
 
 ### 5. Planning
 
-```cdsl
+```text
 CAPABILITY Planning
   ACTOR: Tech lead or senior developer breaking a large initiative into
     executable phases
@@ -243,7 +243,7 @@ CAPABILITY Planning
 
 ### 6. Source Code Work
 
-```cdsl
+```text
 CAPABILITY SourceCodeWork
   ACTOR: Developer (all seniority levels)
   PURPOSE: Handles the complete write-review-fix lifecycle for source code in
@@ -304,7 +304,7 @@ CAPABILITY SourceCodeWork
 
 ### 7. Documentation Work
 
-```cdsl
+```text
 CAPABILITY DocumentationWork
   ACTOR: Tech writer, developer authoring READMEs or ADRs, or PM authoring specs
   PURPOSE: Handles the complete write-review-fix lifecycle for all documentation
@@ -365,7 +365,7 @@ CAPABILITY DocumentationWork
 
 ### 8. Skill and Workflow Authoring
 
-```cdsl
+```text
 CAPABILITY SkillAndWorkflowAuthoring
   ACTOR: Studio author (developer or prompt engineer building or maintaining
     Studio skills, workflows, agent instructions, or system prompts)
@@ -428,7 +428,7 @@ CAPABILITY SkillAndWorkflowAuthoring
 
 ### 9. Kit Management
 
-```cdsl
+```text
 CAPABILITY KitManagement
   ACTOR: Developer or Studio administrator managing reusable behavior packages
     across projects
@@ -479,7 +479,7 @@ CAPABILITY KitManagement
 
 ### 10. Multi-Repo Workspace
 
-```cdsl
+```text
 CAPABILITY MultiRepoWorkspace
   ACTOR: Tech lead or architect managing a federation of related Git repositories
   PURPOSE: Federates multiple Git repositories under one Studio workspace so that
@@ -530,7 +530,7 @@ CAPABILITY MultiRepoWorkspace
 
 ### 11. Narrative Explanation
 
-```cdsl
+```text
 CAPABILITY NarrativeExplanation
   ACTOR: Developer onboarding to a new codebase, or any team member who needs
     to understand a complex artifact or decision
@@ -573,7 +573,7 @@ CAPABILITY NarrativeExplanation
 
 ### 12. Project Setup and Brownfield Onboarding
 
-```cdsl
+```text
 CAPABILITY ProjectSetupAndBrownfieldOnboarding
   ACTOR: Developer or tech lead initializing Studio on an existing or new project
   PURPOSE: Scans an existing codebase, generates grounded configuration and rule
@@ -639,7 +639,7 @@ CAPABILITY ProjectSetupAndBrownfieldOnboarding
 
 ### 13. Session Overlays
 
-```cdsl
+```text
 CAPABILITY SessionOverlays
   ACTOR: Any Studio user (Brave New World) or Studio author / debugger
     (Debug Prompts)
@@ -688,7 +688,7 @@ CAPABILITY SessionOverlays
 
 ### 14. SDLC Artifact Pipeline
 
-```cdsl
+```text
 CAPABILITY SdlcArtifactPipeline
   ACTOR: Product Manager, Tech Lead, Architect, Developer
   PURPOSE: The SDLC kit adds a structured artifact pipeline on top of Constructor
@@ -719,7 +719,7 @@ CAPABILITY SdlcArtifactPipeline
     GIVEN: A tech lead chose a specific database technology and must document why
     WHEN: They invoke cf-sdlc-doc-adr and describe the decision context
     THEN: Studio authors an ADR with context, considered options, the chosen option,
-      consequences, and a unique cpt-adr-* traceability ID; the ADR is validated
+      consequences, and a unique cpt-{system}-adr-* traceability ID; the ADR is validated
       and cross-referenced into the DESIGN artifact automatically
   SCENARIO ChangeImpactAnalysis
     GIVEN: A product requirement (PRD FR) was updated to change behavior
@@ -754,19 +754,19 @@ CAPABILITY SdlcArtifactPipeline
 
 ## Summary Table
 
-| Capability | Primary Actor | Workflow / Command | Key CLI |
+| Capability | Primary Actor | AI Workflow(s) | CLI Commands |
 |---|---|---|---|
-| Session Entry and Routing | Any team member | cf-studio, cf-analyze, cf-generate | `/cf` |
-| Context Discovery | Developer, tech writer, PM | cf-explore | `cfs explore` |
+| Session Entry and Routing | Any team member | cf-studio, cf-analyze, cf-generate | — |
+| Context Discovery | Developer, tech writer, PM | cf-explore | — |
 | Dependency Mapping | Tech lead, architect, PM | cf-map | `cfs map` |
-| Design Exploration | Developer, architect, PM | cf-brainstorm | `/cf brainstorm` |
-| Planning | Tech lead, senior developer | cf-plan | `/cf plan` |
-| Source Code Work | Developer | cf-coding (monolithic) | `/cf code` |
-| Documentation Work | Tech writer, developer, PM | cf-write-docs (monolithic) | `/cf docs` |
-| Skill and Workflow Authoring | Studio author, prompt engineer | cf-write-skills (monolithic) | `/cf skills` |
-| Kit Management | Developer, Studio admin | cf-kit | `cfs kit install / update / normalize` |
-| Multi-Repo Workspace | Tech lead, architect | cf-workspace | `cfs workspace-init / add / sync` |
-| Narrative Explanation | Developer, any team member | cf-explain | `/cf explain` |
-| Project Setup and Brownfield Onboarding | Developer, tech lead | cf-auto-config | `cfs init / update / generate-agents` |
-| Session Overlays | Any user / Studio author | cf-brave-new-world, cf-debug-prompts | (activated at session start) |
-| 14 | SDLC Artifact Pipeline | PM, Tech Lead, Architect, Developer | cf-sdlc-doc-prd, cf-sdlc-doc-adr, cf-sdlc-doc-design, cf-sdlc-decompose, cf-sdlc-doc-feature, cf-sdlc-implement, cf-sdlc-change-impact-analysis, cf-sdlc-pr-review, cf-sdlc-pr-status, cf-sdlc-reverse-engineer, cf-sdlc-migrate-openspec | cfs validate --artifact, cfs spec-coverage |
+| Design Exploration | Developer, architect, PM | cf-brainstorm | — |
+| Planning | Tech lead, senior developer | cf-plan | — |
+| Source Code Work | Developer | cf-coding | — |
+| Documentation Work | Tech writer, developer, PM | cf-write-docs | `cfs validate-toc`, `cfs check-language` |
+| Skill and Workflow Authoring | Studio author, prompt engineer | cf-write-skills | `cfs pdsl` |
+| Kit Management | Developer, Studio admin | cf-kit | `cfs kit install / update / normalize / check-updates` |
+| Multi-Repo Workspace | Tech lead, architect | cf-workspace | `cfs workspace-init / workspace-add / workspace-info / workspace-sync` |
+| Narrative Explanation | Developer, any team member | cf-explain | — |
+| Project Setup and Brownfield Onboarding | Developer, tech lead | cf-auto-config | `cfs init` / `cfs update` / `cfs generate-agents` |
+| Session Overlays | Any user / Studio author | cf-brave-new-world, cf-debug-prompts | — |
+| SDLC Artifact Pipeline | PM, Tech Lead, Architect, Developer | cf-sdlc-doc-prd, cf-sdlc-doc-adr, cf-sdlc-doc-design, cf-sdlc-decompose, cf-sdlc-doc-feature, cf-sdlc-implement, cf-sdlc-change-impact-analysis, cf-sdlc-pr-review, cf-sdlc-pr-status, cf-sdlc-reverse-engineer, cf-sdlc-migrate-openspec | `cfs validate --artifact`, `cfs spec-coverage` |

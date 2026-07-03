@@ -34,7 +34,7 @@ All workflows in v1.5.9 are monolithic. Each workflow owns its full lifecycle �
 | 5 | Create and publish a behavior kit | Platform engineer | Package reusable behaviors into a validated, installable kit | `cf-kit` | `cfs kit install` → `cfs generate-agents` |
 | 6 | Generate project documentation | Technical writer / Developer | Produce audience-tuned, reviewed, committed documentation | `cf-explore` → `cf-write-docs` | — |
 | 7 | Author a Product Requirements Document (PRD) | Product Manager | Produce a validated PRD with actors, FR/NFR, use cases, success criteria, and cpt-IDs | `cf-sdlc-doc-prd` → `cf-write-docs` | `cfs validate --artifact` |
-| 8 | Record an Architecture Decision (ADR) | Architect / Tech Lead | Capture a technology or design decision with context, options, consequences, and a cpt-adr-* ID | `cf-sdlc-doc-adr` → `cf-write-docs` | `cfs validate --artifact` |
+| 8 | Record an Architecture Decision (ADR) | Architect / Tech Lead | Capture a technology or design decision with context, options, consequences, and a cpt-{system}-adr-* ID | `cf-sdlc-doc-adr` → `cf-write-docs` | `cfs validate --artifact` |
 | 9 | Author a System DESIGN Document | Architect / Tech Lead | Document system architecture: components, interfaces, boundaries, principles, constraints | `cf-sdlc-doc-design` → `cf-write-docs` | `cfs validate --artifact` |
 | 10 | Decompose DESIGN into Feature List (DECOMPOSITION) | Tech Lead / PM | Break a DESIGN into an ordered, dependency-linked FEATURE list with PRD/DESIGN coverage | `cf-sdlc-decompose` → `cf-write-docs` | `cfs validate --artifact` |
 | 11 | Author a FEATURE Specification | Tech Lead / Developer | Write a precise, implementable FEATURE spec with CDSL flows, algorithms, states, and test scenarios | `cf-sdlc-doc-feature` → `cf-write-docs` | `cfs validate --artifact` |
@@ -56,7 +56,7 @@ All workflows in v1.5.9 are monolithic. Each workflow owns its full lifecycle �
 
 ### Journey 1: Plan and Implement a New Feature
 
-```cdsl
+```text
 ALGORITHM PlanAndImplementFeature
   ACTOR: Developer
   GOAL: Deliver a working, reviewed, and committed feature implementation
@@ -147,7 +147,7 @@ ALGORITHM PlanAndImplementFeature
 
 ### Journey 2: Onboard a Brownfield Project to Studio
 
-```cdsl
+```text
 ALGORITHM OnboardBrownfieldProject
   ACTOR: Tech lead or DevOps engineer
   GOAL: Bring an existing codebase under Studio governance by generating
@@ -226,7 +226,7 @@ ALGORITHM OnboardBrownfieldProject
 
 ### Journey 3: Brainstorm and Write an Architectural Decision Record
 
-```cdsl
+```text
 ALGORITHM BrainstormAndWriteADR
   ACTOR: Architect or Tech lead
   GOAL: Produce a structured, persisted, and reviewed Architectural
@@ -327,7 +327,7 @@ ALGORITHM BrainstormAndWriteADR
 
 ### Journey 4: Review and Fix Existing Code
 
-```cdsl
+```text
 ALGORITHM ReviewAndFixExistingCode
   ACTOR: Developer or Reviewer
   GOAL: Systematically identify issues in existing code, obtain per-finding
@@ -408,7 +408,7 @@ ALGORITHM ReviewAndFixExistingCode
 
 ### Journey 5: Create and Publish a Behavior Kit
 
-```cdsl
+```text
 ALGORITHM CreateAndPublishBehaviorKit
   ACTOR: Platform engineer
   GOAL: Package reusable Studio behaviors into a validated, installable
@@ -492,7 +492,7 @@ ALGORITHM CreateAndPublishBehaviorKit
 
 ### Journey 6: Generate Project Documentation
 
-```cdsl
+```text
 ALGORITHM GenerateProjectDocumentation
   ACTOR: Technical writer or Developer
   GOAL: Produce audience-tuned, reviewed, and committed project documentation
@@ -592,7 +592,7 @@ ALGORITHM GenerateProjectDocumentation
 
 ### Journey 7: Author a Product Requirements Document (PRD)
 
-```cdsl
+```text
 ALGORITHM AuthorPRD
   ACTOR: Product Manager
   GOAL: Produce a validated PRD with actors, FR/NFR, use cases, success
@@ -602,7 +602,7 @@ ALGORITHM AuthorPRD
     Stakeholder context
   ]
   OUTPUTS: [
-    Validated PRD markdown file with cpt-fr-* and cpt-nfr-* IDs,
+    Validated PRD markdown file with cpt-{system}-fr-* and cpt-{system}-nfr-* IDs,
     cfs validate --artifact PASS
   ]
   STEPS:
@@ -653,11 +653,11 @@ ALGORITHM AuthorPRD
 
 ### Journey 8: Record an Architecture Decision (ADR)
 
-```cdsl
+```text
 ALGORITHM RecordADR
   ACTOR: Architect or Tech Lead
   GOAL: Capture a technology or design decision with context, options,
-        consequences, and a cpt-adr-* ID that can be cross-referenced
+        consequences, and a cpt-{system}-adr-* ID that can be cross-referenced
         in the system DESIGN document
   INPUTS: [
     Decision description,
@@ -665,7 +665,7 @@ ALGORITHM RecordADR
     DESIGN artifact (optional, for cross-reference)
   ]
   OUTPUTS: [
-    ADR markdown file with cpt-adr-* ID,
+    ADR markdown file with cpt-{system}-adr-* ID,
     ADR ID registered and cross-referenced in DESIGN
   ]
   STEPS:
@@ -681,7 +681,7 @@ ALGORITHM RecordADR
          3d. Decision Outcome — chosen option with rationale.
          3e. Consequences — positive, negative, and neutral effects;
              risks introduced; follow-on actions.
-         3f. cpt-adr-* ID — assigned and embedded in front-matter.
+         3f. cpt-{system}-adr-* ID — assigned and embedded in front-matter.
     4. Deterministic gate: run `cfs validate --artifact` on the ADR file.
     5. Semantic review against ADR checklist; findings presented by severity.
     6. DECISION: Fix which findings?
@@ -691,7 +691,7 @@ ALGORITHM RecordADR
     - FixWhichFindings: per-finding selection
   GUARDS: [
     Decision must have at least two considered options before authoring is complete,
-    cpt-adr-* ID must be assigned before the ADR file is written,
+    cpt-{system}-adr-* ID must be assigned before the ADR file is written,
     Consequences section must be non-empty,
     cfs validate --artifact must return PASS before the ADR is considered complete
   ]
@@ -702,7 +702,7 @@ ALGORITHM RecordADR
 
 ### Journey 9: Author a System DESIGN Document
 
-```cdsl
+```text
 ALGORITHM AuthorSystemDesign
   ACTOR: Architect or Tech Lead
   GOAL: Document system architecture covering components, interfaces,
@@ -714,8 +714,8 @@ ALGORITHM AuthorSystemDesign
     High-level architecture knowledge
   ]
   OUTPUTS: [
-    DESIGN markdown with cpt-component-*, cpt-principle-*, and
-    cpt-constraint-* IDs,
+    DESIGN markdown with cpt-{system}-component-*, cpt-{system}-principle-*, and
+    cpt-{system}-constraint-* IDs,
     cfs validate --artifact PASS
   ]
   STEPS:
@@ -745,7 +745,7 @@ ALGORITHM AuthorSystemDesign
     - IncludeSequenceDiagrams: yes (auto-embed Mermaid) / skip (placeholders)
     - FixWhichFindings: per-finding selection
   GUARDS: [
-    All cpt-component-* IDs must be unique within the system namespace,
+    All cpt-{system}-component-* IDs must be unique within the system namespace,
     DESIGN must reference existing ADR IDs for every major technology choice,
     PRD FR coverage must be noted in the component model or interface descriptions,
     cfs validate --artifact must return PASS before DESIGN is considered complete
@@ -757,7 +757,7 @@ ALGORITHM AuthorSystemDesign
 
 ### Journey 10: Decompose DESIGN into Feature List (DECOMPOSITION)
 
-```cdsl
+```text
 ALGORITHM DecomposeDesign
   ACTOR: Tech Lead or PM
   GOAL: Break a DESIGN into an ordered, dependency-linked FEATURE list
@@ -768,7 +768,7 @@ ALGORITHM DecomposeDesign
     PRD (for coverage links back to FRs)
   ]
   OUTPUTS: [
-    DECOMPOSITION markdown with cpt-feature-* IDs, ordering,
+    DECOMPOSITION markdown with cpt-{system}-feature-* IDs, ordering,
     dependency graph, and coverage links,
     cfs validate --artifact PASS
   ]
@@ -780,9 +780,9 @@ ALGORITHM DecomposeDesign
          3a. Feature entries — for each deliverable unit of work:
              - Assign a unique cpt-{system}-feature-* ID.
              - Write a one-paragraph description of scope and boundaries.
-             - Record dependency links to other cpt-feature-* IDs.
-             - Record coverage links to PRD cpt-fr-* IDs and DESIGN
-               cpt-component-* IDs.
+             - Record dependency links to other cpt-{system}-feature-* IDs.
+             - Record coverage links to PRD cpt-{system}-fr-* IDs and DESIGN
+               cpt-{system}-component-* IDs.
              - Set initial status (planned).
              - Define a measurable Definition of Done.
          3b. DECISION: Ordering strategy?
@@ -801,7 +801,7 @@ ALGORITHM DecomposeDesign
     - OrderingStrategy: dependency / risk / value priority
     - FixWhichFindings: per-finding selection
   GUARDS: [
-    Every cpt-feature-* entry must reference at least one PRD cpt-fr-* ID,
+    Every cpt-{system}-feature-* entry must reference at least one PRD cpt-{system}-fr-* ID,
     Dependency graph must have no cycles,
     All features must have a non-empty Definition of Done,
     cfs validate --artifact must return PASS before DECOMPOSITION is complete
@@ -813,24 +813,24 @@ ALGORITHM DecomposeDesign
 
 ### Journey 11: Author a FEATURE Specification
 
-```cdsl
+```text
 ALGORITHM AuthorFeatureSpec
   ACTOR: Tech Lead or Developer
   GOAL: Write a precise, implementable FEATURE specification with CDSL
         flows, algorithms, state diagrams, and test scenarios that
         developers can implement with full traceability
   INPUTS: [
-    DECOMPOSITION entry (cpt-feature-* ID and description),
+    DECOMPOSITION entry (cpt-{system}-feature-* ID and description),
     DESIGN (for interface contracts),
     PRD (for acceptance criteria)
   ]
   OUTPUTS: [
-    FEATURE markdown with cpt-flow-*, cpt-algo-*, and cpt-state-* IDs
+    FEATURE markdown with cpt-{system}-flow-*, cpt-{system}-algo-*, and cpt-{system}-state-* IDs
     and test scenarios,
     cfs validate --artifact PASS
   ]
   STEPS:
-    1. Invoke cf-sdlc-doc-feature with the target cpt-feature-* ID.
+    1. Invoke cf-sdlc-doc-feature with the target cpt-{system}-feature-* ID.
     2. Studio binds FEATURE template + rules + checklist + example from
        the SDLC kit before any authoring begins.
     3. Studio authors the FEATURE spec via cf-write-docs engine:
@@ -846,7 +846,7 @@ ALGORITHM AuthorFeatureSpec
                entities; each state assigned a cpt-{system}-state-* ID.
              - SKIP: state diagram section omitted.
          3e. Test Scenarios — at least one happy-path scenario and one
-             error/edge-case scenario per cpt-flow-* ID.
+             error/edge-case scenario per cpt-{system}-flow-* ID.
          3f. Definition of Done — measurable, checkable criteria derived
              from PRD acceptance conditions.
     4. Deterministic gate: run `cfs validate --artifact` on the FEATURE file.
@@ -859,7 +859,7 @@ ALGORITHM AuthorFeatureSpec
     - IncludeStateDiagrams: yes (Mermaid state diagrams) / skip
     - FixWhichFindings: per-finding selection
   GUARDS: [
-    Every cpt-flow-* ID must be unique within the system namespace,
+    Every cpt-{system}-flow-* ID must be unique within the system namespace,
     Test scenarios must cover at least one happy-path and one error case
       per flow,
     Definition of Done must be measurable and checkable,
@@ -872,14 +872,14 @@ ALGORITHM AuthorFeatureSpec
 
 ### Journey 12: Implement a FEATURE with Traceability
 
-```cdsl
+```text
 ALGORITHM ImplementFeatureWithTraceability
   ACTOR: Developer
   GOAL: Write production code that implements a FEATURE specification,
         with @cpt-* markers in source linking every code unit back to
         the FEATURE flow and algorithm IDs it satisfies
   INPUTS: [
-    FEATURE spec (cpt-feature-* ID and cpt-flow-* IDs),
+    FEATURE spec (cpt-{system}-feature-* ID and cpt-{system}-flow-* IDs),
     Codebase rules (codebase_rules),
     Codebase checklist (codebase_checklist)
   ]
@@ -896,11 +896,11 @@ ALGORITHM ImplementFeatureWithTraceability
        and interfaces in the codebase that the FEATURE will touch.
     4. DECISION: Write tests first?
        - YES (test-first): developer (or Studio) writes failing tests
-         for each cpt-flow-* scenario before implementation code.
+         for each cpt-{system}-flow-* scenario before implementation code.
        - NO: implementation code written first; tests follow.
     5. Author dispatch — cf-coding writes implementation with
        @cpt-{kind}:{id}:p{N} markers on every function, class, or
-       block that satisfies a cpt-flow-* or cpt-algo-* ID per
+       block that satisfies a cpt-{system}-flow-* or cpt-{system}-algo-* ID per
        codebase_rules.
     6. Deterministic gate: run project tests + lint + typecheck + build
        + `cfs validate --artifact` (traceability check). Any failure
@@ -916,7 +916,7 @@ ALGORITHM ImplementFeatureWithTraceability
     - TestFirstPath: yes (test-first) / no (implementation-first)
     - FixWhichFindings: per-finding selection
   GUARDS: [
-    @cpt-* markers must be present for all cpt-flow-* IDs declared
+    @cpt-* markers must be present for all cpt-{system}-flow-* IDs declared
       in the FEATURE spec,
     cfs validate --artifact must return PASS before implementation is done,
     CI (tests + lint + typecheck + build) must be green before done,
@@ -929,7 +929,7 @@ ALGORITHM ImplementFeatureWithTraceability
 
 ### Journey 13: Analyze Change Impact Across the Artifact Pipeline
 
-```cdsl
+```text
 ALGORITHM AnalyzeChangeImpact
   ACTOR: Tech Lead, PM, or Release Manager
   GOAL: Understand which downstream artifacts and @cpt-* code markers
@@ -983,7 +983,7 @@ ALGORITHM AnalyzeChangeImpact
 
 ### Journey 14: Review a GitHub Pull Request
 
-```cdsl
+```text
 ALGORITHM ReviewGitHubPullRequest
   ACTOR: Tech Lead, Reviewer, or Team Lead
   GOAL: Obtain a structured, checklist-based review of a GitHub PR
@@ -1036,7 +1036,7 @@ ALGORITHM ReviewGitHubPullRequest
 
 ### Journey 15: Reconstruct SDLC Artifacts from Existing Code
 
-```cdsl
+```text
 ALGORITHM ReconstructSDLCArtifacts
   ACTOR: Tech Lead or Architect (working with legacy or undocumented code)
   GOAL: Reconstruct missing PRD, DESIGN, DECOMPOSITION, and FEATURE
@@ -1116,7 +1116,7 @@ ALGORITHM ReconstructSDLCArtifacts
 
 ### Journey 16: Full SDLC Pipeline End-to-End
 
-```cdsl
+```text
 ALGORITHM FullSDLCPipelineEndToEnd
   ACTOR: Product Manager, Architect, Developer (team)
   GOAL: Deliver a fully traced feature from product requirement to
@@ -1134,17 +1134,17 @@ ALGORITHM FullSDLCPipelineEndToEnd
     CI green
   ]
   STEPS:
-    1. PM invokes cf-sdlc-doc-prd — authors PRD with cpt-fr-* and
-       cpt-nfr-* IDs; cfs validate --artifact PASS.
+    1. PM invokes cf-sdlc-doc-prd — authors PRD with cpt-{system}-fr-* and
+       cpt-{system}-nfr-* IDs; cfs validate --artifact PASS.
     2. Architect invokes cf-sdlc-doc-adr for each major technology
-       decision — ADRs with cpt-adr-* IDs cross-referenced in DESIGN.
+       decision — ADRs with cpt-{system}-adr-* IDs cross-referenced in DESIGN.
     3. Architect invokes cf-sdlc-doc-design — DESIGN with
-       cpt-component-*, cpt-principle-*, cpt-constraint-* IDs;
+       cpt-{system}-component-*, cpt-{system}-principle-*, cpt-{system}-constraint-* IDs;
        cfs validate --artifact PASS.
     4. Tech lead invokes cf-sdlc-decompose — DECOMPOSITION with ordered
-       cpt-feature-* IDs linking back to PRD FRs and DESIGN components.
+       cpt-{system}-feature-* IDs linking back to PRD FRs and DESIGN components.
     5. For each feature: developer invokes cf-sdlc-doc-feature — FEATURE
-       spec with cpt-flow-*, cpt-algo-*, cpt-state-* IDs and test
+       spec with cpt-{system}-flow-*, cpt-{system}-algo-*, cpt-{system}-state-* IDs and test
        scenarios.
     6. Developer invokes cf-sdlc-implement — code written with @cpt-*
        markers; cfs validate --artifact + CI gate PASS.
@@ -1160,7 +1160,7 @@ ALGORITHM FullSDLCPipelineEndToEnd
     - TestFirst: write FEATURE test scenarios before implementation?
   GUARDS: [
     Every FEATURE references its parent DECOMPOSITION entry,
-    Every @cpt-* marker in code traces to a cpt-flow-* in a FEATURE
+    Every @cpt-* marker in code traces to a cpt-{system}-flow-* in a FEATURE
       spec,
     cfs validate --artifact PASS at every artifact stage,
     CI green before PR review
@@ -1173,7 +1173,7 @@ ALGORITHM FullSDLCPipelineEndToEnd
 
 ### Journey 17: Release Readiness Estimation
 
-```cdsl
+```text
 ALGORITHM ReleaseReadinessEstimation
   ACTOR: Release Manager, Tech Lead
   GOAL: Before a release, assess the downstream impact of all artifact
@@ -1219,7 +1219,7 @@ ALGORITHM ReleaseReadinessEstimation
 
 ### Journey 18: PR Status Monitoring
 
-```cdsl
+```text
 ALGORITHM PRStatusMonitoring
   ACTOR: Team Lead, PM, Release Manager
   GOAL: Get a current status snapshot of one or all open GitHub PRs —
@@ -1259,7 +1259,7 @@ ALGORITHM PRStatusMonitoring
 
 ### Journey 19: Spec Coverage Gate in CI
 
-```cdsl
+```text
 ALGORITHM SpecCoverageGateInCI
   ACTOR: Tech Lead, Developer, DevOps
   GOAL: Enforce a minimum @cpt-* marker coverage threshold as a quality
@@ -1306,7 +1306,7 @@ ALGORITHM SpecCoverageGateInCI
 
 ### Journey 20: Cross-Repo Traceability Navigation
 
-```cdsl
+```text
 ALGORITHM CrossRepoTraceabilityNavigation
   ACTOR: Tech Lead, Architect
   GOAL: In a multi-repo workspace, trace a CPT ID from its definition
@@ -1355,7 +1355,7 @@ ALGORITHM CrossRepoTraceabilityNavigation
 
 ### Journey 21: Interactive Kit Update Cycle
 
-```cdsl
+```text
 ALGORITHM InteractiveKitUpdateCycle
   ACTOR: Developer, Tech Lead
   GOAL: Update an installed kit to the latest version, reviewing each
@@ -1402,7 +1402,7 @@ ALGORITHM InteractiveKitUpdateCycle
 
 ### Journey 22: CDSL ID Navigation Workflow
 
-```cdsl
+```text
 ALGORITHM CDSLIDNavigationWorkflow
   ACTOR: Developer, Architect
   GOAL: Understand the full traceability picture for a given feature

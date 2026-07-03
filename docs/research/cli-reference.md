@@ -22,7 +22,7 @@ Constructor Studio ships a command-line tool called `cfs`. You invoke every feat
 
 ## Command Reference
 
-```cdsl
+```text
 COMMAND_GROUP Setup & Configuration
   PURPOSE: Bootstrap a new Studio project, keep it current, and inspect its active configuration.
   COMMANDS:
@@ -47,7 +47,7 @@ COMMAND_GROUP Setup & Configuration
       OPTIONS: []
 ```
 
-```cdsl
+```text
 COMMAND_GROUP Agent Integrations
   PURPOSE: Generate and inspect integration files that let AI coding assistants (Claude, Cursor, Windsurf, Copilot, OpenAI) work with Studio conventions.
   COMMANDS:
@@ -62,7 +62,7 @@ COMMAND_GROUP Agent Integrations
       OPTIONS: [--yes (skip confirmation prompts), --dry-run (preview changes without writing)]
 ```
 
-```cdsl
+```text
 COMMAND_GROUP Validation
   PURPOSE: Verify that kit structures, artifact cross-references, CDSL markers, table of contents, and content language all meet project standards.
   COMMANDS:
@@ -92,7 +92,7 @@ COMMAND_GROUP Validation
       OPTIONS: [--languages <list> (allowed script codes), --ignore <glob> (exclude paths), --quiet (suppress passing files)]
 ```
 
-```cdsl
+```text
 COMMAND_GROUP Traceability Navigation
   PURPOSE: Explore, query, and retrieve content associated with CPT (Canonical Provenance Trace) IDs throughout a project.
   COMMANDS:
@@ -122,7 +122,7 @@ COMMAND_GROUP Traceability Navigation
       OPTIONS: []
 ```
 
-```cdsl
+```text
 COMMAND_GROUP Kit Management
   PURPOSE: Install, update, and inspect reusable skill and rule packages (kits) within a Studio project.
   COMMANDS:
@@ -147,7 +147,7 @@ COMMAND_GROUP Kit Management
       OPTIONS: []
 ```
 
-```cdsl
+```text
 COMMAND_GROUP Document Utilities
   PURPOSE: Author structured documents, validate prompt contracts, and split large inputs for AI-assisted processing.
   COMMANDS:
@@ -167,7 +167,7 @@ COMMAND_GROUP Document Utilities
       OPTIONS: [--stdin (read from stdin), --dry-run (preview chunk boundaries without writing)]
 ```
 
-```cdsl
+```text
 COMMAND_GROUP Visualization
   PURPOSE: Produce an interactive visual map of how Studio artifacts and IDs depend on each other.
   COMMANDS:
@@ -177,7 +177,7 @@ COMMAND_GROUP Visualization
       OPTIONS: [--inline-data (embed JSON into HTML for single-file sharing), --output <file> (path for HTML or JSON), --json (output raw JSON instead of HTML)]
 ```
 
-```cdsl
+```text
 COMMAND_GROUP Workspace Management
   PURPOSE: Initialize and maintain a federated multi-repo workspace so Studio commands can span multiple repositories.
   COMMANDS:
@@ -202,7 +202,7 @@ COMMAND_GROUP Workspace Management
       OPTIONS: [--source <name> (sync one source only), --dry-run, --force (reset diverged worktrees)]
 ```
 
-```cdsl
+```text
 COMMAND_GROUP Delegation & Diagnostics
   PURPOSE: Delegate Studio plans to remote execution and verify that the local environment meets all prerequisites.
   COMMANDS:
