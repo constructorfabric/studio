@@ -3891,6 +3891,24 @@ class TestValidationConfig:
         d = cfg.to_dict()
         assert d == {"allowed_content_languages": ["en", "ru"]}
 
+    def test_to_dict_with_extended_validation_fields(self):
+        cfg = ValidationConfig(
+            allowed_symbol_sets=["math"],
+            allowed_chars=["⌘"],
+            denied_chars=["U+0430"],
+            require_toc=False,
+            toc_min_headings=4,
+            toc_ignore_paths=["docs/reference/**"],
+        )
+        assert cfg.to_dict() == {
+            "allowed_symbol_sets": ["math"],
+            "allowed_chars": ["⌘"],
+            "denied_chars": ["U+0430"],
+            "require_toc": False,
+            "toc_min_headings": 4,
+            "toc_ignore_paths": ["docs/reference/**"],
+        }
+
     def test_to_dict_empty_returns_empty_dict(self):
         cfg = ValidationConfig(allowed_content_languages=[])
         assert cfg.to_dict() == {}
@@ -3921,6 +3939,24 @@ class TestWorkspaceConfigValidationField:
         assert cfg.validation is not None
         assert cfg.validation.allowed_content_languages == ["en"]
 
+    def test_validation_extended_fields_parsed(self):
+        cfg = self._make_config(
+            '[validation]\n'
+            'allowed_symbol_sets = ["math"]\n'
+            'allowed_chars = ["⌘"]\n'
+            'denied_chars = ["U+0430"]\n'
+            'require_toc = false\n'
+            'toc_min_headings = 4\n'
+            'toc_ignore_paths = ["docs/reference/**"]\n'
+        )
+        assert cfg.validation is not None
+        assert cfg.validation.allowed_symbol_sets == ["math"]
+        assert cfg.validation.allowed_chars == ["⌘"]
+        assert cfg.validation.denied_chars == ["U+0430"]
+        assert cfg.validation.require_toc is False
+        assert cfg.validation.toc_min_headings == 4
+        assert cfg.validation.toc_ignore_paths == ["docs/reference/**"]
+
     def test_validation_included_in_to_dict(self):
         cfg = self._make_config('[validation]\nallowed_content_languages = ["en", "ru"]\n')
         d = cfg.to_dict()
@@ -3936,3 +3972,13 @@ class TestWorkspaceConfigValidationField:
         cfg = self._make_config('[validation]\nallowed_content_languages = ["en", "ru"]\n')
         errors = cfg.validate()
         assert not any("allowed_content_languages" in e for e in errors)
+
+    def test_validate_rejects_unknown_symbol_sets(self):
+        cfg = self._make_config('[validation]\nallowed_symbol_sets = ["unknown"]\n')
+        errors = cfg.validate()
+        assert any("allowed_symbol_sets" in e for e in errors)
+
+    def test_validate_rejects_bad_toc_min_headings(self):
+        cfg = self._make_config('[validation]\ntoc_min_headings = 0\n')
+        errors = cfg.validate()
+        assert any("toc_min_headings" in e for e in errors)

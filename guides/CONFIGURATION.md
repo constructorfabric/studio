@@ -505,21 +505,47 @@ Constructor Studio can deterministically restrict which Unicode scripts are allo
 
 **Why configure this**: prevent accidental script mixing, catch copy-pasted homoglyph attacks in IDs, enforce house-language for shipped artifacts. Failures surface as `LANG001` violations during `cfs validate` and standalone via `cfs check-language`.
 
-**Configuration**: workspace config under `[validation]` controls the default allow-list.
+**Configuration**: project `config/core.toml` under `[validation]` controls the default allow-list. Older projects may still be read from workspace config as a compatibility fallback, but `core.toml` is the primary source of truth.
 
 ```toml
 [validation]
 allowed_content_languages = ["en"]    # or ["en", "ru"]
+allowed_symbol_sets       = ["math", "technical", "keyboard", "arrows", "emoji"]
+allowed_chars             = ["⌘", "U+2300-U+23FF"]
+denied_chars              = ["U+0430"] # explicit confusable deny-list wins over languages/symbols
 ignore_paths              = ["translations/**/*.md"]
+
+# TOC policy for standalone `cfs validate-toc`
+require_toc               = true
+toc_min_headings          = 4
+toc_ignore_paths          = ["docs/reference/**", "**/README.md"]
 ```
 
-- 🖥 `cfs check-language` — scan default `architecture/` folder using workspace config
+- 🖥 `cfs check-language` — scan default `architecture/` folder using project validation config
 - 🖥 `cfs check-language --languages en` — override allow-list inline
 - 🖥 `cfs check-language --languages en,ru architecture/ docs/` — scan custom paths with multi-script allow
 - 🖥 `cfs check-language --ignore "translations/**/*.md"` — skip a glob
 - 🖥 `cfs check-language --quiet` — violations only, no summary header
+- 🖥 `cfs validate-toc docs/guide.md` — validate TOC presence/anchors using project TOC policy
+- 🖥 `cfs validate-toc --no-require-toc docs/guide.md` — disable `toc-missing` for this run
+- 🖥 `cfs validate-toc --min-headings 6 docs/guide.md` — only require a TOC once a document is large enough
+- 🖥 `cfs validate-toc --ignore "docs/reference/**" docs/**/*.md` — skip files by glob for this run
 
 `LANG001` errors include the file, line, and offending character so you can fix or whitelist quickly.
+
+### Symbol policy details
+
+- `allowed_symbol_sets` enables vetted language-neutral notation blocks so STEM / CS docs do not fail on symbols like `Δ`, `η₁`, `⅔`, `⌘`, `⟨ ⟩`, or emoji variation selectors.
+- `allowed_chars` is the escape hatch for project-specific long-tail symbols or explicit `U+XXXX-U+YYYY` ranges.
+- `denied_chars` is the inverse control: use it for homoglyph or confusable characters that must stay banned even if their script is otherwise allowed.
+- Inline code spans such as `` `η₁` `` are ignored by `cfs check-language`; fenced code blocks were already ignored.
+
+### TOC policy details
+
+- `require_toc = false` disables standalone `toc-missing` failures entirely, but files that already contain a TOC are still checked for broken anchors, missing headings, and staleness.
+- `toc_min_headings = N` scopes TOC enforcement to larger documents instead of every file with headings.
+- `toc_ignore_paths` lets standalone `cfs validate-toc` skip known exceptions such as reference docs or curated landing pages.
+- CLI flags override `core.toml` defaults for the current invocation; use config for repo policy, flags for one-off scans.
 
 ---
 

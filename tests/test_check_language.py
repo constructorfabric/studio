@@ -23,8 +23,11 @@ from studio.commands.check_language import (
     _count_md_files,
     _default_roots,
     _human_result,
+    _read_config_allowed_chars,
+    _read_config_denied_chars,
     _read_config_languages,
     _read_config_ignore_patterns,
+    _read_config_symbol_sets,
 )
 
 
@@ -188,47 +191,44 @@ class TestDefaultRoots(unittest.TestCase):
 
 
 class TestReadConfigLanguages(unittest.TestCase):
-    """_read_config_languages() reads from workspace config or returns default."""
+    """_read_config_languages() reads from validation config or returns default."""
 
     def test_no_context_returns_default_english(self):
         with patch("studio.utils.context.get_context", return_value=None):
             langs = _read_config_languages()
         self.assertEqual(langs, ["en"])
 
-    def test_workspace_config_error_raises_value_error(self):
+    def test_validation_config_error_raises_value_error(self):
         mock_ctx = MagicMock()
         mock_ctx.project_root = Path("/fake/project")
         with patch("studio.utils.context.get_context", return_value=mock_ctx):
-            with patch("studio.utils.workspace.find_workspace_config", return_value=(None, "bad config")):
+            with patch("studio.utils.files.load_validation_config", return_value=(None, "bad config")):
                 with self.assertRaises(ValueError):
                     _read_config_languages()
 
-    def test_no_workspace_config_returns_english(self):
+    def test_no_validation_config_returns_english(self):
         mock_ctx = MagicMock()
         mock_ctx.project_root = Path("/fake/project")
         with patch("studio.utils.context.get_context", return_value=mock_ctx):
-            with patch("studio.utils.workspace.find_workspace_config", return_value=(None, None)):
+            with patch("studio.utils.files.load_validation_config", return_value=(None, None)):
                 langs = _read_config_languages()
         self.assertEqual(langs, ["en"])
 
-    def test_workspace_config_with_languages_returns_them(self):
+    def test_validation_config_with_languages_returns_them(self):
         mock_ctx = MagicMock()
         mock_ctx.project_root = Path("/fake/project")
         mock_cfg = MagicMock()
-        mock_cfg.validation = MagicMock()
-        mock_cfg.validation.allowed_content_languages = ["en", "ru"]
+        mock_cfg.allowed_content_languages = ["en", "ru"]
         with patch("studio.utils.context.get_context", return_value=mock_ctx):
-            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+            with patch("studio.utils.files.load_validation_config", return_value=(mock_cfg, None)):
                 langs = _read_config_languages()
         self.assertEqual(langs, ["en", "ru"])
 
-    def test_workspace_config_no_validation_returns_english(self):
+    def test_validation_config_without_languages_returns_english(self):
         mock_ctx = MagicMock()
         mock_ctx.project_root = Path("/fake/project")
-        mock_cfg = MagicMock()
-        mock_cfg.validation = None
         with patch("studio.utils.context.get_context", return_value=mock_ctx):
-            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+            with patch("studio.utils.files.load_validation_config", return_value=(None, None)):
                 langs = _read_config_languages()
         self.assertEqual(langs, ["en"])
 
@@ -276,48 +276,77 @@ class TestHumanResult(unittest.TestCase):
 
 
 class TestReadConfigIgnorePatterns(unittest.TestCase):
-    """_read_config_ignore_patterns() reads ignore patterns from workspace config."""
+    """_read_config_ignore_patterns() reads ignore patterns from validation config."""
 
     def test_no_context_returns_empty_list(self):
         with patch("studio.utils.context.get_context", return_value=None):
             patterns = _read_config_ignore_patterns()
         self.assertEqual(patterns, [])
 
-    def test_workspace_config_error_raises_value_error(self):
+    def test_validation_config_error_raises_value_error(self):
         mock_ctx = MagicMock()
         mock_ctx.project_root = Path("/fake/project")
         with patch("studio.utils.context.get_context", return_value=mock_ctx):
             with patch(
-                "studio.utils.workspace.find_workspace_config",
+                "studio.utils.files.load_validation_config",
                 return_value=(None, "bad config"),
             ):
                 with self.assertRaises(ValueError):
                     _read_config_ignore_patterns()
 
-    def test_workspace_config_with_ignore_paths_returns_them(self):
+    def test_validation_config_with_ignore_paths_returns_them(self):
         mock_ctx = MagicMock()
         mock_ctx.project_root = Path("/fake/project")
         mock_cfg = MagicMock()
-        mock_cfg.validation = MagicMock()
-        mock_cfg.validation.ignore_paths = ["docs/translations/**", "*.i18n.md"]
+        mock_cfg.ignore_paths = ["docs/translations/**", "*.i18n.md"]
         with patch("studio.utils.context.get_context", return_value=mock_ctx):
             with patch(
-                "studio.utils.workspace.find_workspace_config",
+                "studio.utils.files.load_validation_config",
                 return_value=(mock_cfg, None),
             ):
                 patterns = _read_config_ignore_patterns()
         self.assertEqual(patterns, ["docs/translations/**", "*.i18n.md"])
 
-    def test_no_workspace_config_returns_empty_list(self):
+    def test_no_validation_config_returns_empty_list(self):
         mock_ctx = MagicMock()
         mock_ctx.project_root = Path("/fake/project")
         with patch("studio.utils.context.get_context", return_value=mock_ctx):
             with patch(
-                "studio.utils.workspace.find_workspace_config",
+                "studio.utils.files.load_validation_config",
                 return_value=(None, None),
             ):
                 patterns = _read_config_ignore_patterns()
         self.assertEqual(patterns, [])
+
+
+class TestReadValidationExtras(unittest.TestCase):
+    def test_symbol_sets_return_empty_without_context(self):
+        with patch("studio.utils.context.get_context", return_value=None):
+            self.assertEqual(_read_config_symbol_sets(), [])
+
+    def test_allowed_chars_read_from_validation_config(self):
+        mock_ctx = MagicMock()
+        mock_ctx.project_root = Path("/fake/project")
+        mock_cfg = MagicMock()
+        mock_cfg.allowed_chars = ["⌘"]
+        with patch("studio.utils.context.get_context", return_value=mock_ctx):
+            with patch(
+                "studio.utils.files.load_validation_config",
+                return_value=(mock_cfg, None),
+            ):
+                self.assertEqual(_read_config_allowed_chars(), ["⌘"])
+
+    def test_denied_chars_read_from_validation_config(self):
+        mock_ctx = MagicMock()
+        mock_ctx.project_root = Path("/fake/project")
+        mock_cfg = MagicMock()
+        mock_cfg.denied_chars = ["U+0430"]
+        with patch("studio.utils.context.get_context", return_value=mock_ctx):
+            with patch(
+                "studio.utils.files.load_validation_config",
+                return_value=(mock_cfg, None),
+            ):
+                self.assertEqual(_read_config_denied_chars(), ["U+0430"])
 
 
 class TestDefaultRootsExceptionBranch(unittest.TestCase):

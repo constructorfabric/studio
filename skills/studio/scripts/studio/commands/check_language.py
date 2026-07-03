@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import List
 
+from ._validation_config import add_ignore_argument, load_current_validation_config
 from ..utils import error_codes as EC
 from ..utils.ui import ui
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ def _build_language_parser() -> argparse.ArgumentParser:
         prog="check-language",
         description=(
             "Scan Markdown artifacts for characters outside the allowed Unicode "
-            "script set.  Language policy is read from workspace config "
+            "script set.  Language policy is read from project validation config "
             "([validation] allowed_content_languages) or set via --languages."
         ),
     )
@@ -34,7 +35,7 @@ def _build_language_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="CODES",
         help="Comma-separated language codes to allow, e.g. 'en' or 'en,ru'. "
-             "Overrides workspace config.",
+             "Overrides configured validation policy.",
     )
     parser.add_argument(
         "--quiet",
@@ -42,13 +43,10 @@ def _build_language_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Suppress summary header; show violations only.",
     )
-    parser.add_argument(
-        "--ignore",
-        action="append",
-        default=[],
-        metavar="PATTERN",
-        help="Glob pattern of files to skip (e.g. 'translations/**/*.md'). "
-             "Can be repeated. Also reads ignore_paths from workspace config.",
+    add_ignore_argument(
+        parser,
+        "Glob pattern of files to skip (e.g. 'translations/**/*.md'). "
+        "Can be repeated. Also reads ignore_paths from validation config.",
     )
     return parser
 # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-parse-args
@@ -99,14 +97,30 @@ def _group_violations(violations) -> tuple[dict[str, list], list[dict]]:
     # @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-group-violations
 
 
-# @cpt-algo:cpt-studio-algo-traceability-validation-check-language-scan:p1
-def _run_language_scan(args, supported_languages):
-    from ..utils.content_language import LangScanError, build_allowed_ranges, scan_paths
-
-    # @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-ignore
+def _resolve_validation_policy(args, supported_languages: List[str]):
+    """Resolve language and symbol policy inputs for one scan invocation."""
     allowed_langs = _resolve_allowed_languages(args, supported_languages)
     ignore_patterns: List[str] = list(args.ignore)
     ignore_patterns.extend(_read_config_ignore_patterns())
+    symbol_sets = _read_config_symbol_sets()
+    allowed_chars = _read_config_allowed_chars()
+    denied_chars = _read_config_denied_chars()
+    return allowed_langs, ignore_patterns, symbol_sets, allowed_chars, denied_chars
+
+
+# @cpt-algo:cpt-studio-algo-traceability-validation-check-language-scan:p1
+def _run_language_scan(args, supported_languages):  # pylint: disable=too-many-locals
+    from ..utils.content_language import (
+        LangScanError,
+        build_allowed_codepoints,
+        build_allowed_ranges,
+        build_denied_codepoints,
+        scan_paths,
+    )
+
+    # @cpt-begin:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-ignore
+    policy = _resolve_validation_policy(args, supported_languages)
+    allowed_langs, ignore_patterns, symbol_sets, allowed_chars, denied_chars = policy
     # @cpt-end:cpt-studio-algo-traceability-validation-check-language-scan:p1:inst-check-lang-resolve-ignore
 
     roots = _resolve_scan_roots(args.paths)
@@ -116,7 +130,16 @@ def _run_language_scan(args, supported_languages):
     try:
         violations = scan_paths(
             roots,
-            build_allowed_ranges(allowed_langs),
+            build_allowed_ranges(
+                allowed_langs,
+                symbol_sets=symbol_sets,
+                allowed_chars=allowed_chars,
+            ),
+            allowed_codepoints=build_allowed_codepoints(
+                symbol_sets=symbol_sets,
+                allowed_chars=allowed_chars,
+            ),
+            denied_codepoints=build_denied_codepoints(denied_chars),
             ignore_patterns=ignore_patterns,
         )
     except LangScanError as exc:
@@ -199,47 +222,45 @@ def cmd_check_language(argv: List[str]) -> int:
 # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-support
 
 def _read_config_languages() -> List[str]:
-    """Read allowed_content_languages from workspace config; fall back to ['en'].
-
-    Raises ValueError if the workspace config file exists but cannot be parsed.
-    """
-    from ..utils.context import get_context
-    from ..utils.workspace import find_workspace_config
-
-    ctx = get_context()
-    if ctx is None:
-        return ["en"]
-    _ws_cfg, _ws_err = find_workspace_config(ctx.project_root)
-    if _ws_err:
-        raise ValueError(f"Workspace config error: {_ws_err}")
-    if _ws_cfg is not None and _ws_cfg.validation is not None:  # type: ignore[union-attr]
-        langs = _ws_cfg.validation.allowed_content_languages  # type: ignore[union-attr]
-        if langs:
-            return langs
+    """Read allowed_content_languages from validation policy; fall back to ['en']."""
+    validation = _read_validation_config()
+    langs = getattr(validation, "allowed_content_languages", None)
+    if langs:
+        return list(langs)
     return ["en"]
 
 
 def _read_config_ignore_patterns() -> List[str]:
-    """Read ignore_paths glob patterns from workspace config.
+    """Read ignore_paths glob patterns from validation policy."""
+    validation = _read_validation_config()
+    patterns = getattr(validation, "ignore_paths", None)
+    return list(patterns) if patterns else []
 
-    Returns an empty list when the workspace config is absent or has no
-    ignore_paths setting.  Raises ValueError if the config file cannot be
-    parsed.
-    """
-    from ..utils.context import get_context
-    from ..utils.workspace import find_workspace_config
 
-    ctx = get_context()
-    if ctx is None:
-        return []
-    _ws_cfg, _ws_err = find_workspace_config(ctx.project_root)
-    if _ws_err:
-        raise ValueError(f"Workspace config error: {_ws_err}")
-    if _ws_cfg is not None and _ws_cfg.validation is not None:  # type: ignore[union-attr]
-        patterns = getattr(_ws_cfg.validation, "ignore_paths", None)
-        if patterns:
-            return list(patterns)
-    return []
+def _read_config_symbol_sets() -> List[str]:
+    """Read allowed_symbol_sets from validation config."""
+    validation = _read_validation_config()
+    symbol_sets = getattr(validation, "allowed_symbol_sets", None)
+    return list(symbol_sets) if symbol_sets else []
+
+
+def _read_config_allowed_chars() -> List[str]:
+    """Read allowed_chars from validation config."""
+    validation = _read_validation_config()
+    allowed_chars = getattr(validation, "allowed_chars", None)
+    return list(allowed_chars) if allowed_chars else []
+
+
+def _read_config_denied_chars() -> List[str]:
+    """Read denied_chars from validation config."""
+    validation = _read_validation_config()
+    denied_chars = getattr(validation, "denied_chars", None)
+    return list(denied_chars) if denied_chars else []
+
+
+def _read_validation_config():
+    """Read validation policy from core.toml first, then legacy workspace fallback."""
+    return load_current_validation_config()
 
 
 def _default_roots() -> List[Path]:
@@ -316,7 +337,7 @@ def _human_result(data: dict, quiet: bool = False) -> None:
 
     ui.hint("Fix: rewrite flagged content in the allowed language(s).")
     ui.hint(
-        "To allow additional scripts, add to .cf-workspace.toml:\n"
+        "To allow additional scripts, add to config/core.toml:\n"
         "  [validation]\n"
         "  allowed_content_languages = [\"en\", \"ru\"]"
     )

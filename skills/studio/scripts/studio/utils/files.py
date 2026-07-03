@@ -115,6 +115,13 @@ def _read_studio_var(project_root: Path) -> Optional[str]:
 # @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
 def load_project_config(project_root: Path) -> Optional[dict]:
     """Load project config from config/core.toml in studio dir (discovered via AGENTS.md)."""
+    cfg, _err = load_project_config_with_error(project_root)
+    return cfg
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
+def find_project_config_path(project_root: Path) -> Optional[Path]:
+    """Resolve the active project core.toml path from the root AGENTS marker."""
     studio_rel = _read_studio_var(project_root)
     if studio_rel is None:
         return None
@@ -122,13 +129,60 @@ def load_project_config(project_root: Path) -> Optional[dict]:
     # Fallback: legacy layout without config/ subdir
     if not core_toml.is_file():
         core_toml = (project_root / studio_rel / "core.toml").resolve()
-    if not core_toml.is_file():
-        return None
+    return core_toml if core_toml.is_file() else None
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
+def load_project_config_with_error(project_root: Path) -> Tuple[Optional[dict], Optional[str]]:
+    """Load core.toml and preserve parse/load errors for caller-facing policy checks."""
+    core_toml = find_project_config_path(project_root)
+    if core_toml is None:
+        return None, None
     try:
-        return toml_utils.load(core_toml)
+        return toml_utils.load(core_toml), None
     except (OSError, ValueError, KeyError) as exc:
         logger.warning("Failed to load project config %s: %s", core_toml, exc)
-        return None
+        return None, f"Failed to parse {core_toml}: {exc}"
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
+def load_validation_config(  # pylint: disable=too-many-return-statements
+    project_root: Path,
+) -> Tuple[Optional[object], Optional[str]]:
+    """Load validation policy with core.toml priority and workspace fallback."""
+    from .workspace import ValidationConfig, find_workspace_config
+
+    def _workspace_error(message: str) -> str:
+        if message.startswith("Workspace config error:"):
+            return message
+        return f"Workspace config error: {message}"
+
+    cfg, cfg_err = load_project_config_with_error(project_root)
+    if cfg_err:
+        return None, cfg_err
+    if cfg is not None and "validation" in cfg:
+        raw_validation = cfg.get("validation")
+        if not isinstance(raw_validation, dict):
+            config_path = find_project_config_path(project_root) or Path("core.toml")
+            return None, f"Invalid [validation] section in {config_path} (expected table)"
+        validation = ValidationConfig.from_dict(raw_validation)
+        errors = validation.validate()
+        if errors:
+            return None, "; ".join(errors)
+        return validation, None
+
+    ws_cfg, ws_err = find_workspace_config(project_root)
+    if ws_err:
+        return None, _workspace_error(ws_err)
+    validation = getattr(ws_cfg, "validation", None) if ws_cfg is not None else None
+    if validation is None:
+        return None, None
+    errors = validation.validate()
+    if errors:
+        return None, _workspace_error("; ".join(errors))
+    return validation, None
 # @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
 
 # @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-helpers

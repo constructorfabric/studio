@@ -770,6 +770,8 @@ def validate_toc(
     *,
     artifact_path: Optional[Path] = None,
     max_heading_level: int = 6,
+    require_toc: bool = True,
+    min_toc_headings: int = 1,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Validate the Table of Contents in a markdown document.
 
@@ -804,16 +806,16 @@ def validate_toc(
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-existing
     # 1. TOC exists?
     if toc_info is None:
+        if not require_toc or len(headings) < min_toc_headings:
+            return {"errors": errors, "warnings": warnings}
         _record_missing_toc_error(errors, path, len(headings))
         return {"errors": errors, "warnings": warnings}
 
-    toc_start, toc_end, toc_mode = toc_info
+    toc_mode, toc_entries, expected_anchors = _prepare_toc_validation_data(lines, headings, toc_info)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-existing
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-generate-expected
     # 2. Extract TOC entries and expected anchors
-    toc_entries = _extract_toc_entries(lines, toc_start, toc_end)
-    expected_anchors = _build_expected_anchors(headings)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-generate-expected
 
     # 3. Every TOC anchor must point to a real heading
@@ -827,6 +829,18 @@ def validate_toc(
 
     return {"errors": errors, "warnings": warnings}
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate
+
+
+def _prepare_toc_validation_data(
+    lines: List[str],
+    headings: List[Tuple[int, str]],
+    toc_info: Tuple[int, int, str],
+) -> Tuple[str, List[Tuple[str, str, int]], Dict[str, str]]:
+    """Unpack TOC metadata into the shapes needed by validate_toc()."""
+    toc_start, toc_end, toc_mode = toc_info
+    toc_entries = _extract_toc_entries(lines, toc_start, toc_end)
+    expected_anchors = _build_expected_anchors(headings)
+    return toc_mode, toc_entries, expected_anchors
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-find-heading-line
 def _find_heading_line(lines: List[str], heading_text: str) -> int:

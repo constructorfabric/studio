@@ -11,32 +11,97 @@ covered, and the TOC is not stale.  Thin CLI wrapper around
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-imports
 import argparse
+import fnmatch
+import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
+from ._validation_config import add_ignore_argument, load_current_validation_config
 from ..utils.toc import add_toc_max_level_argument, validate_toc
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-imports
 
-def cmd_validate_toc(argv: List[str]) -> int:
-    """Validate Table of Contents in markdown files."""
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-args
-    p = argparse.ArgumentParser(
+_DIAGNOSTIC_LOGGER = logging.getLogger(f"{__name__}.diagnostics")
+_DIAGNOSTIC_LOGGER.addHandler(logging.NullHandler())
+_DIAGNOSTIC_LOGGER.propagate = False
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-args
+def _build_validate_toc_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
         prog="cfs validate-toc",
         description="Validate Table of Contents in Markdown files",
     )
-    p.add_argument(
+    parser.add_argument(
         "files",
         nargs="+",
         help="Markdown file path(s) to validate",
     )
-    add_toc_max_level_argument(p)
-    p.add_argument(
+    add_toc_max_level_argument(parser)
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Include full error details in output",
     )
-    args = p.parse_args(argv)
+    add_ignore_argument(parser, "Glob pattern of files to skip. Can be repeated.")
+    parser.add_argument(
+        "--no-require-toc",
+        action="store_true",
+        help="Do not fail when a document has headings but no TOC.",
+    )
+    parser.add_argument(
+        "--min-headings",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Only require a TOC when a document has at least N headings.",
+    )
+    return parser
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-args
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
+def _resolve_validate_toc_policy(args) -> tuple[bool, int, List[str]]:
+    config_require_toc = _read_config_require_toc()
+    config_min_headings = _read_config_toc_min_headings()
+    ignore_patterns = list(args.ignore)
+    ignore_patterns.extend(_read_config_toc_ignore_patterns())
+    require_toc = False if args.no_require_toc else (
+        config_require_toc if config_require_toc is not None else True
+    )
+    min_headings = args.min_headings if args.min_headings is not None else (
+        config_min_headings if config_min_headings is not None else 1
+    )
+    return require_toc, min_headings, ignore_patterns
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-foreach-file
+def _validate_toc_file(filepath: Path, *, max_level: int, require_toc: bool, min_headings: int) -> dict:
+    content = filepath.read_text(encoding="utf-8")
+    report = validate_toc(
+        content,
+        artifact_path=filepath,
+        max_heading_level=max_level,
+        require_toc=require_toc,
+        min_toc_headings=min_headings,
+    )
+    errors = report.get("errors", [])
+    warnings = report.get("warnings", [])
+    file_result: dict = {
+        "file": str(filepath),
+        "status": "FAIL" if errors else ("WARN" if warnings else "PASS"),
+        "error_count": len(errors),
+        "warning_count": len(warnings),
+    }
+    return file_result | {"errors": errors, "warnings": warnings}
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-foreach-file
+
+def cmd_validate_toc(argv: List[str]) -> int:  # pylint: disable=too-many-locals
+    """Validate Table of Contents in markdown files."""
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-args
+    parser = _build_validate_toc_parser()
+    args = parser.parse_args(argv)
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-args
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
@@ -44,10 +109,26 @@ def cmd_validate_toc(argv: List[str]) -> int:
     total_errors = 0
     total_warnings = 0
     files_to_validate = [Path(f).resolve() for f in args.files]
+    try:
+        require_toc, min_headings, ignore_patterns = _resolve_validate_toc_policy(args)
+    except ValueError as exc:  # pylint: disable=user-facing-error-without-log
+        _DIAGNOSTIC_LOGGER.warning("validate-toc config load failed: %s", exc, exc_info=True)
+        ui.result({"status": "ERROR", "message": str(exc)})
+        return 1
+    if min_headings < 1:
+        ui.result({"status": "ERROR", "message": "--min-headings must be >= 1"})
+        return 1
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-foreach-file
     for filepath in files_to_validate:
+        if any(fnmatch.fnmatch(str(filepath), pattern) for pattern in ignore_patterns):
+            results.append({
+                "file": str(filepath),
+                "status": "SKIP",
+                "message": "Skipped by ignore pattern",
+            })
+            continue
 
         if not filepath.is_file():
             results.append({
@@ -58,24 +139,16 @@ def cmd_validate_toc(argv: List[str]) -> int:
             total_errors += 1
             continue
 
-        content = filepath.read_text(encoding="utf-8")
-        report = validate_toc(
-            content,
-            artifact_path=filepath,
-            max_heading_level=args.max_level,
+        file_result = _validate_toc_file(
+            filepath,
+            max_level=args.max_level,
+            require_toc=require_toc,
+            min_headings=min_headings,
         )
-
-        errors = report.get("errors", [])
-        warnings = report.get("warnings", [])
+        errors = file_result["errors"]
+        warnings = file_result["warnings"]
         total_errors += len(errors)
         total_warnings += len(warnings)
-
-        file_result: dict = {
-            "file": str(filepath),
-            "status": "FAIL" if errors else ("WARN" if warnings else "PASS"),
-            "error_count": len(errors),
-            "warning_count": len(warnings),
-        }
 
         if args.verbose or errors:
             file_result["errors"] = errors
@@ -135,3 +208,31 @@ def _human_validate_toc(data: dict) -> None:
         ui.warn(f"{n} file(s) validated ({overall}).")
     ui.blank()
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-format
+
+
+def _read_validation_config():
+    return load_current_validation_config()
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
+def _read_config_require_toc() -> Optional[bool]:
+    validation = _read_validation_config()
+    if validation is None:
+        return None
+    return getattr(validation, "require_toc", None)
+
+
+def _read_config_toc_min_headings() -> Optional[int]:
+    validation = _read_validation_config()
+    if validation is None:
+        return None
+    return getattr(validation, "toc_min_headings", None)
+
+
+def _read_config_toc_ignore_patterns() -> List[str]:
+    validation = _read_validation_config()
+    if validation is None:
+        return []
+    patterns = getattr(validation, "toc_ignore_paths", None)
+    return list(patterns) if patterns else []
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files

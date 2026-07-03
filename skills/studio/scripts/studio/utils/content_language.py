@@ -14,7 +14,7 @@ outside all allowed ranges are flagged as violations.
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 # @cpt-end:cpt-studio-algo-traceability-validation-lang-scan:p1:inst-lang-scan-imports
 
 # ---------------------------------------------------------------------------
@@ -108,6 +108,53 @@ SUPPORTED_LANGUAGES: List[str] = list(SCRIPT_RANGES.keys())
 SUPPORTED_LANGUAGES.sort()
 # @cpt-end:cpt-studio-algo-traceability-validation-lang-scan:p1:inst-supported-langs
 
+SYMBOL_SET_RANGES: Dict[str, List[Tuple[int, int]]] = {
+    "math": [
+        (0x0370, 0x03FF),   # Greek and Coptic
+        (0x1F00, 0x1FFF),   # Greek Extended
+        (0x2070, 0x209F),   # Superscripts and Subscripts
+        (0x20D0, 0x20FF),   # Combining Diacritical Marks for Symbols
+        (0x2150, 0x218F),   # Number Forms
+        (0x2200, 0x22FF),   # Mathematical Operators
+        (0x27C0, 0x27EF),   # Misc Mathematical Symbols-A
+        (0x2980, 0x29FF),   # Misc Mathematical Symbols-B
+        (0x2A00, 0x2AFF),   # Supplemental Mathematical Operators
+        (0x1D400, 0x1D7FF), # Mathematical Alphanumeric Symbols
+    ],
+    "fractions": [
+        (0x2150, 0x218F),   # Number Forms
+    ],
+    "technical": [
+        (0x2300, 0x23FF),   # Miscellaneous Technical
+    ],
+    "keyboard": [],
+    "arrows": [
+        (0x2190, 0x21FF),   # Arrows
+        (0x27F0, 0x27FF),   # Supplemental Arrows-A
+        (0x2900, 0x297F),   # Supplemental Arrows-B
+        (0x2B00, 0x2BFF),   # Misc Symbols and Arrows
+    ],
+    "emoji": [
+        (0xFE00, 0xFE0F),   # Variation Selectors
+    ],
+}
+
+SYMBOL_SET_CODEPOINTS: Dict[str, Set[int]] = {
+    "keyboard": {
+        0x2318,  # PLACE OF INTEREST SIGN / Command key
+        0x2325,  # OPTION KEY
+        0x238B,  # BROKEN CIRCLE WITH NORTHWEST ARROW / Esc
+        0x23CE,  # RETURN SYMBOL
+        0x232B,  # ERASE TO THE LEFT
+    },
+}
+
+SUPPORTED_SYMBOL_SETS: List[str] = sorted(
+    set(SYMBOL_SET_RANGES.keys()) | set(SYMBOL_SET_CODEPOINTS.keys())
+)
+
+DEFAULT_SYMBOL_SETS: List[str] = ["math", "technical", "keyboard", "arrows", "emoji"]
+
 # Always-allowed: emoji and zero-width / directional markers that are
 # language-neutral and widely used in Markdown.
 # @cpt-begin:cpt-studio-algo-traceability-validation-lang-scan:p1:inst-common-ranges
@@ -191,7 +238,36 @@ def _merge_ranges(ranges: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
     return merged
 
 
-def build_allowed_ranges(languages: List[str]) -> List[Tuple[int, int]]:
+def _parse_codepoint_specs(specs: Optional[List[str]]) -> Tuple[List[Tuple[int, int]], Set[int]]:
+    """Parse literal chars plus U+XXXX / U+XXXX-U+YYYY specs."""
+    ranges: List[Tuple[int, int]] = []
+    explicit: Set[int] = set()
+    for raw_spec in specs or []:
+        spec = str(raw_spec).strip()
+        if not spec:
+            continue
+        if spec.upper().startswith("U+"):
+            body = spec[2:]
+            if "-" in body:
+                start_hex, end_hex = body.split("-", 1)
+                start = int(start_hex, 16)
+                end_text = end_hex[2:] if end_hex.upper().startswith("U+") else end_hex
+                end = int(end_text, 16)
+                lo, hi = sorted((start, end))
+                ranges.append((lo, hi))
+            else:
+                explicit.add(int(body, 16))
+            continue
+        explicit.update(ord(ch) for ch in spec)
+    return ranges, explicit
+
+
+def build_allowed_ranges(
+    languages: List[str],
+    *,
+    symbol_sets: Optional[List[str]] = None,
+    allowed_chars: Optional[List[str]] = None,
+) -> List[Tuple[int, int]]:
     """Merge Unicode ranges for all given language codes into a sorted,
     non-overlapping list suitable for binary search via is_allowed().
 
@@ -201,11 +277,48 @@ def build_allowed_ranges(languages: List[str]) -> List[Tuple[int, int]]:
     ranges: List[Tuple[int, int]] = list(_COMMON_RANGES)
     for lang in languages:
         ranges.extend(SCRIPT_RANGES.get(lang.lower(), []))
+    for symbol_set in symbol_sets or DEFAULT_SYMBOL_SETS:
+        ranges.extend(SYMBOL_SET_RANGES.get(symbol_set.lower(), []))
+    explicit_ranges, _ = _parse_codepoint_specs(allowed_chars)
+    ranges.extend(explicit_ranges)
     return _merge_ranges(ranges)
 
 
-def is_allowed(cp: int, ranges: List[Tuple[int, int]]) -> bool:
+def build_allowed_codepoints(
+    *,
+    symbol_sets: Optional[List[str]] = None,
+    allowed_chars: Optional[List[str]] = None,
+) -> Set[int]:
+    """Build the explicit allowlist from symbol subsets and literal specs."""
+    allowed: Set[int] = set()
+    for symbol_set in symbol_sets or DEFAULT_SYMBOL_SETS:
+        allowed.update(SYMBOL_SET_CODEPOINTS.get(symbol_set.lower(), set()))
+    _, explicit = _parse_codepoint_specs(allowed_chars)
+    allowed.update(explicit)
+    return allowed
+
+
+def build_denied_codepoints(denied_chars: Optional[List[str]] = None) -> Set[int]:
+    """Build the explicit deny list from literal chars and U+ specs."""
+    denied_ranges, denied_explicit = _parse_codepoint_specs(denied_chars)
+    denied: Set[int] = set(denied_explicit)
+    for start, end in denied_ranges:
+        denied.update(range(start, end + 1))
+    return denied
+
+
+def is_allowed(
+    cp: int,
+    ranges: List[Tuple[int, int]],
+    *,
+    allowed_codepoints: Optional[Set[int]] = None,
+    denied_codepoints: Optional[Set[int]] = None,
+) -> bool:
     """Binary search: return True if code point cp is within any allowed range."""
+    if denied_codepoints and cp in denied_codepoints:
+        return False
+    if allowed_codepoints and cp in allowed_codepoints:
+        return True
     lo, hi = 0, len(ranges) - 1
     while lo <= hi:
         mid = (lo + hi) // 2
@@ -225,9 +338,33 @@ def is_allowed(cp: int, ranges: List[Tuple[int, int]]) -> bool:
 # ---------------------------------------------------------------------------
 # @cpt-begin:cpt-studio-algo-traceability-validation-lang-scan:p1:inst-scan-file
 
+def _strip_inline_code_spans(line: str) -> str:
+    """Mask inline code spans so notation inside backticks is ignored."""
+    out: List[str] = []
+    i = 0
+    while i < len(line):
+        if line[i] != "`":
+            out.append(line[i])
+            i += 1
+            continue
+        fence_len = 1
+        while i + fence_len < len(line) and line[i + fence_len] == "`":
+            fence_len += 1
+        closer = line.find("`" * fence_len, i + fence_len)
+        if closer == -1:
+            out.append(line[i])
+            i += 1
+            continue
+        out.append(" " * (closer + fence_len - i))
+        i = closer + fence_len
+    return "".join(out)
+
 def scan_file(
     path: Path,
     allowed_ranges: List[Tuple[int, int]],
+    *,
+    allowed_codepoints: Optional[Set[int]] = None,
+    denied_codepoints: Optional[Set[int]] = None,
 ) -> List[LangViolation]:
     """Scan a single file and return all language violations.
 
@@ -251,10 +388,16 @@ def scan_file(
         if any(p.match(raw_line) for p in _SKIP_LINE_PATTERNS):
             continue
 
+        scan_line = _strip_inline_code_spans(raw_line)
         bad: List[Tuple[int, str]] = [
             (ord(ch), ch)
-            for ch in raw_line
-            if not is_allowed(ord(ch), allowed_ranges)
+            for ch in scan_line
+            if not is_allowed(
+                ord(ch),
+                allowed_ranges,
+                allowed_codepoints=allowed_codepoints,
+                denied_codepoints=denied_codepoints,
+            )
         ]
         if bad:
             violations.append(LangViolation(
@@ -272,6 +415,9 @@ def scan_file(
 def scan_paths(
     roots: List[Path],
     allowed_ranges: List[Tuple[int, int]],
+    *,
+    allowed_codepoints: Optional[Set[int]] = None,
+    denied_codepoints: Optional[Set[int]] = None,
     extensions: Optional[List[str]] = None,
     ignore_patterns: Optional[List[str]] = None,
 ) -> List[LangViolation]:
@@ -297,11 +443,25 @@ def scan_paths(
     for root in roots:
         if root.is_file():
             if root.suffix.lower() in ext_set and not _is_ignored(root):
-                all_violations.extend(scan_file(root, allowed_ranges))
+                all_violations.extend(
+                    scan_file(
+                        root,
+                        allowed_ranges,
+                        allowed_codepoints=allowed_codepoints,
+                        denied_codepoints=denied_codepoints,
+                    )
+                )
         elif root.is_dir():
             for file_path in sorted(root.rglob("*")):
                 if file_path.suffix.lower() in ext_set and not _is_ignored(file_path):
-                    all_violations.extend(scan_file(file_path, allowed_ranges))
+                    all_violations.extend(
+                        scan_file(
+                            file_path,
+                            allowed_ranges,
+                            allowed_codepoints=allowed_codepoints,
+                            denied_codepoints=denied_codepoints,
+                        )
+                    )
 
     return all_violations
 
@@ -311,9 +471,13 @@ def scan_paths(
 __all__ = [
     "SCRIPT_RANGES",
     "SUPPORTED_LANGUAGES",
+    "SUPPORTED_SYMBOL_SETS",
+    "DEFAULT_SYMBOL_SETS",
     "LangScanError",
     "LangViolation",
     "build_allowed_ranges",
+    "build_allowed_codepoints",
+    "build_denied_codepoints",
     "is_allowed",
     "scan_file",
     "scan_paths",

@@ -17,11 +17,15 @@ from tempfile import TemporaryDirectory, NamedTemporaryFile
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
 from studio.utils.content_language import (
+    DEFAULT_SYMBOL_SETS,
     SCRIPT_RANGES,
     SUPPORTED_LANGUAGES,
+    SUPPORTED_SYMBOL_SETS,
     LangScanError,
     LangViolation,
+    build_allowed_codepoints,
     build_allowed_ranges,
+    build_denied_codepoints,
     is_allowed,
     scan_file,
     scan_paths,
@@ -41,9 +45,9 @@ class TestBuildAllowedRanges(unittest.TestCase):
         ranges = build_allowed_ranges(["en"])
         self.assertFalse(is_allowed(0x0410, ranges))  # Cyrillic А
 
-    def test_russian_allows_cyrillic(self):
-        ranges = build_allowed_ranges(["en", "ru"])
-        self.assertTrue(is_allowed(0x0410, ranges))  # Cyrillic А
+    def test_default_symbol_sets_allow_greek_math_notation(self):
+        ranges = build_allowed_ranges(["en"])
+        self.assertTrue(is_allowed(0x0394, ranges))  # Greek Δ
 
     def test_unknown_code_silently_skipped(self):
         ranges = build_allowed_ranges(["en", "xx_INVALID"])
@@ -88,6 +92,10 @@ class TestBuildAllowedRanges(unittest.TestCase):
         ranges_upper = build_allowed_ranges(["RU"])
         self.assertEqual(ranges_lower, ranges_upper)
 
+    def test_allowed_chars_range_is_merged(self):
+        ranges = build_allowed_ranges(["en"], allowed_chars=["U+2300-U+23FF"])
+        self.assertTrue(is_allowed(0x2318, ranges))
+
 
 class TestIsAllowed(unittest.TestCase):
     """is_allowed() binary search works for boundary and interior values."""
@@ -120,9 +128,8 @@ class TestIsAllowed(unittest.TestCase):
         self.assertFalse(is_allowed(0x4E00, ranges))  # CJK ideograph
 
     def test_boundary_just_below_range(self):
-        # 0x0400 is Cyrillic start; 0x03FF is not in ru ranges but is in en (Greek)
+        # 0x0400 is Cyrillic start and remains disallowed for plain English.
         en_ranges = build_allowed_ranges(["en"])
-        # 0x0400 is NOT in en ranges
         self.assertFalse(is_allowed(0x0400, en_ranges))
 
     def test_between_ranges_not_allowed(self):
@@ -130,6 +137,16 @@ class TestIsAllowed(unittest.TestCase):
         # Check something clearly outside all ranges for "en"
         ranges = build_allowed_ranges(["en"])
         self.assertFalse(is_allowed(0x0900, ranges))  # Devanagari, not in en
+
+    def test_denied_codepoints_override_allowed_ranges(self):
+        ranges = build_allowed_ranges(["en", "ru"])
+        denied = build_denied_codepoints(["U+0410"])
+        self.assertFalse(is_allowed(0x0410, ranges, denied_codepoints=denied))
+
+    def test_allowed_codepoints_override_missing_ranges(self):
+        ranges = build_allowed_ranges(["en"], symbol_sets=[])
+        allowed = build_allowed_codepoints(symbol_sets=[], allowed_chars=["⌘"])
+        self.assertTrue(is_allowed(0x2318, ranges, allowed_codepoints=allowed))
 
 
 class TestLangViolation(unittest.TestCase):
@@ -260,6 +277,23 @@ class TestScanFile(unittest.TestCase):
         violations = self._write_and_scan(content)
         self.assertEqual(violations, [])
 
+    def test_inline_code_span_skipped(self):
+        content = "# Title\n\nUse `η₁` inside inline code.\n"
+        violations = self._write_and_scan(content)
+        self.assertEqual(violations, [])
+
+    def test_denied_char_still_flags_inside_allowed_language(self):
+        ranges = build_allowed_ranges(["en", "ru"])
+        denied = build_denied_codepoints(["U+0430"])
+        with NamedTemporaryFile(suffix=".md", mode="w", encoding="utf-8", delete=False) as f:
+            f.write("а\n")
+            path = Path(f.name)
+        try:
+            violations = scan_file(path, ranges, denied_codepoints=denied)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(len(violations), 1)
+
 
 class TestScanPaths(unittest.TestCase):
     """scan_paths() — files, directories, extension filtering."""
@@ -349,6 +383,11 @@ class TestSupportedLanguages(unittest.TestCase):
 
     def test_is_sorted(self):
         self.assertEqual(SUPPORTED_LANGUAGES, sorted(SUPPORTED_LANGUAGES))
+
+
+class TestSymbolSets(unittest.TestCase):
+    def test_default_symbol_sets_are_known(self):
+        self.assertTrue(set(DEFAULT_SYMBOL_SETS).issubset(set(SUPPORTED_SYMBOL_SETS)))
 
 
 if __name__ == "__main__":

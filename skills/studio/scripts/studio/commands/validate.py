@@ -1279,35 +1279,34 @@ def _suggest_path_from_autodetect(node: object, target_kind: str) -> Optional[st
 # Content language check helper
 # ---------------------------------------------------------------------------
 
-def _load_language_validation_settings(project_root: "Path") -> Tuple[Optional[List[str]], list]:
-    """Load configured allowed content languages and any config-load errors."""
+def _load_language_validation_settings(project_root: "Path") -> Tuple[object, list]:
+    """Load configured validation policy and any config-load errors."""
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-config
     from ..utils.constraints import error as _error
     from ..utils import error_codes as _EC
 
     try:
-        from ..utils.workspace import find_workspace_config as _find_ws
-        ws_cfg, ws_err = _find_ws(project_root)
+        from ..utils.files import load_validation_config as _load_validation
+        validation_cfg, validation_err = _load_validation(project_root)
     except (ImportError, OSError, AttributeError) as exc:
         return None, [_error(
             "language",
-            f"Cannot load workspace config for language check: {exc}",
+            f"Cannot load validation config for language check: {exc}",
             path=project_root,
             line=1,
             code=_EC.FILE_LOAD_ERROR,
         )]
 
-    if ws_err:
+    if validation_err:
         return None, [_error(
             "language",
-            f"Workspace config error, language validation skipped: {ws_err}",
+            f"Validation config error, language validation skipped: {validation_err}",
             path=project_root,
             line=1,
             code=_EC.FILE_LOAD_ERROR,
         )]
 
-    validation = getattr(ws_cfg, "validation", None) if ws_cfg is not None else None
-    return getattr(validation, "allowed_content_languages", None), []
+    return validation_cfg, []
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-config
 
 
@@ -1315,6 +1314,8 @@ def _scan_artifact_language_violations(
     artifact_path: Path,
     allowed_langs: List[str],
     allowed_ranges: object,
+    allowed_codepoints: object,
+    denied_codepoints: object,
 ) -> list:
     """Scan one artifact for language violations."""
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-scan
@@ -1324,7 +1325,12 @@ def _scan_artifact_language_violations(
 
     results = []
     try:
-        for violation in _scan_file(artifact_path, allowed_ranges):
+        for violation in _scan_file(
+            artifact_path,
+            allowed_ranges,
+            allowed_codepoints=allowed_codepoints,
+            denied_codepoints=denied_codepoints,
+        ):
             results.append(_error(
                 "language",
                 f"Non-allowed characters [{violation.bad_chars_preview()}] -- {violation.line_preview()}",
@@ -1344,38 +1350,63 @@ def _scan_artifact_language_violations(
     return results
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-scan
 
-def _run_content_language_check(
+def _run_content_language_check(  # pylint: disable=too-many-locals
     artifacts_to_validate: list,
     project_root: "Path",
 ) -> list:
     """Return language-violation error dicts for all validated .md artifacts.
 
-    Uses project_root to discover the workspace config so the check works in
-    both workspace mode and single-repo mode.  Returns an empty list when
+    Uses project_root to discover validation policy from core.toml with
+    legacy workspace fallback. Returns an empty list when
     allowed_content_languages is not configured.
 
-    Config failures (malformed .cf-workspace.toml) are surfaced as
+    Config failures are surfaced as
     FILE_LOAD_ERROR entries rather than silently disabling validation.
     """
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-run
     try:
-        from ..utils.content_language import build_allowed_ranges
+        from ..utils.content_language import (
+            build_allowed_codepoints,
+            build_allowed_ranges,
+            build_denied_codepoints,
+        )
     except ImportError as exc:
         _warn_validate(f"content-language validation is unavailable: {exc}")
         return []
 
-    allowed_langs, config_errors = _load_language_validation_settings(project_root)
+    validation_cfg, config_errors = _load_language_validation_settings(project_root)
     if config_errors:
         return config_errors
+    allowed_langs = getattr(validation_cfg, "allowed_content_languages", None)
     if not allowed_langs:
         return []
 
-    allowed_ranges = build_allowed_ranges(allowed_langs)
+    symbol_sets = getattr(validation_cfg, "allowed_symbol_sets", None)
+    allowed_chars = getattr(validation_cfg, "allowed_chars", None)
+    denied_chars = getattr(validation_cfg, "denied_chars", None)
+    allowed_ranges = build_allowed_ranges(
+        allowed_langs,
+        symbol_sets=symbol_sets,
+        allowed_chars=allowed_chars,
+    )
+    allowed_codepoints = build_allowed_codepoints(
+        symbol_sets=symbol_sets,
+        allowed_chars=allowed_chars,
+    )
+    denied_codepoints = build_denied_codepoints(denied_chars)
     results = []
     for artifact_path, _template_path, _artifact_type, _traceability, _kit_id in artifacts_to_validate:
         if artifact_path.suffix.lower() != ".md":
             continue
-        results.extend(_scan_artifact_language_violations(artifact_path, allowed_langs, allowed_ranges))
+        results.extend(
+            _scan_artifact_language_violations(
+                artifact_path,
+                allowed_langs,
+                allowed_ranges,
+                allowed_codepoints,
+                denied_codepoints,
+            )
+        )
     return results
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-language-run
 

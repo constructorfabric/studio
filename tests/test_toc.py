@@ -519,6 +519,16 @@ class TestValidateToc:
         assert len(result["errors"]) == 1
         assert result["errors"][0]["code"] == "toc-missing"
 
+    def test_missing_toc_allowed_when_requirement_disabled(self):
+        content = "# Title\n\n## Section A\n\n## Section B\n"
+        result = validate_toc(content, require_toc=False)
+        assert result["errors"] == []
+
+    def test_missing_toc_allowed_below_heading_threshold(self):
+        content = "# Title\n\n## Section A\n\n## Section B\n"
+        result = validate_toc(content, min_toc_headings=3)
+        assert result["errors"] == []
+
     def test_valid_heading_based_toc(self):
         content = (
             "# Title\n\n"
@@ -785,6 +795,30 @@ class TestCmdValidateToc:
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "WARN"
         assert out["warning_count"] >= 1
+
+    def test_no_require_toc_flag(self, tmp_path: Path, capsys):
+        f = tmp_path / "small.md"
+        f.write_text("# Title\n\n## Section\n", encoding="utf-8")
+        rc = cmd_validate_toc(["--no-require-toc", str(f)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "PASS"
+
+    def test_min_headings_flag(self, tmp_path: Path, capsys):
+        f = tmp_path / "small.md"
+        f.write_text("# Title\n\n## Section A\n\n## Section B\n", encoding="utf-8")
+        rc = cmd_validate_toc(["--min-headings", "3", str(f)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "PASS"
+
+    def test_ignore_flag(self, tmp_path: Path, capsys):
+        f = tmp_path / "small.md"
+        f.write_text("# Title\n\n## Section\n", encoding="utf-8")
+        rc = cmd_validate_toc(["--ignore", str(f), str(f)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["results"][0]["status"] == "SKIP"
 
 
 class TestCmdTocValidation:

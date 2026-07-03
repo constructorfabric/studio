@@ -18,6 +18,7 @@ from studio.utils.files import (
     iter_registry_entries,
     load_studio_config as load_adapter_config,
     load_artifacts_registry,
+    load_validation_config,
     load_project_config,
 )
 
@@ -218,6 +219,49 @@ class TestConfigHelpers(unittest.TestCase):
             adapter.mkdir(parents=True)
             (adapter / "core.toml").write_text("{not valid toml", encoding="utf-8")
             self.assertIsNone(load_project_config(root))
+
+    def test_load_validation_config_prefers_core_toml_validation(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "adapter"\n```\n',
+                encoding="utf-8",
+            )
+            adapter = root / "adapter" / "config"
+            adapter.mkdir(parents=True)
+            (adapter / "core.toml").write_text(
+                '[validation]\nallowed_content_languages = ["en"]\n',
+                encoding="utf-8",
+            )
+            (root / ".cf-workspace.toml").write_text(
+                'version = "1.0"\n[sources.local]\npath = "."\nrole = "full"\n'
+                '[validation]\nallowed_content_languages = ["ru"]\n',
+                encoding="utf-8",
+            )
+            validation, err = load_validation_config(root)
+            self.assertIsNone(err)
+            self.assertIsNotNone(validation)
+            self.assertEqual(validation.allowed_content_languages, ["en"])
+
+    def test_load_validation_config_falls_back_to_workspace(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "adapter"\n```\n',
+                encoding="utf-8",
+            )
+            adapter = root / "adapter" / "config"
+            adapter.mkdir(parents=True)
+            (adapter / "core.toml").write_text('version = "1.0"\n', encoding="utf-8")
+            (root / ".cf-workspace.toml").write_text(
+                'version = "1.0"\n[sources.local]\npath = "."\nrole = "full"\n'
+                '[validation]\nallowed_content_languages = ["ru"]\n',
+                encoding="utf-8",
+            )
+            validation, err = load_validation_config(root)
+            self.assertIsNone(err)
+            self.assertIsNotNone(validation)
+            self.assertEqual(validation.allowed_content_languages, ["ru"])
 
     def test_cypilot_root_from_project_config_success(self):
         with TemporaryDirectory() as tmpdir:

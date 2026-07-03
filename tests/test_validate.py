@@ -439,18 +439,18 @@ class TestEnrichTargetArtifactPaths(unittest.TestCase):
 class TestRunContentLanguageCheck(unittest.TestCase):
     """Regression tests for _run_content_language_check error handling."""
 
-    def _call(self, ws_return, artifacts=None):
+    def _call(self, validation_return, artifacts=None):
         from unittest.mock import patch
         from studio.commands.validate import _run_content_language_check
 
         if artifacts is None:
             artifacts = []
 
-        with patch("studio.utils.workspace.find_workspace_config", return_value=ws_return):
+        with patch("studio.utils.files.load_validation_config", return_value=validation_return):
             return _run_content_language_check(artifacts, Path("/fake/root"))
 
     def test_broken_config_returns_error_not_empty_list(self):
-        """find_workspace_config() -> (None, 'bad config') must produce a validation error."""
+        """Config load errors must produce a validation error."""
         results = self._call((None, "bad config"))
         self.assertEqual(len(results), 1)
         self.assertIn("file-load-error", str(results[0].get("code", "")))
@@ -460,19 +460,17 @@ class TestRunContentLanguageCheck(unittest.TestCase):
         self.assertIn("TOML parse error", str(results[0].get("message", "")))
 
     def test_no_config_file_returns_empty(self):
-        """(None, None) means no workspace config — silent skip, not an error."""
+        """(None, None) means no validation config — silent skip, not an error."""
         results = self._call((None, None))
         self.assertEqual(results, [])
 
     def test_config_without_validation_section_returns_empty(self):
-        mock_cfg = MagicMock()
-        mock_cfg.validation = None
-        results = self._call((mock_cfg, None))
+        results = self._call((None, None))
         self.assertEqual(results, [])
 
     def test_config_with_empty_languages_returns_empty(self):
         mock_cfg = MagicMock()
-        mock_cfg.validation.allowed_content_languages = []
+        mock_cfg.allowed_content_languages = []
         results = self._call((mock_cfg, None))
         self.assertEqual(results, [])
 
@@ -482,14 +480,14 @@ class TestRunContentLanguageCheck(unittest.TestCase):
         from studio.commands.validate import _run_content_language_check
 
         mock_cfg = MagicMock()
-        mock_cfg.validation.allowed_content_languages = ["en"]
+        mock_cfg.allowed_content_languages = ["en"]
 
         with TemporaryDirectory() as td:
             root = Path(td)
             py_file = root / "code.py"
             py_file.write_text("print('hello')\n", encoding="utf-8")
             artifacts = [(py_file, Path("/t"), "CODE", "FULL", "kit")]
-            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+            with patch("studio.utils.files.load_validation_config", return_value=(mock_cfg, None)):
                 results = _run_content_language_check(artifacts, root)
             self.assertEqual(results, [])
 
@@ -499,7 +497,7 @@ class TestRunContentLanguageCheck(unittest.TestCase):
         from studio.commands.validate import _run_content_language_check
 
         mock_cfg = MagicMock()
-        mock_cfg.validation.allowed_content_languages = ["en"]
+        mock_cfg.allowed_content_languages = ["en"]
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -507,7 +505,7 @@ class TestRunContentLanguageCheck(unittest.TestCase):
             # Cyrillic content not allowed under "en"
             md.write_text("# Title\n\nПривет мир\n", encoding="utf-8")
             artifacts = [(md, Path("/t"), "PRD", "FULL", "kit")]
-            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+            with patch("studio.utils.files.load_validation_config", return_value=(mock_cfg, None)):
                 results = _run_content_language_check(artifacts, root)
             self.assertGreaterEqual(len(results), 1)
             self.assertIn("language", str(results[0].get("category", "")) + str(results[0]))
@@ -518,14 +516,14 @@ class TestRunContentLanguageCheck(unittest.TestCase):
         from studio.commands.validate import _run_content_language_check
 
         mock_cfg = MagicMock()
-        mock_cfg.validation.allowed_content_languages = ["en"]
+        mock_cfg.allowed_content_languages = ["en"]
 
         with TemporaryDirectory() as td:
             root = Path(td)
             md = root / "doc.md"
             md.write_text("# Title\n\nHello World\n", encoding="utf-8")
             artifacts = [(md, Path("/t"), "PRD", "FULL", "kit")]
-            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+            with patch("studio.utils.files.load_validation_config", return_value=(mock_cfg, None)):
                 results = _run_content_language_check(artifacts, root)
             self.assertEqual(results, [])
 
@@ -536,7 +534,7 @@ class TestRunContentLanguageCheck(unittest.TestCase):
         from studio.utils.content_language import LangScanError
 
         mock_cfg = MagicMock()
-        mock_cfg.validation.allowed_content_languages = ["en"]
+        mock_cfg.allowed_content_languages = ["en"]
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -544,10 +542,10 @@ class TestRunContentLanguageCheck(unittest.TestCase):
             md.write_text("anything\n", encoding="utf-8")
             artifacts = [(md, Path("/t"), "PRD", "FULL", "kit")]
 
-            def _raise(p, _ranges):
+            def _raise(p, _ranges, **_kwargs):
                 raise LangScanError(p, OSError("simulated I/O failure"))
 
-            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)), \
+            with patch("studio.utils.files.load_validation_config", return_value=(mock_cfg, None)), \
                  patch("studio.utils.content_language.scan_file", side_effect=_raise):
                 results = _run_content_language_check(artifacts, root)
             self.assertEqual(len(results), 1)

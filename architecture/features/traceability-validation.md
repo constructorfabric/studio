@@ -136,6 +136,8 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 - User runs `cfs check-language` → all .md artifacts scanned for disallowed Unicode characters, PASS if none found
 - User runs `cfs check-language --languages en,ru <path>` → specified path scanned with given language policy
 - User runs `cfs check-language --exclude "translations/**"` → matching paths skipped, skipped count reported
+- Project `core.toml` adds `[validation] allowed_symbol_sets`, `allowed_chars`, or `denied_chars` → scan respects symbol allowlists and explicit confusable denies
+- Inline code spans contain technical notation such as `` `η₁` `` → scanner ignores the inline code content
 - File contains `<!-- cpt-lang: ignore -->` anywhere → file is skipped entirely by the scanner
 
 **Error Scenarios**:
@@ -391,6 +393,11 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 - [x] - `p1` - Imports and module setup for validate-toc command - `inst-toc-imports`
 - [x] - `p1` - Human-friendly formatter for validate-toc output - `inst-toc-format`
 
+**Behavior notes**:
+- Standalone `validate-toc` reads `[validation] require_toc`, `toc_min_headings`, and `toc_ignore_paths` from project `core.toml`, with legacy workspace fallback for older repos
+- CLI flags `--no-require-toc`, `--min-headings N`, and `--ignore PATTERN` override or extend workspace defaults
+- `toc-missing` is emitted only when TOC presence is required for the document's heading count; existing TOCs are still validated for anchors, coverage, and staleness
+
 ### TOC Utilities
 
 - [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-toc-utils`
@@ -529,8 +536,8 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 2. [x] - `p1` - Expose `SUPPORTED_LANGUAGES` constant — sorted list of all recognized language codes - `inst-supported-langs`
 3. [x] - `p1` - Define always-allowed common ranges (emoji, zero-width markers, BOM) - `inst-common-ranges`
 4. [x] - `p1` - Define skip patterns for fenced code blocks, HTML comments, and `@cpt` markers - `inst-skip-patterns`
-5. [x] - `p1` - Build merged sorted list of allowed Unicode ranges for the given language codes (`build_allowed_ranges`, `is_allowed`) - `inst-range-helpers`
-6. [x] - `p1` - Scan single file: skip fences and structural lines; **IF** file contains `<!-- cpt-lang: ignore -->` skip file entirely; collect lines with characters outside allowed ranges - `inst-scan-file`
+5. [x] - `p1` - Build merged sorted list of allowed Unicode ranges plus explicit allow/deny codepoint sets from language codes, symbol profiles, and literal `U+XXXX` specs (`build_allowed_ranges`, `is_allowed`) - `inst-range-helpers`
+6. [x] - `p1` - Scan single file: skip fences, inline code spans, and structural lines; **IF** file contains `<!-- cpt-lang: ignore -->` skip file entirely; collect lines with characters outside allowed ranges - `inst-scan-file`
 7. [x] - `p1` - Scan paths recursively: filter by extension (default `.md`), match each candidate path against optional `ignore_globs` (fnmatch), aggregate violations from non-ignored files - `inst-scan-paths`
 
 **Supporting**:
@@ -545,10 +552,10 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 
 **Output**: `{allowed_languages, files_scanned, violations, grouped_violations, violation_items}`
 
-1. [x] - `p1` - Resolve allowed languages from CLI override or workspace validation config - `inst-check-lang-resolve-languages`
-2. [x] - `p1` - Merge CLI ignore patterns with workspace-config ignore paths - `inst-check-lang-resolve-ignore`
+1. [x] - `p1` - Resolve allowed languages from CLI override or project `core.toml` validation config, with legacy workspace fallback - `inst-check-lang-resolve-languages`
+2. [x] - `p1` - Merge CLI ignore patterns with validation ignore paths and load symbol allow/deny settings from project `core.toml` validation config, with legacy workspace fallback - `inst-check-lang-resolve-ignore`
 3. [x] - `p1` - Resolve scan roots from explicit paths or the default project architecture root - `inst-check-lang-resolve-roots`
-4. [x] - `p1` - Build allowed Unicode ranges and run the markdown scanner across resolved roots - `inst-check-lang-scan-execution`
+4. [x] - `p1` - Build allowed Unicode ranges plus explicit codepoint allow/deny sets and run the markdown scanner across resolved roots - `inst-check-lang-scan-execution`
 5. [x] - `p1` - Count scanned markdown files for the result payload - `inst-check-lang-count-files`
 6. [x] - `p1` - Group violations by file and convert them into machine-readable result items - `inst-check-lang-group-violations`
 7. [x] - `p1` - **RETURN** scan result payload with allowed languages, scanned files, grouped violations, and violation items - `inst-check-lang-return-scan`

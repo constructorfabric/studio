@@ -96,6 +96,45 @@ def _parse_workspace_section(
     return factory.from_dict(raw_value)
 
 
+def _load_validation_catalog():
+    """Load shared validation catalog primitives on demand."""
+    from .content_language import (
+        SUPPORTED_LANGUAGES as _SUPPORTED,
+        SUPPORTED_SYMBOL_SETS as _SUPPORTED_SYMBOL_SETS,
+        build_denied_codepoints as _build_denied_codepoints,
+    )
+
+    return _SUPPORTED, _SUPPORTED_SYMBOL_SETS, _build_denied_codepoints
+
+
+def _validate_language_codes(languages: List[str], supported: List[str]) -> List[str]:
+    unknown = [lang for lang in languages if lang not in supported]
+    if not unknown:
+        return []
+    return [
+        f"[validation] allowed_content_languages contains unknown code(s): "
+        f"{', '.join(sorted(unknown))} "
+        f"(supported: {', '.join(sorted(supported))})"
+    ]
+
+
+def _validate_symbol_sets(symbol_sets: List[str], supported: List[str]) -> List[str]:
+    unknown = [symbol_set for symbol_set in symbol_sets if symbol_set not in supported]
+    if not unknown:
+        return []
+    return [
+        f"[validation] allowed_symbol_sets contains unknown set(s): "
+        f"{', '.join(sorted(unknown))} "
+        f"(supported: {', '.join(sorted(supported))})"
+    ]
+
+
+def _validate_toc_policy(toc_min_headings: Optional[int]) -> List[str]:
+    if toc_min_headings is None or toc_min_headings >= 1:
+        return []
+    return ["[validation] toc_min_headings must be >= 1"]
+
+
 def _validate_workspace_data(data: object, workspace_path: Path) -> Optional[str]:
     """Return an error message when raw workspace TOML is structurally invalid."""
     if not isinstance(data, dict):
@@ -244,39 +283,111 @@ class ResolveConfig:
 
 @dataclass
 class ValidationConfig:
-    """Workspace-level artifact content validation settings.
+    """Artifact validation policy shared by project and legacy workspace config.
 
-    Parsed from the ``[validation]`` section of ``.cf-workspace.toml``.
+    Primary source: ``[validation]`` in project ``config/core.toml``.
+    Compatibility fallback: ``[validation]`` in ``.cf-workspace.toml``.
 
     Example config::
 
         [validation]
         allowed_content_languages = ["en"]
+        allowed_symbol_sets = ["math", "emoji"]
+        allowed_chars = ["⌘", "U+2300-U+23FF"]
+        denied_chars = ["U+0430"]
         ignore_paths = ["translations/**/*.md", "vendor/**/*.md"]
+        require_toc = true
+        toc_min_headings = 4
+        toc_ignore_paths = ["docs/reference/**"]
     """
 
     allowed_content_languages: List[str] = field(default_factory=list)
+    allowed_symbol_sets: List[str] = field(default_factory=list)
+    allowed_chars: List[str] = field(default_factory=list)
+    denied_chars: List[str] = field(default_factory=list)
     ignore_paths: List[str] = field(default_factory=list)
+    require_toc: Optional[bool] = None
+    toc_min_headings: Optional[int] = None
+    toc_ignore_paths: List[str] = field(default_factory=list)
+
+    def validate(self) -> List[str]:
+        """Validate the parsed validation policy fields."""
+        errors: List[str] = []
+        try:
+            supported_languages, supported_symbol_sets, build_denied = _load_validation_catalog()
+        except ImportError as exc:
+            logger.warning(
+                "Content-language validation skipped because the language catalog "
+                "could not be imported: %s",
+                exc,
+            )
+            return errors
+
+        errors.extend(_validate_language_codes(self.allowed_content_languages, supported_languages))
+        errors.extend(_validate_symbol_sets(self.allowed_symbol_sets, supported_symbol_sets))
+        try:
+            build_denied(self.allowed_chars)
+            build_denied(self.denied_chars)
+        except ValueError as exc:
+            errors.append(f"[validation] invalid allowed/denied char spec: {exc}")
+        errors.extend(_validate_toc_policy(self.toc_min_headings))
+        return errors
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ValidationConfig":
+    def from_dict(cls, data: dict) -> "ValidationConfig":  # pylint: disable=too-many-locals
         """Build an instance from a dictionary."""
         raw = (data or {}).get("allowed_content_languages", [])
         if isinstance(raw, list):
             langs = [str(x).strip().lower() for x in raw if str(x).strip()]
         else:
             langs = []
+        raw_sets = (data or {}).get("allowed_symbol_sets", [])
+        if isinstance(raw_sets, list):
+            symbol_sets = [str(x).strip().lower() for x in raw_sets if str(x).strip()]
+        else:
+            symbol_sets = []
+        raw_allowed_chars = (data or {}).get("allowed_chars", [])
+        allowed_chars = list(raw_allowed_chars) if isinstance(raw_allowed_chars, list) else []
+        raw_denied_chars = (data or {}).get("denied_chars", [])
+        denied_chars = list(raw_denied_chars) if isinstance(raw_denied_chars, list) else []
         raw_ignore = (data or {}).get("ignore_paths", [])
         ignore = list(raw_ignore) if isinstance(raw_ignore, list) else []
-        return cls(allowed_content_languages=langs, ignore_paths=ignore)
+        raw_require_toc = (data or {}).get("require_toc", None)
+        require_toc = raw_require_toc if isinstance(raw_require_toc, bool) else None
+        raw_toc_min_headings = (data or {}).get("toc_min_headings", None)
+        toc_min_headings = raw_toc_min_headings if isinstance(raw_toc_min_headings, int) else None
+        raw_toc_ignore = (data or {}).get("toc_ignore_paths", [])
+        toc_ignore = list(raw_toc_ignore) if isinstance(raw_toc_ignore, list) else []
+        return cls(
+            allowed_content_languages=langs,
+            allowed_symbol_sets=symbol_sets,
+            allowed_chars=allowed_chars,
+            denied_chars=denied_chars,
+            ignore_paths=ignore,
+            require_toc=require_toc,
+            toc_min_headings=toc_min_headings,
+            toc_ignore_paths=toc_ignore,
+        )
 
     def to_dict(self) -> dict:
         """Return a serializable dictionary representation."""
         result: dict = {}
         if self.allowed_content_languages:
             result["allowed_content_languages"] = list(self.allowed_content_languages)
+        if self.allowed_symbol_sets:
+            result["allowed_symbol_sets"] = list(self.allowed_symbol_sets)
+        if self.allowed_chars:
+            result["allowed_chars"] = list(self.allowed_chars)
+        if self.denied_chars:
+            result["denied_chars"] = list(self.denied_chars)
         if self.ignore_paths:
             result["ignore_paths"] = list(self.ignore_paths)
+        if self.require_toc is not None:
+            result["require_toc"] = self.require_toc
+        if self.toc_min_headings is not None:
+            result["toc_min_headings"] = self.toc_min_headings
+        if self.toc_ignore_paths:
+            result["toc_ignore_paths"] = list(self.toc_ignore_paths)
         return result
 
 
@@ -430,25 +541,8 @@ class WorkspaceConfig:
                     f"Source '{name}' has invalid role '{src.role}' (valid: "
                     f"{', '.join(sorted(VALID_ROLES))})"
                 )
-        if self.validation is not None and self.validation.allowed_content_languages:
-            try:
-                from .content_language import SUPPORTED_LANGUAGES as _SUPPORTED
-                unknown = [
-                    lang for lang in self.validation.allowed_content_languages
-                    if lang not in _SUPPORTED
-                ]
-                if unknown:
-                    errors.append(
-                        f"[validation] allowed_content_languages contains unknown code(s): "
-                        f"{', '.join(sorted(unknown))} "
-                        f"(supported: {', '.join(sorted(_SUPPORTED))})"
-                    )
-            except ImportError as exc:
-                logger.warning(
-                    "Content-language validation skipped because the language catalog "
-                    "could not be imported: %s",
-                    exc,
-                )
+        if self.validation is not None:
+            errors.extend(self.validation.validate())
         return errors
 
     def add_source(

@@ -18,7 +18,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scr
 import studio.cli as cli
 
 
-def _bootstrap_project(root: Path, *, systems: list[dict] | None = None, kits: dict | None = None) -> Path:
+def _bootstrap_project(
+    root: Path,
+    *,
+    systems: list[dict] | None = None,
+    kits: dict | None = None,
+    validation: dict | None = None,
+) -> Path:
     from studio.utils import toml_utils
 
     (root / ".git").mkdir()
@@ -38,6 +44,8 @@ def _bootstrap_project(root: Path, *, systems: list[dict] | None = None, kits: d
         "project_root": "..",
         "kits": registry_kits,
     }
+    if validation is not None:
+        common["validation"] = validation
     toml_utils.dump(common, config_dir / "core.toml")
     artifacts = dict(common)
     artifacts["systems"] = systems or []
@@ -215,6 +223,53 @@ class TestCLIValidateTocE2E(unittest.TestCase):
             self.assertEqual(result["status"], "WARN")
             self.assertIn("warnings", result)
             self.assertTrue(any(w["code"] == "toc-stale" for w in result["warnings"]))
+            self.assertEqual(_snapshot_files(root), before)
+            self.assertEqual(stderr, "")
+
+    def test_validate_toc_no_require_toc_flag_is_read_only(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            doc = root / "small.md"
+            doc.write_text("# Title\n\n## Section\n", encoding="utf-8")
+            before = _snapshot_files(root)
+
+            exit_code, stdout, stderr = _run_main(
+                ["--json", "validate-toc", "--no-require-toc", str(doc)],
+                cwd=root,
+            )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["status"], "PASS")
+            self.assertEqual(_snapshot_files(root), before)
+            self.assertEqual(stderr, "")
+
+    def test_validate_toc_core_validation_min_headings_and_ignore_are_honored(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _bootstrap_project(
+                root,
+                validation={
+                    "toc_min_headings": 3,
+                    "toc_ignore_paths": ["*ignored.md"],
+                },
+            )
+            small = root / "small.md"
+            ignored = root / "ignored.md"
+            small.write_text("# Title\n\n## Section A\n\n## Section B\n", encoding="utf-8")
+            ignored.write_text("# Title\n\n## Section\n", encoding="utf-8")
+            before = _snapshot_files(root)
+
+            exit_code, stdout, stderr = _run_main(
+                ["--json", "validate-toc", str(small), str(ignored)],
+                cwd=root,
+            )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["status"], "PASS")
+            statuses = {Path(item["file"]).name: item["status"] for item in payload["results"]}
+            self.assertEqual(statuses, {"small.md": "PASS", "ignored.md": "SKIP"})
             self.assertEqual(_snapshot_files(root), before)
             self.assertEqual(stderr, "")
 
@@ -751,6 +806,36 @@ class TestCLICheckLanguageE2E(unittest.TestCase):
             self.assertEqual(payload["status"], "PASS")
             self.assertEqual(payload["files_scanned"], 2)
             self.assertEqual(payload["violation_count"], 0)
+            self.assertEqual(_snapshot_files(root), before)
+            self.assertEqual(stderr, "")
+
+    def test_check_language_core_validation_symbol_allow_and_deny_are_honored(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _bootstrap_project(
+                root,
+                validation={
+                    "allowed_content_languages": ["en", "ru"],
+                    "allowed_chars": ["⌘"],
+                    "denied_chars": ["U+0430"],
+                },
+            )
+            doc = root / "architecture" / "symbols.md"
+            doc.parent.mkdir(parents=True, exist_ok=True)
+            doc.write_text("# Symbols\n\n⌘ ok\nа denied\n", encoding="utf-8")
+            before = _snapshot_files(root)
+
+            exit_code, stdout, stderr = _run_main(
+                ["--json", "check-language", str(doc)],
+                cwd=root,
+            )
+
+            self.assertEqual(exit_code, 2)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["status"], "FAIL")
+            self.assertEqual(payload["allowed_languages"], ["en", "ru"])
+            self.assertEqual(payload["violation_count"], 1)
+            self.assertIn("а", payload["violations"][0]["chars"])
             self.assertEqual(_snapshot_files(root), before)
             self.assertEqual(stderr, "")
 
