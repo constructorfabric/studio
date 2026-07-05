@@ -830,11 +830,24 @@ Multi-repo configuration. **Extends Object.**
 ```
 Workspace extends Object {
   typeId:  gts.cf.studio.core.object.v1~cf.studio.core.workspace.v1~
+  name:    string
   sources: [
-    { path: string, role: string, adapter?: string, url?: string, branch?: string }
+    {
+      repositoryId?: ref → repository  // link to synced repo Object (Connector active)
+      path?:         string            // local filesystem path (CLI / local context)
+      url?:          string            // remote URL — fallback when repo not yet synced
+      branch?:       string            // branch override; default: repository.defaultBranch
+      role:          main | docs | platform | shared | test | config
+      adapter?:      string            // hint: git | github | gitlab | local
+      // constraint: at least one of repositoryId, path, or url required
+    }
   ]
 }
 ```
+
+When a Connector (GitHub/GitLab) syncs a repository, the platform resolves
+`repositoryId` automatically by matching `url`. Before Connector setup, `path`
+or `url` alone is sufficient (CLI-only or unsynced workspace).
 
 ### D27 — Workspace & Kit Cross-References
 
