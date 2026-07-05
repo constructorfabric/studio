@@ -443,14 +443,13 @@ Worker {
   implementationId:  ref → WorkerImplementation
   requiresAutomationGate: boolean         // default: false
                                           // true = Gate 1 applies (automationLevel check)
-  trigger?: {
-    schedule?:  cron string
-    onEvent?: {
-      pattern:  GTS Type Identifier
-      debounce: duration               // default: 0
-    }
-    onDemand:   boolean                // default: true
+  canInvokeOnDemand:      boolean         // default: true
+                                          // false = only schedule/event can activate
+  eventTrigger?: {                        // capability: which event activates this Worker
+    pattern:  GTS Type Identifier
+    debounce: duration                    // default: 0
   }
+  // schedule → WorkerImplementation.defaultSchedule (deployment config, Tenant-overridable)
   inputBindings?: [                   // runtime input resolution hints (per field)
     {
       field:    string                // matches a property name in input Contract
@@ -542,6 +541,8 @@ WorkerImplementation {
     metadataTTL:     duration
     retentionAction: archive | delete     // default: archive
   }
+  defaultSchedule?: cron string           // Kit-declared default schedule
+                                          // Tenant can override at Kit install time
   parallelOutputMerge?: last | append | merge_by_key | custom
                         // default: last; applies when DAG branches run in parallel
   retrieval?: {         // only for Workers with metadata.category: retrieval
@@ -1378,7 +1379,7 @@ Recommendation extends Object {
 
 ```mermaid
 flowchart TD
-    AW["Analyzer Worker\n(schedule/onEvent/onDemand)"] -->|creates| REC["Recommendation\nextends Object"]
+    AW["Analyzer Worker\n(defaultSchedule/eventTrigger)"] -->|creates| REC["Recommendation\nextends Object"]
 
     REC -->|state| S1[pending]
     S1 -->|user accepts| S2[accepted]
@@ -1393,8 +1394,8 @@ flowchart TD
 
 ### 15.2 Analyzer Workers
 
-Detect gaps and create Recommendations. Use standard Worker `trigger` with
-`schedule`, `onEvent` (+ `debounce`), and `onDemand`.
+Detect gaps and create Recommendations. Use `eventTrigger` (capability binding)
+and `WorkerImplementation.defaultSchedule` (deployment default). `canInvokeOnDemand: true`.
 
 Read external systems via `dependencies` (standard composability).
 On external system unavailability → `confidence: partial` instead of failure.
@@ -1811,7 +1812,7 @@ Declared per Object type. Tenant can override via `obj_ext`.
 
 `stale_artifact_detection` Analyzer Worker (from Flow Library):
 - Updates `stalenessScore` on affected Objects
-- Profile: `realtime`; trigger: `schedule: "*/15 * * * *"` + `onEvent` with `debounce: 5m`
+- Profile: `realtime`; `defaultSchedule: "*/15 * * * *"`; `eventTrigger.debounce: 5m`
 - Creates `Recommendation` when `stalenessScore >= recommendationThreshold`
 
 ---
