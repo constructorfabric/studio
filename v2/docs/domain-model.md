@@ -203,6 +203,8 @@ Worker {
     }
     onDemand:   boolean                // default: true
   }
+  fallbackWorkerId?:  ref → Worker    // must have compatible output Contract
+  fallbackCondition?: on_error | on_budget_exceeded | on_timeout
 }
 ```
 
@@ -265,6 +267,16 @@ WorkerImplementation {
     metadataTTL:     duration
     retentionAction: archive | delete     // default: archive
   }
+  parallelOutputMerge?: last | append | merge_by_key | custom
+                        // default: last; applies when DAG branches run in parallel
+  pausePoints?: [
+    {
+      afterStep:     string           // step name within hybrid Worker
+      prompt:        string           // shown to user at pause
+      requiresRole:  RolePattern?
+      timeoutAction: continue | abort
+    }
+  ]                                   // creates WorkerRun.state: paused (not Approval)
 }
 ```
 
@@ -290,7 +302,7 @@ WorkerRun extends Object {
   parentRunId:         ref → WorkerRun?
   inputData:           any
   outputData:          any
-  state:               pending | running | done | failed
+  state:               pending | running | paused | done | failed
   progress: {
     message:  string?
     percent:  0..100?
@@ -396,6 +408,13 @@ Flow {
   entryConstraints:  Contract[]
   mandatorySteps:    Worker[]
   allowedNextSteps:  map<Worker, Worker[]>
+  conditionalRoutes?: [
+    {
+      fromWorker:  ref → Worker
+      condition:   string          // JSONPath expression over outputData
+      nextWorker:  ref → Worker
+    }
+  ]                                // evaluated after allowedNextSteps; wins on match
   scope:             local | project | workspace | published
 }
 ```
@@ -1334,9 +1353,13 @@ Worker output Contract declares `produces: evidence` when it generates Evidence.
 
 ```
 pending → running → done
+                 → paused     (pausePoint reached; awaiting human resume)
                  → failed     (error, can retry)
                  → escalated  (awaiting Approval from human)
                  → aborted    (limit reached or human rejected)
+
+paused → running  (human resumes)
+paused → aborted  (timeoutAction: abort OR human cancels)
 ```
 
 ### 18.6 Escalation Flow

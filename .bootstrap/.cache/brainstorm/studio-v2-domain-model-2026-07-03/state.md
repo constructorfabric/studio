@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 20
+**Rounds:** 25
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -62,6 +62,11 @@
 | 18 | Connector details — FieldMapping, WriteBackPolicy, sync protocol |
 | 19 | Expansion path — automationLevel, deploymentMode |
 | 20 | AI cost routing (partial — wrapped before completion) |
+| 21 | Worker semantic class — kind field, incident postmortem flow, SDLC Action Workers, connector sync Workers, catalog runtime/profile, WorkerRun.cost, action Worker approval gates |
+| 22 | Master Worker Catalog (37 Workers) — bug fix flow placement, per-Kit event_handler, §25 Platform Workers |
+| 23 | User scenarios — user-journeys.md created, connector annotations, cost tier, automation gate |
+| 24 | Studio v2 vs LangGraph/LangChain — comparison and positioning (analysis round, no decisions) |
+| 25 | LangGraph/LangChain borrowings — parallelOutputMerge, conditionalRoutes, pausePoints, fallback chain |
 
 ---
 
@@ -194,6 +199,31 @@
 - Raising automationLevel = `Approval (kind: architecture_decision)`; lowering = no approval
 - Runtime check: `automationLevel >= approved_automation AND category in approvedWorkerCategories`
 
+### Worker Catalog (Rounds 21–22)
+
+- **Worker.kind** = `action | analyzer | validator | utility` — обязательное поле первого уровня
+- **incident_to_postmortem_flow** добавлен в §22.2 (entryConstraints: incident state:resolved)
+- **§24 SDLC Action Workers** — 14 action Workers с Contract-примерами и двумя approval gates
+- **§25 Platform Workers** — 3 pre-installed utility Workers (audit_exporter, connector_inbound_sync_worker, connector_outbound_sync_worker), `pre-installed: true`
+- **Connector sync Workers** = platform Workers; per-Kit event_handler_worker в Kit manifest с именованием `{vendor}_{connector}_event_handler`
+- **Worker catalog** = runtime + profile во всех таблицах §22.1, §22.2, §22.3, §24
+- **WorkerRun.cost?** = `{ promptTokens, completionTokens, modelId, estimatedCostUSD }` для llm/hybrid
+- **Action Worker approval gates** = Gate 1 (automationLevel check при создании WorkerRun) + Gate 2 (WriteBackPolicy.requiresApproval для Connector write-back) — независимые
+- **Master Worker Catalog** = 37 Workers: 12 analyzer + 8 validator + 14 action + 3 utility
+
+### User Scenarios (Round 23)
+
+- **user-journeys.md** создан в v2/docs/ с 14 ALGORITHM-format сценариями
+- Сценарии аннотированы: `[sync: connector_name]`, `cost tier: low|medium|high`, `automation gate: none|approved_automation`
+
+### LangGraph/LangChain Borrowings (Round 25)
+
+- **Worker.fallbackWorkerId?** + `fallbackCondition: on_error | on_budget_exceeded | on_timeout`
+- **WorkerImplementation.parallelOutputMerge** = `last | append | merge_by_key | custom` (default: last) — merge strategy для параллельных DAG-веток
+- **WorkerImplementation.pausePoints?** = lightweight pause внутри Worker, создаёт `WorkerRun.state: paused` (не Approval Object)
+- **Flow.conditionalRoutes?** = JSONPath condition для dynamic routing по runtime-результату; `allowedNextSteps` остаётся как fallback
+- **WorkerRun.state** расширен: `pending | running | paused | done | failed | escalated | aborted`
+
 ### Tech Stack & SBOM
 
 - Tech stack: `library`, `library_version`, `framework`, `runtime`, `database`, `database_instance`, `third_party_service`, `cloud_service`, `tech_dependency`
@@ -209,17 +239,21 @@
 
 ## Open Questions
 
-1. **AI cost routing** — `ModelRouter` registry entity; `PromptExperiment` A/B testing; `WorkerRun.cost` field; `performance_benchmark` for AI Workers; custom enterprise models via Gears Models Registry
+1. **AI cost routing** — `ModelRouter` registry entity; `PromptExperiment` A/B testing; `performance_benchmark` for AI Workers; custom enterprise models via Gears Models Registry (WorkerRun.cost field — ЗАКРЫТ в Round 21)
 2. **Insight layer** — how Vision Insight layer (Connectors + Data + Analytics + Benchmarking) maps to Gears Analytics vs Studio domain
 3. **Kit reference architecture** — `deploymentPattern` and `referenceArchitecture` attributes in Kit manifest
 4. **`indexes` in x-gts-traits** — full spec for persistence layer (which fields, compound indexes)
 5. **`automationLevel` runtime check** — exact hook point in Worker execution engine
 6. **`component` kind values** — need exhaustive taxonomy (service, library, module, subsystem, frontend, backend, data-pipeline, etc.)
 7. **`PromptExperiment`** — statistical significance model, traffic split mechanics
+8. **Worker.fallbackWorkerId Contract compatibility** — how Registry verifies output Contract compatibility between primary and fallback Workers at Kit install time
+9. **Flow.conditionalRoutes condition language** — JSONPath sufficient or needs richer expression (CEL, OPA)?
 
 ---
 
-## Output Artifact
+## Output Artifacts
 
-Domain model written to: `v2/docs/domain-model.md`
-Last commit: `73e057b`
+- Domain model: `v2/docs/domain-model.md`
+- User journeys: `v2/docs/user-journeys.md`
+- Decisions: ~110 across 25 rounds
+- Last session commits: `a67bb590` (diagram reorganization), `b6523f6d` (rounds 21–22), `a3bd6632` (user-journeys.md)
