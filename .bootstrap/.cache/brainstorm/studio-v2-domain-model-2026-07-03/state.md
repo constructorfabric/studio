@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 26
+**Rounds:** 27
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -68,6 +68,7 @@
 | 24 | Studio v2 vs LangGraph/LangChain — comparison and positioning (analysis round, no decisions) |
 | 25 | LangGraph/LangChain borrowings — parallelOutputMerge, conditionalRoutes, pausePoints, fallback chain |
 | 26 | Interactive Workers — WorkerInteraction Object, interactionModel, awaiting_input state, cancel(), events |
+| 27 | RAG — Retriever as Worker (kind: utility), Gears Models owns infrastructure, chunks outside graph |
 
 ---
 
@@ -216,6 +217,15 @@
 
 - **user-journeys.md** создан в v2/docs/ с 14 ALGORITHM-format сценариями
 - Сценарии аннотированы: `[sync: connector_name]`, `cost tier: low|medium|high`, `automation gate: none|approved_automation`
+
+### RAG (Round 27)
+
+- **Retriever = Worker (kind: utility)** — reuses Worker/dependency mechanism; no new registry entity
+- **Three pre-built Retriever Workers** (§25.2): `object_graph_retriever`, `document_retriever`, `code_retriever`
+- **WorkerImplementation.retrieval?** = `{ indexKind, scope, indexRef?, strategy, topK }` — config for Retriever Workers
+- **Gears Models** = embedding generation + vector storage (tenant-isolated); Studio doesn't own vector store
+- **document_chunk NOT an Object** — chunks live in Gears Models; `WorkerRun.externalEvents[].chunkRef` for audit trail
+- **Indexing trigger**: onEvent object_created/object_updated for Objects with indexable content
 
 ### Interactive Workers (Round 26)
 

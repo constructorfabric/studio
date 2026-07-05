@@ -277,6 +277,13 @@ WorkerImplementation {
   }
   parallelOutputMerge?: last | append | merge_by_key | custom
                         // default: last; applies when DAG branches run in parallel
+  retrieval?: {         // only for Workers with kind: utility acting as Retrievers
+    indexKind:  object_graph | document_index | code_index
+    scope:      workspace | tenant          // tenant-isolation boundary
+    indexRef?:  string                      // Gears Models index ID
+    strategy:   dense | sparse | hybrid     // vector / BM25 / combined
+    topK:       int                         // default: 5
+  }
   pausePoints?: [
     {
       afterStep:     string           // step name within hybrid Worker
@@ -323,7 +330,14 @@ WorkerRun extends Object {
     source:       kit | tenant | call
   }
   externalEvents: [
-    { source: string, type: string, externalId: string, url: string }
+    {
+      source:     string     // e.g. "connector:jira", "retriever:document_retriever"
+      type:       string
+      externalId: string
+      url:        string
+      chunkRef?:  string     // Gears Models chunk ID when source is a Retriever Worker
+      score?:     float      // similarity score for retrieval events
+    }
   ]
   checkpointExpiresAt: datetime?
   interactions:        WorkerInteraction[]  // history of all interactions (immutable once answered)
@@ -1759,6 +1773,20 @@ kind:                   utility
 | `connector_outbound_sync_worker` | script | on_demand | Object change → Connector write-back via WriteBackPolicy. |
 
 Per-Kit Connectors may register additional `event_handler_worker` Workers in their Kit manifest using the naming convention `{vendor}_{connector}_event_handler` (e.g. `jira_jira_event_handler`, `github_github_event_handler`). These are registered through the standard Worker registry and are not platform Workers.
+
+### 25.2 Retriever Workers
+
+Retriever Workers are pre-installed platform Workers (`kind: utility`) that provide semantic retrieval for LLM Workers. Embedding generation and vector storage are owned by **Gears Models** (tenant-isolated); Studio Workers only call the retrieval interface.
+
+LLM Workers declare Retriever Workers in `dependencies[]`. Document chunks live outside the Object graph (in Gears Models); retrieval events are recorded in `WorkerRun.externalEvents[].chunkRef` for audit trail.
+
+| Worker | Index Kind | Scope | Purpose |
+|---|---|---|---|
+| `object_graph_retriever` | object_graph | workspace | Semantic search over Object attributes in the Studio graph |
+| `document_retriever` | document_index | workspace | Chunk search over document content (PRD, design, specs, wiki) |
+| `code_retriever` | code_index | workspace | Semantic code search over source_file content |
+
+Indexing is triggered automatically via `onEvent: object_created / object_updated` for Objects with indexable content fields. Chunking and embedding generation are handled by Gears Models indexing pipeline.
 
 ---
 
