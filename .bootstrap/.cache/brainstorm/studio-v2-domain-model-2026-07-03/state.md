@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 25
+**Rounds:** 26
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -67,6 +67,7 @@
 | 23 | User scenarios — user-journeys.md created, connector annotations, cost tier, automation gate |
 | 24 | Studio v2 vs LangGraph/LangChain — comparison and positioning (analysis round, no decisions) |
 | 25 | LangGraph/LangChain borrowings — parallelOutputMerge, conditionalRoutes, pausePoints, fallback chain |
+| 26 | Interactive Workers — WorkerInteraction Object, interactionModel, awaiting_input state, cancel(), events |
 
 ---
 
@@ -216,6 +217,17 @@
 - **user-journeys.md** создан в v2/docs/ с 14 ALGORITHM-format сценариями
 - Сценарии аннотированы: `[sync: connector_name]`, `cost tier: low|medium|high`, `automation gate: none|approved_automation`
 
+### Interactive Workers (Round 26)
+
+- **WorkerInteraction extends Object** — kind: input_request | menu | free_form_intent; state: pending | answered | timed_out | cancelled; max 1 pending per WorkerRun; free_form_intent available to any Worker (not restricted to llm/hybrid)
+- **Worker.interactionModel?** = `{ canRequestInput, canPresentMenu, maxPendingInteractions, cancellable }` — no acceptsFreeFormIntent (Worker decides at runtime)
+- **WorkerRun.state** добавлен `awaiting_input` (отличается от paused: paused = internal pausePoint, awaiting_input = waiting for WorkerInteraction response)
+- **WorkerRun** добавлены: `interactions: WorkerInteraction[]`, `cancelledBy?`, `cancelCascade?`
+- **cancel(workerRunId, cascade)** операция → state: aborted, active interaction → cancelled, cascade child WorkerRuns
+- **3 новых event types**: `worker_run_cancelled`, `worker_interaction_created`, `worker_interaction_answered`
+- **pre-installed NotificationRule** для `worker_interaction_created` с dynamic audience из `requiredRole`
+- **Domain 20 — Worker Interactions** добавлен в Appendix A
+
 ### LangGraph/LangChain Borrowings (Round 25)
 
 - **Worker.fallbackWorkerId?** + `fallbackCondition: on_error | on_budget_exceeded | on_timeout`
@@ -255,5 +267,5 @@
 
 - Domain model: `v2/docs/domain-model.md`
 - User journeys: `v2/docs/user-journeys.md`
-- Decisions: ~110 across 25 rounds
-- Last session commits: `a67bb590` (diagram reorganization), `b6523f6d` (rounds 21–22), `a3bd6632` (user-journeys.md)
+- Decisions: ~118 across 26 rounds
+- Last session commits: `a67bb590` (diagrams), `b6523f6d` (rounds 21–22), `a3bd6632` (user-journeys.md), `82617a7e` (round 25)

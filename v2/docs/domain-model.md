@@ -139,6 +139,7 @@ gts.cf.studio.core.object.v1~cf.studio.core.policy_delegation.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.saved_audit_query.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.notification_rule_override.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.notification_subscription.v1~
+gts.cf.studio.core.object.v1~cf.studio.core.worker_interaction.v1~
 ```
 
 ### 2.4 Vendor (Kit) Extensions
@@ -205,6 +206,13 @@ Worker {
   }
   fallbackWorkerId?:  ref → Worker    // must have compatible output Contract
   fallbackCondition?: on_error | on_budget_exceeded | on_timeout
+  interactionModel?: {
+    canRequestInput:        boolean   // can emit input_request WorkerInteraction
+    canPresentMenu:         boolean   // can emit menu WorkerInteraction
+    maxPendingInteractions: int       // default: 1
+    cancellable:            boolean   // default: true
+  }
+  // kind: free_form_intent available to any Worker at runtime
 }
 ```
 
@@ -302,7 +310,7 @@ WorkerRun extends Object {
   parentRunId:         ref → WorkerRun?
   inputData:           any
   outputData:          any
-  state:               pending | running | paused | done | failed
+  state:               pending | running | awaiting_input | paused | done | failed
   progress: {
     message:  string?
     percent:  0..100?
@@ -318,6 +326,9 @@ WorkerRun extends Object {
     { source: string, type: string, externalId: string, url: string }
   ]
   checkpointExpiresAt: datetime?
+  interactions:        WorkerInteraction[]  // history of all interactions (immutable once answered)
+  cancelledBy?:        ref → User
+  cancelCascade?:      boolean              // were child WorkerRuns also cancelled
   cost?: {
     promptTokens:     int
     completionTokens: int
@@ -1163,6 +1174,9 @@ gts.cf.core.events.type.v1~cf.studio.core.state_changed.v1~
 // WorkerRun
 gts.cf.core.events.type.v1~cf.studio.core.worker_run_started.v1~
 gts.cf.core.events.type.v1~cf.studio.core.worker_run_completed.v1~
+gts.cf.core.events.type.v1~cf.studio.core.worker_run_cancelled.v1~
+gts.cf.core.events.type.v1~cf.studio.core.worker_interaction_created.v1~
+gts.cf.core.events.type.v1~cf.studio.core.worker_interaction_answered.v1~
 
 // Recommendations
 gts.cf.core.events.type.v1~cf.studio.core.recommendation_created.v1~
@@ -1352,14 +1366,24 @@ Worker output Contract declares `produces: evidence` when it generates Evidence.
 ### 18.5 WorkerRun State Machine (updated)
 
 ```
-pending → running → done
-                 → paused     (pausePoint reached; awaiting human resume)
-                 → failed     (error, can retry)
-                 → escalated  (awaiting Approval from human)
-                 → aborted    (limit reached or human rejected)
+pending → running → awaiting_input  (WorkerInteraction created; waiting for user)
+                 → paused           (pausePoint reached; awaiting human resume)
+                 → done
+                 → failed           (error, can retry)
+                 → escalated        (awaiting Approval from human)
+                 → aborted          (limit reached or human rejected)
+
+awaiting_input → running    (WorkerInteraction answered)
+awaiting_input → aborted    (timeoutAction: abort OR cancel())
+awaiting_input → escalated  (timeoutAction: escalate)
 
 paused → running  (human resumes)
-paused → aborted  (timeoutAction: abort OR human cancels)
+paused → aborted  (timeoutAction: abort OR cancel())
+
+// cancel(workerRunId, cascade: boolean = true)
+//   → state: aborted, cancelledBy = User
+//   → active WorkerInteraction.state → cancelled
+//   → if cascade: child WorkerRuns → aborted
 ```
 
 ### 18.6 Escalation Flow
@@ -2566,6 +2590,36 @@ cf.studio.core.validation_result.v1~     // output of one Validator WorkerRun
 cf.studio.core.evidence.v1~              // structured proof of action/validation
                                          // state: valid|superseded|revoked
                                          // produced by Worker output Contract
+```
+
+---
+
+### Domain 20 — Worker Interactions
+
+```
+cf.studio.core.worker_interaction.v1~    // interactive exchange between Worker and user
+                                         // kind: input_request | menu | free_form_intent
+                                         // state: pending | answered | timed_out | cancelled
+                                         // max 1 pending per WorkerRun at any time
+```
+
+```
+WorkerInteraction extends Object {
+  typeId:        gts.cf.studio.core.object.v1~cf.studio.core.worker_interaction.v1~
+  workerRunId:   ref → WorkerRun
+  kind:          input_request | menu | free_form_intent
+  prompt:        string                // what the Worker is asking
+  context?:      string                // why it is asking (LLM reasoning context)
+  options?:      [                     // kind: menu only
+    { value: string, label: string, description?: string }
+  ]
+  inputSchema?:  Contract              // kind: input_request — validates response
+  requiredRole?: RolePattern           // who may answer; null = any authorized user
+  response?:     any                   // filled by user
+  state:         pending | answered | timed_out | cancelled
+  expiresAt?:    datetime
+  timeoutAction: continue | abort | escalate   // default: abort
+}
 ```
 
 ---
