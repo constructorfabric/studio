@@ -391,6 +391,16 @@ are standard JSON Schema fields.
 
 **Worker = registry definition.** WorkerRun (§5) = execution instance.
 
+**Design rule — when to extend Worker:**
+> A registry entity extends Worker (via GTS chaining) *if and only if* it autonomously
+> produces a WorkerRun upon execution. Entities that are configuration read by Workers
+> remain separate registry entities.
+>
+> - `Validator` → extends Worker ✅ (produces WorkerRun)
+> - `Flow` → extends Worker ✅ (produces FlowRun which extends WorkerRun)
+> - `Connector` → separate entity ✅ (execution delegated to platform Workers)
+> - `StatePolicy`, `Kit`, `Policy` → separate entities ✅ (no execution)
+
 A Worker is a typed, reusable capability registered in the Studio registry. It defines
 what it consumes and produces (Contract), how it runs (WorkerImplementation), and what
 it is allowed to call (dependencies). Workers do not execute themselves — execution

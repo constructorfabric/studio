@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 30
+**Rounds:** 31
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -72,6 +72,7 @@
 | 28 | Worker nomenclature — Worker = registry definition, WorkerRun = execution instance; kind-labels in user-facing docs |
 | 29 | Overview section added — DO1–DO6 high-level diagrams + cardinality reference table |
 | 30 | Flow = Worker (kind: orchestrator) — GTS chaining; FlowRun extends WorkerRun; Kit.packages workers[] only |
+| 31 | Connector does NOT extend Worker (fails "produces WorkerRun" test); design rule formalized in §4 |
 
 ---
 
