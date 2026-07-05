@@ -717,8 +717,11 @@ Flow extends Worker {
           }
         }
       ]
-      mandatorySteps:    Worker[]     // subset of steps that must execute
-      allowedNextSteps:  map<Worker, Worker[]>
+      mandatorySteps:     Worker[]     // ordered list = planned checklist items
+      stepDependencies?:  map<workerId, workerId[]>
+                                       // explicit deps for UI dependency graph;
+                                       // if absent: steps assumed sequential per mandatorySteps order
+      allowedNextSteps:   map<Worker, Worker[]>
       conditionalRoutes?: [
         {
           fromWorker: ref → Worker
@@ -741,9 +744,14 @@ FlowRun extends WorkerRun — the execution record of an orchestrator Worker.
 FlowRun extends WorkerRun {
   // inherits all WorkerRun fields
   typeId:          gts.cf.studio.core.object.v1~cf.studio.core.flow_run.v1~
-  // additional orchestrator fields:
+  // orchestrator step tracking:
   completedSteps:  Worker[]
   skippedSteps:    Worker[]
+  activeStepId?:   ref → Worker      // currently executing step; null when idle
+  stepStatus?:     map<workerId,      // denormalized read-model for checklist UI
+                     pending | running | done | skipped | failed>
+                                      // updated by platform on each child WorkerRun state change
+                                      // source of truth: child WorkerRun tree
   // note: outputData = { completedSteps, skipped } (FlowRunResult, not a domain Object)
 }
 ```

@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 33
+**Rounds:** 35
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -75,6 +75,8 @@
 | 31 | Connector does NOT extend Worker (fails "produces WorkerRun" test); design rule formalized in §4 |
 | 32 | Remove Worker.kind entirely; add requiresAutomationGate: boolean; "Action" = UI concept in metadata.action |
 | 33 | Input resolution: Worker.inputBindings[], Contract x-gts-source: platform|never-user only, Flow.config.steps[].inputBinding override |
+| 34 | Worker.trigger split: canInvokeOnDemand + eventTrigger on Worker, defaultSchedule in WorkerImplementation |
+| 35 | Flow checklist+progress: FlowRun.stepStatus map, FlowRun.activeStepId, Flow.config.stepDependencies |
 
 ---
 
