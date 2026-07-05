@@ -72,7 +72,7 @@ Outside the graph. Describe rules and configurations, not data.
 
 | Entity | Purpose |
 |---|---|
-| `Worker` | Executor — consumes and produces Objects |
+| `Worker` | **Definition** of a typed, reusable capability (not a process). Execution creates a WorkerRun. |
 | `Validator` | Extends Worker; adds retry loop, escalation, maxRetries semantics |
 | `WorkerImplementation` | Runtime configuration of a Worker (model, prompt, script) |
 | `Flow` | Configuration of constraints and mandatory steps |
@@ -185,7 +185,21 @@ are standard JSON Schema fields.
 
 ## 4. Worker
 
-Executor — consumes Objects, produces Objects. Registry entity.
+**Worker = registry definition.** WorkerRun (§5) = execution instance.
+
+A Worker is a typed, reusable capability registered in the Studio registry. It defines
+what it consumes and produces (Contract), how it runs (WorkerImplementation), and what
+it is allowed to call (dependencies). Workers do not execute themselves — execution
+creates a WorkerRun.
+
+User-facing labels by `kind`:
+
+| kind | UI / docs label | Semantic role |
+|---|---|---|
+| `action` | Action | Drives state transitions; may write back to external systems |
+| `analyzer` | Analyzer | Detects gaps; creates Recommendations; read-only |
+| `validator` | Validator | Gates transitions; produces ValidationResult + Evidence |
+| `utility` | Worker (internal) | Infrastructure: Retriever, sync, export |
 
 ```
 Worker {

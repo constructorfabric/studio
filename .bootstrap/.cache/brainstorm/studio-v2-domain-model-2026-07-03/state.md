@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 27
+**Rounds:** 28
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -69,6 +69,7 @@
 | 25 | LangGraph/LangChain borrowings — parallelOutputMerge, conditionalRoutes, pausePoints, fallback chain |
 | 26 | Interactive Workers — WorkerInteraction Object, interactionModel, awaiting_input state, cancel(), events |
 | 27 | RAG — Retriever as Worker (kind: utility), Gears Models owns infrastructure, chunks outside graph |
+| 28 | Worker nomenclature — Worker = registry definition, WorkerRun = execution instance; kind-labels in user-facing docs |
 
 ---
 
