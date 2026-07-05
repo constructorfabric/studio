@@ -67,6 +67,41 @@ flowchart TD
 
 ---
 
+### DO1b — Layers with Entity Names
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│               GEARS INFRASTRUCTURE                          │
+│  Events Broker · Notifications · Approvals · Jobs Manager   │
+│  LLM Gateway · AI Agents Registry · Settings Service        │
+└─────────────────────────────────────────────────────────────┘
+                          ▲ Studio builds on Gears
+┌─────────────────────────────────────────────────────────────┐
+│                     REGISTRY ENTITIES                       │
+│                                                             │
+│  Worker ──────────── WorkerImplementation                   │
+│  Flow    obj_ext    Kit    StatePolicy    NotificationRule   │
+│  Policy                                                     │
+└─────────────────────────────────┬───────────────────────────┘
+                                  │ executes / produces
+                                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       OBJECT GRAPH                          │
+│           gts.cf.studio.core.object.v1~ (base)             │
+│                                                             │
+│  Tenant*         Workspace        WorkerRun      FlowRun   │
+│  User*           Role             Recommendation            │
+│  Requirement     Task             PullRequest    Build      │
+│  Design          Incident         IdentityMapping           │
+│  PolicyOverride  PolicyDelegation SavedAuditQuery           │
+│  NotificationRuleOverride  NotificationSubscription         │
+│                                                             │
+│  * extends Gears base types (AM/RG)                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ### DO2 — Registry Entity Relationships
 
 ```mermaid
@@ -1015,37 +1050,6 @@ flowchart TD
         INC --> PM["postmortem"]
         PM --> TASK
     end
-```
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│               GEARS INFRASTRUCTURE                          │
-│  Events Broker · Notifications · Approvals · Jobs Manager   │
-│  LLM Gateway · AI Agents Registry · Settings Service        │
-└─────────────────────────────────────────────────────────────┘
-                          ▲ Studio builds on Gears
-┌─────────────────────────────────────────────────────────────┐
-│                     REGISTRY ENTITIES                       │
-│                                                             │
-│  Worker ──────────── WorkerImplementation                   │
-│  Flow    obj_ext    Kit    StatePolicy    NotificationRule   │
-│  Policy                                                     │
-└─────────────────────────────────┬───────────────────────────┘
-                                  │ executes / produces
-                                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       OBJECT GRAPH                          │
-│           gts.cf.studio.core.object.v1~ (base)             │
-│                                                             │
-│  Tenant*         Workspace        WorkerRun      FlowRun   │
-│  User*           Role             Recommendation            │
-│  Requirement     Task             PullRequest    Build      │
-│  Design          Incident         IdentityMapping           │
-│  PolicyOverride  PolicyDelegation SavedAuditQuery           │
-│  NotificationRuleOverride  NotificationSubscription         │
-│                                                             │
-│  * extends Gears base types (AM/RG)                        │
-└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
