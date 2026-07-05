@@ -39,6 +39,34 @@ flowchart TB
 
 ---
 
+### D1 — Registry vs Object Graph (entities)
+
+```mermaid
+flowchart TD
+    subgraph Registry["Registry Entities (outside graph)"]
+        Worker["Worker\n(contract + deps)"]
+        WI["WorkerImplementation\n(runtime config)"]
+        Flow["Flow\n(constraint config)"]
+        Kit["Kit\n(extension unit)"]
+    end
+
+    subgraph Graph["Object Graph"]
+        Object["Object\n(base type)"]
+        WorkerRun["WorkerRun\nextends Object"]
+        FlowRun["FlowRun\nextends Object"]
+    end
+
+    Worker -->|versioned by| WI
+    Worker -->|packaged in| Kit
+    Flow -->|packaged in| Kit
+    Worker -->|execution produces| WorkerRun
+    Flow -->|execution produces| FlowRun
+    WorkerRun -->|extends| Object
+    FlowRun -->|extends| Object
+```
+
+---
+
 ### DO2 — Registry Entity Relationships
 
 ```mermaid
@@ -963,31 +991,7 @@ Kit manifest:
 
 ## 11. System Overview
 
-### D1 — System Overview: Registry vs Object Graph
-
-```mermaid
-flowchart TD
-    subgraph Registry["Registry Entities (outside graph)"]
-        Worker["Worker\n(contract + deps)"]
-        WI["WorkerImplementation\n(runtime config)"]
-        Flow["Flow\n(constraint config)"]
-        Kit["Kit\n(extension unit)"]
-    end
-
-    subgraph Graph["Object Graph"]
-        Object["Object\n(base type)"]
-        WorkerRun["WorkerRun\nextends Object"]
-        FlowRun["FlowRun\nextends Object"]
-    end
-
-    Worker -->|versioned by| WI
-    Worker -->|packaged in| Kit
-    Flow -->|packaged in| Kit
-    Worker -->|execution produces| WorkerRun
-    Flow -->|execution produces| FlowRun
-    WorkerRun -->|extends| Object
-    FlowRun -->|extends| Object
-```
+See D1 and DO1–DO6 in the Overview section above for high-level diagrams.
 
 ### D31 — Full Object Reference Map (top-level)
 
