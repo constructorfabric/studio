@@ -298,8 +298,9 @@ Studio-owned base types:
 
 ```
 gts.cf.studio.core.object.v1~      ← base Object (all Studio domain objects)
-gts.cf.studio.core.worker.v1~      ← base Worker
-gts.cf.studio.core.validator.v1~   ← extends Worker; adds retry/escalation semantics
+gts.cf.studio.core.worker.v1~      ← base Worker (definition)
+gts.cf.studio.core.worker.v1~cf.studio.core.validator.v1~
+                                   ← Validator = Worker extension via GTS chaining
 gts.cf.studio.core.worker.v1~cf.studio.core.flow.v1~
                                    ← Flow = Worker (kind: orchestrator) via GTS chaining
 gts.cf.studio.core.connector.v1~   ← registry entity; uses Gears OAGW as infrastructure
