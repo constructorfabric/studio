@@ -361,24 +361,28 @@ gts.cf.studio.core.obj_ext.v1~jira.studio.core.jira_task_ext.v1~
 
 ## 3. Contract
 
-Contract = **GTS Type Schema** (JSONSchema + `x-gts-*`).
+Contract = **GTS Type Schema** (JSONSchema + `x-gts-*` extensions).
 
 Describes what a Worker expects as input and what it produces as output.
 Object type references use `$ref` → GTS Type Identifier. Scalar properties
-are standard JSON Schema fields.
+use standard JSON Schema fields. **GTS does not duplicate JSON Schema features:**
+required fields use the standard `required` array, not a custom annotation.
+
+`x-gts-*` extensions are only for concepts JSON Schema does not have: state
+awareness (`x-gts-state-requires`, `x-gts-state-sets`), platform security
+(`x-gts-source: platform | never-user`), traits (`x-gts-traits`).
 
 ```json
 {
   "$id": "gts.cf.studio.core.worker.v1~cf.studio.core.create_design_input.v1~",
   "type": "object",
+  "required": ["requirement", "workspace"],
   "properties": {
     "requirement": {
-      "$ref": "gts://cf.studio.core.object.v1~cf.studio.core.requirement.v1~",
-      "x-gts-required": true
+      "$ref": "gts://cf.studio.core.object.v1~cf.studio.core.requirement.v1~"
     },
     "workspace": {
       "$ref": "gts://cf.studio.core.object.v1~cf.studio.core.workspace.v1~",
-      "x-gts-required": true,
       "x-gts-source": "platform"
     },
     "style": { "type": "string", "enum": ["detailed", "sketch"] },
