@@ -4,35 +4,38 @@
 
 ---
 
-## Diagrams
+The system consists of two categories of entities:
 
-### D1 — System Overview: Registry vs Object Graph
+- **Object** — data and artifacts that flow through the system (the graph)
+- **Registry entities** — Worker, Flow, Kit, etc. (outside the graph; templates/configurations)
 
-```mermaid
-flowchart TD
-    subgraph Registry["Registry Entities (outside graph)"]
-        Worker["Worker\n(contract + deps)"]
-        WI["WorkerImplementation\n(runtime config)"]
-        Flow["Flow\n(constraint config)"]
-        Kit["Kit\n(extension unit)"]
-    end
+## 1. Entities
 
-    subgraph Graph["Object Graph"]
-        Object["Object\n(base type)"]
-        WorkerRun["WorkerRun\nextends Object"]
-        FlowRun["FlowRun\nextends Object"]
-    end
+### 1.1 Object
 
-    Worker -->|versioned by| WI
-    Worker -->|packaged in| Kit
-    Flow -->|packaged in| Kit
-    Worker -->|execution produces| WorkerRun
-    Flow -->|execution produces| FlowRun
-    WorkerRun -->|extends| Object
-    FlowRun -->|extends| Object
+The base type for all domain objects in the system.
+
 ```
-
----
+Object {
+  id:               GTS Instance Identifier
+  typeId:           GTS Type Identifier
+  tenantId:         ref → Tenant
+  state:            string
+  createdAt:        datetime
+  updatedAt:        datetime
+  // Vision-required attributes (gap analysis, staleness, ownership, external sync):
+  ownerId:          ref team | person?
+  validationStatus: none|pending|pass|fail
+  stalenessScore:   float?              // 0.0 = fresh, 1.0 = stale
+                                        // = max(timeStaleness, dependencyStaleness, syncStaleness)
+  externalRef?: {
+    connectorId:  ref Connector
+    externalId:   string
+    externalUrl:  string
+    lastSyncedAt: datetime
+  }
+}
+```
 
 ### D2 — Object Base Hierarchy
 
@@ -59,402 +62,6 @@ classDiagram
     Object <|-- FlowRun
     Object <|-- Role
     Object <|-- Recommendation
-```
-
----
-
-### D3 — Tenant Hierarchy & Isolation
-
-```mermaid
-classDiagram
-    class Tenant {
-        parentId: ref Tenant?
-        name: string
-        checkpointTTL: duration
-    }
-    class Object {
-        tenantId: ref Tenant
-    }
-    class PolicyDelegation {
-        fromTenant: ref Tenant
-        toTenant: ref Tenant
-        expiresAt: datetime?
-    }
-    class PolicyOverride {
-        policyId: ref Policy
-        tenantId: ref Tenant
-    }
-    class IdentityMapping {
-        externalPattern: object
-        roleId: ref Role
-    }
-
-    Tenant "1" --> "0..1" Tenant : parentId (sub-tenant)
-    Tenant "1" --> "many" Object : owns
-    Tenant "1" --> "many" PolicyDelegation : fromTenant
-    Tenant "1" --> "many" PolicyOverride : scoped to
-    Tenant "1" --> "many" IdentityMapping : scoped to
-```
-
----
-
-### D4 — Worker & Contract
-
-```mermaid
-classDiagram
-    class Worker {
-        id: GTS Type ID
-        scope: local|project|workspace|published
-        implementationId: ref WorkerImpl
-    }
-    class WorkerImplementation {
-        version: semver
-        runtime: llm|script|hybrid
-        auditMode: sync|async
-    }
-    class Contract {
-        GTS Type Schema
-        x-gts-state-requires?
-        x-gts-state-sets?
-    }
-    class WorkerRun {
-        state: pending|running|done|failed
-        parentRunId: ref WorkerRun?
-    }
-
-    Worker "1" --> "1" WorkerImplementation : implementationId
-    Worker "1" --> "1" Contract : input
-    Worker "1" --> "1" Contract : output
-    Worker "many" --> "many" Worker : dependencies
-    Worker ..> WorkerRun : execution produces
-```
-
----
-
-### D5 — WorkerRun Execution Lifecycle
-
-```mermaid
-flowchart TD
-    START([START]) --> WA[Write-Ahead\nexternalEvents recorded]
-    WA --> EXEC[Execute\nDAG parallel branches]
-    EXEC --> DONE([done])
-    EXEC --> FAILED([failed])
-
-    FAILED --> CHK{checkpoint\nenabled?}
-    CHK -->|yes + TTL valid| RETRY[Checkpoint-based\nRetry]
-    CHK -->|no / TTL expired| FULL[Full Restart]
-    RETRY --> EXEC
-    FULL --> WA
-
-    EXEC --> LIMITS["effectiveLimits applied\nkit → tenant → call"]
-```
-
----
-
-### D6 — StatePolicy & Transitions
-
-```mermaid
-flowchart LR
-    SP["StatePolicy\n(registry entity)"] -->|appliesTo| OT["Object Type\n(GTS ID)"]
-    SP -->|declares| TR["Transition\nfrom → to"]
-    TR -->|optional| RA["requiresApproval\n{role, escalateAfter,\nescalateTo}"]
-
-    WC["Worker Contract"] -->|x-gts-state-requires| REQ["Required State\n(soft/strict)"]
-    WC -->|x-gts-state-sets| SET["Resulting State"]
-
-    REQ -->|gates| WD["Worker Discovery\n= type match\n+ state match"]
-```
-
----
-
-### D7 — Authorization Model
-
-```mermaid
-classDiagram
-    class Policy {
-        id: GTS Type ID
-        version: semver
-        rules: Rule[]
-    }
-    class PolicyOverride {
-        policyId: ref Policy
-        overrides: Rule[]
-    }
-    class Role {
-        name: string
-        tenantId: ref Tenant
-    }
-    class User {
-        tenantId: ref Tenant
-    }
-    class Kit {
-        requiredPermissions: Permission[]
-    }
-
-    User --> Role : has
-    Role --> Policy : governs via
-    Policy <|-- PolicyOverride : overrides
-    Kit --> Policy : Worker authz via requiredPermissions
-```
-
----
-
-### D8 — AuditLog & History
-
-```mermaid
-flowchart TD
-    WR["WorkerRun\n(source of truth)"] -->|async materialization| AL["AuditLog\n(materialized view)"]
-    WR -->|write-ahead| EV["externalEvents\n{source, type, externalId, url}"]
-
-    AL -->|query| API["Query API\n{target GTS pattern,\naction, principal, timeRange}"]
-    API -->|filtered by| POL["Policy check\n(Role boundary)"]
-
-    KV["Kit View\n(named query)"] -->|named query over| API
-    SAQ["SavedAuditQuery\nextends Object"] -->|user query over| API
-```
-
----
-
-### D9 — Recommendation Lifecycle
-
-```mermaid
-flowchart TD
-    AW["Analyzer Worker\n(schedule/onEvent/onDemand)"] -->|creates| REC["Recommendation\nextends Object"]
-
-    REC -->|state| S1[pending]
-    S1 -->|user accepts| S2[accepted]
-    S2 -->|Worker runs| S3[executing]
-    S3 --> S4[done]
-    S1 -->|user dismisses| S5[dismissed]
-    S1 -->|Re-check / auto| S6[invalidated]
-
-    REC -->|validationWorker| VW["Validation Worker\n(re-check + refresh input)"]
-    REC -->|suggestedWorker| SW["Suggested Worker\n(actionable fix)"]
-```
-
----
-
-### D10 — Events & Notifications
-
-```mermaid
-flowchart LR
-    OBJ["Object change"] -->|emits| EB["Gears Events Broker\n(GTS-typed events)"]
-    EB -->|authz filtered| NR["NotificationRule\n(registry, from Kit)"]
-    NR -->|delivers via| NS["Gears Notifications\nService"]
-    NS -->|channels| CH["in_app / email\nwebhook / Slack..."]
-
-    NSU["NotificationSubscription\nextends Object"] -->|personal filter| EB
-    NRO["NotificationRuleOverride\nextends Object"] -->|on/off + expiresAt| NR
-```
-
----
-
-### D11 — Document Type Hierarchy
-
-```mermaid
-classDiagram
-    class document {
-        content: string
-        version: semver
-        ownerId: ref User
-    }
-
-    document <|-- spec
-    document <|-- guide
-    document <|-- readme
-    document <|-- wiki_page
-    document <|-- api_documentation
-    document <|-- prd
-    document <|-- adr
-```
-
----
-
-### D12 — Document Type Hierarchy (continued)
-
-```mermaid
-classDiagram
-    class document
-
-    document <|-- design
-    document <|-- feature_spec
-    document <|-- decomposition
-    document <|-- runbook
-    document <|-- postmortem
-    document <|-- release_notes
-    document <|-- meeting_note
-```
-
----
-
-### D13 — Prompt Type Hierarchy
-
-```mermaid
-classDiagram
-    class prompt {
-        content: string
-        version: semver
-    }
-
-    prompt <|-- skill
-    prompt <|-- system_prompt
-    prompt <|-- prompt_template
-    prompt <|-- prompt_variant
-```
-
----
-
-### D14 — Infrastructure Config Hierarchy
-
-```mermaid
-classDiagram
-    class infra_config {
-        environment: ref environment
-        version: string
-    }
-
-    infra_config <|-- terraform_resource
-    infra_config <|-- helm_release
-    infra_config <|-- k8s_manifest
-```
-
----
-
-### D15 — Kit Extensibility (GTS Chaining)
-
-```mermaid
-flowchart TD
-    B1["gts.cf.studio.core.object.v1~\n(Studio base)"]
-    B2["cf.studio.core.task.v1~\n(Studio canonical)"]
-    B3["jira.studio.core.jira_issue.v1~\n(Jira Kit)"]
-    B4["cf.studio.core.pull_request.v1~\n(Studio canonical)"]
-    B5["github.studio.core.github_pr.v1~\n(GitHub Kit)"]
-
-    B1 -->|narrows to| B2
-    B2 -->|narrows to| B3
-    B1 -->|narrows to| B4
-    B4 -->|narrows to| B5
-
-    OE["obj_ext\n(attribute extension)\nno new type ID needed"] -.->|extends attrs of| B2
-```
-
----
-
-### D16 — CI/CD Object Relationships
-
-```mermaid
-classDiagram
-    class pipeline {
-        definition: YAML ref
-        scope: string
-    }
-    class pipeline_run {
-        pipelineId: ref pipeline
-        state: pending|running|done|failed
-        triggeredBy: commit|schedule|manual
-    }
-    class pipeline_job {
-        runId: ref pipeline_run
-        runner: ref runner
-    }
-    class pipeline_step {
-        jobId: ref pipeline_job
-        state: string
-    }
-    class build_artifact {
-        jobId: ref pipeline_job
-        path: string
-        expiresAt: datetime?
-    }
-    class deployment {
-        artifactId: ref build_artifact
-        environment: ref environment
-    }
-
-    pipeline "1" --> "many" pipeline_run
-    pipeline_run "1" --> "many" pipeline_job
-    pipeline_job "1" --> "many" pipeline_step
-    pipeline_job "1" --> "many" build_artifact
-    build_artifact "1" --> "many" deployment
-```
-
----
-
-### D17 — Security & Vulnerability Objects (type hierarchy)
-
-> See D24 for cross-references between security objects and the rest of the graph.
-
-
-
-```mermaid
-classDiagram
-    class vulnerability {
-        severity: critical|high|medium|low
-        cveId: string?
-        state: open|fixed|ignored
-    }
-    class cve {
-        cvssScore: float
-        description: string
-    }
-    class security_finding {
-        source: pentest|code_scan|secret_scan
-        severity: string
-    }
-    class dependency_vulnerability {
-        packageName: string
-        affectedVersions: string[]
-        fixedVersion: string?
-    }
-    class compliance_check {
-        standard: string
-        control: string
-    }
-    class compliance_check_result {
-        checkId: ref compliance_check
-        state: pass|fail|skip
-    }
-
-    vulnerability --> cve : references
-    dependency_vulnerability --|> vulnerability
-    security_finding --|> vulnerability
-    compliance_check "1" --> "many" compliance_check_result
-```
-
----
-
-*Generated during Studio v2 Domain Model brainstorm session.*
-*Date: 2026-07-02*
-
-The system consists of two categories of entities:
-
-- **Object** — data and artifacts that flow through the system (the graph)
-- **Registry entities** — Worker, Flow, Kit, etc. (outside the graph; templates/configurations)
-
-### 1.1 Object
-
-The base type for all domain objects in the system.
-
-```
-Object {
-  id:               GTS Instance Identifier
-  typeId:           GTS Type Identifier
-  tenantId:         ref → Tenant
-  state:            string
-  createdAt:        datetime
-  updatedAt:        datetime
-  // Vision-required attributes (gap analysis, staleness, ownership, external sync):
-  ownerId:          ref team | person?
-  validationStatus: none|pending|pass|fail
-  stalenessScore:   float?              // 0.0 = fresh, 1.0 = stale
-                                        // = max(timeStaleness, dependencyStaleness, syncStaleness)
-  externalRef?: {
-    connectorId:  ref Connector
-    externalId:   string
-    externalUrl:  string
-    lastSyncedAt: datetime
-  }
-}
 ```
 
 All object types are derived from the base `Object` via GTS chained IDs.
@@ -598,6 +205,37 @@ Worker {
 }
 ```
 
+### D4 — Worker & Contract
+
+```mermaid
+classDiagram
+    class Worker {
+        id: GTS Type ID
+        scope: local|project|workspace|published
+        implementationId: ref WorkerImpl
+    }
+    class WorkerImplementation {
+        version: semver
+        runtime: llm|script|hybrid
+        auditMode: sync|async
+    }
+    class Contract {
+        GTS Type Schema
+        x-gts-state-requires?
+        x-gts-state-sets?
+    }
+    class WorkerRun {
+        state: pending|running|done|failed
+        parentRunId: ref WorkerRun?
+    }
+
+    Worker "1" --> "1" WorkerImplementation : implementationId
+    Worker "1" --> "1" Contract : input
+    Worker "1" --> "1" Contract : output
+    Worker "many" --> "many" Worker : dependencies
+    Worker ..> WorkerRun : execution produces
+```
+
 ### 4.1 WorkerImplementation
 
 Runtime configuration, versioned independently from the contract.
@@ -680,6 +318,24 @@ WorkerRun extends Object {
 4. COMPLETE     → outputData written, state: done | failed
 ```
 
+### D5 — WorkerRun Execution Lifecycle
+
+```mermaid
+flowchart TD
+    START([START]) --> WA[Write-Ahead\nexternalEvents recorded]
+    WA --> EXEC[Execute\nDAG parallel branches]
+    EXEC --> DONE([done])
+    EXEC --> FAILED([failed])
+
+    FAILED --> CHK{checkpoint\nenabled?}
+    CHK -->|yes + TTL valid| RETRY[Checkpoint-based\nRetry]
+    CHK -->|no / TTL expired| FULL[Full Restart]
+    RETRY --> EXEC
+    FULL --> WA
+
+    EXEC --> LIMITS["effectiveLimits applied\nkit → tenant → call"]
+```
+
 ### 5.2 Retry
 
 - **Checkpoint-based** (`checkpoint.enabled = true`): successful sub-Workers
@@ -693,6 +349,32 @@ WorkerRun extends Object {
 Kit defaults:         timeout, depth, token_budget
 Tenant max limits:    ← ceiling
 Call (at invocation): ← can narrow, not exceed Tenant
+```
+
+### D18 — WorkerRun Cross-References
+
+```mermaid
+classDiagram
+    class WorkerRun {
+        workerId: ref Worker
+        parentRunId: ref WorkerRun?
+        state: pending|running|done|failed
+    }
+    class Worker {
+        id: GTS Type ID
+    }
+    class Object {
+        id: GTS Instance ID
+    }
+    class FlowRun {
+        flowId: ref Flow
+    }
+
+    WorkerRun --> Worker : workerId
+    WorkerRun --> WorkerRun : parentRunId (sub-call tree)
+    WorkerRun --> Object : inputData references
+    WorkerRun --> Object : outputData produces
+    FlowRun --> WorkerRun : completedSteps
 ```
 
 ---
@@ -741,6 +423,39 @@ Tenant {
 Every Object belongs to exactly one Tenant (`tenantId`).
 Isolation enforced via ABAC policies using GTS wildcard patterns.
 
+### D3 — Tenant Hierarchy & Isolation
+
+```mermaid
+classDiagram
+    class Tenant {
+        parentId: ref Tenant?
+        name: string
+        checkpointTTL: duration
+    }
+    class Object {
+        tenantId: ref Tenant
+    }
+    class PolicyDelegation {
+        fromTenant: ref Tenant
+        toTenant: ref Tenant
+        expiresAt: datetime?
+    }
+    class PolicyOverride {
+        policyId: ref Policy
+        tenantId: ref Tenant
+    }
+    class IdentityMapping {
+        externalPattern: object
+        roleId: ref Role
+    }
+
+    Tenant "1" --> "0..1" Tenant : parentId (sub-tenant)
+    Tenant "1" --> "many" Object : owns
+    Tenant "1" --> "many" PolicyDelegation : fromTenant
+    Tenant "1" --> "many" PolicyOverride : scoped to
+    Tenant "1" --> "many" IdentityMapping : scoped to
+```
+
 ---
 
 ## 8. User
@@ -768,6 +483,36 @@ Workspace extends Object {
     { path: string, role: string, adapter?: string, url?: string, branch?: string }
   ]
 }
+```
+
+### D27 — Workspace & Kit Cross-References
+
+```mermaid
+classDiagram
+    class Workspace {
+        tenantId: ref Tenant
+        sources: SourceEntry[]
+    }
+    class SourceEntry {
+        path: string
+        url: string?
+        role: string
+    }
+    class repository {
+        url: string
+    }
+    class Kit {
+        scope: local|project|workspace|published
+        requiredPermissions: Permission[]
+    }
+    class Tenant {
+        parentId: ref Tenant?
+    }
+
+    Workspace "1" --> "many" SourceEntry : sources
+    SourceEntry --> repository : resolves to
+    Tenant "1" --> "many" Kit : installed Kits
+    Workspace --> Tenant : tenantId
 ```
 
 ---
@@ -805,6 +550,24 @@ obj_ext {
 }
 ```
 
+### D15 — Kit Extensibility (GTS Chaining)
+
+```mermaid
+flowchart TD
+    B1["gts.cf.studio.core.object.v1~\n(Studio base)"]
+    B2["cf.studio.core.task.v1~\n(Studio canonical)"]
+    B3["jira.studio.core.jira_issue.v1~\n(Jira Kit)"]
+    B4["cf.studio.core.pull_request.v1~\n(Studio canonical)"]
+    B5["github.studio.core.github_pr.v1~\n(GitHub Kit)"]
+
+    B1 -->|narrows to| B2
+    B2 -->|narrows to| B3
+    B1 -->|narrows to| B4
+    B4 -->|narrows to| B5
+
+    OE["obj_ext\n(attribute extension)\nno new type ID needed"] -.->|extends attrs of| B2
+```
+
 ### 10.3 Compatibility
 
 - Vendor declares `compatibleWith` in Kit manifest
@@ -830,6 +593,56 @@ Kit manifest:
 ---
 
 ## 11. System Overview
+
+### D1 — System Overview: Registry vs Object Graph
+
+```mermaid
+flowchart TD
+    subgraph Registry["Registry Entities (outside graph)"]
+        Worker["Worker\n(contract + deps)"]
+        WI["WorkerImplementation\n(runtime config)"]
+        Flow["Flow\n(constraint config)"]
+        Kit["Kit\n(extension unit)"]
+    end
+
+    subgraph Graph["Object Graph"]
+        Object["Object\n(base type)"]
+        WorkerRun["WorkerRun\nextends Object"]
+        FlowRun["FlowRun\nextends Object"]
+    end
+
+    Worker -->|versioned by| WI
+    Worker -->|packaged in| Kit
+    Flow -->|packaged in| Kit
+    Worker -->|execution produces| WorkerRun
+    Flow -->|execution produces| FlowRun
+    WorkerRun -->|extends| Object
+    FlowRun -->|extends| Object
+```
+
+### D31 — Full Object Reference Map (top-level)
+
+```mermaid
+flowchart TD
+    subgraph Requirements
+        REQ["requirement"] --> TASK["task"]
+    end
+    subgraph Code
+        TASK --> PR["pull_request"]
+        PR --> CMT["commit"]
+        CMT --> REPO["repository"]
+    end
+    subgraph CICD
+        CMT --> BUILD["build"]
+        BUILD --> ART["build_artifact"]
+        ART --> DEP["deployment"]
+    end
+    subgraph Ops
+        DEP --> INC["incident"]
+        INC --> PM["postmortem"]
+        PM --> TASK
+    end
+```
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -890,6 +703,20 @@ StatePolicy {
 }
 ```
 
+### D6 — StatePolicy & Transitions
+
+```mermaid
+flowchart LR
+    SP["StatePolicy\n(registry entity)"] -->|appliesTo| OT["Object Type\n(GTS ID)"]
+    SP -->|declares| TR["Transition\nfrom → to"]
+    TR -->|optional| RA["requiresApproval\n{role, escalateAfter,\nescalateTo}"]
+
+    WC["Worker Contract"] -->|x-gts-state-requires| REQ["Required State\n(soft/strict)"]
+    WC -->|x-gts-state-sets| SET["Resulting State"]
+
+    REQ -->|gates| WD["Worker Discovery\n= type match\n+ state match"]
+```
+
 Tenant StatePolicy overrides Kit StatePolicy (tenant > kit > global).
 
 ### 12.2 Worker Contract — State Awareness
@@ -934,6 +761,36 @@ StateTransitionEvent (projection) {
 ---
 
 ## 13. Role, Policy & Authorization
+
+### D7 — Authorization Model
+
+```mermaid
+classDiagram
+    class Policy {
+        id: GTS Type ID
+        version: semver
+        rules: Rule[]
+    }
+    class PolicyOverride {
+        policyId: ref Policy
+        overrides: Rule[]
+    }
+    class Role {
+        name: string
+        tenantId: ref Tenant
+    }
+    class User {
+        tenantId: ref Tenant
+    }
+    class Kit {
+        requiredPermissions: Permission[]
+    }
+
+    User --> Role : has
+    Role --> Policy : governs via
+    Policy <|-- PolicyOverride : overrides
+    Kit --> Policy : Worker authz via requiredPermissions
+```
 
 ### 13.1 Role
 
@@ -1011,6 +868,38 @@ IdentityMapping extends Object {
 }
 ```
 
+### D28 — Role & Identity Cross-References
+
+```mermaid
+classDiagram
+    class User {
+        tenantId: ref Tenant
+    }
+    class Role {
+        tenantId: ref Tenant
+        name: string
+    }
+    class RoleAssignment {
+        userId: ref User
+        roleId: ref Role
+        assignedBy: ref User
+    }
+    class IdentityMapping {
+        externalPattern: object
+        roleId: ref Role
+        tenantId: ref Tenant
+    }
+    class PolicyOverride {
+        policyId: ref Policy
+        tenantId: ref Tenant
+    }
+
+    User "many" --> "many" Role : via RoleAssignment
+    IdentityMapping --> Role : maps external identity to
+    Role --> PolicyOverride : governed by
+    Tenant --> IdentityMapping : scoped to
+```
+
 ### 13.6 Tenant Policy Hierarchy
 
 Sub-Tenant inherits parent Policy. Default: **narrowing only**.
@@ -1039,6 +928,22 @@ Source of truth: WorkerRun tree.
 Critical events: `auditMode: sync`. Others: `auditMode: async` (default).
 Tenant can override per Worker via PolicyOverride.
 
+Materialized view: `WorkerRun tree → AuditLog`.
+
+### D8 — AuditLog & History
+
+```mermaid
+flowchart TD
+    WR["WorkerRun\n(source of truth)"] -->|async materialization| AL["AuditLog\n(materialized view)"]
+    WR -->|write-ahead| EV["externalEvents\n{source, type, externalId, url}"]
+
+    AL -->|query| API["Query API\n{target GTS pattern,\naction, principal, timeRange}"]
+    API -->|filtered by| POL["Policy check\n(Role boundary)"]
+
+    KV["Kit View\n(named query)"] -->|named query over| API
+    SAQ["SavedAuditQuery\nextends Object"] -->|user query over| API
+```
+
 ### 14.2 Query API & Views
 
 ```
@@ -1063,6 +968,36 @@ SavedAuditQuery extends Object {
   tenantId:  ref → Tenant
   createdBy: ref → User
 }
+```
+
+### D29 — AuditLog & SavedQuery Cross-References
+
+```mermaid
+classDiagram
+    class WorkerRun {
+        workerId: ref Worker
+        inputData: any
+        outputData: any
+        externalEvents: ExternalEvent[]
+    }
+    class ExternalEvent {
+        source: string
+        externalId: string
+        url: string
+    }
+    class SavedAuditQuery {
+        createdBy: ref User
+        tenantId: ref Tenant
+        query: QuerySpec
+    }
+    class AuditLog {
+        materialized view
+        over WorkerRun tree
+    }
+
+    WorkerRun "1" --> "many" ExternalEvent : write-ahead
+    WorkerRun ..> AuditLog : materializes into
+    SavedAuditQuery ..> AuditLog : queries
 ```
 
 ### 14.3 Retention
@@ -1097,6 +1032,23 @@ Recommendation extends Object {
 }
 ```
 
+### D9 — Recommendation Lifecycle
+
+```mermaid
+flowchart TD
+    AW["Analyzer Worker\n(schedule/onEvent/onDemand)"] -->|creates| REC["Recommendation\nextends Object"]
+
+    REC -->|state| S1[pending]
+    S1 -->|user accepts| S2[accepted]
+    S2 -->|Worker runs| S3[executing]
+    S3 --> S4[done]
+    S1 -->|user dismisses| S5[dismissed]
+    S1 -->|Re-check / auto| S6[invalidated]
+
+    REC -->|validationWorker| VW["Validation Worker\n(re-check + refresh input)"]
+    REC -->|suggestedWorker| SW["Suggested Worker\n(actionable fix)"]
+```
+
 ### 15.2 Analyzer Workers
 
 Detect gaps and create Recommendations. Use standard Worker `trigger` with
@@ -1118,6 +1070,34 @@ User accepts → Re-check runs → diff shown if inputs changed
   → user confirms → suggestedWorker launched → state: executing → done
 ```
 
+### D26 — Recommendation Cross-References
+
+```mermaid
+classDiagram
+    class Recommendation {
+        sourceRunId: ref WorkerRun
+        suggestedWorker: ref Worker
+        validationWorker: ref Worker?
+        severityWorker: ref Worker?
+        confidence: full|partial|low
+    }
+    class WorkerRun {
+        workerId: ref Worker
+    }
+    class Worker {
+        id: GTS Type ID
+    }
+    class Object {
+        id: GTS Instance ID
+    }
+
+    Recommendation --> WorkerRun : sourceRunId (Analyzer that found gap)
+    Recommendation --> Worker : suggestedWorker (actionable fix)
+    Recommendation --> Worker : validationWorker (re-check)
+    WorkerRun --> Object : gap detected in (input/output)
+    Worker --> Object : fix will produce (output Contract)
+```
+
 ---
 
 ## 16. Events
@@ -1125,6 +1105,19 @@ User accepts → Re-check runs → diff shown if inputs changed
 Studio is built on **Constructor Fabric Gears**. Event infrastructure
 (bus, routing, delivery, backpressure, authz filtering) — Gears Events Broker.
 Studio defines event types via GTS.
+
+### D10 — Events & Notifications
+
+```mermaid
+flowchart LR
+    OBJ["Object change"] -->|emits| EB["Gears Events Broker\n(GTS-typed events)"]
+    EB -->|authz filtered| NR["NotificationRule\n(registry, from Kit)"]
+    NR -->|delivers via| NS["Gears Notifications\nService"]
+    NS -->|channels| CH["in_app / email\nwebhook / Slack..."]
+
+    NSU["NotificationSubscription\nextends Object"] -->|personal filter| EB
+    NRO["NotificationRuleOverride\nextends Object"] -->|on/off + expiresAt| NR
+```
 
 ### 16.1 Studio Event Types
 
@@ -1219,6 +1212,35 @@ NotificationSubscription extends Object {
   urgency:  immediate | digest | muted
   active:   boolean
 }
+```
+
+### D30 — Notification Cross-References
+
+```mermaid
+classDiagram
+    class NotificationRule {
+        trigger: EventPattern
+        audience: RolePattern
+        channel: string
+    }
+    class NotificationRuleOverride {
+        ruleId: ref NotificationRule
+        active: boolean
+        expiresAt: datetime?
+    }
+    class NotificationSubscription {
+        userId: ref User
+        tenantId: ref Tenant
+        urgency: immediate|digest|muted
+    }
+    class User {
+        tenantId: ref Tenant
+    }
+
+    NotificationRuleOverride --> NotificationRule : ruleId
+    NotificationSubscription --> User : userId
+    User --> NotificationSubscription : personal subscriptions
+    NotificationRule --> NotificationRuleOverride : overridden by
 ```
 
 ### 17.4 Channels
@@ -1537,6 +1559,29 @@ metadata: {
 
 ## 23. Traceability Cross-References (Killer Workflows)
 
+### D19 — SDLC Traceability Chain
+
+```mermaid
+flowchart LR
+    REQ["requirement"] -->|implemented by| TASK["task"]
+    TASK -->|closed by| PR["pull_request"]
+    PR -->|triggers| BUILD["build"]
+    BUILD -->|produces| ART["build_artifact"]
+    ART -->|deployed as| DEP["deployment"]
+    DEP -->|targets| ENV["environment"]
+```
+
+### D20 — Design-to-Code Traceability
+
+```mermaid
+flowchart LR
+    PRD["prd"] -->|elaborated by| DES["design"]
+    DES -->|decomposed into| DEC["decomposition"]
+    DEC -->|specifies| FS["feature_spec"]
+    FS -->|implemented in| SF["source_file"]
+    SF -->|lives in| REPO["repository"]
+```
+
 ### 23.1 pull_request references
 
 ```
@@ -1615,6 +1660,63 @@ cf.studio.core.data_model.v1~
 cf.studio.core.architecture_diagram.v1~
 ```
 
+### D32 — Component Cross-References
+
+```mermaid
+classDiagram
+    class component {
+        name: string
+        kind: service|library|module|subsystem
+        ownerId: ref team
+        repositoryId: ref repository
+    }
+    class component_version {
+        componentId: ref component
+        version: semver
+        commitId: ref commit
+    }
+    class component_dependency {
+        sourceId: ref component
+        targetId: ref component
+        kind: uses|implements|extends|calls
+    }
+    class team {
+        name: string
+    }
+    class repository {
+        url: string
+    }
+
+    component "1" --> "many" component_version
+    component "1" --> "many" component_dependency : sourceId
+    component_dependency --> component : targetId
+    component --> team : ownerId
+    component --> repository : repositoryId
+```
+
+### D33 — Component ↔ Documentation & Architecture
+
+```mermaid
+flowchart LR
+    COMP["component"] -->|documented by| DES["design\n→ document"]
+    COMP -->|decided by| ADR["adr\n→ document"]
+    COMP -->|specifies| IFACE["interface_definition"]
+    COMP -->|exposes| API["api_spec"]
+    COMP -->|visualized in| DIAG["architecture_diagram"]
+    COMP -->|traces to| REQ["requirement"]
+```
+
+### D38 — Dependency Graph Between Components
+
+```mermaid
+flowchart LR
+    A["component A\n(frontend)"] -->|uses| B["component B\n(API gateway)"]
+    B -->|calls| C["component C\n(auth)"]
+    B -->|calls| D["component D\n(data)"]
+    D -->|extends| E["component E\n(shared lib)"]
+    C -->|extends| E
+```
+
 ### Domain 3 — Source Code
 
 ```
@@ -1637,6 +1739,84 @@ cf.studio.core.database_instance.v1~    // specific deployed database instance
 cf.studio.core.third_party_service.v1~  // external SaaS dependency (Stripe, SendGrid, Auth0)
 cf.studio.core.cloud_service.v1~        // managed cloud service (AWS S3, GCP Pub/Sub, Azure SB)
 cf.studio.core.tech_dependency.v1~      // directed: component uses library_version / database / service
+```
+
+### D39 — Technology Stack Types
+
+```mermaid
+classDiagram
+    class tech_stack {
+        componentId: ref component
+        description: string
+    }
+    class library {
+        name: string
+        ecosystem: npm|pypi|maven|cargo|nuget|gem
+    }
+    class library_version {
+        libraryId: ref library
+        version: semver
+        licenseId: string?
+    }
+    class framework {
+        name: string
+        language: string
+    }
+    class runtime {
+        name: string
+        version: string
+    }
+
+    tech_stack --> library_version : uses
+    tech_stack --> framework : uses
+    tech_stack --> runtime : targets
+    library_version --> library : libraryId
+```
+
+### D40 — Data & External Service Dependencies
+
+```mermaid
+classDiagram
+    class tech_stack {
+        componentId: ref component
+    }
+    class database {
+        engine: postgres|mongo|redis|mysql|elastic
+        kind: relational|document|kv|search|timeseries
+    }
+    class database_instance {
+        databaseId: ref database
+        environmentId: ref environment
+        host: string
+    }
+    class third_party_service {
+        name: string
+        category: payments|email|auth|analytics|crm
+        url: string
+    }
+    class cloud_service {
+        provider: aws|gcp|azure
+        service: s3|pubsub|sqs|rds|bigquery
+    }
+
+    tech_stack --> database : uses
+    tech_stack --> third_party_service : depends on
+    tech_stack --> cloud_service : uses
+    database "1" --> "many" database_instance
+    database_instance --> environment : deployed in
+```
+
+### D41 — Component ↔ Technology Stack
+
+```mermaid
+flowchart LR
+    COMP["component"] -->|has| TS["tech_stack"]
+    TS -->|runtime| RUN["runtime\n(Node.js 20, JVM 21)"]
+    TS -->|framework| FW["framework\n(React, Django)"]
+    TS -->|libraries| LV["library_version\n(lodash 4.17)"]
+    TS -->|database| DB["database\n(PostgreSQL, Redis)"]
+    TS -->|external| SVC["third_party_service\n(Stripe, Auth0)"]
+    TS -->|cloud| CSC["cloud_service\n(AWS S3, GCP Pub/Sub)"]
 ```
 
 ### Domain 4 — Work Items
@@ -1673,6 +1853,39 @@ cf.studio.core.diff.v1~
 cf.studio.core.merge_conflict.v1~
 ```
 
+### D21 — Version Control Cross-References
+
+```mermaid
+classDiagram
+    class repository {
+        url: string
+        defaultBranch: string
+    }
+    class branch {
+        repositoryId: ref repository
+        name: string
+    }
+    class commit {
+        branchId: ref branch
+        sha: string
+        authorId: ref person
+    }
+    class pull_request {
+        repositoryId: ref repository
+        sourceBranch: ref branch
+        targetBranch: ref branch
+    }
+    class tag {
+        commitId: ref commit
+        name: string
+    }
+
+    repository "1" --> "many" branch
+    branch "1" --> "many" commit
+    commit "many" --> "1" pull_request : included in
+    commit "1" --> "many" tag
+```
+
 ### Domain 7 — CI/CD / Build
 
 ```
@@ -1690,6 +1903,85 @@ cf.studio.core.deployment.v1~
 cf.studio.core.deployment_status.v1~
 cf.studio.core.runner.v1~               // GitHub runner, Jenkins agent, GitLab runner
 cf.studio.core.performance_benchmark.v1~ // k6, Locust, JMH
+```
+
+### D16 — CI/CD Object Relationships
+
+```mermaid
+classDiagram
+    class pipeline {
+        definition: YAML ref
+        scope: string
+    }
+    class pipeline_run {
+        pipelineId: ref pipeline
+        state: pending|running|done|failed
+        triggeredBy: commit|schedule|manual
+    }
+    class pipeline_job {
+        runId: ref pipeline_run
+        runner: ref runner
+    }
+    class pipeline_step {
+        jobId: ref pipeline_job
+        state: string
+    }
+    class build_artifact {
+        jobId: ref pipeline_job
+        path: string
+        expiresAt: datetime?
+    }
+    class deployment {
+        artifactId: ref build_artifact
+        environment: ref environment
+    }
+
+    pipeline "1" --> "many" pipeline_run
+    pipeline_run "1" --> "many" pipeline_job
+    pipeline_job "1" --> "many" pipeline_step
+    pipeline_job "1" --> "many" build_artifact
+    build_artifact "1" --> "many" deployment
+```
+
+### D22 — CI/CD Chain Cross-References
+
+```mermaid
+flowchart TD
+    CMT["commit"] -->|triggers| PR["pipeline_run"]
+    PR -->|contains| JOB["pipeline_job"]
+    JOB -->|runs on| RUN["runner"]
+    JOB -->|executes| TST["test_run"]
+    JOB -->|produces| ART["build_artifact"]
+    TST -->|results in| TR["test_result"]
+    TR -->|references| TC["test_case"]
+```
+
+### D23 — Deployment & Environment Cross-References
+
+```mermaid
+classDiagram
+    class deployment {
+        artifactId: ref build_artifact
+        environmentId: ref environment
+        state: pending|running|done|failed
+    }
+    class build_artifact {
+        jobId: ref pipeline_job
+        version: string
+    }
+    class environment {
+        name: dev|staging|prod
+        tenantId: ref Tenant
+    }
+    class deployment_status {
+        deploymentId: ref deployment
+        state: string
+        workerRunId: ref WorkerRun
+    }
+
+    deployment --> build_artifact : artifactId
+    deployment --> environment : environmentId
+    deployment "1" --> "many" deployment_status
 ```
 
 ### Domain 8 — Artifacts / Packages
@@ -1715,6 +2007,96 @@ cf.studio.core.sbom_checksum.v1~         // cryptographic hash of an sbom_compon
                                          // (SHA256, SHA1, MD5, BLAKE2)
 ```
 
+### D44 — SBOM Structure
+
+```mermaid
+classDiagram
+    class sbom {
+        format: spdx|cyclonedx|swid
+        version: string
+        createdAt: datetime
+        artifactId: ref build_artifact
+        releaseId: ref release?
+    }
+    class sbom_component {
+        sbomId: ref sbom
+        name: string
+        version: string
+        supplier: string?
+    }
+    class sbom_relationship {
+        sbomId: ref sbom
+        sourceId: ref sbom_component
+        targetId: ref sbom_component
+        kind: CONTAINS|DEPENDS_ON|DESCRIBES|GENERATED_FROM|VARIANT_OF
+    }
+
+    sbom "1" --> "many" sbom_component : DESCRIBES
+    sbom "1" --> "many" sbom_relationship
+    sbom_relationship --> sbom_component : sourceId
+    sbom_relationship --> sbom_component : targetId
+```
+
+### D45 — SBOM Component Details
+
+```mermaid
+classDiagram
+    class sbom_component {
+        sbomId: ref sbom
+        name: string
+        version: string
+    }
+    class sbom_license {
+        componentId: ref sbom_component
+        spdxExpression: string
+        concluded: string?
+        declared: string?
+    }
+    class sbom_checksum {
+        componentId: ref sbom_component
+        algorithm: SHA256|SHA1|MD5|BLAKE2
+        value: string
+    }
+    class library_version {
+        libraryId: ref library
+        version: semver
+    }
+    class dependency_vulnerability {
+        packageName: string
+        affectedVersions: string[]
+    }
+
+    sbom_component "1" --> "many" sbom_license
+    sbom_component "1" --> "many" sbom_checksum
+    sbom_component --> library_version : maps to
+    sbom_component --> dependency_vulnerability : may have
+```
+
+### D46 — SBOM Cross-References
+
+```mermaid
+flowchart LR
+    ART["build_artifact"] -->|generates| SBOM["sbom"]
+    REL["release"] -->|attaches| SBOM
+    SBOM -->|lists| COMP["sbom_component[]"]
+    COMP -->|license| LIC["sbom_license\n(MIT, Apache-2.0)"]
+    COMP -->|maps to| LV["library_version"]
+    LV -->|has| DV["dependency_vulnerability"]
+    DV -->|creates| TASK["task\n(remediation)"]
+```
+
+### D47 — SBOM ↔ Security & Compliance
+
+```mermaid
+flowchart TD
+    SBOM["sbom"] -->|scanned by| SCAN["security_review\n(SCA scan)"]
+    SCAN -->|finds| DV["dependency_vulnerability[]"]
+    DV -->|references| CVE["cve"]
+    SBOM -->|license audit| CC["compliance_check\n(license policy)"]
+    CC -->|pass/fail| CCR["compliance_check_result"]
+    CCR -->|fail creates| PE["policy_exception\n(GPL in proprietary)"]
+```
+
 ### Domain 9 — Release
 
 ```
@@ -1724,6 +2106,76 @@ cf.studio.core.changelog.v1~             // → document
 cf.studio.core.version.v1~
 cf.studio.core.release_candidate.v1~
 cf.studio.core.release_component.v1~     // join: which component_version is included in a release
+```
+
+### D35 — Release Cross-References
+
+```mermaid
+classDiagram
+    class release {
+        version: semver
+        state: draft|rc|published
+        repositoryId: ref repository
+    }
+    class release_component {
+        releaseId: ref release
+        componentVersionId: ref component_version
+    }
+    class component_version {
+        componentId: ref component
+        version: semver
+        commitId: ref commit
+    }
+    class build_artifact {
+        version: string
+    }
+    class deployment {
+        environmentId: ref environment
+    }
+
+    release "1" --> "many" release_component
+    release_component --> component_version
+    component_version --> build_artifact : built as
+    build_artifact --> deployment : deployed as
+```
+
+### D36 — Release ↔ Work Items & Traceability
+
+```mermaid
+flowchart LR
+    REL["release"] -->|includes| RC["release_component"]
+    RC -->|points to| CV["component_version"]
+    CV -->|tagged at| CMT["commit"]
+    CMT -->|closes| PR["pull_request"]
+    PR -->|resolves| TASK["task / bug"]
+    TASK -->|traces to| REQ["requirement"]
+    REL -->|documents| RN["release_notes\n→ document"]
+```
+
+### D37 — Full Component → Release → Deployment Chain
+
+```mermaid
+flowchart TD
+    TEAM["team"] -->|owns| COMP["component"]
+    COMP -->|lives in| REPO["repository"]
+    REPO -->|triggers| PIPE["pipeline_run"]
+    PIPE -->|produces| ART["build_artifact"]
+    COMP -->|versioned as| CV["component_version"]
+    CV -->|included in| REL["release"]
+    REL -->|deployed via| DEP["deployment"]
+    DEP -->|targets| ENV["environment"]
+```
+
+### D43 — Tech Stack ↔ Release & Compliance
+
+```mermaid
+flowchart TD
+    REL["release"] -->|pins| TS["tech_stack\n(versions locked)"]
+    TS -->|includes| LV["library_version[]"]
+    LV -->|license| LIC["license info"]
+    LIC -->|checked by| CC["compliance_check"]
+    TS -->|scanned into| SBOM["sbom\n(bill of materials)"]
+    SBOM -->|input to| SR["security_review\n→ document"]
 ```
 
 ### Domain 10 — Operations / Incidents
@@ -1742,6 +2194,18 @@ cf.studio.core.metric_definition.v1~     // metric schema/definition, not time-s
 cf.studio.core.quality_metric.v1~        // code quality, test coverage metrics
 ```
 
+### D24 — Incident & Operations Cross-References
+
+```mermaid
+flowchart LR
+    ALERT["alert"] -->|escalates to| INC["incident"]
+    INC -->|assigned via| ESC["escalation_policy"]
+    ESC -->|references| OCS["on_call_schedule"]
+    OCS -->|assigns| PER["person"]
+    INC -->|produces| PM["postmortem\n→ document"]
+    PM -->|creates| TASK["task\n(prevention)"]
+```
+
 ### Domain 11 — Security
 
 ```
@@ -1751,6 +2215,66 @@ cf.studio.core.security_finding.v1~      // pentest, code scan, secret scan
 cf.studio.core.threat_model.v1~          // → document
 cf.studio.core.security_review.v1~       // → document
 cf.studio.core.dependency_vulnerability.v1~ // Dependabot, Snyk
+```
+
+### D17 — Security & Vulnerability Objects (type hierarchy)
+
+```mermaid
+classDiagram
+    class vulnerability {
+        severity: critical|high|medium|low
+        cveId: string?
+        state: open|fixed|ignored
+    }
+    class cve {
+        cvssScore: float
+        description: string
+    }
+    class security_finding {
+        source: pentest|code_scan|secret_scan
+        severity: string
+    }
+    class dependency_vulnerability {
+        packageName: string
+        affectedVersions: string[]
+        fixedVersion: string?
+    }
+    class compliance_check {
+        standard: string
+        control: string
+    }
+    class compliance_check_result {
+        checkId: ref compliance_check
+        state: pass|fail|skip
+    }
+
+    vulnerability --> cve : references
+    dependency_vulnerability --|> vulnerability
+    security_finding --|> vulnerability
+    compliance_check "1" --> "many" compliance_check_result
+```
+
+### D25 — Security Cross-References
+
+```mermaid
+flowchart LR
+    SF["source_file"] -->|contains| DV["dependency_vulnerability"]
+    DV -->|references| CVE["cve"]
+    CVE -->|details in| VUL["vulnerability"]
+    VUL -->|found by| SR["security_finding"]
+    VUL -->|remediated by| TASK["task"]
+    SR -->|reported in| SREP["security_review\n→ document"]
+```
+
+### D42 — Library Version ↔ Security
+
+```mermaid
+flowchart LR
+    LV["library_version\n(lodash 4.17.20)"] -->|has| DV["dependency_vulnerability"]
+    DV -->|references| CVE["cve\n(CVE-2021-23337)"]
+    CVE -->|severity| SEV["critical / high / medium"]
+    DV -->|fixed in| FLV["library_version\n(lodash 4.17.21)"]
+    FLV -->|upgrade via| TASK["task\n(remediation)"]
 ```
 
 ### Domain 12 — Compliance / Governance
@@ -1772,6 +2296,33 @@ cf.studio.core.team.v1~
 cf.studio.core.org_unit.v1~             // department, division
 ```
 
+### D34 — Component ↔ People & Teams
+
+```mermaid
+classDiagram
+    class component {
+        ownerId: ref team
+        kind: service|library|module
+    }
+    class team {
+        name: string
+    }
+    class person {
+        userId: ref User
+    }
+    class on_call_schedule {
+        teamId: ref team
+    }
+    class role {
+        name: string
+    }
+
+    component --> team : owned by
+    team "1" --> "many" person : members
+    team --> on_call_schedule : on-call
+    person --> role : has
+```
+
 ### Domain 14 — Infrastructure
 
 ```
@@ -1789,6 +2340,20 @@ cf.studio.core.infra_config.v1~         // base (abstract)
   //   ~cf.studio.core.k8s_manifest.v1~
 ```
 
+### D14 — Infrastructure Config Hierarchy
+
+```mermaid
+classDiagram
+    class infra_config {
+        environment: ref environment
+        version: string
+    }
+
+    infra_config <|-- terraform_resource
+    infra_config <|-- helm_release
+    infra_config <|-- k8s_manifest
+```
+
 ### Domain 15 — Documents
 
 ```
@@ -1801,6 +2366,40 @@ cf.studio.core.document.v1~             // base (abstract)
   cf.studio.core.api_documentation.v1~  // → document
   cf.studio.core.glossary.v1~           // → document
   // policy/governance docs use document with category tag
+```
+
+### D11 — Document Type Hierarchy
+
+```mermaid
+classDiagram
+    class document {
+        content: string
+        version: semver
+        ownerId: ref User
+    }
+
+    document <|-- spec
+    document <|-- guide
+    document <|-- readme
+    document <|-- wiki_page
+    document <|-- api_documentation
+    document <|-- prd
+    document <|-- adr
+```
+
+### D12 — Document Type Hierarchy (continued)
+
+```mermaid
+classDiagram
+    class document
+
+    document <|-- design
+    document <|-- feature_spec
+    document <|-- decomposition
+    document <|-- runbook
+    document <|-- postmortem
+    document <|-- release_notes
+    document <|-- meeting_note
 ```
 
 ### Domain 16 — AI / Agents
@@ -1816,6 +2415,21 @@ cf.studio.core.ai_tool.v1~
 cf.studio.core.evaluation_run.v1~
 cf.studio.core.evaluation_result.v1~
 // llm_model → reference to Gears Models Registry (no separate Object type)
+```
+
+### D13 — Prompt Type Hierarchy
+
+```mermaid
+classDiagram
+    class prompt {
+        content: string
+        version: semver
+    }
+
+    prompt <|-- skill
+    prompt <|-- system_prompt
+    prompt <|-- prompt_template
+    prompt <|-- prompt_variant
 ```
 
 ---
@@ -1885,725 +2499,6 @@ gts.cf.studio.core.object.v1~cf.studio.core.vulnerability.v1~snyk.studio.core.sn
 
 // Confluence Kit
 gts.cf.studio.core.object.v1~cf.studio.core.wiki_page.v1~confluence.studio.core.confluence_page.v1~
-```
-
----
-
-## Object Reference Diagrams
-
-> These diagrams show **cross-references** between Studio Objects — who points to whom in the live graph.
-
----
-
-### D18 — WorkerRun Cross-References
-
-```mermaid
-classDiagram
-    class WorkerRun {
-        workerId: ref Worker
-        parentRunId: ref WorkerRun?
-        state: pending|running|done|failed
-    }
-    class Worker {
-        id: GTS Type ID
-    }
-    class Object {
-        id: GTS Instance ID
-    }
-    class FlowRun {
-        flowId: ref Flow
-    }
-
-    WorkerRun --> Worker : workerId
-    WorkerRun --> WorkerRun : parentRunId (sub-call tree)
-    WorkerRun --> Object : inputData references
-    WorkerRun --> Object : outputData produces
-    FlowRun --> WorkerRun : completedSteps
-```
-
----
-
-### D19 — SDLC Traceability Chain
-
-```mermaid
-flowchart LR
-    REQ["requirement"] -->|implemented by| TASK["task"]
-    TASK -->|closed by| PR["pull_request"]
-    PR -->|triggers| BUILD["build"]
-    BUILD -->|produces| ART["build_artifact"]
-    ART -->|deployed as| DEP["deployment"]
-    DEP -->|targets| ENV["environment"]
-```
-
----
-
-### D20 — Design-to-Code Traceability
-
-```mermaid
-flowchart LR
-    PRD["prd"] -->|elaborated by| DES["design"]
-    DES -->|decomposed into| DEC["decomposition"]
-    DEC -->|specifies| FS["feature_spec"]
-    FS -->|implemented in| SF["source_file"]
-    SF -->|lives in| REPO["repository"]
-```
-
----
-
-### D21 — Version Control Cross-References
-
-```mermaid
-classDiagram
-    class repository {
-        url: string
-        defaultBranch: string
-    }
-    class branch {
-        repositoryId: ref repository
-        name: string
-    }
-    class commit {
-        branchId: ref branch
-        sha: string
-        authorId: ref person
-    }
-    class pull_request {
-        repositoryId: ref repository
-        sourceBranch: ref branch
-        targetBranch: ref branch
-    }
-    class tag {
-        commitId: ref commit
-        name: string
-    }
-
-    repository "1" --> "many" branch
-    branch "1" --> "many" commit
-    commit "many" --> "1" pull_request : included in
-    commit "1" --> "many" tag
-```
-
----
-
-### D22 — CI/CD Chain Cross-References
-
-```mermaid
-flowchart TD
-    CMT["commit"] -->|triggers| PR["pipeline_run"]
-    PR -->|contains| JOB["pipeline_job"]
-    JOB -->|runs on| RUN["runner"]
-    JOB -->|executes| TST["test_run"]
-    JOB -->|produces| ART["build_artifact"]
-    TST -->|results in| TR["test_result"]
-    TR -->|references| TC["test_case"]
-```
-
----
-
-### D23 — Deployment & Environment Cross-References
-
-```mermaid
-classDiagram
-    class deployment {
-        artifactId: ref build_artifact
-        environmentId: ref environment
-        state: pending|running|done|failed
-    }
-    class build_artifact {
-        jobId: ref pipeline_job
-        version: string
-    }
-    class environment {
-        name: dev|staging|prod
-        tenantId: ref Tenant
-    }
-    class deployment_status {
-        deploymentId: ref deployment
-        state: string
-        workerRunId: ref WorkerRun
-    }
-
-    deployment --> build_artifact : artifactId
-    deployment --> environment : environmentId
-    deployment "1" --> "many" deployment_status
-```
-
----
-
-### D24 — Incident & Operations Cross-References
-
-```mermaid
-flowchart LR
-    ALERT["alert"] -->|escalates to| INC["incident"]
-    INC -->|assigned via| ESC["escalation_policy"]
-    ESC -->|references| OCS["on_call_schedule"]
-    OCS -->|assigns| PER["person"]
-    INC -->|produces| PM["postmortem\n→ document"]
-    PM -->|creates| TASK["task\n(prevention)"]
-```
-
----
-
-### D25 — Security Cross-References
-
-```mermaid
-flowchart LR
-    SF["source_file"] -->|contains| DV["dependency_vulnerability"]
-    DV -->|references| CVE["cve"]
-    CVE -->|details in| VUL["vulnerability"]
-    VUL -->|found by| SR["security_finding"]
-    VUL -->|remediated by| TASK["task"]
-    SR -->|reported in| SREP["security_review\n→ document"]
-```
-
----
-
-### D26 — Recommendation Cross-References
-
-```mermaid
-classDiagram
-    class Recommendation {
-        sourceRunId: ref WorkerRun
-        suggestedWorker: ref Worker
-        validationWorker: ref Worker?
-        severityWorker: ref Worker?
-        confidence: full|partial|low
-    }
-    class WorkerRun {
-        workerId: ref Worker
-    }
-    class Worker {
-        id: GTS Type ID
-    }
-    class Object {
-        id: GTS Instance ID
-    }
-
-    Recommendation --> WorkerRun : sourceRunId (Analyzer that found gap)
-    Recommendation --> Worker : suggestedWorker (actionable fix)
-    Recommendation --> Worker : validationWorker (re-check)
-    WorkerRun --> Object : gap detected in (input/output)
-    Worker --> Object : fix will produce (output Contract)
-```
-
----
-
-### D27 — Workspace & Kit Cross-References
-
-```mermaid
-classDiagram
-    class Workspace {
-        tenantId: ref Tenant
-        sources: SourceEntry[]
-    }
-    class SourceEntry {
-        path: string
-        url: string?
-        role: string
-    }
-    class repository {
-        url: string
-    }
-    class Kit {
-        scope: local|project|workspace|published
-        requiredPermissions: Permission[]
-    }
-    class Tenant {
-        parentId: ref Tenant?
-    }
-
-    Workspace "1" --> "many" SourceEntry : sources
-    SourceEntry --> repository : resolves to
-    Tenant "1" --> "many" Kit : installed Kits
-    Workspace --> Tenant : tenantId
-```
-
----
-
-### D28 — Role & Identity Cross-References
-
-```mermaid
-classDiagram
-    class User {
-        tenantId: ref Tenant
-    }
-    class Role {
-        tenantId: ref Tenant
-        name: string
-    }
-    class RoleAssignment {
-        userId: ref User
-        roleId: ref Role
-        assignedBy: ref User
-    }
-    class IdentityMapping {
-        externalPattern: object
-        roleId: ref Role
-        tenantId: ref Tenant
-    }
-    class PolicyOverride {
-        policyId: ref Policy
-        tenantId: ref Tenant
-    }
-
-    User "many" --> "many" Role : via RoleAssignment
-    IdentityMapping --> Role : maps external identity to
-    Role --> PolicyOverride : governed by
-    Tenant --> IdentityMapping : scoped to
-```
-
----
-
-### D29 — AuditLog & SavedQuery Cross-References
-
-```mermaid
-classDiagram
-    class WorkerRun {
-        workerId: ref Worker
-        inputData: any
-        outputData: any
-        externalEvents: ExternalEvent[]
-    }
-    class ExternalEvent {
-        source: string
-        externalId: string
-        url: string
-    }
-    class SavedAuditQuery {
-        createdBy: ref User
-        tenantId: ref Tenant
-        query: QuerySpec
-    }
-    class AuditLog {
-        materialized view
-        over WorkerRun tree
-    }
-
-    WorkerRun "1" --> "many" ExternalEvent : write-ahead
-    WorkerRun ..> AuditLog : materializes into
-    SavedAuditQuery ..> AuditLog : queries
-```
-
----
-
-### D30 — Notification Cross-References
-
-```mermaid
-classDiagram
-    class NotificationRule {
-        trigger: EventPattern
-        audience: RolePattern
-        channel: string
-    }
-    class NotificationRuleOverride {
-        ruleId: ref NotificationRule
-        active: boolean
-        expiresAt: datetime?
-    }
-    class NotificationSubscription {
-        userId: ref User
-        tenantId: ref Tenant
-        urgency: immediate|digest|muted
-    }
-    class User {
-        tenantId: ref Tenant
-    }
-
-    NotificationRuleOverride --> NotificationRule : ruleId
-    NotificationSubscription --> User : userId
-    User --> NotificationSubscription : personal subscriptions
-    NotificationRule --> NotificationRuleOverride : overridden by
-```
-
----
-
-### D31 — Full Object Reference Map (top-level)
-
-```mermaid
-flowchart TD
-    subgraph Requirements
-        REQ["requirement"] --> TASK["task"]
-    end
-    subgraph Code
-        TASK --> PR["pull_request"]
-        PR --> CMT["commit"]
-        CMT --> REPO["repository"]
-    end
-    subgraph CICD
-        CMT --> BUILD["build"]
-        BUILD --> ART["build_artifact"]
-        ART --> DEP["deployment"]
-    end
-    subgraph Ops
-        DEP --> INC["incident"]
-        INC --> PM["postmortem"]
-        PM --> TASK
-    end
-```
-
----
-
-### D32 — Component Cross-References
-
-```mermaid
-classDiagram
-    class component {
-        name: string
-        kind: service|library|module|subsystem
-        ownerId: ref team
-        repositoryId: ref repository
-    }
-    class component_version {
-        componentId: ref component
-        version: semver
-        commitId: ref commit
-    }
-    class component_dependency {
-        sourceId: ref component
-        targetId: ref component
-        kind: uses|implements|extends|calls
-    }
-    class team {
-        name: string
-    }
-    class repository {
-        url: string
-    }
-
-    component "1" --> "many" component_version
-    component "1" --> "many" component_dependency : sourceId
-    component_dependency --> component : targetId
-    component --> team : ownerId
-    component --> repository : repositoryId
-```
-
----
-
-### D33 — Component ↔ Documentation & Architecture
-
-```mermaid
-flowchart LR
-    COMP["component"] -->|documented by| DES["design\n→ document"]
-    COMP -->|decided by| ADR["adr\n→ document"]
-    COMP -->|specifies| IFACE["interface_definition"]
-    COMP -->|exposes| API["api_spec"]
-    COMP -->|visualized in| DIAG["architecture_diagram"]
-    COMP -->|traces to| REQ["requirement"]
-```
-
----
-
-### D34 — Component ↔ People & Teams
-
-```mermaid
-classDiagram
-    class component {
-        ownerId: ref team
-        kind: service|library|module
-    }
-    class team {
-        name: string
-    }
-    class person {
-        userId: ref User
-    }
-    class on_call_schedule {
-        teamId: ref team
-    }
-    class role {
-        name: string
-    }
-
-    component --> team : owned by
-    team "1" --> "many" person : members
-    team --> on_call_schedule : on-call
-    person --> role : has
-```
-
----
-
-### D35 — Release Cross-References
-
-```mermaid
-classDiagram
-    class release {
-        version: semver
-        state: draft|rc|published
-        repositoryId: ref repository
-    }
-    class release_component {
-        releaseId: ref release
-        componentVersionId: ref component_version
-    }
-    class component_version {
-        componentId: ref component
-        version: semver
-        commitId: ref commit
-    }
-    class build_artifact {
-        version: string
-    }
-    class deployment {
-        environmentId: ref environment
-    }
-
-    release "1" --> "many" release_component
-    release_component --> component_version
-    component_version --> build_artifact : built as
-    build_artifact --> deployment : deployed as
-```
-
----
-
-### D36 — Release ↔ Work Items & Traceability
-
-```mermaid
-flowchart LR
-    REL["release"] -->|includes| RC["release_component"]
-    RC -->|points to| CV["component_version"]
-    CV -->|tagged at| CMT["commit"]
-    CMT -->|closes| PR["pull_request"]
-    PR -->|resolves| TASK["task / bug"]
-    TASK -->|traces to| REQ["requirement"]
-    REL -->|documents| RN["release_notes\n→ document"]
-```
-
----
-
-### D37 — Full Component → Release → Deployment Chain
-
-```mermaid
-flowchart TD
-    TEAM["team"] -->|owns| COMP["component"]
-    COMP -->|lives in| REPO["repository"]
-    REPO -->|triggers| PIPE["pipeline_run"]
-    PIPE -->|produces| ART["build_artifact"]
-    COMP -->|versioned as| CV["component_version"]
-    CV -->|included in| REL["release"]
-    REL -->|deployed via| DEP["deployment"]
-    DEP -->|targets| ENV["environment"]
-```
-
----
-
-### D38 — Dependency Graph Between Components
-
-```mermaid
-flowchart LR
-    A["component A\n(frontend)"] -->|uses| B["component B\n(API gateway)"]
-    B -->|calls| C["component C\n(auth)"]
-    B -->|calls| D["component D\n(data)"]
-    D -->|extends| E["component E\n(shared lib)"]
-    C -->|extends| E
-```
-
----
-
-### D39 — Technology Stack Types
-
-```mermaid
-classDiagram
-    class tech_stack {
-        componentId: ref component
-        description: string
-    }
-    class library {
-        name: string
-        ecosystem: npm|pypi|maven|cargo|nuget|gem
-    }
-    class library_version {
-        libraryId: ref library
-        version: semver
-        licenseId: string?
-    }
-    class framework {
-        name: string
-        language: string
-    }
-    class runtime {
-        name: string
-        version: string
-    }
-
-    tech_stack --> library_version : uses
-    tech_stack --> framework : uses
-    tech_stack --> runtime : targets
-    library_version --> library : libraryId
-```
-
----
-
-### D40 — Data & External Service Dependencies
-
-```mermaid
-classDiagram
-    class tech_stack {
-        componentId: ref component
-    }
-    class database {
-        engine: postgres|mongo|redis|mysql|elastic
-        kind: relational|document|kv|search|timeseries
-    }
-    class database_instance {
-        databaseId: ref database
-        environmentId: ref environment
-        host: string
-    }
-    class third_party_service {
-        name: string
-        category: payments|email|auth|analytics|crm
-        url: string
-    }
-    class cloud_service {
-        provider: aws|gcp|azure
-        service: s3|pubsub|sqs|rds|bigquery
-    }
-
-    tech_stack --> database : uses
-    tech_stack --> third_party_service : depends on
-    tech_stack --> cloud_service : uses
-    database "1" --> "many" database_instance
-    database_instance --> environment : deployed in
-```
-
----
-
-### D41 — Component ↔ Technology Stack
-
-```mermaid
-flowchart LR
-    COMP["component"] -->|has| TS["tech_stack"]
-    TS -->|runtime| RUN["runtime\n(Node.js 20, JVM 21)"]
-    TS -->|framework| FW["framework\n(React, Django)"]
-    TS -->|libraries| LV["library_version\n(lodash 4.17)"]
-    TS -->|database| DB["database\n(PostgreSQL, Redis)"]
-    TS -->|external| SVC["third_party_service\n(Stripe, Auth0)"]
-    TS -->|cloud| CSC["cloud_service\n(AWS S3, GCP Pub/Sub)"]
-```
-
----
-
-### D42 — Library Version ↔ Security
-
-```mermaid
-flowchart LR
-    LV["library_version\n(lodash 4.17.20)"] -->|has| DV["dependency_vulnerability"]
-    DV -->|references| CVE["cve\n(CVE-2021-23337)"]
-    CVE -->|severity| SEV["critical / high / medium"]
-    DV -->|fixed in| FLV["library_version\n(lodash 4.17.21)"]
-    FLV -->|upgrade via| TASK["task\n(remediation)"]
-```
-
----
-
-### D43 — Tech Stack ↔ Release & Compliance
-
-```mermaid
-flowchart TD
-    REL["release"] -->|pins| TS["tech_stack\n(versions locked)"]
-    TS -->|includes| LV["library_version[]"]
-    LV -->|license| LIC["license info"]
-    LIC -->|checked by| CC["compliance_check"]
-    TS -->|scanned into| SBOM["sbom\n(bill of materials)"]
-    SBOM -->|input to| SR["security_review\n→ document"]
-```
-
----
-
-### D44 — SBOM Structure
-
-```mermaid
-classDiagram
-    class sbom {
-        format: spdx|cyclonedx|swid
-        version: string
-        createdAt: datetime
-        artifactId: ref build_artifact
-        releaseId: ref release?
-    }
-    class sbom_component {
-        sbomId: ref sbom
-        name: string
-        version: string
-        supplier: string?
-    }
-    class sbom_relationship {
-        sbomId: ref sbom
-        sourceId: ref sbom_component
-        targetId: ref sbom_component
-        kind: CONTAINS|DEPENDS_ON|DESCRIBES|GENERATED_FROM|VARIANT_OF
-    }
-
-    sbom "1" --> "many" sbom_component : DESCRIBES
-    sbom "1" --> "many" sbom_relationship
-    sbom_relationship --> sbom_component : sourceId
-    sbom_relationship --> sbom_component : targetId
-```
-
----
-
-### D45 — SBOM Component Details
-
-```mermaid
-classDiagram
-    class sbom_component {
-        sbomId: ref sbom
-        name: string
-        version: string
-    }
-    class sbom_license {
-        componentId: ref sbom_component
-        spdxExpression: string
-        concluded: string?
-        declared: string?
-    }
-    class sbom_checksum {
-        componentId: ref sbom_component
-        algorithm: SHA256|SHA1|MD5|BLAKE2
-        value: string
-    }
-    class library_version {
-        libraryId: ref library
-        version: semver
-    }
-    class dependency_vulnerability {
-        packageName: string
-        affectedVersions: string[]
-    }
-
-    sbom_component "1" --> "many" sbom_license
-    sbom_component "1" --> "many" sbom_checksum
-    sbom_component --> library_version : maps to
-    sbom_component --> dependency_vulnerability : may have
-```
-
----
-
-### D46 — SBOM Cross-References
-
-```mermaid
-flowchart LR
-    ART["build_artifact"] -->|generates| SBOM["sbom"]
-    REL["release"] -->|attaches| SBOM
-    SBOM -->|lists| COMP["sbom_component[]"]
-    COMP -->|license| LIC["sbom_license\n(MIT, Apache-2.0)"]
-    COMP -->|maps to| LV["library_version"]
-    LV -->|has| DV["dependency_vulnerability"]
-    DV -->|creates| TASK["task\n(remediation)"]
-```
-
----
-
-### D47 — SBOM ↔ Security & Compliance
-
-```mermaid
-flowchart TD
-    SBOM["sbom"] -->|scanned by| SCAN["security_review\n(SCA scan)"]
-    SCAN -->|finds| DV["dependency_vulnerability[]"]
-    DV -->|references| CVE["cve"]
-    SBOM -->|license audit| CC["compliance_check\n(license policy)"]
-    CC -->|pass/fail| CCR["compliance_check_result"]
-    CCR -->|fail creates| PE["policy_exception\n(GPL in proprietary)"]
 ```
 
 ---
