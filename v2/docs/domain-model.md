@@ -4,6 +4,209 @@
 
 ---
 
+## Overview
+
+Studio v2 is built on two fundamental worlds:
+
+- **Registry entities** — definitions, rules, and configurations that live *outside* the Object graph. They describe what can happen: what Workers exist, what Flows constrain them, how Connectors integrate external systems, what Policies govern access. Registry entities are code and configuration — versioned, packaged in Kits, installed by Tenants.
+- **Objects** — runtime instances that live *inside* the Object graph. They record what is happening and what happened: WorkerRuns, FlowRuns, Recommendations, Approvals, Evidence, user-created artifacts. Every Object belongs to exactly one Tenant and carries a GTS Type ID.
+
+These two worlds are connected by execution: a Worker (definition) produces WorkerRun instances (execution records). A Flow (definition) produces FlowRun instances. Connectors sync external data as Objects. Workers modify Objects and emit Events that drive the next round of automation.
+
+---
+
+### DO1 — Three-Tier Architecture
+
+```mermaid
+flowchart TB
+    subgraph GEARS["Gears Platform — Infrastructure"]
+        G["Events Broker · Notifications · Account Management\nRBAC/ABAC · OAGW · Models Gateway · Settings"]
+    end
+
+    subgraph REGISTRY["Registry Layer — Definitions (outside graph)"]
+        R["Worker · Flow · Kit · Connector\nStatePolicy · Policy · NotificationRule\nWorkerImplementation · obj_ext"]
+    end
+
+    subgraph GRAPH["Object Graph — Runtime Instances"]
+        O["Object (base)\nTenant · User · Workspace · Role\nWorkerRun · FlowRun · Recommendation · Approval\nValidationSession · Evidence · WorkerInteraction\n…all domain types (task, PR, incident, design, …)"]
+    end
+
+    REGISTRY -->|executes / produces| GRAPH
+    REGISTRY -->|uses as infrastructure| GEARS
+    GRAPH -->|emits events / extends| GEARS
+    GRAPH -->|governed by| REGISTRY
+```
+
+---
+
+### DO2 — Registry Entity Relationships
+
+```mermaid
+classDiagram
+    class Kit {
+        scope
+    }
+    class Worker {
+        kind: action|analyzer|validator|utility
+    }
+    class Flow
+    class Connector
+    class WorkerImplementation {
+        runtime: llm|script|hybrid
+    }
+    class Contract["Contract (GTS Schema)"]
+    class StatePolicy
+    class Policy
+    class NotificationRule
+
+    Kit "1" --> "0..*" Worker       : packages
+    Kit "1" --> "0..*" Flow         : packages
+    Kit "1" --> "0..*" Connector    : packages
+    Kit "1" --> "0..*" NotificationRule : packages
+
+    Worker "1" --> "1"   WorkerImplementation : implements via
+    Worker "1" --> "1"   Contract             : input
+    Worker "1" --> "1"   Contract             : output
+    Worker "0..*" --> "0..*" Worker           : dependencies (static)
+    Worker "0..1" --> "0..1" Worker           : fallback
+
+    Flow "1" --> "1..*" Worker  : mandatorySteps
+    Flow "1" --> "0..*" Worker  : allowedNextSteps
+
+    StatePolicy --> Worker : appliesTo (GTS type)
+```
+
+---
+
+### DO3 — Object Graph Foundations
+
+```mermaid
+classDiagram
+    class Object {
+        id · typeId · tenantId
+        state · createdAt · updatedAt
+        ownerId · validationStatus
+        stalenessScore · externalRef
+    }
+    class Tenant
+    class User
+    class Workspace
+    class Role
+    class WorkerRun
+    class FlowRun
+    class Recommendation
+    class Approval
+    class ValidationSession
+    class WorkerInteraction
+    class Evidence
+
+    Object <|-- Tenant
+    Object <|-- User
+    Object <|-- Workspace
+    Object <|-- Role
+    Object <|-- WorkerRun
+    Object <|-- FlowRun
+    Object <|-- Recommendation
+    Object <|-- Approval
+    Object <|-- ValidationSession
+    Object <|-- WorkerInteraction
+    Object <|-- Evidence
+
+    Tenant "0..*" --> "0..1" Tenant  : parent (sub-tenant hierarchy)
+    Object "0..*" --> "1"   Tenant   : belongs to
+```
+
+---
+
+### DO4 — Execution Model
+
+How definitions become execution records, and how execution records relate to each other.
+
+```mermaid
+flowchart LR
+    W["Worker\n(definition)"]
+    F["Flow\n(definition)"]
+    C["Connector\n(definition)"]
+
+    WR["WorkerRun\n(execution)"]
+    FR["FlowRun\n(execution)"]
+    OBJ["Object\n(domain artifact)"]
+    WI["WorkerInteraction\n0..* per run"]
+    EV["Evidence\n(immutable proof)"]
+    REC["Recommendation"]
+    VS["ValidationSession"]
+
+    W -->|"1 definition\n→ 0..* executions"| WR
+    F -->|"1 definition\n→ 0..* executions"| FR
+    FR -->|"ordered steps\n1..* WorkerRuns"| WR
+    WR -->|"parent–child tree\n(sub-Worker calls)"| WR
+    C -->|"inbound sync\ncreates / updates"| OBJ
+    WR -->|"reads / writes"| OBJ
+    WR -->|"awaiting_input\n0..1 active at a time"| WI
+    WR -->|"produces on pass"| EV
+    WR -->|"creates on gap"| REC
+    WR -->|"aggregated by"| VS
+    VS -->|"on escalation\ncreates"| Approval["Approval"]
+```
+
+---
+
+### DO5 — Authorization & Tenant Model
+
+```mermaid
+classDiagram
+    class Tenant {
+        automationLevel
+        approvedWorkerCategories
+        deploymentMode
+    }
+    class User
+    class Role
+    class Policy {
+        rules: Rule[]
+    }
+    class PolicyOverride["PolicyOverride\n(narrows Policy at runtime)"]
+    class PolicyDelegation["PolicyDelegation\n(parent grants rights downward)"]
+    class IdentityMapping["IdentityMapping\n(SSO → Role)"]
+    class Kit
+
+    User "0..*" --> "0..*" Role             : RoleAssignment
+    Role --> Policy                          : governed by
+    Policy <|-- PolicyOverride              : narrows (Tenant override)
+    Tenant "1" --> "0..*" Tenant            : sub-tenant hierarchy
+    Tenant "1" --> "0..*" PolicyDelegation  : grants downward
+    Tenant "1" --> "0..*" IdentityMapping   : SSO mapping
+    Tenant "0..*" --> "0..*" Kit            : installed Kits (approved)
+```
+
+---
+
+### DO6 — Cardinality Reference
+
+| Relationship | Cardinality | Notes |
+|---|---|---|
+| Tenant → Object | 1 : many | Every Object belongs to exactly one Tenant |
+| Tenant → Tenant | 0..1 : many | Sub-tenant hierarchy; narrowing only |
+| Tenant → Kit | many : many | Kit installed per Tenant with explicit approval |
+| Kit → Worker | 1 : many | Kit packages and owns its Workers |
+| Worker → WorkerImplementation | 1 : 1 | Versioned independently |
+| Worker → Contract (input/output) | 1 : 1 each | Typed GTS Schema |
+| Worker → Worker (dependencies) | many : many | Static, declared, security boundary |
+| Worker → WorkerRun | 1 : many | One definition, many execution records |
+| Flow → Worker (steps) | 1 : many | mandatorySteps + allowedNextSteps |
+| Flow → FlowRun | 1 : many | |
+| FlowRun → WorkerRun | 1 : many | Ordered step executions |
+| WorkerRun → WorkerRun | 1 : many | Parent–child sub-Worker call tree |
+| WorkerRun → WorkerInteraction | 1 : many | Max 1 pending at a time |
+| ValidationSession → WorkerRun | 1 : many | Retry attempts |
+| ValidationSession → Evidence | 1 : 0..1 | Final Evidence on pass |
+| Recommendation → WorkerRun | many : 1 | sourceRunId (Analyzer that found gap) |
+| User → Role | many : many | Via RoleAssignment |
+| Role → Policy | many : many | |
+| PolicyOverride → Policy | many : 1 | Narrows, never expands |
+
+---
+
 The system consists of two categories of entities:
 
 - **Object** — data and artifacts that flow through the system (the graph)
