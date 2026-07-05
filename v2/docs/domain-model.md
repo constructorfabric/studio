@@ -189,6 +189,7 @@ Executor — consumes Objects, produces Objects. Registry entity.
 ```
 Worker {
   id:                GTS Type Identifier  (gts.cf.studio.core.worker.v1~...)
+  kind:              action | analyzer | validator | utility
   input:             Contract             (GTS Type Schema)
   output:            Contract             (GTS Type Schema)
   dependencies:      Worker[]             (static list — security boundary)
@@ -305,6 +306,12 @@ WorkerRun extends Object {
     { source: string, type: string, externalId: string, url: string }
   ]
   checkpointExpiresAt: datetime?
+  cost?: {
+    promptTokens:     int
+    completionTokens: int
+    modelId:          string        // GTS Type ID from Gears Models Registry
+    estimatedCostUSD: float
+  }                                 // only populated for runtime: llm | hybrid
   staticChildren:      WorkerRun[]
 }
 ```
@@ -1542,7 +1549,33 @@ mandatorySteps:    gap_analysis_validator
                    tech_lead_approval
 ```
 
-### 22.3 Worker Metadata
+**`incident_to_postmortem_flow`** — Incident postmortem automation:
+```
+entryConstraints:  incident (state: resolved)
+mandatorySteps:    incident_summary_validator
+                   postmortem_draft_worker
+                   prevention_tasks_worker
+allowedNextSteps:
+  incident_summary_validator → postmortem_draft_worker
+  postmortem_draft_worker    → prevention_tasks_worker
+```
+
+### 22.3 Validator Workers
+
+Validators referenced by Flows and Killer Workflows:
+
+| Worker | Runtime | Profile | Flow / Scenario |
+|---|---|---|---|
+| `bug_description_validator` | hybrid | realtime | `bug_to_fix_pr_flow` mandatory step 1 |
+| `confirm_test_fails_validator` | script | realtime | `bug_to_fix_pr_flow` mandatory step 2 |
+| `confirm_test_passes_validator` | script | realtime | `bug_to_fix_pr_flow` mandatory step 3 |
+| `gap_analysis_validator` | hybrid | realtime | `release_readiness_review` mandatory step 1 |
+| `test_coverage_validator` | script | realtime | `release_readiness_review` mandatory step 2 |
+| `security_scan_validator` | hybrid | realtime | `release_readiness_review` mandatory step 3 |
+| `pr_design_validator` | hybrid | realtime | SDLC Kit: PR → design conformance (§23.3) |
+| `incident_summary_validator` | hybrid | realtime | `incident_to_postmortem_flow` mandatory step 1 |
+
+### 22.4 Worker Metadata
 
 All Workers and Flows carry UI metadata:
 ```
@@ -1613,6 +1646,72 @@ pr_design_validator extends Validator {
   output:  { validation_result, evidence }
 }
 ```
+
+---
+
+## 24. SDLC Action Workers
+
+Action Workers (`kind: action`) are the "executable edges" of the Studio graph — they drive state transitions between Objects. All require `automationLevel >= approved_automation AND category in approvedWorkerCategories` (Gate 1) before a WorkerRun is created.
+
+### 24.1 Action Worker Catalog
+
+| Worker | Runtime | Profile | Input → Output |
+|---|---|---|---|
+| `create_design_worker` | llm | on_demand | prd → design |
+| `decompose_feature_worker` | llm | on_demand | design → decomposition + task[] |
+| `implement_code_worker` | llm | on_demand | feature_spec → source_file[] |
+| `create_pr_worker` | hybrid | on_demand | source_file[], branch → pull_request |
+| `deploy_worker` | script | on_demand | build_artifact, environment → deployment |
+| `create_postmortem_worker` | llm | on_demand | incident → postmortem |
+| `find_suspected_component` | hybrid | on_demand | bug → component[] |
+| `deploy_test_environment` | script | on_demand | component → environment |
+| `reproduce_bug` | hybrid | on_demand | bug, environment → WorkerRun (repro evidence) |
+| `create_failing_test` | llm | on_demand | bug, reproduce output → test_case |
+| `implement_fix` | llm | on_demand | bug, test_case → source_file[] |
+| `postmortem_draft_worker` | llm | on_demand | incident, WorkerRun[] → postmortem |
+| `prevention_tasks_worker` | hybrid | on_demand | postmortem → task[] |
+
+### 24.2 Approval Gates
+
+Action Workers are governed by two independent gates:
+
+**Gate 1 — Studio execution gate** (checked at WorkerRun creation):
+```
+automationLevel >= approved_automation
+AND Worker.kind == action
+AND Worker.metadata.category in Tenant.approvedWorkerCategories
+```
+
+**Gate 2 — Connector write-back gate** (checked before external system write):
+```
+WriteBackPolicy.requiresApproval == true
+→ CREATE Approval { kind: "custom", requiredRole: ... }
+→ await approval before executing write-back
+```
+
+Gate 1 controls whether Studio can run the Worker at all.
+Gate 2 controls whether the Worker's output can be written back to an external system.
+Both gates are independent and both may apply to the same WorkerRun.
+
+---
+
+## 25. Platform Workers
+
+Platform Workers are pre-installed in every Tenant. They are not Kit Workers and do not require Kit approval. They are not subject to the `automationLevel` Gate 1.
+
+```
+pre-installed:          true
+requires_kit_approval:  false
+kind:                   utility
+```
+
+| Worker | Runtime | Profile | Purpose |
+|---|---|---|---|
+| `audit_exporter` | script | on_demand | Export AuditLog (webhook, JSON). Vendor-specific formats via Kits. |
+| `connector_inbound_sync_worker` | script | realtime | Receive Gears OAGW event → create/update Object in graph. Calls per-Kit `event_handler_worker` for custom mapping. |
+| `connector_outbound_sync_worker` | script | on_demand | Object change → Connector write-back via WriteBackPolicy. |
+
+Per-Kit Connectors may register additional `event_handler_worker` Workers in their Kit manifest using the naming convention `{vendor}_{connector}_event_handler` (e.g. `jira_jira_event_handler`, `github_github_event_handler`). These are registered through the standard Worker registry and are not platform Workers.
 
 ---
 
