@@ -854,16 +854,21 @@ or `url` alone is sufficient (CLI-only or unsynced workspace).
 ```mermaid
 classDiagram
     class Workspace {
+        name: string
         tenantId: ref Tenant
         sources: SourceEntry[]
     }
     class SourceEntry {
-        path: string
+        repositoryId: ref repository?
+        path: string?
         url: string?
-        role: string
+        branch: string?
+        role: main|docs|platform|shared|test|config
+        adapter: string?
     }
     class repository {
         url: string
+        defaultBranch: string
     }
     class Kit {
         scope: local|project|workspace|published
@@ -874,7 +879,7 @@ classDiagram
     }
 
     Workspace "1" --> "many" SourceEntry : sources
-    SourceEntry --> repository : resolves to
+    SourceEntry "0..1" --> "0..1" repository : repositoryId (auto-resolved by Connector)
     Tenant "1" --> "many" Kit : installed Kits
     Workspace --> Tenant : tenantId
 ```
