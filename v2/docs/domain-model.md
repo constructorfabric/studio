@@ -378,13 +378,23 @@ are standard JSON Schema fields.
     },
     "workspace": {
       "$ref": "gts://cf.studio.core.object.v1~cf.studio.core.workspace.v1~",
-      "x-gts-required": true
+      "x-gts-required": true,
+      "x-gts-source": "platform"
     },
     "style": { "type": "string", "enum": ["detailed", "sketch"] },
     "language": { "type": "string" }
   }
 }
 ```
+
+Contract carries two security-scoped `x-gts-source` values only:
+
+| Value | Meaning | Enforcement |
+|---|---|---|
+| `platform` | Always resolved by platform (tenantId, workspace, timestamps). Reject if user provides. | Contract validation rejects user-supplied values |
+| `never-user` | Must not originate from user input under any circumstances. | Hard reject; audit-logged if attempted |
+
+All other resolution hints (graph picker, chain, form) live in `Worker.inputBindings[]` — not in Contract.
 
 ---
 
@@ -437,6 +447,16 @@ Worker {
     }
     onDemand:   boolean                // default: true
   }
+  inputBindings?: [                   // runtime input resolution hints (per field)
+    {
+      field:    string                // matches a property name in input Contract
+      source:   graph | user | chain | platform | default
+      query?:   object                // filter for source: graph (e.g. { state: "approved" })
+      fromStep?: string               // for source: chain — which Flow step's output
+      default?: any                   // fallback value when source unavailable
+    }
+  ]
+  // Flow.config.steps[].inputBinding overrides Worker.inputBindings per step
   fallbackWorkerId?:  ref → Worker    // must have compatible output Contract
   fallbackCondition?: on_error | on_budget_exceeded | on_timeout
   interactionModel?: {
@@ -683,7 +703,16 @@ Flow extends Worker {
   implementationId:  WorkerImplementation {
     runtime: orchestrator
     config: {
-      mandatorySteps:    Worker[]
+      steps: [
+        {
+          workerId:      ref → Worker
+          inputBinding?: {            // overrides Worker.inputBindings for this step
+            // field → { source, query?, fromStep?, default? }
+            // e.g. "prd": { source: "chain", fromStep: "step-0" }
+          }
+        }
+      ]
+      mandatorySteps:    Worker[]     // subset of steps that must execute
       allowedNextSteps:  map<Worker, Worker[]>
       conditionalRoutes?: [
         {

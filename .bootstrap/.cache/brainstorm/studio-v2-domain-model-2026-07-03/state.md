@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 32
+**Rounds:** 33
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -74,6 +74,7 @@
 | 30 | Flow = Worker (kind: orchestrator) — GTS chaining; FlowRun extends WorkerRun; Kit.packages workers[] only |
 | 31 | Connector does NOT extend Worker (fails "produces WorkerRun" test); design rule formalized in §4 |
 | 32 | Remove Worker.kind entirely; add requiresAutomationGate: boolean; "Action" = UI concept in metadata.action |
+| 33 | Input resolution: Worker.inputBindings[], Contract x-gts-source: platform|never-user only, Flow.config.steps[].inputBinding override |
 
 ---
 
@@ -222,6 +223,14 @@
 
 - **user-journeys.md** создан в v2/docs/ с 14 ALGORITHM-format сценариями
 - Сценарии аннотированы: `[sync: connector_name]`, `cost tier: low|medium|high`, `automation gate: none|approved_automation`
+
+### Input Resolution (Round 33)
+
+- **Contract x-gts-source** — security annotations only: `platform` (auto-resolved, reject if user provides) and `never-user` (hard reject, audit-logged)
+- **Worker.inputBindings[]** — runtime resolution hints per field: `source: graph | user | chain | platform | default`, optional `query`, `fromStep`, `default`
+- **Flow.config.steps[].inputBinding** — per-step override of Worker.inputBindings; same schema
+- **Priority**: Flow step binding > Worker.inputBindings defaults
+- **Five sources**: `graph` (GTS type picker), `user` (form/WorkerInteraction), `chain` (from previous WorkerRun output), `platform` (session context), `default` (JSON Schema default)
 
 ### Worker Taxonomy Revision (Round 32)
 
