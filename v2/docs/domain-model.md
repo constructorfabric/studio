@@ -47,7 +47,7 @@ classDiagram
         scope
     }
     class Worker {
-        kind: action|analyzer|validator|utility
+        requiresAutomationGate: bool
     }
     class Flow
     class Connector
@@ -278,7 +278,7 @@ Outside the graph. Describe rules and configurations, not data.
 | `Worker` | **Definition** of a typed, reusable capability (not a process). Execution creates a WorkerRun. |
 | `Validator` | Extends Worker; adds retry loop, escalation, maxRetries semantics |
 | `WorkerImplementation` | Runtime configuration of a Worker (model, prompt, script) |
-| `Flow` | Worker (kind: orchestrator) — sequences mandatory steps; packaged in Kit as a Worker |
+| `Flow` | Worker extension (GTS chain) — sequences mandatory steps; packaged in Kit alongside other Workers |
 | `Connector` | Integration with external system via Gears OAGW (field mapping, write-back, sync) |
 | `Kit` | Extension packaging unit (types, Workers of all kinds incl. orchestrators, Connectors) |
 | `obj_ext` | Attribute extension for existing types |
@@ -302,7 +302,7 @@ gts.cf.studio.core.worker.v1~      ← base Worker (definition)
 gts.cf.studio.core.worker.v1~cf.studio.core.validator.v1~
                                    ← Validator = Worker extension via GTS chaining
 gts.cf.studio.core.worker.v1~cf.studio.core.flow.v1~
-                                   ← Flow = Worker (kind: orchestrator) via GTS chaining
+                                   ← Flow = Worker extension via GTS chaining (orchestration semantics)
 gts.cf.studio.core.connector.v1~   ← registry entity; uses Gears OAGW as infrastructure
 gts.cf.studio.core.kit.v1~         ← extension packaging unit
 gts.cf.studio.core.obj_ext.v1~     ← attribute extension
@@ -407,25 +407,28 @@ what it consumes and produces (Contract), how it runs (WorkerImplementation), an
 it is allowed to call (dependencies). Workers do not execute themselves — execution
 creates a WorkerRun.
 
-User-facing labels by `kind`:
+**Categorization:** Workers have no `kind` field. Structural subtypes (Validator, Flow)
+are expressed through GTS chaining. Behavioral policy is carried by two fields:
 
-| kind | UI / docs label | Semantic role |
-|---|---|---|
-| `action` | Action | Drives state transitions; may write back to external systems |
-| `analyzer` | Analyzer | Detects gaps; creates Recommendations; read-only |
-| `validator` | Validator | Gates transitions; produces ValidationResult + Evidence |
-| `orchestrator` | Flow | Sequences mandatory steps; produces FlowRunResult; extends Worker via GTS |
-| `utility` | Worker (internal) | Infrastructure: Retriever, sync, export |
+- `requiresAutomationGate` — `true` when execution requires `automationLevel >=
+  approved_automation`. Replaces the old `kind == action` check.
+- `metadata.category` — semantic label for UI grouping and `approvedWorkerCategories`
+  matching: `quality | security | ops | ai-cost | traceability | retrieval | platform`.
+
+**"Action" is a UI concept,** not a type. A Worker appears as a clickable "Action"
+button in Studio UI when `requiresAutomationGate = true` and the user has permission.
+This is declared in `metadata.action`:
 
 ```
 Worker {
   id:                GTS Type Identifier  (gts.cf.studio.core.worker.v1~...)
-  kind:              action | analyzer | validator | utility | orchestrator
   input:             Contract             (GTS Type Schema)
   output:            Contract             (GTS Type Schema)
   dependencies:      Worker[]             (static list — security boundary)
   scope:             local | project | workspace | published
   implementationId:  ref → WorkerImplementation
+  requiresAutomationGate: boolean         // default: false
+                                          // true = Gate 1 applies (automationLevel check)
   trigger?: {
     schedule?:  cron string
     onEvent?: {
@@ -442,7 +445,17 @@ Worker {
     maxPendingInteractions: int       // default: 1
     cancellable:            boolean   // default: true
   }
-  // kind: free_form_intent available to any Worker at runtime
+  metadata: {
+    displayName: string
+    description: string
+    category:    quality | security | ops | ai-cost | traceability | retrieval | platform
+    icon?:       string
+    profile:     realtime | scheduled | on_demand
+    action?: {
+      label: string    // UI button label, e.g. "Fix Bug", "Create Design"
+      icon?:  string
+    }
+  }
 }
 ```
 
@@ -507,7 +520,7 @@ WorkerImplementation {
   }
   parallelOutputMerge?: last | append | merge_by_key | custom
                         // default: last; applies when DAG branches run in parallel
-  retrieval?: {         // only for Workers with kind: utility acting as Retrievers
+  retrieval?: {         // only for Workers with metadata.category: retrieval
     indexKind:  object_graph | document_index | code_index
     scope:      workspace | tenant          // tenant-isolation boundary
     indexRef?:  string                      // Gears Models index ID
@@ -655,15 +668,16 @@ classDiagram
 
 ## 6. Flow
 
-**Flow = Worker (kind: orchestrator).** A Flow is not a separate registry entity — it
-extends Worker through GTS chaining. Flow Workers have `runtime: orchestrator`
+**Flow = Worker extension (via GTS chaining).** A Flow is not a separate registry
+entity — it extends Worker through GTS chaining. Flows have `runtime: orchestrator`
 (declarative constraint config, no LLM/script code) and sequence mandatory steps.
+`requiresAutomationGate` on a Flow depends on whether its mandatory steps require it.
 
 ```
 // GTS type: gts.cf.studio.core.worker.v1~cf.studio.core.flow.v1~
 
 Flow extends Worker {
-  kind:              orchestrator                       // always
+  // no kind field — structural identity expressed through GTS type
   input:             Contract[]                         // entryConstraints
   output:            Contract                           // { completedSteps, skipped }
   implementationId:  WorkerImplementation {
@@ -1954,11 +1968,16 @@ pr_design_validator extends Validator {
 
 ---
 
-## 24. SDLC Action Workers
+## 24. SDLC Workers (producers)
 
-Action Workers (`kind: action`) are the "executable edges" of the Studio graph — they drive state transitions between Objects. All require `automationLevel >= approved_automation AND category in approvedWorkerCategories` (Gate 1) before a WorkerRun is created.
+These Workers are the "executable edges" of the Studio graph — they drive state
+transitions between Objects and may write back to external systems. All have
+`requiresAutomationGate: true` and require Gate 1 before a WorkerRun is created.
 
-### 24.1 Action Worker Catalog
+In Studio UI they appear as **Actions** (clickable buttons) when the user has
+sufficient permissions and `automationLevel >= approved_automation`.
+
+### 24.1 Worker Catalog
 
 | Worker | Runtime | Profile | Input → Output |
 |---|---|---|---|
@@ -1978,12 +1997,12 @@ Action Workers (`kind: action`) are the "executable edges" of the Studio graph �
 
 ### 24.2 Approval Gates
 
-Action Workers are governed by two independent gates:
+Workers with `requiresAutomationGate: true` are governed by two independent gates:
 
 **Gate 1 — Studio execution gate** (checked at WorkerRun creation):
 ```
-automationLevel >= approved_automation
-AND Worker.kind == action
+Worker.requiresAutomationGate == true
+AND automationLevel >= approved_automation
 AND Worker.metadata.category in Tenant.approvedWorkerCategories
 ```
 
@@ -2005,9 +2024,10 @@ Both gates are independent and both may apply to the same WorkerRun.
 Platform Workers are pre-installed in every Tenant. They are not Kit Workers and do not require Kit approval. They are not subject to the `automationLevel` Gate 1.
 
 ```
-pre-installed:          true
-requires_kit_approval:  false
-kind:                   utility
+pre-installed:            true
+requires_kit_approval:    false
+requiresAutomationGate:   false
+metadata.category:        platform
 ```
 
 | Worker | Runtime | Profile | Purpose |
@@ -2020,7 +2040,7 @@ Per-Kit Connectors may register additional `event_handler_worker` Workers in the
 
 ### 25.2 Retriever Workers
 
-Retriever Workers are pre-installed platform Workers (`kind: utility`) that provide semantic retrieval for LLM Workers. Embedding generation and vector storage are owned by **Gears Models** (tenant-isolated); Studio Workers only call the retrieval interface.
+Retriever Workers are pre-installed platform Workers (`metadata.category: retrieval`, `requiresAutomationGate: false`) that provide semantic retrieval for LLM Workers. Embedding generation and vector storage are owned by **Gears Models** (tenant-isolated); Studio Workers only call the retrieval interface.
 
 LLM Workers declare Retriever Workers in `dependencies[]`. Document chunks live outside the Object graph (in Gears Models); retrieval events are recorded in `WorkerRun.externalEvents[].chunkRef` for audit trail.
 

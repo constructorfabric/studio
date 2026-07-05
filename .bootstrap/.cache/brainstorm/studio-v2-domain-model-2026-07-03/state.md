@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 31
+**Rounds:** 32
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -73,6 +73,7 @@
 | 29 | Overview section added — DO1–DO6 high-level diagrams + cardinality reference table |
 | 30 | Flow = Worker (kind: orchestrator) — GTS chaining; FlowRun extends WorkerRun; Kit.packages workers[] only |
 | 31 | Connector does NOT extend Worker (fails "produces WorkerRun" test); design rule formalized in §4 |
+| 32 | Remove Worker.kind entirely; add requiresAutomationGate: boolean; "Action" = UI concept in metadata.action |
 
 ---
 
@@ -221,6 +222,16 @@
 
 - **user-journeys.md** создан в v2/docs/ с 14 ALGORITHM-format сценариями
 - Сценарии аннотированы: `[sync: connector_name]`, `cost tier: low|medium|high`, `automation gate: none|approved_automation`
+
+### Worker Taxonomy Revision (Round 32)
+
+- **Worker.kind removed** — no `kind` field on Worker base; inheritance was causing confusion
+- **Worker.requiresAutomationGate: boolean** (default: false) — replaces `kind == action` check in Gate 1
+- **"Action" = UI concept** — `Worker.metadata.action?: { label, icon? }` — button label shown in Studio UI when `requiresAutomationGate = true`
+- **Categorization via metadata.category** — `quality | security | ops | ai-cost | traceability | retrieval | platform` — used for UI grouping and `approvedWorkerCategories` matching
+- **Validator + Flow** — structural subtypes expressed through GTS chaining only; no kind field
+- **§24 renamed** from "SDLC Action Workers" to "SDLC Workers (producers)"
+- **Gate 1 updated**: `Worker.requiresAutomationGate == true AND automationLevel >= approved_automation AND metadata.category in approvedWorkerCategories`
 
 ### Flow = Worker (Round 30)
 
