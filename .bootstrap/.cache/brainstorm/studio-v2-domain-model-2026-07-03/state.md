@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 28
+**Rounds:** 30
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -70,6 +70,8 @@
 | 26 | Interactive Workers — WorkerInteraction Object, interactionModel, awaiting_input state, cancel(), events |
 | 27 | RAG — Retriever as Worker (kind: utility), Gears Models owns infrastructure, chunks outside graph |
 | 28 | Worker nomenclature — Worker = registry definition, WorkerRun = execution instance; kind-labels in user-facing docs |
+| 29 | Overview section added — DO1–DO6 high-level diagrams + cardinality reference table |
+| 30 | Flow = Worker (kind: orchestrator) — GTS chaining; FlowRun extends WorkerRun; Kit.packages workers[] only |
 
 ---
 
@@ -218,6 +220,15 @@
 
 - **user-journeys.md** создан в v2/docs/ с 14 ALGORITHM-format сценариями
 - Сценарии аннотированы: `[sync: connector_name]`, `cost tier: low|medium|high`, `automation gate: none|approved_automation`
+
+### Flow = Worker (Round 30)
+
+- **Flow = Worker (kind: orchestrator)** — extends Worker via GTS chaining: `gts.cf.studio.core.worker.v1~cf.studio.core.flow.v1~`
+- **Worker.kind** expanded: `action | analyzer | validator | utility | orchestrator`
+- **FlowRun extends WorkerRun** — adds `completedSteps: Worker[]`, `skippedSteps: Worker[]`
+- **Kit.packages** — single `workers[]` collection (Flows = Workers); no separate `flows[]`
+- Flow.implementation = `runtime: orchestrator`, config contains mandatorySteps + allowedNextSteps + conditionalRoutes
+- Flow fields not applicable: `fallbackWorkerId`, `interactionModel`
 
 ### RAG (Round 27)
 

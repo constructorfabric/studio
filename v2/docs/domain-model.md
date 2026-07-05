@@ -278,9 +278,9 @@ Outside the graph. Describe rules and configurations, not data.
 | `Worker` | **Definition** of a typed, reusable capability (not a process). Execution creates a WorkerRun. |
 | `Validator` | Extends Worker; adds retry loop, escalation, maxRetries semantics |
 | `WorkerImplementation` | Runtime configuration of a Worker (model, prompt, script) |
-| `Flow` | Configuration of constraints and mandatory steps |
+| `Flow` | Worker (kind: orchestrator) — sequences mandatory steps; packaged in Kit as a Worker |
 | `Connector` | Integration with external system via Gears OAGW (field mapping, write-back, sync) |
-| `Kit` | Extension packaging unit (types, Workers, Validators, Flows, Connectors) |
+| `Kit` | Extension packaging unit (types, Workers of all kinds incl. orchestrators, Connectors) |
 | `obj_ext` | Attribute extension for existing types |
 | `StatePolicy` | Per-property transition rules (separate from type schema) |
 
@@ -300,7 +300,8 @@ Studio-owned base types:
 gts.cf.studio.core.object.v1~      ← base Object (all Studio domain objects)
 gts.cf.studio.core.worker.v1~      ← base Worker
 gts.cf.studio.core.validator.v1~   ← extends Worker; adds retry/escalation semantics
-gts.cf.studio.core.flow.v1~        ← base Flow
+gts.cf.studio.core.worker.v1~cf.studio.core.flow.v1~
+                                   ← Flow = Worker (kind: orchestrator) via GTS chaining
 gts.cf.studio.core.connector.v1~   ← registry entity; uses Gears OAGW as infrastructure
 gts.cf.studio.core.kit.v1~         ← extension packaging unit
 gts.cf.studio.core.obj_ext.v1~     ← attribute extension
@@ -402,12 +403,13 @@ User-facing labels by `kind`:
 | `action` | Action | Drives state transitions; may write back to external systems |
 | `analyzer` | Analyzer | Detects gaps; creates Recommendations; read-only |
 | `validator` | Validator | Gates transitions; produces ValidationResult + Evidence |
+| `orchestrator` | Flow | Sequences mandatory steps; produces FlowRunResult; extends Worker via GTS |
 | `utility` | Worker (internal) | Infrastructure: Retriever, sync, export |
 
 ```
 Worker {
   id:                GTS Type Identifier  (gts.cf.studio.core.worker.v1~...)
-  kind:              action | analyzer | validator | utility
+  kind:              action | analyzer | validator | utility | orchestrator
   input:             Contract             (GTS Type Schema)
   output:            Contract             (GTS Type Schema)
   dependencies:      Worker[]             (static list — security boundary)
@@ -642,34 +644,48 @@ classDiagram
 
 ## 6. Flow
 
-Constraint configuration layered on top of Workers + Contracts. Registry entity.
+**Flow = Worker (kind: orchestrator).** A Flow is not a separate registry entity — it
+extends Worker through GTS chaining. Flow Workers have `runtime: orchestrator`
+(declarative constraint config, no LLM/script code) and sequence mandatory steps.
 
 ```
-Flow {
-  id:                GTS Type Identifier  (gts.cf.studio.core.flow.v1~...)
-  entryConstraints:  Contract[]
-  mandatorySteps:    Worker[]
-  allowedNextSteps:  map<Worker, Worker[]>
-  conditionalRoutes?: [
-    {
-      fromWorker:  ref → Worker
-      condition:   string          // JSONPath expression over outputData
-      nextWorker:  ref → Worker
+// GTS type: gts.cf.studio.core.worker.v1~cf.studio.core.flow.v1~
+
+Flow extends Worker {
+  kind:              orchestrator                       // always
+  input:             Contract[]                         // entryConstraints
+  output:            Contract                           // { completedSteps, skipped }
+  implementationId:  WorkerImplementation {
+    runtime: orchestrator
+    config: {
+      mandatorySteps:    Worker[]
+      allowedNextSteps:  map<Worker, Worker[]>
+      conditionalRoutes?: [
+        {
+          fromWorker: ref → Worker
+          condition:  string          // JSONPath expression over outputData
+          nextWorker: ref → Worker
+        }
+      ]                               // evaluated after allowedNextSteps; wins on match
     }
-  ]                                // evaluated after allowedNextSteps; wins on match
+  }
   scope:             local | project | workspace | published
+  // Not applicable to orchestrators: fallbackWorkerId, interactionModel
 }
 ```
 
 ### 6.1 FlowRun
 
+FlowRun extends WorkerRun — the execution record of an orchestrator Worker.
+
 ```
-FlowRun extends Object {
+FlowRun extends WorkerRun {
+  // inherits all WorkerRun fields
   typeId:          gts.cf.studio.core.object.v1~cf.studio.core.flow_run.v1~
-  flowId:          ref → Flow
+  // additional orchestrator fields:
   completedSteps:  Worker[]
   skippedSteps:    Worker[]
-  state:           running | done | failed | aborted
+  // note: outputData = { completedSteps, skipped } (FlowRunResult, not a domain Object)
 }
 ```
 
@@ -789,7 +805,7 @@ classDiagram
 
 ### 10.1 Kit — the only extension unit
 
-A Kit packages: new Object types, Workers, WorkerImplementations, Flows,
+A Kit packages: new Object types, Workers of all kinds (including orchestrators / Flows),
 obj_ext definitions.
 
 ```
