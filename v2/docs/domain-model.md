@@ -788,11 +788,11 @@ WorkerRun extends Object {
   cancelledBy?:        ref → User
   cancelCascade?:      boolean              // were child WorkerRuns also cancelled
   trigger: {                               // immutable after set; platform sets at creation
-    kind:           scheduled | onEvent | onDemand | chain
+    kind:           scheduled | onEvent | onDemand
     // scheduled: Gears Jobs Manager created this run from Worker.defaultSchedule
     // onEvent:   Worker.eventTrigger pattern matched a Gears Events Broker event
     // onDemand:  user action (Action button, API call, Flow step)
-    // chain:     sub-Worker call from parent WorkerRun
+    // sub-Worker calls: detected via parentRunId != null (no separate kind needed)
     parentEventId?: string                 // Gears Event ID (for kind: onEvent)
     scheduleName?:  string                 // Gears Jobs Manager schedule name (for kind: scheduled)
   }
@@ -2346,7 +2346,7 @@ maps Studio domain concepts to the Gears they depend on.
 |---|---|---|
 | `Tenant` | Resource Groups | Tenant extends Gears RG type via GTS chaining |
 | `User` | Account Manager | User extends Gears AM user via GTS chaining |
-| `Object graph` | Durable Objects | Studio Objects stored as Durable Objects (GTS-typed resources) |
+| `Object graph` | Durable Objects (possible) | Object persistence MAY use Durable Objects as backend; architecture decision not finalized in domain model |
 | `GTS Type IDs` | Types Registry | Schema storage and validation for all GTS types |
 | Worker (runtime: llm) | LLM Gateway | All LLM calls → LLM Gateway; cost response → WorkerRun.cost |
 | Worker model selection | Models Registry | `Worker.config.llm.model` = GTS Type ID from Models Registry |
@@ -2357,7 +2357,7 @@ maps Studio domain concepts to the Gears they depend on.
 | Studio events | Events Broker | All Object lifecycle + WorkerRun events published to Events Broker |
 | `EventSubscription` | Events Broker | Outbound delivery via Events Broker subscription |
 | `NotificationRule` delivery | Notifications Service | Notifications Service handles in-app/email/webhook channels |
-| `Approval` | Approvals gear | Studio Approval Object uses Gears Approvals for multi-step chains |
+| `Approval` | Approvals gear (delivery only) | Studio Approval = rich Domain Object with own semantics (chains, delegation, payload); Gears Approvals used for notification delivery and SLA reminders only |
 | `AuditLog` | Audit gear | WorkerRun audit trail → Gears Audit (immutable events) |
 | `WorkerRun.cost` | Usage Collector | Usage Collector records LLM usage per tenant |
 | `effectiveLimits.token_budget` | Quota Enforcer | Quota Enforcer checks budget before WorkerRun creation |
