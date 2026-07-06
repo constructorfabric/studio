@@ -411,6 +411,7 @@ gts.cf.studio.core.object.v1~cf.studio.core.worker_interaction.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.prompt_experiment.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.event_subscription.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.kit_installation.v1~
+gts.cf.studio.core.object.v1~cf.studio.core.data_erasure_request.v1~
 ```
 
 ### 2.4 Vendor (Kit) Extensions
@@ -449,6 +450,18 @@ awareness (`x-gts-state-requires`, `x-gts-state-sets`), platform security
   ]
 }
 ```
+
+`x-gts-traits.contains_pii` — marks Object types that carry personally identifiable information:
+
+```json
+"x-gts-traits": {
+  "contains_pii": true,
+  "pii_fields": ["assignee", "description", "authorEmail"]
+}
+```
+
+Platform applies strict retention policy to Objects of PII-annotated types.
+WorkerRuns whose input/output Objects are PII-annotated inherit strict TTL enforcement.
 
 ```json
 {
@@ -2982,6 +2995,9 @@ cf.studio.core.compliance_check.v1~
 cf.studio.core.compliance_check_result.v1~
 cf.studio.core.policy_exception.v1~
 cf.studio.core.compliance_report.v1~     // → document
+cf.studio.core.data_erasure_request.v1~  // GDPR right-to-erasure tracking
+                                          // strategy: anonymize | delete
+                                          // anonymize = replace PII with [redacted]
 cf.studio.core.cost_report.v1~           // AI cost, infrastructure cost
 ```
 
