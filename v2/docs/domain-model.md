@@ -2181,7 +2181,12 @@ All Analyzers are read-only except `stale_artifact_detection` which also writes 
 | `operations_metrics_analysis` | hybrid | scheduled | slo, sli, metric_definition, alert | Recommendation[] |
 | `ai_cost_efficiency_analysis` | script | scheduled | WorkerRun[] (runtime: llm\|hybrid) | CostReport + Recommendation[] |
 
-### 22.2 Flows (2) — mandatory step sequences
+### 22.2 Flows — mandatory step sequences
+
+**Note on Runbook execution:** Runbook execution is implemented as a Kit-specific Flow
+(kind: orchestrator). A `runbook` document defines the steps; a Kit packages a
+corresponding Flow with `steps[]` derived from the runbook procedure. There is no
+single `runbook_execution_worker` — each runbook step becomes a Flow step Worker.
 
 **`bug_to_fix_pr_flow`** — Killer Workflow 1:
 ```
@@ -2335,6 +2340,9 @@ sufficient permissions and `automationLevel >= approved_automation`.
 | `implement_fix` | llm | on_demand | bug, test_case → source_file[] |
 | `postmortem_draft_worker` | llm | on_demand | incident, WorkerRun[] → postmortem |
 | `prevention_tasks_worker` | hybrid | on_demand | postmortem → task[] |
+| `alert_to_incident_worker` | hybrid | onEvent | alert [sync: datadog\|pagerduty] → incident (open) + on_call assignment |
+| `incident_triage_worker` | llm | on_demand | incident, alert[], recent WorkerRun[] → incident.severity updated + task[] (triage) |
+| `deployment_rollback_worker` | script | on_demand | deployment (failed), build_artifact (previous) → deployment (rollback); Gate 2 for prod |
 
 ### 24.2 Approval Gates
 

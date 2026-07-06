@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 49
+**Rounds:** 50
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -91,6 +91,7 @@
 | 47 | AI Cost gap: CostReport schema (breakdown, costPerAcceptedChange), Tenant.aiCostBudget, WorkerRun.costAttributedTo |
 | 48 | TraceabilityReport Object (coverage%, staleLinks, gaps, complianceReady); traceability_analysis typed output Contract |
 | 49 | Analyzer output contracts: Output column in §22.1; stale_artifact_detection = write exception (updates stalenessScore) |
+| 50 | Operations Workers: alert_to_incident_worker, incident_triage_worker, deployment_rollback_worker in §24; runbook = Flow |
 
 ---
 
