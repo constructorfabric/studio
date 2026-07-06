@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 48
+**Rounds:** 49
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -90,6 +90,7 @@
 | 46 | World Model: BenchmarkSample Object (human-approved training examples), Tenant.worldModelParticipation |
 | 47 | AI Cost gap: CostReport schema (breakdown, costPerAcceptedChange), Tenant.aiCostBudget, WorkerRun.costAttributedTo |
 | 48 | TraceabilityReport Object (coverage%, staleLinks, gaps, complianceReady); traceability_analysis typed output Contract |
+| 49 | Analyzer output contracts: Output column in §22.1; stale_artifact_detection = write exception (updates stalenessScore) |
 
 ---
 

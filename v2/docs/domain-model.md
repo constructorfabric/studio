@@ -2164,20 +2164,22 @@ Approval extends Object {
 
 ### 22.1 Analyzer Workers (12) — detect gaps → create Recommendations
 
-| Name | Runtime | Profile | Input Objects |
-|---|---|---|---|
-| `gap_analysis` | hybrid | scheduled | requirement, task, test_case, pull_request |
-| `traceability_analysis` | hybrid | scheduled | requirement, design, task, pull_request, test_case → TraceabilityReport + Recommendation[] |
-| `contradiction_detection` | llm | on_demand | document[] (any two or more) |
-| `bloat_detection` | hybrid | on_demand | requirement[], task[] |
-| `stale_artifact_detection` | script | realtime | Object (wildcard — any type) |
-| `ownership_gap_analysis` | script | realtime | Object (wildcard — ownerId == null) |
-| `duplicate_work_detection` | llm | on_demand | task[], requirement[] |
-| `architecture_drift_detection` | hybrid | scheduled | component, component_dependency, design |
-| `security_impact_analysis` | hybrid | scheduled | pull_request, vulnerability, security_finding |
-| `test_gap_detection` | hybrid | scheduled | requirement, test_case |
-| `operations_metrics_analysis` | hybrid | scheduled | slo, sli, metric_definition, alert |
-| `ai_cost_efficiency_analysis` | script | scheduled | WorkerRun[], cost_report |
+All Analyzers are read-only except `stale_artifact_detection` which also writes `Object.stalenessScore`.
+
+| Name | Runtime | Profile | Input Objects | Output |
+|---|---|---|---|---|
+| `gap_analysis` | hybrid | scheduled | requirement, task, test_case, pull_request | Recommendation[] |
+| `traceability_analysis` | hybrid | scheduled | requirement, design, task, pull_request, test_case | TraceabilityReport + Recommendation[] |
+| `contradiction_detection` | llm | on_demand | document[] (any two or more) | Recommendation[] |
+| `bloat_detection` | hybrid | on_demand | requirement[], task[] | Recommendation[] |
+| `stale_artifact_detection` | script | realtime | Object (wildcard — any type) | **Object.stalenessScore updated** + Recommendation[] |
+| `ownership_gap_analysis` | script | realtime | Object (wildcard — ownerId == null) | Recommendation[] |
+| `duplicate_work_detection` | llm | on_demand | task[], requirement[] | Recommendation[] |
+| `architecture_drift_detection` | hybrid | scheduled | component, component_dependency, design | Recommendation[] |
+| `security_impact_analysis` | hybrid | scheduled | pull_request, vulnerability, security_finding | Recommendation[] |
+| `test_gap_detection` | hybrid | scheduled | requirement, test_case | Recommendation[] |
+| `operations_metrics_analysis` | hybrid | scheduled | slo, sli, metric_definition, alert | Recommendation[] |
+| `ai_cost_efficiency_analysis` | script | scheduled | WorkerRun[] (runtime: llm\|hybrid) | CostReport + Recommendation[] |
 
 ### 22.2 Flows (2) — mandatory step sequences
 
