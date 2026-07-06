@@ -519,10 +519,12 @@ Worker {
   dependencies: [                          // static list — security boundary
     {
       workerId: ref → Worker
-      required: boolean                    // default: true; false = optional call
-      mode:     sync | async               // default: sync
+      required: boolean    // default: true; false = optional call
+                           // enforced for runtime: script|hybrid (DAG execution)
+                           // advisory only for runtime: llm (LLM decides dynamically)
     }
   ]
+  // mode (sync|async) per dependency → WorkerImplementation.dependencyModes
   // Kit Registry validates DAG acyclicity at install — circular deps = hard block
   // Runtime backstop: WorkerRun.effectiveLimits.depth caps transitive call depth
   scope:             local | project | workspace | published
@@ -618,7 +620,9 @@ WorkerImplementation {
     // script: { entrypoint, language, ... }
     // hybrid: { steps[] }
   }
-  // dependencies_mode: deprecated — mode is now in Worker.dependencies[].mode
+  dependencyModes?: map<workerId, sync | async>
+                              // per-dependency call mode; default: sync
+                              // overrides Worker.dependencies default without changing Worker schema
   checkpoint: {
     enabled: boolean
     ttl:     duration
@@ -1133,6 +1137,9 @@ KitInstallation extends Object {
   installedAt:       datetime
   installedBy:       ref → User
   updatePolicy:      auto | notify | manual   // default: notify
+                                              // auto = PATCH only (non-breaking)
+                                              // notify = MINOR + PATCH
+                                              // MAJOR always requires explicit Approval regardless of policy
   state:             active | update_available | rolling_back | failed
   availableVersion?: semver               // set when update is detected
   rollbackVersion?:  semver               // previous version (for rollback)
@@ -3160,7 +3167,7 @@ EventSubscription extends Object {
     secret?:    ref requiredSettings    // HMAC signing secret
     sinkRef?:   string                  // Gears sink ID (kind: event_bus)
   }
-  format:        cloudevents | raw      // default: cloudevents
+  format:        cloudevents | gts_native      // default: cloudevents
   state:         active | paused | failed
   retryPolicy: {
     maxRetries:  int                    // default: 3
@@ -3168,6 +3175,9 @@ EventSubscription extends Object {
   }
 }
 ```
+
+// gts_native = raw GTS event JSON without CloudEvents envelope
+//   (for Tenants already consuming Gears Events Broker directly)
 
 CloudEvents envelope (when format: cloudevents):
 ```json
