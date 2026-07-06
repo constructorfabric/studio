@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 38
+**Rounds:** 39
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -80,6 +80,7 @@
 | 36 | AI cost routing: ModelRouter registry entity, PromptExperiment Object, Tenant.modelOverrides |
 | 37 | Kit reference architecture: Kit.metadata.referenceArchitecture + deploymentPatterns, Tenant.allowedKitPatterns |
 | 38 | Closed all remaining open questions: x-gts-traits.indexes, component kind taxonomy, PromptExperiment significance, fallbackWorkerId compatibility, conditionalRoutes JSONPath, Insight=external, automationLevel hook |
+| 39 | Worker dependency graph: typed deps {workerId, required, mode}; circular dep = hard block at Kit install; depth limit = runtime backstop |
 
 ---
 

@@ -514,7 +514,15 @@ Worker {
   id:                GTS Type Identifier  (gts.cf.studio.core.worker.v1~...)
   input:             Contract             (GTS Type Schema)
   output:            Contract             (GTS Type Schema)
-  dependencies:      Worker[]             (static list — security boundary)
+  dependencies: [                          // static list — security boundary
+    {
+      workerId: ref → Worker
+      required: boolean                    // default: true; false = optional call
+      mode:     sync | async               // default: sync
+    }
+  ]
+  // Kit Registry validates DAG acyclicity at install — circular deps = hard block
+  // Runtime backstop: WorkerRun.effectiveLimits.depth caps transitive call depth
   scope:             local | project | workspace | published
   implementationId:  ref → WorkerImplementation
   requiresAutomationGate: boolean         // default: false
@@ -608,9 +616,7 @@ WorkerImplementation {
     // script: { entrypoint, language, ... }
     // hybrid: { steps[] }
   }
-  dependencies_mode: {
-    // workerId → { mode: sync | async }
-  }
+  // dependencies_mode: deprecated — mode is now in Worker.dependencies[].mode
   checkpoint: {
     enabled: boolean
     ttl:     duration
