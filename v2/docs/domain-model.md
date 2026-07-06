@@ -904,6 +904,10 @@ Tenant {
   modelOverrides?: map<workerId, GTS Model ID>
                                  // Enterprise: override model per Worker
                                  // priority: Tenant override > ModelRouter > WorkerImpl default
+  allowedKitPatterns?: [
+    saas_multitenant | service_provider | enterprise_private | hybrid_cloud | on_prem | any
+  ]                              // soft governance: Kit with incompatible deploymentPattern
+                                 // requires Approval (kind: architecture_decision) to install
 }
 ```
 
@@ -1094,6 +1098,33 @@ Kit manifest:
 - Tenant explicitly approves at installation
 - Expanding permissions in new version → blocks auto-update, requires re-approval
 - Reducing permissions → auto-update
+
+### 10.5 Kit Discovery Metadata
+
+Optional metadata for Kit marketplace discovery and governance filtering.
+
+```
+Kit manifest:
+  metadata:
+    displayName:            string
+    description:            string
+    version:                semver
+    referenceArchitecture?: {
+      name:        string   // e.g. "Artifact-first SDLC", "Multi-tenant SaaS Platform"
+      description: string
+      url?:        string   // link to architecture documentation
+    }
+    deploymentPatterns?: [
+      saas_multitenant | service_provider | enterprise_private
+      | hybrid_cloud | on_prem | any
+    ]                       // default: [any] if omitted
+    tags?:        string[]  // free-form discovery tags
+    targetTeamSize?: { min?: int, max?: int }
+```
+
+`Tenant.allowedKitPatterns` (see §7) acts as a soft governance filter: installing
+a Kit whose `deploymentPatterns` do not intersect `allowedKitPatterns` requires
+an explicit Approval (kind: architecture_decision) — same gate as raising automationLevel.
 
 ---
 
