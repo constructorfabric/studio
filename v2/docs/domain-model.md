@@ -787,6 +787,11 @@ WorkerRun extends Object {
   interactions:        WorkerInteraction[]  // history of all interactions (immutable once answered)
   cancelledBy?:        ref → User
   cancelCascade?:      boolean              // were child WorkerRuns also cancelled
+  costAttributedTo?: {                     // platform sets at creation from trigger context
+    userId?:      ref → User
+    workspaceId?: ref → Workspace
+    flowRunId?:   ref → FlowRun            // enables per-Flow cost aggregation
+  }
   trigger: {                               // immutable after set; platform sets at creation
     kind:           scheduled | onEvent | onDemand
     // scheduled: Gears Jobs Manager created this run from Worker.defaultSchedule
@@ -968,6 +973,11 @@ Tenant {
     allowedKits?:     string[]   // null = all installed Kits with mcpTools; whitelist otherwise
     mcpRole:          ref → Role // MCP clients authenticate with permissions of this Role only
                                  // Role survives DataErasureRequest; avoids full User identity
+  }
+  aiCostBudget?: {
+    monthly_usd:          float    // monthly AI spending cap
+    alert_threshold_pct:  float    // default: 0.8; Recommendation(severity: warning) at threshold
+    // on limit reached: new WorkerRun creation blocked for runtime: llm | hybrid
   }
   worldModelParticipation: opted_in | opted_out | not_configured
   // opted_in: BenchmarkSamples may be used (anonymized) for cross-tenant World Model training
@@ -3103,7 +3113,33 @@ cf.studio.core.compliance_report.v1~     // → document
 cf.studio.core.data_erasure_request.v1~  // GDPR right-to-erasure tracking
                                           // strategy: anonymize | delete
                                           // anonymize = replace PII with [redacted]
-cf.studio.core.cost_report.v1~           // AI cost, infrastructure cost
+cf.studio.core.cost_report.v1~           // AI cost aggregated report (see schema below)
+```
+
+```
+CostReport extends Object {
+  typeId:        gts.cf.studio.core.object.v1~cf.studio.core.cost_report.v1~
+  tenantId:      ref → Tenant
+  period: {
+    from:  datetime
+    to:    datetime
+    grain: day | week | month
+  }
+  totalCostUSD:  float
+  breakdown: [
+    {
+      workerId?:     ref → Worker
+      category?:     string          // Worker metadata.category
+      modelId?:      GTS Type ID     // Gears Models Registry ref
+      runCount:      int
+      totalCostUSD:  float
+      avgCostUSD:    float
+    }
+  ]
+  costPerAcceptedChange?: float      // totalCost / merged pull_requests in period
+  generatedAt:            datetime
+  // materialized from Gears Usage Collector by ai_cost_efficiency_analysis Analyzer
+}
 ```
 
 ### Domain 13 — People / Teams
