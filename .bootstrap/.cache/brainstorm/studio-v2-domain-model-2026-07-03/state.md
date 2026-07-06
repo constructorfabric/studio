@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 43
+**Rounds:** 44
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -85,6 +85,7 @@
 | 41 | Approval chains: prerequisiteApprovalId, stepNumber/totalSteps, approvalSetId, distinctApprovers, delegation fields |
 | 42 | Kit versioning: KitInstallation Object, semver convention (MAJOR/MINOR/PATCH), changelog required for MAJOR |
 | 43 | Data residency: x-gts-traits.contains_pii annotation, DataErasureRequest Object (GDPR); dataResidency = infra concern |
+| 44 | Gears deep integration: WorkerRun.trigger metadata, §26 Gears Integration Reference, Credentials Store vs Settings Service fix |
 
 ---
 

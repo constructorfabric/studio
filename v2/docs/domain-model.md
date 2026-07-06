@@ -787,6 +787,15 @@ WorkerRun extends Object {
   interactions:        WorkerInteraction[]  // history of all interactions (immutable once answered)
   cancelledBy?:        ref → User
   cancelCascade?:      boolean              // were child WorkerRuns also cancelled
+  trigger: {                               // immutable after set; platform sets at creation
+    kind:           scheduled | onEvent | onDemand | chain
+    // scheduled: Gears Jobs Manager created this run from Worker.defaultSchedule
+    // onEvent:   Worker.eventTrigger pattern matched a Gears Events Broker event
+    // onDemand:  user action (Action button, API call, Flow step)
+    // chain:     sub-Worker call from parent WorkerRun
+    parentEventId?: string                 // Gears Event ID (for kind: onEvent)
+    scheduleName?:  string                 // Gears Jobs Manager schedule name (for kind: scheduled)
+  }
   cost?: {
     promptTokens:     int
     completionTokens: int
@@ -1177,7 +1186,7 @@ Kit manifest:
     - write: [ GTS Type Identifier, ... ]
     - call:  [ GTS Type Identifier, ... ]
   requiredSettings:
-    - { key: string, secret: boolean }    // credentials stored in Gears Settings
+    - { key: string, secret: boolean }    // secrets stored in Gears Credentials Store
 ```
 
 - Tenant explicitly approves at installation
@@ -1821,7 +1830,8 @@ classDiagram
 **Core (Gears, pre-installed):** `in_app`, `email`, `webhook`
 
 **Vendor Kits** register additional channels. Kit declares `requiredSettings`
-for credentials; Tenant fills via Gears Settings Service. No secrets in Kit.
+for credentials; Tenant fills via Gears Credentials Store. No secrets in Kit.
+// Note: Gears Settings Service = preferences/feature flags (not secrets)
 
 ---
 
@@ -1946,7 +1956,8 @@ Registry entity in Kit. Uses Gears OAGW as networking infrastructure.
 Connector (registry) {
   id:           GTS Type Identifier  (gts.cf.studio.core.connector.v1~...)
   sourceSystem: string               // "jira", "github", "datadog"
-  oagwUpstreamRef: string            // reference to OAGW upstream (created at Kit install)
+  oagwUpstreamRef: string            // Gears Outbound API Gateway upstream resource ID
+                                     // created at Kit install via Outbound API Interface
   rateLimit: {
     requestsPerHour: int
     burstSize:       int
@@ -2323,6 +2334,51 @@ LLM Workers declare Retriever Workers in `dependencies[]`. Document chunks live 
 | `code_retriever` | code_index | workspace | Semantic code search over source_file content |
 
 Indexing is triggered automatically via `onEvent: object_created / object_updated` for Objects with indexable content fields. Chunking and embedding generation are handled by Gears Models indexing pipeline.
+
+---
+
+## 26. Gears Integration Reference
+
+Studio v2 is a **Business Logic Gear** built on Constructor Fabric Gears. This table
+maps Studio domain concepts to the Gears they depend on.
+
+| Studio concept | Gears gear | Integration pattern |
+|---|---|---|
+| `Tenant` | Resource Groups | Tenant extends Gears RG type via GTS chaining |
+| `User` | Account Manager | User extends Gears AM user via GTS chaining |
+| `Object graph` | Durable Objects | Studio Objects stored as Durable Objects (GTS-typed resources) |
+| `GTS Type IDs` | Types Registry | Schema storage and validation for all GTS types |
+| Worker (runtime: llm) | LLM Gateway | All LLM calls → LLM Gateway; cost response → WorkerRun.cost |
+| Worker model selection | Models Registry | `Worker.config.llm.model` = GTS Type ID from Models Registry |
+| Worker (runtime: script) | Serverless Gateway + Runtimes | Script Workers run as Starlark/Python serverless functions |
+| `PromptExperiment` | Prompts Registry | PromptExperiment uses Prompts Registry versioning + A/B rollout |
+| `Worker.defaultSchedule` | Jobs Manager | Jobs Manager creates WorkerRuns on schedule; WorkerRun.trigger.kind: scheduled |
+| `eventTrigger` | Events Broker | Events Broker fires WorkerRun on GTS event pattern match |
+| Studio events | Events Broker | All Object lifecycle + WorkerRun events published to Events Broker |
+| `EventSubscription` | Events Broker | Outbound delivery via Events Broker subscription |
+| `NotificationRule` delivery | Notifications Service | Notifications Service handles in-app/email/webhook channels |
+| `Approval` | Approvals gear | Studio Approval Object uses Gears Approvals for multi-step chains |
+| `AuditLog` | Audit gear | WorkerRun audit trail → Gears Audit (immutable events) |
+| `WorkerRun.cost` | Usage Collector | Usage Collector records LLM usage per tenant |
+| `effectiveLimits.token_budget` | Quota Enforcer | Quota Enforcer checks budget before WorkerRun creation |
+| `Kit.requiredSettings[secret=true]` | **Credentials Store** | Secrets stored in Gears Credentials Store (NOT Settings Service) |
+| `Kit.requiredSettings[secret=false]` | Settings Service | Non-secret preferences stored in Gears Settings Service |
+| `Connector.oagwUpstreamRef` | Outbound API Gateway | Reference to Gears Outbound API Gateway upstream resource |
+| `connector_inbound_sync_worker` | Outbound API Interface | Inbound events received via Outbound API Gateway (push) |
+| `Retriever Workers` (RAG) | Local Search Index | `document_retriever` + `code_retriever` use Local Search Index |
+| `document_retriever` parsing | File Parser | File Parser (PDF/DOCX/Markdown) used for document ingestion |
+| `Policy.condition` Worker | Policy Manager | ABAC condition evaluation via Gears Policy Manager |
+| `Tenant Resolver` | Tenant Resolver | Multi-tenant hierarchy resolution |
+| Studio API | API Gateway | All external HTTP traffic through Gears API Gateway |
+| `WorkerRun` AI Agents | AI Agents Registry | LLM Workers can register as AI Agents in Gears registry |
+| Studio as MCP | MCP Registry | Studio exposes tools via Gears MCP Registry |
+
+**Key distinction: Credentials Store vs Settings Service**
+
+- **Credentials Store** — API keys, tokens, secrets (`secret: true` in Kit.requiredSettings)
+- **Settings Service** — tenant/user preferences, feature flags, non-secret configuration
+
+These are different Gears. Kit secrets always go to Credentials Store; never to Settings Service.
 
 ---
 
