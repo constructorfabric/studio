@@ -2167,7 +2167,7 @@ Approval extends Object {
 | Name | Runtime | Profile | Input Objects |
 |---|---|---|---|
 | `gap_analysis` | hybrid | scheduled | requirement, task, test_case, pull_request |
-| `traceability_analysis` | hybrid | scheduled | requirement, design, task, pull_request, test_case |
+| `traceability_analysis` | hybrid | scheduled | requirement, design, task, pull_request, test_case → TraceabilityReport + Recommendation[] |
 | `contradiction_detection` | llm | on_demand | document[] (any two or more) |
 | `bloat_detection` | hybrid | on_demand | requirement[], task[] |
 | `stale_artifact_detection` | script | realtime | Object (wildcard — any type) |
@@ -3300,6 +3300,50 @@ cf.studio.core.validation_result.v1~     // output of one Validator WorkerRun
 cf.studio.core.evidence.v1~              // structured proof of action/validation
                                          // state: valid|superseded|revoked
                                          // produced by Worker output Contract
+```
+
+---
+
+### Domain 19a — Traceability
+
+```
+cf.studio.core.traceability_report.v1~   // aggregated requirement coverage analysis
+                                          // output of traceability_analysis Analyzer Worker
+```
+
+```
+TraceabilityReport extends Object {
+  typeId:       gts.cf.studio.core.object.v1~cf.studio.core.traceability_report.v1~
+  workspaceId:  ref → Workspace
+  sourceRunId:  ref → WorkerRun           // traceability_analysis Analyzer run
+  generatedAt:  datetime
+  coverage: {
+    requirements: {
+      total:          int
+      withDesign:     int                  // have design ref
+      withTasks:      int                  // have task[]
+      withTests:      int                  // have test_case[]
+      withPRs:        int                  // have merged pull_request[]
+      fullyTraced:    int                  // all four layers present
+      coveragePct:    float                // fullyTraced / total
+    }
+  }
+  staleLinks: [
+    {
+      sourceId:        ref → Object        // requirement or design that changed
+      targetId:        ref → Object        // linked artifact now stale
+      sourceUpdatedAt: datetime
+      staleSince:      datetime
+    }
+  ]
+  gaps: [                                  // Recommendation[] created per gap
+    {
+      objectId:        ref → Object
+      missingLayers:   string[]            // e.g. ["test_case", "pull_request"]
+    }
+  ]
+  allCriticalRequirementsTraced: boolean   // compliance gate
+}
 ```
 
 ---

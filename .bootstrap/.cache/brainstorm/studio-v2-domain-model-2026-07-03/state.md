@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 47
+**Rounds:** 48
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -89,6 +89,7 @@
 | 45 | Studio as MCP server: Kit.mcpTools?[] (opt-in), Tenant.mcpSettings? { enabled, allowedKits, mcpRole } |
 | 46 | World Model: BenchmarkSample Object (human-approved training examples), Tenant.worldModelParticipation |
 | 47 | AI Cost gap: CostReport schema (breakdown, costPerAcceptedChange), Tenant.aiCostBudget, WorkerRun.costAttributedTo |
+| 48 | TraceabilityReport Object (coverage%, staleLinks, gaps, complianceReady); traceability_analysis typed output Contract |
 
 ---
 
