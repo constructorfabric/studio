@@ -896,16 +896,18 @@ Flow extends Worker {
       steps: [
         {
           workerId:      ref → Worker
+          required:      boolean          // default: true; false = optional step
+                                          // mandatorySteps = steps.filter(required == true)
           inputBinding?: {            // overrides Worker.inputBindings for this step
             // field → { source, query?, fromStep?, default? }
             // e.g. "prd": { source: "chain", fromStep: "step-0" }
           }
         }
       ]
-      mandatorySteps:     Worker[]     // ordered list = planned checklist items
+      // mandatorySteps: Worker[] — deprecated; derived from steps.filter(required == true)
       stepDependencies?:  map<workerId, workerId[]>
                                        // explicit deps for UI dependency graph;
-                                       // if absent: steps assumed sequential per mandatorySteps order
+                                       // if absent: steps assumed sequential per steps[] order
       allowedNextSteps:   map<Worker, Worker[]>
       conditionalRoutes?: [
         {
@@ -964,7 +966,8 @@ Tenant {
   mcpSettings?: {
     enabled:          boolean    // default: false; MCP access disabled unless explicitly enabled
     allowedKits?:     string[]   // null = all installed Kits with mcpTools; whitelist otherwise
-    serviceAccount:   ref → User // MCP clients authenticate as this User (scoped Role)
+    mcpRole:          ref → Role // MCP clients authenticate with permissions of this Role only
+                                 // Role survives DataErasureRequest; avoids full User identity
   }
 }
 ```
