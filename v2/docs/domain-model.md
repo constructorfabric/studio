@@ -434,7 +434,19 @@ required fields use the standard `required` array, not a custom annotation.
 
 `x-gts-*` extensions are only for concepts JSON Schema does not have: state
 awareness (`x-gts-state-requires`, `x-gts-state-sets`), platform security
-(`x-gts-source: platform | never-user`), traits (`x-gts-traits`).
+(`x-gts-source: platform | never-user`), traits + indexes (`x-gts-traits`).
+
+`x-gts-traits.indexes` — hint to persistence layer which fields to index:
+
+```json
+"x-gts-traits": {
+  "indexes": [
+    { "fields": ["tenantId", "state"],                       "unique": false },
+    { "fields": ["workerId"],                                 "unique": false },
+    { "fields": ["externalRef.externalId", "externalRef.connectorId"], "unique": true }
+  ]
+}
+```
 
 ```json
 {
@@ -524,7 +536,10 @@ Worker {
     }
   ]
   // Flow.config.steps[].inputBinding overrides Worker.inputBindings per step
-  fallbackWorkerId?:  ref → Worker    // must have compatible output Contract
+  fallbackWorkerId?:  ref → Worker    // output Contract must be compatible with primary
+                                      // Kit Registry validates at install: fallback output
+                                      // must be GTS subtype or exact match of primary output
+                                      // incompatible fallback → Kit install warning (not block)
   fallbackCondition?: on_error | on_budget_exceeded | on_timeout
   interactionModel?: {
     canRequestInput:        boolean   // can emit input_request WorkerInteraction
@@ -676,6 +691,8 @@ PromptExperiment extends Object {
   startedAt:               datetime
   concludedAt?:            datetime
   winnerImplementationId?: ref → WorkerImplementation
+  minRunsPerVariant?:      int           // default: 100; platform waits before suggesting winner
+  significanceThreshold?:  float         // default: 0.1 (10% difference in avgCostUSD or quality)
   metrics?: [              // one entry per variant, same order as variants[]
     {
       totalRuns:           int
@@ -859,6 +876,7 @@ Flow extends Worker {
         {
           fromWorker: ref → Worker
           condition:  string          // JSONPath expression over outputData
+                                      // Phase 1-2: JSONPath; Phase 3+: CEL considered
           nextWorker: ref → Worker
         }
       ]                               // evaluated after allowedNextSteps; wins on match
@@ -2261,7 +2279,9 @@ cf.studio.core.decomposition.v1~         // → document (Studio SDLC DECOMPOSIT
 ```
 cf.studio.core.design.v1~                // → document (Studio SDLC DESIGN)
 cf.studio.core.adr.v1~                   // → document (Architecture Decision Record)
-cf.studio.core.component.v1~             // architectural component (service, module, library, subsystem)
+cf.studio.core.component.v1~             // architectural component
+                                         // kind: service|library|module|subsystem|
+                                         //   frontend|backend|data-pipeline|sdk|plugin|cli|agent|gateway
 cf.studio.core.component_version.v1~     // versioned snapshot of a component
 cf.studio.core.component_dependency.v1~  // directed dependency between two components
 cf.studio.core.interface_definition.v1~
@@ -2276,7 +2296,7 @@ cf.studio.core.architecture_diagram.v1~
 classDiagram
     class component {
         name: string
-        kind: service|library|module|subsystem
+        kind: service|library|module|subsystem|frontend|backend|data-pipeline|sdk|plugin|cli|agent|gateway
         ownerId: ref team
         repositoryId: ref repository
     }
