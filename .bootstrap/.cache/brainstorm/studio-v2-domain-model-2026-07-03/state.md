@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 35
+**Rounds:** 36
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -77,6 +77,7 @@
 | 33 | Input resolution: Worker.inputBindings[], Contract x-gts-source: platform|never-user only, Flow.config.steps[].inputBinding override |
 | 34 | Worker.trigger split: canInvokeOnDemand + eventTrigger on Worker, defaultSchedule in WorkerImplementation |
 | 35 | Flow checklist+progress: FlowRun.stepStatus map, FlowRun.activeStepId, Flow.config.stepDependencies |
+| 36 | AI cost routing: ModelRouter registry entity, PromptExperiment Object, Tenant.modelOverrides |
 
 ---
 

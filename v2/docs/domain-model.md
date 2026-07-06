@@ -408,6 +408,7 @@ gts.cf.studio.core.object.v1~cf.studio.core.saved_audit_query.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.notification_rule_override.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.notification_subscription.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.worker_interaction.v1~
+gts.cf.studio.core.object.v1~cf.studio.core.prompt_experiment.v1~
 ```
 
 ### 2.4 Vendor (Kit) Extensions
@@ -586,7 +587,9 @@ WorkerImplementation {
   version: semver
   runtime: llm | script | hybrid
   config: {
-    // llm:    { model, prompt, temperature, ... }
+    // llm:    { model: GTS Model ID, prompt, temperature, ...
+    //           modelRouterId?: ref → ModelRouter  // dynamic model selection
+    //         }
     // script: { entrypoint, language, ... }
     // hybrid: { steps[] }
   }
@@ -626,7 +629,74 @@ WorkerImplementation {
 }
 ```
 
-### 4.2 Composability
+### 4.2 ModelRouter
+
+Registry entity for dynamic model selection at WorkerRun creation time.
+
+```
+ModelRouter {
+  id:             string
+  defaultModelId: GTS Type ID        // Gears Models Registry ref; used when no rule matches
+  rules: [
+    {
+      condition: {
+        tenantTier?:   string         // e.g. enterprise | pro | free
+        inputTokens?:  { gt?: int, lt?: int }
+        category?:     string         // Worker metadata.category
+      }
+      modelId:   GTS Type ID
+      priority:  int                  // higher value = evaluated first
+    }
+  ]
+}
+```
+
+**Model selection priority (highest to lowest):**
+```
+1. Tenant.modelOverrides[workerId]         ← enterprise custom model
+2. ModelRouter.rules[] (first match)       ← dynamic routing
+3. WorkerImplementation.config.llm.model   ← Kit default
+```
+
+### 4.3 PromptExperiment
+
+A/B test between two `WorkerImplementation` versions on live traffic.
+
+```
+PromptExperiment extends Object {
+  typeId:                  gts.cf.studio.core.object.v1~cf.studio.core.prompt_experiment.v1~
+  workerId:                ref → Worker
+  variants: [
+    {
+      implementationId:    ref → WorkerImplementation
+      trafficWeight:       int      // relative weight e.g. [70, 30]; must sum > 0
+    }
+  ]
+  state:                   running | paused | concluded
+  startedAt:               datetime
+  concludedAt?:            datetime
+  winnerImplementationId?: ref → WorkerImplementation
+  metrics?: [              // one entry per variant, same order as variants[]
+    {
+      totalRuns:           int
+      avgCostUSD:          float
+      avgInputTokens:      int
+      avgOutputTokens:     int
+    }
+  ]
+}
+```
+
+Worker link (platform routes to variant when experiment is running):
+
+```
+Worker {
+  ...
+  activeExperimentId?: ref → PromptExperiment
+}
+```
+
+### 4.4 Composability
 
 A Worker may call other Workers from its `dependencies` list.
 An LLM-Worker may call them in any order, conditionally, iteratively —
@@ -827,10 +897,13 @@ Recursive hierarchy. Extends Gears Resource Group tenant type.
 
 ```
 Tenant {
-  typeId:        gts.cf.core.rg.type.v1~cf.core._.tenant.v1~cf.studio.core.tenant.v1~
-  parentId:      ref → Tenant?
-  name:          string
-  checkpointTTL: duration      // default: 24h
+  typeId:          gts.cf.core.rg.type.v1~cf.core._.tenant.v1~cf.studio.core.tenant.v1~
+  parentId:        ref → Tenant?
+  name:            string
+  checkpointTTL:   duration      // default: 24h
+  modelOverrides?: map<workerId, GTS Model ID>
+                                 // Enterprise: override model per Worker
+                                 // priority: Tenant override > ModelRouter > WorkerImpl default
 }
 ```
 
