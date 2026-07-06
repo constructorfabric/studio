@@ -969,7 +969,38 @@ Tenant {
     mcpRole:          ref → Role // MCP clients authenticate with permissions of this Role only
                                  // Role survives DataErasureRequest; avoids full User identity
   }
+  worldModelParticipation: opted_in | opted_out | not_configured
+  // opted_in: BenchmarkSamples may be used (anonymized) for cross-tenant World Model training
+  // opted_out: strictly private; BenchmarkSamples used only for this Tenant's models
+  // not_configured (default): org-private training only; no cross-tenant sharing
 }
+```
+
+### BenchmarkSample
+
+```
+BenchmarkSample extends Object {
+  typeId:            gts.cf.studio.core.object.v1~cf.studio.core.benchmark_sample.v1~
+  workerRunId:       ref → WorkerRun   // the run whose output is the approved example
+  workerId:          ref → Worker
+  approvedBy:        ref → User        // human who verified this as a high-quality example
+  approvedAt:        datetime
+  qualityScore?:     float             // 0.0–1.0; optional human quality rating
+  includeInTraining: boolean           // consent to use for Worker fine-tuning
+  // Platform feeds approved BenchmarkSamples to Gears Model Runtime Controller
+  // for fine-tuning WorkerImplementation.config.llm.model per Tenant
+}
+```
+
+### World Model flywheel
+
+```
+WorkerRun (output) → human review → BenchmarkSample (if quality approved)
+  → Gears Model Runtime Controller (fine-tuning job)
+    → new model version in Gears Models Registry
+      → Tenant.modelOverrides[workerId] = fine-tuned model
+        → next WorkerRun uses org-adapted model
+```
 ```
 
 Every Object belongs to exactly one Tenant (`tenantId`).
@@ -3201,6 +3232,8 @@ cf.studio.core.ai_agent.v1~
 cf.studio.core.ai_tool.v1~
 cf.studio.core.evaluation_run.v1~
 cf.studio.core.evaluation_result.v1~
+cf.studio.core.benchmark_sample.v1~     // human-approved WorkerRun example for World Model training
+                                         // feeds fine-tuning via Gears Model Runtime Controller
 // llm_model → reference to Gears Models Registry (no separate Object type)
 ```
 
