@@ -456,7 +456,8 @@ awareness (`x-gts-state-requires`, `x-gts-state-sets`), platform security
 ```json
 "x-gts-traits": {
   "contains_pii": true,
-  "pii_fields": ["assignee", "description", "authorEmail"]
+  "pii_fields": ["assignee", "description", "externalRef.externalId", "payload.*"]
+  // dot-notation paths; wildcard * = all fields within that prefix
 }
 ```
 
@@ -2305,6 +2306,7 @@ metadata.category:        platform
 | `audit_exporter` | script | on_demand | Export AuditLog (webhook, JSON). Vendor-specific formats via Kits. |
 | `connector_inbound_sync_worker` | script | realtime | Receive Gears OAGW event → create/update Object in graph. Calls per-Kit `event_handler_worker` for custom mapping. |
 | `connector_outbound_sync_worker` | script | on_demand | Object change → Connector write-back via WriteBackPolicy. |
+| `data_erasure_worker` | script | on_demand | Process DataErasureRequest — anonymize or delete PII-containing Objects per GDPR request. Creates WorkerRun on request activation. |
 
 Per-Kit Connectors may register additional `event_handler_worker` Workers in their Kit manifest using the naming convention `{vendor}_{connector}_event_handler` (e.g. `jira_jira_event_handler`, `github_github_event_handler`). These are registered through the standard Worker registry and are not platform Workers.
 
