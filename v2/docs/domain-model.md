@@ -790,7 +790,8 @@ WorkerRun extends Object {
   costAttributedTo?: {                     // platform sets at creation from trigger context
     userId?:      ref → User
     workspaceId?: ref → Workspace
-    flowRunId?:   ref → FlowRun            // enables per-Flow cost aggregation
+    parentFlowRunId?: ref → WorkerRun      // enables per-Flow cost aggregation
+                                           // (FlowRun extends WorkerRun; use WorkerRun ref)
   }
   trigger: {                               // immutable after set; platform sets at creation
     kind:           scheduled | onEvent | onDemand
@@ -2340,7 +2341,7 @@ sufficient permissions and `automationLevel >= approved_automation`.
 | `implement_fix` | llm | on_demand | bug, test_case → source_file[] |
 | `postmortem_draft_worker` | llm | on_demand | incident, WorkerRun[] → postmortem |
 | `prevention_tasks_worker` | hybrid | on_demand | postmortem → task[] |
-| `alert_to_incident_worker` | hybrid | onEvent | alert [sync: datadog\|pagerduty] → incident (open) + on_call assignment |
+| `alert_to_incident_worker` | hybrid | onEvent | alert [sync: datadog\|pagerduty] → incident (open) + on_call assignment; `eventTrigger.pattern: object_created, filter: typeId=alert.v1~` |
 | `incident_triage_worker` | llm | on_demand | incident, alert[], recent WorkerRun[] → incident.severity updated + task[] (triage) |
 | `deployment_rollback_worker` | script | on_demand | deployment (failed), build_artifact (previous) → deployment (rollback); Gate 2 for prod |
 
@@ -2470,7 +2471,8 @@ cf.studio.core.prompt.v1~        // base for all AI prompt artifacts
 cf.studio.core.prd.v1~                   // → document
 cf.studio.core.epic.v1~
 cf.studio.core.user_story.v1~
-cf.studio.core.requirement.v1~
+cf.studio.core.requirement.v1~          // priority: critical|high|medium|low
+                                         // allCriticalRequirementsTraced computed from priority==critical
 cf.studio.core.acceptance_criteria.v1~
 cf.studio.core.use_case.v1~
 cf.studio.core.user_persona.v1~
