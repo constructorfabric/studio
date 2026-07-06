@@ -410,6 +410,7 @@ gts.cf.studio.core.object.v1~cf.studio.core.notification_subscription.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.worker_interaction.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.prompt_experiment.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.event_subscription.v1~
+gts.cf.studio.core.object.v1~cf.studio.core.kit_installation.v1~
 ```
 
 ### 2.4 Vendor (Kit) Extensions
@@ -1108,6 +1109,44 @@ flowchart TD
 - Registry verifies via GTS compatibility rules at installation
 - Smoke tests not run (too costly for LLM Workers)
 
+### 10.3a Kit Semver Convention
+
+| Semver | Change type | Examples |
+|---|---|---|
+| PATCH | WorkerImplementation only (same Contract) | prompt tweak, model upgrade |
+| MINOR | Additive — new optional fields, new Workers, new Flows | new Worker added |
+| MAJOR | Breaking — required Contract fields changed, Worker removed, FieldMapping changed | new required input field |
+
+`changelog` in `Kit.metadata` is **required** for MAJOR version bumps.
+Kit Registry rejects MAJOR publish without a non-empty changelog.
+
+### 10.3b KitInstallation
+
+Tenant→Kit relationship is tracked as a first-class Object:
+
+```
+KitInstallation extends Object {
+  typeId:            gts.cf.studio.core.object.v1~cf.studio.core.kit_installation.v1~
+  kitId:             string               // Kit registry ID
+  kitVersion:        semver               // currently installed version
+  tenantId:          ref → Tenant
+  installedAt:       datetime
+  installedBy:       ref → User
+  updatePolicy:      auto | notify | manual   // default: notify
+  state:             active | update_available | rolling_back | failed
+  availableVersion?: semver               // set when update is detected
+  rollbackVersion?:  semver               // previous version (for rollback)
+}
+```
+
+Update flow for breaking changes:
+1. Registry detects MAJOR update → `KitInstallation.state: update_available`
+2. Tenant admin notified (NotificationRule)
+3. Admin reviews `Kit.metadata.changelog`
+4. Approval (kind: architecture_decision) required for MAJOR update
+5. On approval: `rollbackVersion` saved → Kit updated
+6. On failure: rollback to `rollbackVersion` (also requires Approval)
+
 ### 10.4 Permissions
 
 ```
@@ -1145,6 +1184,7 @@ Kit manifest:
     ]                       // default: [any] if omitted
     tags?:        string[]  // free-form discovery tags
     targetTeamSize?: { min?: int, max?: int }
+    changelog?:   string    // REQUIRED for MAJOR version bumps; Kit Registry rejects without it
 ```
 
 `Tenant.allowedKitPatterns` (see §7) acts as a soft governance filter: installing

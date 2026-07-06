@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 41
+**Rounds:** 42
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -83,6 +83,7 @@
 | 39 | Worker dependency graph: typed deps {workerId, required, mode}; circular dep = hard block at Kit install; depth limit = runtime backstop |
 | 40 | Outbound events: EventSubscription Object (webhook/event-bus), CloudEvents format default |
 | 41 | Approval chains: prerequisiteApprovalId, stepNumber/totalSteps, approvalSetId, distinctApprovers, delegation fields |
+| 42 | Kit versioning: KitInstallation Object, semver convention (MAJOR/MINOR/PATCH), changelog required for MAJOR |
 
 ---
 
