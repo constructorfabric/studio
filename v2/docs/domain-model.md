@@ -409,6 +409,7 @@ gts.cf.studio.core.object.v1~cf.studio.core.notification_rule_override.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.notification_subscription.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.worker_interaction.v1~
 gts.cf.studio.core.object.v1~cf.studio.core.prompt_experiment.v1~
+gts.cf.studio.core.object.v1~cf.studio.core.event_subscription.v1~
 ```
 
 ### 2.4 Vendor (Kit) Extensions
@@ -1653,6 +1654,9 @@ gts.cf.core.events.type.v1~cf.studio.core.recommendation_invalidated.v1~
 // Kit lifecycle
 gts.cf.core.events.type.v1~cf.studio.core.kit_installed.v1~
 gts.cf.core.events.type.v1~cf.studio.core.kit_updated.v1~
+
+// EventSubscription delivery
+gts.cf.core.events.type.v1~cf.studio.core.event_delivery_failed.v1~
 ```
 
 Wildcard-based authz example (per Gears GTS guidelines):
@@ -3084,7 +3088,52 @@ cf.studio.core.evidence.v1~              // structured proof of action/validatio
 
 ---
 
-### Domain 20 — Worker Interactions
+### Domain 20 — Outbound Event Subscriptions
+
+```
+cf.studio.core.event_subscription.v1~    // external webhook/event-bus subscription
+                                          // format: cloudevents (default) | raw
+                                          // state: active | paused | failed
+```
+
+```
+EventSubscription extends Object {
+  typeId:        gts.cf.studio.core.object.v1~cf.studio.core.event_subscription.v1~
+  name:          string
+  filter: {
+    eventPattern:   GTS Type pattern    // e.g. gts.cf.core.events.type.v1~cf.studio.core.*
+    objectPattern?: GTS Type pattern    // optional: filter by Object type that triggered event
+  }
+  delivery: {
+    kind:       webhook | event_bus
+    endpoint?:  string                  // HTTPS URL (kind: webhook)
+    secret?:    ref requiredSettings    // HMAC signing secret
+    sinkRef?:   string                  // Gears sink ID (kind: event_bus)
+  }
+  format:        cloudevents | raw      // default: cloudevents
+  state:         active | paused | failed
+  retryPolicy: {
+    maxRetries:  int                    // default: 3
+    backoff:     linear | exponential
+  }
+}
+```
+
+CloudEvents envelope (when format: cloudevents):
+```json
+{
+  "specversion": "1.0",
+  "type":   "gts.cf.core.events.type.v1~cf.studio.core.worker_run_completed.v1~",
+  "source": "https://studio.cf/tenants/{tenantId}",
+  "id":     "{workerRunId}",
+  "time":   "...",
+  "data":   { }
+}
+```
+
+---
+
+### Domain 21 — Worker Interactions
 
 ```
 cf.studio.core.worker_interaction.v1~    // interactive exchange between Worker and user
