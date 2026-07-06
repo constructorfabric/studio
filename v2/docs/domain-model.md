@@ -2002,6 +2002,16 @@ Approval extends Object {
     affectedUsers: string?
     rollbackPlan:  string?
   }
+  // Chain support:
+  prerequisiteApprovalId?: ref → Approval  // blocked until prerequisite is approved
+  stepNumber?:             int              // 1-based position in chain
+  totalSteps?:             int              // total chain length
+  approvalSetId?:          string           // UUID; all Approvals in set must be approved
+  distinctApprovers?:      boolean          // default: true in sets; prevents single-person all-approval
+  // Delegation:
+  delegatedBy?:            ref → User       // original required approver
+  delegatedTo?:            ref → User       // delegate (platform validates role compatibility)
+  delegatedAt?:            datetime
 }
 ```
 

@@ -2,7 +2,7 @@
 
 **Session ID:** studio-v2-domain-model-2026-07-03
 **Date:** 2026-07-03
-**Rounds:** 39
+**Rounds:** 41
 **Mode:** inline / normal
 **SIMPLE_MODE:** normal
 **BRAINSTORM_MAX_ROUNDS:** 10 (exceeded — continued by user choice)
@@ -81,6 +81,8 @@
 | 37 | Kit reference architecture: Kit.metadata.referenceArchitecture + deploymentPatterns, Tenant.allowedKitPatterns |
 | 38 | Closed all remaining open questions: x-gts-traits.indexes, component kind taxonomy, PromptExperiment significance, fallbackWorkerId compatibility, conditionalRoutes JSONPath, Insight=external, automationLevel hook |
 | 39 | Worker dependency graph: typed deps {workerId, required, mode}; circular dep = hard block at Kit install; depth limit = runtime backstop |
+| 40 | Outbound events: EventSubscription Object (webhook/event-bus), CloudEvents format default |
+| 41 | Approval chains: prerequisiteApprovalId, stepNumber/totalSteps, approvalSetId, distinctApprovers, delegation fields |
 
 ---
 
