@@ -961,6 +961,11 @@ Tenant {
     saas_multitenant | service_provider | enterprise_private | hybrid_cloud | on_prem | any
   ]                              // soft governance: Kit with incompatible deploymentPattern
                                  // requires Approval (kind: architecture_decision) to install
+  mcpSettings?: {
+    enabled:          boolean    // default: false; MCP access disabled unless explicitly enabled
+    allowedKits?:     string[]   // null = all installed Kits with mcpTools; whitelist otherwise
+    serviceAccount:   ref → User // MCP clients authenticate as this User (scoped Role)
+  }
 }
 ```
 
@@ -1215,6 +1220,14 @@ Kit manifest:
     tags?:        string[]  // free-form discovery tags
     targetTeamSize?: { min?: int, max?: int }
     changelog?:   string    // REQUIRED for MAJOR version bumps; Kit Registry rejects without it
+  mcpTools?: [              // opt-in MCP tool declarations (not auto-exposed)
+    {
+      workerId:    ref → Worker
+      toolName:    string           // MCP tool name, e.g. "studio_create_design"
+      description?: string          // overrides Worker.metadata.llmDescription
+      exposed:     boolean          // default: true
+    }
+  ]
 ```
 
 `Tenant.allowedKitPatterns` (see §7) acts as a soft governance filter: installing
