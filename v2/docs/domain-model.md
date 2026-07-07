@@ -28,7 +28,8 @@ flowchart TB
     end
 
     subgraph GRAPH["Object Graph — Runtime Instances"]
-        O["Object (base)\nTenant · User · Workspace · Role\nWorkerRun · FlowRun · Recommendation · Approval\nValidationSession · Evidence · WorkerInteraction\n…all domain types (task, PR, incident, design, …)"]
+        O["gts.cf.studio.core.object.v1~ (base)\nWorkspace · Role · WorkerRun · FlowRun\nRecommendation · Approval · ValidationSession\nEvidence · WorkerInteraction\n…all domain types (task, PR, incident, design, …)"]
+        G2["Gears-extended (NOT Studio Object base)\nTenant (extends Gears RG)\nUser (extends Gears AM)"]
     end
 
     REGISTRY -->|executes / produces| GRAPH
@@ -89,14 +90,16 @@ flowchart TD
 │                       OBJECT GRAPH                          │
 │           gts.cf.studio.core.object.v1~ (base)             │
 │                                                             │
-│  Tenant*         Workspace        WorkerRun      FlowRun   │
-│  User*           Role             Recommendation            │
-│  Requirement     Task             PullRequest    Build      │
-│  Design          Incident         IdentityMapping           │
-│  PolicyOverride  PolicyDelegation SavedAuditQuery           │
-│  NotificationRuleOverride  NotificationSubscription         │
+│  Workspace       WorkerRun        FlowRun       Role        │
+│  Requirement     Task             PullRequest   Build       │
+│  Design          Incident         Recommendation            │
+│  IdentityMapping PolicyOverride   PolicyDelegation          │
+│  SavedAuditQuery NotificationRuleOverride  NotificationSub  │
 │                                                             │
-│  * extends Gears base types (AM/RG)                        │
+├─────────────────────────────────────────────────────────────┤
+│         Gears-extended (NOT gts.cf.studio.core.object.v1~) │
+│  Tenant  (gts.cf.core.rg.type.v1~...cf.studio.tenant.v1~) │
+│  User    (gts.cf.core.am.user.v1~...cf.studio.user.v1~)   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -223,12 +226,12 @@ flowchart LR
 
 ```mermaid
 classDiagram
-    class Tenant {
+    class Tenant["Tenant\n(extends Gears RG)"] {
         automationLevel
         approvedWorkerCategories
         deploymentMode
     }
-    class User
+    class User["User\n(extends Gears AM)"]
     class Role
     class Policy {
         rules: Rule[]
@@ -1049,7 +1052,7 @@ Isolation enforced via ABAC policies using GTS wildcard patterns.
 
 ```mermaid
 classDiagram
-    class Tenant {
+    class Tenant["Tenant\n(extends Gears RG, NOT Studio Object)"] {
         parentId: ref Tenant?
         name: string
         checkpointTTL: duration
