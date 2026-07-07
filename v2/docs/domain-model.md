@@ -365,6 +365,22 @@ Outside the graph. Describe rules and configurations, not data.
 
 Studio vendor = `cf` (same as Constructor Fabric Gears).
 
+### 2.0 GTS Type ID Versioning Policy
+
+| Change tier | Contract rule | typeId rule | Existing Objects |
+|---|---|---|---|
+| PATCH | WorkerImpl only; Contract unchanged | Same typeId | Unaffected |
+| MINOR | Additive (optional fields only) | New typeId via **GTS subtype chaining** from previous | Backward compat; v1 readable as v2 |
+| MAJOR | Breaking (required fields, removals, renames) | New independent typeId; old Worker.deprecatedBy → new | Frozen at old typeId; never retroactively changed |
+
+**Execution records (WorkerRun, Evidence):** typeId is **immutable** after creation. WorkerRun.workerId always reflects the Worker version that produced it. Retroactive re-typing is forbidden — it violates the audit trail invariant.
+
+**Domain Objects (design, requirement, etc.) on MAJOR change:** Kit may provide an opt-in `migration_worker` that produces a new Object at the new typeId. The old Object survives unchanged. `migration_worker` cannot modify WorkerRun or Evidence.
+
+**MINOR enforcement:** Kit Registry rejects publish of a MINOR version whose new Contract typeId does not chain from the previous version typeId via GTS subtype chaining.
+
+**Active version discovery:** Query Gears Types Registry (`GET /types/active?workerId=X`) to enumerate all active Contract typeIds for a Worker. This is Gears infrastructure — not a domain model field.
+
 ### 2.1 Studio Base Types
 
 Studio-owned base types:
@@ -572,6 +588,8 @@ Worker {
     }
   ]
   // Flow.config.steps[].inputBinding overrides Worker.inputBindings per step
+  deprecatedBy?:      ref → Worker    // set on MAJOR contract change; points to successor Worker
+                                      // deprecated Workers remain in Registry; old WorkerRuns valid
   fallbackWorkerId?:  ref → Worker    // output Contract must be compatible with primary
                                       // Kit Registry validates at install: fallback output
                                       // must be GTS subtype or exact match of primary output
