@@ -318,6 +318,23 @@ Object {
     externalUrl:  string
     lastSyncedAt: datetime
   }
+  concurrentEditors?: [               // "you are not alone" — visibility of concurrent access
+    {
+      agentId:   ref → WorkerRun | ref → User
+      intent:    read | write
+      since:     datetime
+      expiresAt: datetime             // safety timeout; platform expires if agent dies
+    }
+  ]
+  // Platform auto-registers WorkerRun on start; auto-deregisters on complete/fail
+  // Workers react via WorkerInteraction or queue; this is NOT a lock
+  writeLock?: {                       // optional hard exclusive lock
+    lockedBy:  ref → WorkerRun | ref → User
+    lockedAt:  datetime
+    expiresAt: datetime               // auto-expires; prevents deadlock on Worker failure
+    // platform auto-releases on WorkerRun complete/fail
+    // other write attempts → ConflictError while lock held
+  }
   links?: [                           // Jira-style typed graph edges
                                       // NOT applicable to execution records:
                                       // WorkerRun, Evidence, ValidationSession,
