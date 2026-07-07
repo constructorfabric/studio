@@ -563,7 +563,9 @@ awareness (`x-gts-state-requires`, `x-gts-state-sets`), platform security
   create new Object + `links[kind=supersedes]` + old Object.state → `superseded`.
   Evidence and links remain accurate for old version.
   `traceability_analysis` excludes `superseded` Objects from coverage computation.
-  Applies to: prd, design, requirement, feature_spec, adr.
+  Applies to: prd, design, requirement, decomposition, feature_spec, adr.
+  Auto-transition: platform sets old Object.state → superseded when supersedes link added.
+  StatePolicy may require Approval for superseded transition on critical types (prd, design).
 - Execution records and infra types declare no capabilities.
 - Platform uses capabilities to apply appropriate behaviors.
 
@@ -2308,6 +2310,11 @@ Approval extends Object {
 ### 22.1 Analyzer Workers (12) — detect gaps → create Recommendations
 
 All Analyzers are read-only except `stale_artifact_detection` which also writes `Object.stalenessScore`.
+
+**Supersedes chain awareness:** `gap_analysis` and `traceability_analysis` understand the supersedes chain.
+If requirement_v1 has ValidationSession (tested) and requirement_v2 supersedes requirement_v1:
+→ Recommendation: "requirement R-17 v2 requires new validation" (not "untested").
+Analyzers traverse `links[kind=supersedes]` to find the versioning chain.
 
 | Name | Runtime | Profile | Input Objects | Output |
 |---|---|---|---|---|
