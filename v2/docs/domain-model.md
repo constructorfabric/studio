@@ -330,6 +330,7 @@ Object {
   // Object types declare which capabilities they support:
   //   "linkable"  → links[], concurrentEditors, writeLock are meaningful
   //   "tracked"   → createdByRunId, lastModifiedByRunId are set by platform
+  //   "versioned" → supersedes pattern; state "superseded" reserved
   // Execution records (WorkerRun, Evidence, etc.) and infra types declare no capabilities.
   // NOT applicable to execution records (WorkerRun, Evidence, ValidationSession,
   // WorkerInteraction, FlowRun) — they are immutable or have specialized lifecycle
@@ -556,10 +557,23 @@ awareness (`x-gts-state-requires`, `x-gts-state-sets`), platform security
 }
 ```
 
-- `linkable` — Object supports `links[]`, `concurrentEditors`, `writeLock` (content Objects: design, requirement, task, etc.)
-- `tracked` — Object supports `createdByRunId`, `lastModifiedByRunId` (all mutable content Objects)
-- Execution records (WorkerRun, Evidence, etc.) and infra types declare no capabilities.
-- Platform uses capabilities to apply appropriate behaviors and validations.
+- `linkable`  — Object supports `links[]`, `concurrentEditors`, `writeLock`
+- `tracked`   — Object supports `createdByRunId`, `lastModifiedByRunId`
+- `versioned` — SDLC artifact; uses supersedes pattern when content changes:
+  create new Object + `links[kind=supersedes]` + old Object.state → `superseded`.
+  Evidence and links remain accurate for old version.
+  `traceability_analysis` excludes `superseded` Objects from coverage computation.
+  Applies to: prd, design, requirement, feature_spec, adr.
+- Execution records and infra types declare no capabilities.
+- Platform uses capabilities to apply appropriate behaviors.
+
+**Reserved `Object.state` value:** `superseded` — Object replaced by newer version.
+Available to `versioned` types. Excluded from default traceability queries.
+
+**Two versioning strategies:**
+- SDLC Artifacts (versioned): create new Object + supersedes link + old → superseded.
+  Preserves Evidence integrity for old version.
+- Operational Entities (task, bug, pull_request): mutable via StatePolicy; no versioning.
 
 `x-gts-traits.indexes` — hint to persistence layer which fields to index:
 
