@@ -319,13 +319,16 @@ Object {
     lastSyncedAt: datetime
   }
   links?: [                           // Jira-style typed graph edges
+                                      // NOT applicable to execution records:
+                                      // WorkerRun, Evidence, ValidationSession,
+                                      // WorkerInteraction, FlowRun use specialized refs
     {
-      targetId:   ref → Object        // any Object in the graph
-      targetType: GTS Type ID         // for type-safe querying
-      kind:       LINK_KIND           // see below; or Kit-custom GTS Type ID string
-      confidence: direct | inferred   // direct = user-declared; inferred = from WorkerRun provenance
-      createdBy:  ref → User?         // null when platform-inferred
-      sourceRunId?: ref → WorkerRun   // WorkerRun that produced this link (when inferred)
+      targetId:    ref → Object        // any Object in the graph
+      targetType:  GTS Type ID         // for type-safe querying
+      kind:        LINK_KIND           // see below; or Kit-custom GTS Type ID string
+      // source: exactly one of createdBy or sourceRunId must be set
+      createdBy?:  ref → User          // set when user-declared
+      sourceRunId?: ref → WorkerRun    // set when platform-inferred from WorkerRun provenance
     }
   ]
 }
