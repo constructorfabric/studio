@@ -318,7 +318,36 @@ Object {
     externalUrl:  string
     lastSyncedAt: datetime
   }
+  links?: [                           // Jira-style typed graph edges
+    {
+      targetId:   ref → Object        // any Object in the graph
+      targetType: GTS Type ID         // for type-safe querying
+      kind:       LINK_KIND           // see below; or Kit-custom GTS Type ID string
+      confidence: direct | inferred   // direct = user-declared; inferred = from WorkerRun provenance
+      createdBy:  ref → User?         // null when platform-inferred
+      sourceRunId?: ref → WorkerRun   // WorkerRun that produced this link (when inferred)
+    }
+  ]
 }
+
+// LINK_KIND — core closed set (platform understands semantics for traceability):
+//   derived_from    — B created from A (prd→design, design→feature_spec)
+//   decomposes_into — A breaks down into B items (design→decomposition, decomp→task)
+//   implements      — A implements requirement/spec B (task implements requirement)
+//   references      — weak link: A uses B as context/input (design references adr)
+//   incorporates    — A merges or extends B (composite design)
+//   validates       — A proves B correct (test_case validates requirement)
+//   supersedes      — A replaces B (design v2 supersedes design v1)
+//   informs         — A provides context for B (adr informs design)
+//
+// Kit-extensible: use GTS Type ID string for custom kinds
+//   (e.g. "gts.cf.sdlc.link.kind.v1~cf.mykit.tested_by.v1~")
+//   Platform stores but ignores custom kinds in traceability computation.
+//
+// Two-layer model:
+//   Object.links[] = flexible, user- and platform-declared contextual links
+//   Spec-level fields (pull_request.conformsToDesign, test_case.verifiesRequirements)
+//     remain as explicit Contract fields — required by Validator Workers
 ```
 
 ### D2 — Object Base Hierarchy
@@ -2302,6 +2331,18 @@ metadata: {
 ---
 
 ## 23. Traceability Cross-References (Killer Workflows)
+
+Studio uses a **two-layer link model**:
+
+1. **`Object.links[]`** — generic Jira-style typed graph edges (see §1.1) for all
+   contextual relationships between any Objects. Used for: prd→design (derived_from),
+   design→adr (references), design→design (incorporates), etc.
+   `traceability_analysis` Analyzer traverses `links[]` using core LINK_KINDs.
+
+2. **Spec-level Contract fields** — explicit refs required by Validator Workers:
+   `pull_request.conformsToDesign`, `pull_request.implementsRequirements`,
+   `test_case.verifiesRequirements`. These are NOT in `links[]` — they are
+   Contract inputs read by `pr_design_validator` and other Validators.
 
 ### D19 — SDLC Traceability Chain
 
