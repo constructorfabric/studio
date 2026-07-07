@@ -20,16 +20,15 @@ These two worlds are connected by execution: a Worker (definition) produces Work
 ```mermaid
 flowchart TB
     subgraph GEARS["Gears Platform — Infrastructure"]
-        G["Events Broker · Notifications · Account Management\nRBAC/ABAC · OAGW · Models Gateway · Settings"]
+        G["Events Broker · Notifications · Account Management · RBAC/ABAC\nOAGW · Models Gateway · Settings\nTenant (Gears RG) · User (Gears AM)"]
     end
 
     subgraph REGISTRY["Registry Layer — Definitions (outside graph)"]
         R["Worker · Flow · Kit · Connector\nStatePolicy · Policy · NotificationRule\nWorkerImplementation · obj_ext"]
     end
 
-    subgraph GRAPH["Object Graph — Runtime Instances"]
-        O["gts.cf.studio.core.object.v1~ (base)\nWorkspace · Role · WorkerRun · FlowRun\nRecommendation · Approval · ValidationSession\nEvidence · WorkerInteraction\n…all domain types (task, PR, incident, design, …)"]
-        G2["Gears-extended (NOT Studio Object base)\nTenant (extends Gears RG)\nUser (extends Gears AM)"]
+    subgraph GRAPH["Object Graph — Runtime Instances\n(gts.cf.studio.core.object.v1~ base)"]
+        O["Workspace · Role · WorkerRun · FlowRun\nRecommendation · Approval · ValidationSession\nEvidence · WorkerInteraction\n…all domain types (task, PR, incident, design, …)"]
     end
 
     REGISTRY -->|executes / produces| GRAPH
@@ -87,19 +86,30 @@ flowchart TD
                                   │ executes / produces
                                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                       OBJECT GRAPH                          │
-│           gts.cf.studio.core.object.v1~ (base)             │
+│               GEARS INFRASTRUCTURE                          │
+│  Events Broker · Notifications · Approvals · Jobs Manager   │
+│  LLM Gateway · AI Agents Registry · Settings Service        │
+│  Tenant  (gts.cf.core.rg.type.v1~...cf.studio.tenant.v1~) │
+│  User    (gts.cf.core.am.user.v1~...cf.studio.user.v1~)   │
+└─────────────────────────────────────────────────────────────┘
+                          ▲ Studio builds on Gears
+┌─────────────────────────────────────────────────────────────┐
+│                     REGISTRY ENTITIES                       │
+│                                                             │
+│  Worker ──────────── WorkerImplementation                   │
+│  Flow    obj_ext    Kit    StatePolicy    NotificationRule   │
+│  Policy                                                     │
+└─────────────────────────────────┬───────────────────────────┘
+                                  │ executes / produces
+                                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│              OBJECT GRAPH (gts.cf.studio.core.object.v1~)  │
 │                                                             │
 │  Workspace       WorkerRun        FlowRun       Role        │
 │  Requirement     Task             PullRequest   Build       │
 │  Design          Incident         Recommendation            │
 │  IdentityMapping PolicyOverride   PolicyDelegation          │
 │  SavedAuditQuery NotificationRuleOverride  NotificationSub  │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│         Gears-extended (NOT gts.cf.studio.core.object.v1~) │
-│  Tenant  (gts.cf.core.rg.type.v1~...cf.studio.tenant.v1~) │
-│  User    (gts.cf.core.am.user.v1~...cf.studio.user.v1~)   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -591,8 +601,12 @@ Worker {
     }
   ]
   // Flow.config.steps[].inputBinding overrides Worker.inputBindings per step
-  deprecatedBy?:      ref → Worker    // set on MAJOR contract change; points to successor Worker
-                                      // deprecated Workers remain in Registry; old WorkerRuns valid
+  deprecation?: {                      // set on MAJOR contract change
+    successorId:       ref → Worker    // new Worker replacing this one
+    deprecatedAt:      datetime
+    gracePeriodEndsAt: datetime        // after this date platform warns on new WorkerRun creation
+  }
+  // deprecated Workers remain in Registry; old WorkerRuns and Evidence are valid forever
   fallbackWorkerId?:  ref → Worker    // output Contract must be compatible with primary
                                       // Kit Registry validates at install: fallback output
                                       // must be GTS subtype or exact match of primary output
