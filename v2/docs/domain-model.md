@@ -325,7 +325,10 @@ Object {
     {
       targetId:    ref → Object        // any Object in the graph
       targetType:  GTS Type ID         // for type-safe querying
-      kind:        LINK_KIND           // see below; or Kit-custom GTS Type ID string
+      kind:        GTS Type ID          // link kind — all kinds are GTS Type IDs
+                                      // core kinds: gts.cf.studio.link.kind.v1~{name}.v1~
+                                      // kit kinds: same format, registered in Types Registry at Kit install
+                                      // UI shows displayName from Types Registry
       // source: exactly one of createdBy or sourceRunId must be set
       createdBy?:  ref → User          // set when user-declared
       sourceRunId?: ref → WorkerRun    // set when platform-inferred from WorkerRun provenance
@@ -333,19 +336,19 @@ Object {
   ]
 }
 
-// LINK_KIND — core closed set (platform understands semantics for traceability):
-//   derived_from    — B created from A (prd→design, design→feature_spec)
-//   decomposes_into — A breaks down into B items (design→decomposition, decomp→task)
-//   implements      — A implements requirement/spec B (task implements requirement)
-//   references      — weak link: A uses B as context/input (design references adr)
-//   incorporates    — A merges or extends B (composite design)
-//   validates       — A proves B correct (test_case validates requirement)
-//   supersedes      — A replaces B (design v2 supersedes design v1)
-//   informs         — A provides context for B (adr informs design)
+// Core LINK_KIND GTS Type IDs (pre-registered in Gears Types Registry):
+//   gts.cf.studio.link.kind.v1~derived_from.v1~    — B created from A (prd→design)
+//   gts.cf.studio.link.kind.v1~decomposes_into.v1~ — A breaks down into B items
+//   gts.cf.studio.link.kind.v1~implements.v1~       — A implements requirement B
+//   gts.cf.studio.link.kind.v1~references.v1~       — weak link: A uses B as context
+//   gts.cf.studio.link.kind.v1~incorporates.v1~     — A merges or extends B
+//   gts.cf.studio.link.kind.v1~validates.v1~        — A proves B correct
+//   gts.cf.studio.link.kind.v1~supersedes.v1~       — A replaces B (versioning)
+//   gts.cf.studio.link.kind.v1~informs.v1~          — A provides context for B
 //
-// Kit-extensible: use GTS Type ID string for custom kinds
-//   (e.g. "gts.cf.sdlc.link.kind.v1~cf.mykit.tested_by.v1~")
-//   Platform stores but ignores custom kinds in traceability computation.
+// Kit-extensible: Kit registers custom link kinds in Types Registry at install.
+//   Platform traverses core kinds in traceability computation;
+//   custom kinds stored and returned in queries but not analysed for gaps.
 //
 // Two-layer model:
 //   Object.links[] = flexible, user- and platform-declared contextual links
@@ -440,6 +443,7 @@ gts.cf.studio.core.worker.v1~cf.studio.core.flow.v1~
 gts.cf.studio.core.connector.v1~   ← registry entity; uses Gears OAGW as infrastructure
 gts.cf.studio.core.kit.v1~         ← extension packaging unit
 gts.cf.studio.core.obj_ext.v1~     ← attribute extension
+gts.cf.studio.link.kind.v1~        ← base type for all Object link kinds (core + Kit-extensible)
 ```
 
 Studio event types extend the **Gears platform event base type**:
