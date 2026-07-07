@@ -318,9 +318,12 @@ Object {
     externalUrl:  string
     lastSyncedAt: datetime
   }
+  // NOT applicable to execution records (WorkerRun, Evidence, ValidationSession,
+  // WorkerInteraction, FlowRun) — they are immutable or have specialized lifecycle
   concurrentEditors?: [               // "you are not alone" — visibility of concurrent access
     {
-      agentId:   ref → WorkerRun | ref → User
+      agentId:   ref → Object         // WorkerRun or User (both extend Object)
+      agentType: worker_run | user    // discriminator
       intent:    read | write
       since:     datetime
       expiresAt: datetime             // safety timeout; platform expires if agent dies
@@ -329,7 +332,8 @@ Object {
   // Platform auto-registers WorkerRun on start; auto-deregisters on complete/fail
   // Workers react via WorkerInteraction or queue; this is NOT a lock
   writeLock?: {                       // optional hard exclusive lock
-    lockedBy:  ref → WorkerRun | ref → User
+    lockedBy:  ref → Object           // WorkerRun or User
+    lockedType: worker_run | user
     lockedAt:  datetime
     expiresAt: datetime               // auto-expires; prevents deadlock on Worker failure
     // platform auto-releases on WorkerRun complete/fail
