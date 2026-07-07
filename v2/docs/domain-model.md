@@ -318,6 +318,10 @@ Object {
     externalUrl:  string
     lastSyncedAt: datetime
   }
+  createdByRunId?:      ref → WorkerRun  // WorkerRun that created this Object; null if user-created
+  lastModifiedByRunId?: ref → WorkerRun  // WorkerRun that last modified; null if user-modified
+  // Together with createdAt/updatedAt: full provenance chain
+  // Object → WorkerRun.cost → WorkerRun.costAttributedTo → User/Flow (cost attribution)
   // NOT applicable to execution records (WorkerRun, Evidence, ValidationSession,
   // WorkerInteraction, FlowRun) — they are immutable or have specialized lifecycle
   concurrentEditors?: [               // "you are not alone" — visibility of concurrent access
