@@ -318,10 +318,19 @@ Object {
     externalUrl:  string
     lastSyncedAt: datetime
   }
+  // --- PROVENANCE (system-managed, immutable after set) ---
+  // Distinct from links[] (semantic, user/Worker declared, mutable).
+  // Provenance = "who created/modified this Object" (system fact).
+  // Semantic links = "how this Object relates to others in business context".
   createdByRunId?:      ref → WorkerRun  // WorkerRun that created this Object; null if user-created
   lastModifiedByRunId?: ref → WorkerRun  // WorkerRun that last modified; null if user-modified
-  // Together with createdAt/updatedAt: full provenance chain
-  // Object → WorkerRun.cost → WorkerRun.costAttributedTo → User/Flow (cost attribution)
+  // Cost attribution chain: Object → WorkerRun.cost → WorkerRun.costAttributedTo → User/Flow
+
+  // --- CAPABILITIES (opt-in via x-gts-traits.capabilities) ---
+  // Object types declare which capabilities they support:
+  //   "linkable"  → links[], concurrentEditors, writeLock are meaningful
+  //   "tracked"   → createdByRunId, lastModifiedByRunId are set by platform
+  // Execution records (WorkerRun, Evidence, etc.) and infra types declare no capabilities.
   // NOT applicable to execution records (WorkerRun, Evidence, ValidationSession,
   // WorkerInteraction, FlowRun) — they are immutable or have specialized lifecycle
   concurrentEditors?: [               // "you are not alone" — visibility of concurrent access
@@ -538,6 +547,19 @@ required fields use the standard `required` array, not a custom annotation.
 `x-gts-*` extensions are only for concepts JSON Schema does not have: state
 awareness (`x-gts-state-requires`, `x-gts-state-sets`), platform security
 (`x-gts-source: platform | never-user`), traits + indexes (`x-gts-traits`).
+
+`x-gts-traits.capabilities` — opt-in Object capabilities declaration:
+
+```json
+"x-gts-traits": {
+  "capabilities": ["linkable", "tracked"]
+}
+```
+
+- `linkable` — Object supports `links[]`, `concurrentEditors`, `writeLock` (content Objects: design, requirement, task, etc.)
+- `tracked` — Object supports `createdByRunId`, `lastModifiedByRunId` (all mutable content Objects)
+- Execution records (WorkerRun, Evidence, etc.) and infra types declare no capabilities.
+- Platform uses capabilities to apply appropriate behaviors and validations.
 
 `x-gts-traits.indexes` — hint to persistence layer which fields to index:
 
