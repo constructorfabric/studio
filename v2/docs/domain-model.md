@@ -143,6 +143,9 @@ classDiagram
 
 ### DO3 — Object Graph Foundations
 
+Note: `Tenant` and `User` extend **Gears base types** (RG and AM respectively) via GTS
+chaining — they do not extend `gts.cf.studio.core.object.v1~`. See §2.2.
+
 ```mermaid
 classDiagram
     class Object {
@@ -151,8 +154,10 @@ classDiagram
         ownerId · validationStatus
         stalenessScore · externalRef
     }
-    class Tenant
-    class User
+    class GearsRG["Gears RG\n(gts.cf.core.rg.type.v1~)"]
+    class GearsAM["Gears AM User\n(gts.cf.core.am.user.v1~)"]
+    class Tenant["Tenant\n(extends Gears RG)"]
+    class User["User\n(extends Gears AM)"]
     class Workspace
     class Role
     class WorkerRun
@@ -163,8 +168,8 @@ classDiagram
     class WorkerInteraction
     class Evidence
 
-    Object <|-- Tenant
-    Object <|-- User
+    GearsRG <|-- Tenant
+    GearsAM <|-- User
     Object <|-- Workspace
     Object <|-- Role
     Object <|-- WorkerRun
@@ -315,14 +320,18 @@ classDiagram
         createdAt: datetime
         updatedAt: datetime
     }
-    class Tenant
+    class GearsRG["Gears RG base"]
+    class GearsAM["Gears AM User base"]
+    class Tenant["Tenant\n(extends Gears RG)"]
+    class User["User\n(extends Gears AM)"]
     class Workspace
     class WorkerRun
     class FlowRun
     class Role
     class Recommendation
 
-    Object <|-- Tenant
+    GearsRG <|-- Tenant
+    GearsAM <|-- User
     Object <|-- Workspace
     Object <|-- WorkerRun
     Object <|-- FlowRun
@@ -330,7 +339,8 @@ classDiagram
     Object <|-- Recommendation
 ```
 
-All object types are derived from the base `Object` via GTS chained IDs.
+Studio Objects derive from `gts.cf.studio.core.object.v1~` via GTS chaining.
+`Tenant` and `User` are Gears-native types extended via GTS — see §2.2.
 
 ### 1.2 Registry Entities
 
