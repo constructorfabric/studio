@@ -1,0 +1,90 @@
+@import '@xyflow/react/dist/style.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* React Flow overrides */
+.react-flow__background {
+  background-color: #09090b !important;
+}
+
+.react-flow__minimap {
+  background-color: #18181b !important;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+}
+
+.react-flow__controls {
+  border: 1px solid #27272a !important;
+  background: #18181b !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: #18181b !important;
+  border-bottom: 1px solid #27272a !important;
+  color: #a1a1aa !important;
+  fill: #a1a1aa !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #27272a !important;
+}
+
+.react-flow__edge-path {
+  stroke-width: 1.5;
+}
+
+/* Pulse animation for critical recommendations */
+@keyframes pulse-critical {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+}
+
+.pulse-critical {
+  animation: pulse-critical 2s ease-in-out infinite;
+}
+
+/* Progress bar animation */
+@keyframes progress-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+.progress-indeterminate {
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+}
+
+/* Fade in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease-out;
+}

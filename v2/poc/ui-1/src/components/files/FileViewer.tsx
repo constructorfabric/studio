@@ -1,0 +1,443 @@
+import { useRef, useState, useMemo } from 'react'
+import Editor from '@monaco-editor/react'
+import type { editor } from 'monaco-editor'
+import { Save, Link2, Eye, Code2, Columns2 } from 'lucide-react'
+import { useAppStore } from '../../store/app-store'
+import { FILE_TREE, type FileNode } from '../../data/file-mock-data'
+import { MOCK_OBJECTS } from '../../data/mock-data'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function findFileById(nodes: FileNode[], id: string): FileNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    if (node.children) {
+      const found = findFileById(node.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function getFilePath(nodes: FileNode[], targetId: string, path: string[] = []): string[] | null {
+  for (const node of nodes) {
+    const current = [...path, node.name]
+    if (node.id === targetId) return current
+    if (node.children) {
+      const found = getFilePath(node.children, targetId, current)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+const LANGUAGE_MAP: Record<string, string> = {
+  markdown: 'markdown', typescript: 'typescript',
+  sql: 'sql', toml: 'ini', text: 'plaintext',
+}
+
+const FILE_TO_OBJECT: Record<string, string> = {
+  'file-prd': 'prd-001', 'file-design': 'design-001',
+  'file-adr-001': 'adr-001', 'file-adr-002': 'adr-002',
+  'file-feat-stripe': 'fspec-001', 'file-feat-invoice': 'fspec-002',
+  'file-webhook-handler': 'pr-001',
+}
+
+// ─── Inline Markdown Renderer ─────────────────────────────────────────────────
+
+function renderMarkdown(md: string): string {
+  if (!md) return ''
+  let html = md
+
+  // Fenced code blocks
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) =>
+    `<pre class="md-code-block" data-lang="${lang}"><code>${escapeHtml(code.trim())}</code></pre>`)
+
+  // Process line by line for block-level elements
+  const lines = html.split('\n')
+  const result: string[] = []
+  let inList = false
+  let inParagraph = false
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Already processed code blocks — pass through
+    if (line.startsWith('<pre class="md-code-block"')) {
+      if (inList) { result.push('</ul>'); inList = false }
+      if (inParagraph) { result.push('</p>'); inParagraph = false }
+      result.push(line)
+      continue
+    }
+
+    // Headers
+    const h3 = line.match(/^### (.+)/)
+    const h2 = line.match(/^## (.+)/)
+    const h1 = line.match(/^# (.+)/)
+    if (h1 || h2 || h3) {
+      if (inList) { result.push('</ul>'); inList = false }
+      if (inParagraph) { result.push('</p>'); inParagraph = false }
+      const [, text] = (h1 ?? h2 ?? h3)!
+      const tag = h1 ? 'h1' : h2 ? 'h2' : 'h3'
+      result.push(`<${tag}>${inlineMarkdown(text)}</${tag}>`)
+      continue
+    }
+
+    // Blockquote
+    const bq = line.match(/^> (.*)/)
+    if (bq) {
+      if (inList) { result.push('</ul>'); inList = false }
+      if (inParagraph) { result.push('</p>'); inParagraph = false }
+      result.push(`<blockquote>${inlineMarkdown(bq[1])}</blockquote>`)
+      continue
+    }
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      if (inList) { result.push('</ul>'); inList = false }
+      if (inParagraph) { result.push('</p>'); inParagraph = false }
+      result.push('<hr/>')
+      continue
+    }
+
+    // List items
+    const li = line.match(/^[-*+] (.+)/) ?? line.match(/^\d+\. (.+)/)
+    if (li) {
+      if (!inList) { result.push('<ul>'); inList = true }
+      if (inParagraph) { result.push('</p>'); inParagraph = false }
+      result.push(`<li>${inlineMarkdown(li[1])}</li>`)
+      continue
+    }
+
+    // Table row
+    if (line.includes('|') && line.trim().startsWith('|')) {
+      if (inList) { result.push('</ul>'); inList = false }
+      if (inParagraph) { result.push('</p>'); inParagraph = false }
+      // Check if separator row
+      if (/^\|[\s-:|]+\|/.test(line)) {
+        result.push('<tr class="md-table-sep"/>')
+      } else {
+        const cells = line.split('|').filter((_, i, a) => i > 0 && i < a.length - 1)
+        result.push(`<tr>${cells.map(c => `<td>${inlineMarkdown(c.trim())}</td>`).join('')}</tr>`)
+      }
+      continue
+    }
+
+    // Empty line
+    if (line.trim() === '') {
+      if (inList) { result.push('</ul>'); inList = false }
+      if (inParagraph) { result.push('</p>'); inParagraph = false }
+      continue
+    }
+
+    // Paragraph text
+    if (!inParagraph) { result.push('<p>'); inParagraph = true }
+    else result.push('<br/>')
+    result.push(inlineMarkdown(line))
+  }
+
+  if (inList) result.push('</ul>')
+  if (inParagraph) result.push('</p>')
+
+  // Wrap adjacent table rows in <table>
+  let final = result.join('\n')
+  final = final.replace(/<tr.*?<\/tr>(\n<tr.*?<\/tr>)*/gs, match => {
+    const rows = match.split('\n').filter(Boolean)
+    const header = rows[0]
+    const rest = rows.slice(2) // skip separator
+    const headerCells = header.match(/<td>(.*?)<\/td>/g) ?? []
+    const thead = `<thead><tr>${headerCells.map(c => c.replace('<td>', '<th>').replace('</td>', '</th>')).join('')}</tr></thead>`
+    const tbody = `<tbody>${rest.join('\n')}</tbody>`
+    return `<table>${thead}${tbody}</table>`
+  })
+
+  return final
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function inlineMarkdown(text: string): string {
+  return text
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\*\[(\w+-\d+)\]\*/g, '<span class="md-req-id">$1</span>')
+    .replace(/\*\*\[(\w+-\d+)\]\*\*/g, '<strong class="md-req-id">$1</strong>')
+}
+
+// ─── Markdown Preview Component ───────────────────────────────────────────────
+
+const PREVIEW_CSS = `
+.md-preview { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; font-size: 13px; line-height: 1.7; color: #d4d4d8; padding: 20px 28px; max-width: 780px; }
+.md-preview h1 { font-size: 22px; font-weight: 700; color: #f4f4f5; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(63,63,70,0.5); }
+.md-preview h2 { font-size: 17px; font-weight: 700; color: #e4e4e7; margin: 24px 0 10px; padding-bottom: 5px; border-bottom: 1px solid rgba(63,63,70,0.3); }
+.md-preview h3 { font-size: 14px; font-weight: 700; color: #d4d4d8; margin: 18px 0 8px; }
+.md-preview p { margin: 0 0 12px; }
+.md-preview strong { color: #f4f4f5; font-weight: 700; }
+.md-preview em { color: #c4b5fd; font-style: italic; }
+.md-preview code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; background: rgba(39,39,42,0.8); color: #86efac; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(63,63,70,0.4); }
+.md-preview pre.md-code-block { background: rgba(9,9,11,0.8); border: 1px solid rgba(63,63,70,0.5); border-radius: 8px; padding: 14px 16px; margin: 12px 0; overflow-x: auto; }
+.md-preview pre.md-code-block code { background: none; border: none; padding: 0; color: #86efac; font-size: 12px; line-height: 1.6; }
+.md-preview ul { margin: 6px 0 12px; padding-left: 20px; }
+.md-preview li { margin-bottom: 4px; }
+.md-preview blockquote { border-left: 3px solid rgba(99,102,241,0.5); margin: 12px 0; padding: 6px 14px; background: rgba(99,102,241,0.05); color: #a1a1aa; border-radius: 0 4px 4px 0; }
+.md-preview hr { border: none; border-top: 1px solid rgba(63,63,70,0.4); margin: 20px 0; }
+.md-preview table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+.md-preview th { background: rgba(39,39,42,0.6); color: #a1a1aa; font-weight: 600; padding: 7px 12px; border: 1px solid rgba(63,63,70,0.4); text-align: left; }
+.md-preview td { padding: 6px 12px; border: 1px solid rgba(63,63,70,0.3); }
+.md-preview tr:nth-child(even) td { background: rgba(24,24,27,0.4); }
+.md-preview a { color: #818cf8; text-decoration: none; }
+.md-preview a:hover { text-decoration: underline; }
+.md-preview .md-req-id { font-size: 11px; font-weight: 700; color: #34d399; background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); border-radius: 4px; padding: 1px 5px; font-family: monospace; }
+`
+
+function MarkdownPreview({ content }: { content: string }) {
+  const html = useMemo(() => renderMarkdown(content), [content])
+  return (
+    <>
+      <style>{PREVIEW_CSS}</style>
+      <div
+        className="md-preview flex-1 overflow-y-auto"
+        dangerouslySetInnerHTML={{ __html: html }}
+        style={{ background: '#09090b', height: '100%', overflowY: 'auto' }}
+      />
+    </>
+  )
+}
+
+// ─── View mode toggle ─────────────────────────────────────────────────────────
+
+type ViewMode = 'preview' | 'source' | 'split'
+
+function ViewModeToggle({ mode, onChange, isMarkdown }: {
+  mode: ViewMode
+  onChange: (m: ViewMode) => void
+  isMarkdown: boolean
+}) {
+  if (!isMarkdown) return null
+  const opts: { value: ViewMode; icon: typeof Eye; label: string }[] = [
+    { value: 'preview', icon: Eye, label: 'Preview' },
+    { value: 'split',   icon: Columns2, label: 'Split' },
+    { value: 'source',  icon: Code2,    label: 'Source' },
+  ]
+  return (
+    <div style={{
+      display: 'flex', gap: 1, background: 'rgba(24,24,27,0.8)',
+      border: '1px solid rgba(63,63,70,0.5)', borderRadius: 7, padding: 2,
+    }}>
+      {opts.map(o => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          title={o.label}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '3px 9px', borderRadius: 5, border: 'none',
+            background: mode === o.value ? 'rgba(99,102,241,0.3)' : 'transparent',
+            color: mode === o.value ? '#a5b4fc' : '#71717a',
+            fontSize: 11, fontWeight: 500, cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          <o.icon size={11} /> {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Main FileViewer ──────────────────────────────────────────────────────────
+
+export function FileViewer() {
+  const openFileId = useAppStore(s => s.openFileId)
+  const fileContents = useAppStore(s => s.fileContents)
+  const modifiedFiles = useAppStore(s => s.modifiedFiles)
+  const updateFileContent = useAppStore(s => s.updateFileContent)
+  const saveFile = useAppStore(s => s.saveFile)
+  const setLineAction = useAppStore(s => s.setLineAction)
+  const selectObject = useAppStore(s => s.selectObject)
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+
+  const file = openFileId ? findFileById(FILE_TREE, openFileId) : null
+  const content = openFileId ? (fileContents[openFileId] ?? '') : ''
+  const isModified = openFileId ? modifiedFiles.has(openFileId) : false
+  const breadcrumb = openFileId ? (getFilePath(FILE_TREE, openFileId) ?? []) : []
+  const isMarkdown = file?.language === 'markdown'
+
+  // Default to preview for markdown, source for everything else
+  const [viewMode, setViewMode] = useState<ViewMode>(isMarkdown ? 'preview' : 'source')
+
+  // Update viewMode when file changes
+  const prevFileId = useRef(openFileId)
+  if (prevFileId.current !== openFileId) {
+    prevFileId.current = openFileId
+    if (isMarkdown && viewMode === 'source') {
+      // keep source if user explicitly chose it
+    } else if (isMarkdown) {
+      // stay in preview by default (handled by initial state per file)
+    }
+  }
+
+  const linkedObjectId = openFileId ? FILE_TO_OBJECT[openFileId] : null
+  const linkedObject = linkedObjectId ? MOCK_OBJECTS.find(o => o.id === linkedObjectId) : null
+
+  const handleEditorMount = (editorInstance: editor.IStandaloneCodeEditor) => {
+    editorRef.current = editorInstance
+
+    editorInstance.onDidChangeCursorSelection((e) => {
+      const sel = e.selection
+      const isEmpty = sel.startLineNumber === sel.endLineNumber && sel.startColumn === sel.endColumn
+      if (isEmpty) {
+        setLineAction({ visible: false })
+        return
+      }
+      const pos = editorInstance.getScrolledVisiblePosition({ lineNumber: sel.startLineNumber, column: 1 })
+      if (!pos) { setLineAction({ visible: false }); return }
+      const domNode = editorInstance.getDomNode()
+      if (!domNode) { setLineAction({ visible: false }); return }
+      const rect = domNode.getBoundingClientRect()
+      setLineAction({
+        visible: true,
+        top: rect.top + pos.top - 44,
+        left: rect.left + 56,
+        startLine: sel.startLineNumber,
+        endLine: sel.endLineNumber,
+        selectedText: editorInstance.getModel()?.getValueInRange(sel) ?? '',
+        fileId: openFileId ?? undefined,
+        language: file?.language,
+      })
+    })
+  }
+
+  if (!openFileId || !file) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-zinc-600">
+        <div className="text-center">
+          <p className="text-sm">No file open</p>
+          <p className="text-xs mt-1 text-zinc-700">Select a file from the tree</p>
+        </div>
+      </div>
+    )
+  }
+
+  const monacoLanguage = LANGUAGE_MAP[file.language ?? 'text'] ?? 'plaintext'
+  const showPreview = isMarkdown && (viewMode === 'preview' || viewMode === 'split')
+  const showSource = !isMarkdown || viewMode === 'source' || viewMode === 'split'
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Header bar */}
+      <div style={{
+        height: 40, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px',
+        borderBottom: '1px solid rgba(63,63,70,0.5)', flexShrink: 0,
+        background: 'rgba(9,9,11,0.8)',
+      }}>
+        {/* Breadcrumb */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          {breadcrumb.map((part, i) => (
+            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, flexShrink: i < breadcrumb.length - 1 ? 1 : 0 }}>
+              {i > 0 && <span style={{ color: '#3f3f46' }}>/</span>}
+              <span style={{ color: i === breadcrumb.length - 1 ? '#d4d4d8' : '#52525b', fontWeight: i === breadcrumb.length - 1 ? 600 : 400 }}>
+                {part}
+              </span>
+            </span>
+          ))}
+        </div>
+
+        {/* View mode toggle */}
+        <ViewModeToggle mode={viewMode} onChange={setViewMode} isMarkdown={isMarkdown} />
+
+        {/* Language badge */}
+        {file.language && !isMarkdown && (
+          <span style={{
+            fontSize: 10, padding: '2px 7px', borderRadius: 5,
+            background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(63,63,70,0.5)',
+            color: '#71717a',
+          }}>
+            {file.language}
+          </span>
+        )}
+
+        {/* Modified */}
+        {isModified && (
+          <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>● modified</span>
+        )}
+
+        {/* Linked object chip */}
+        {linkedObject && (
+          <button
+            onClick={() => selectObject(linkedObject.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 11, padding: '2px 8px', borderRadius: 20,
+              background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)',
+              color: '#818cf8', cursor: 'pointer', flexShrink: 0,
+            }}
+          >
+            <Link2 size={10} />
+            {linkedObject.title.length > 20 ? linkedObject.title.slice(0, 20) + '…' : linkedObject.title}
+          </button>
+        )}
+
+        {/* Save */}
+        {isModified && (
+          <button
+            onClick={() => saveFile(openFileId)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              fontSize: 11, padding: '3px 10px', borderRadius: 6, border: 'none',
+              background: '#4f46e5', color: '#fff', cursor: 'pointer', fontWeight: 600,
+              flexShrink: 0,
+            }}
+          >
+            <Save size={11} /> Save
+          </button>
+        )}
+      </div>
+
+      {/* Content area */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Preview pane */}
+        {showPreview && (
+          <div style={{
+            flex: 1, overflow: 'hidden',
+            borderRight: viewMode === 'split' ? '1px solid rgba(63,63,70,0.5)' : 'none',
+          }}>
+            <MarkdownPreview content={content} />
+          </div>
+        )}
+
+        {/* Source / editor pane */}
+        {showSource && (
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <Editor
+              height="100%"
+              theme="vs-dark"
+              language={monacoLanguage}
+              value={content}
+              onChange={(val) => updateFileContent(openFileId, val ?? '')}
+              onMount={handleEditorMount}
+              options={{
+                fontSize: 13,
+                lineHeight: 20,
+                fontFamily: '"JetBrains Mono", "Fira Code", Menlo, monospace',
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                padding: { top: 12, bottom: 12 },
+                renderLineHighlight: 'line',
+                cursorBlinking: 'smooth',
+                smoothScrolling: true,
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
