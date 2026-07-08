@@ -318,6 +318,11 @@ Object {
     externalUrl:  string
     lastSyncedAt: datetime
   }
+  createdObjectIds?: ref → Object[]   // Objects materialized by platform from this WorkerRun
+                                      // "Attached" WorkerRun = has createdObjectIds
+                                      // "Free-standing" = no Objects created (Analyzer runs, etc.)
+                                      // Inverse of Object.createdByRunId
+
   // --- PROVENANCE (system-managed, immutable after set) ---
   // Distinct from links[] (semantic, user/Worker declared, mutable).
   // Provenance = "who created/modified this Object" (system fact).
@@ -554,7 +559,28 @@ required fields use the standard `required` array, not a custom annotation.
 
 `x-gts-*` extensions are only for concepts JSON Schema does not have: state
 awareness (`x-gts-state-requires`, `x-gts-state-sets`), platform security
-(`x-gts-source: platform | never-user`), traits + indexes (`x-gts-traits`).
+(`x-gts-source: platform | never-user`), traits + indexes (`x-gts-traits`),
+output materialization (`x-gts-creates`).
+
+`x-gts-creates: boolean` — on output Contract fields: platform materializes Object in graph
+on WorkerRun completion. Worker returns raw data; platform creates Object with full security
+context (tenantId, workspaceId, ownerId, createdByRunId auto-set):
+
+```json
+// Output Contract example:
+{
+  "properties": {
+    "design": {
+      "$ref": "gts://...design.v1~",
+      "x-gts-creates": true     // platform creates design Object in graph
+    },
+    "debug_info": { "type": "string" }  // no x-gts-creates → raw data only
+  }
+}
+```
+
+Materialization flow: WorkerRun → done → platform reads output Contract →
+for each `x-gts-creates: true` field → creates Object → sets `WorkerRun.createdObjectIds`.
 
 `x-gts-traits.capabilities` — opt-in Object capabilities declaration:
 
