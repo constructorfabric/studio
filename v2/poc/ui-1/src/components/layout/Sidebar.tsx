@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, FileText, Layout, CheckSquare, GitPullRequest, AlertTriangle, BookOpen, Layers, Package, Zap, ChevronRight, Clock, FolderOpen, GitBranch, Activity, Library } from 'lucide-react'
+import { Search, FileText, Layout, CheckSquare, GitPullRequest, AlertTriangle, BookOpen, Layers, Package, Zap, ChevronRight, Clock } from 'lucide-react'
 import { useAppStore, selectPendingRecommendations } from '../../store/app-store'
 import type { ObjectTypeId } from '../../types/domain'
 
@@ -145,45 +145,6 @@ export function Sidebar() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Quick nav */}
-      <div className="p-3 border-b border-zinc-800 space-y-0.5">
-        <button
-          onClick={() => setActiveView('files')}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
-        >
-          <FolderOpen size={13} className="text-indigo-400" />
-          <span>Files</span>
-        </button>
-        <button
-          onClick={() => setActiveView('kits')}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
-        >
-          <Package size={13} className="text-violet-400" />
-          <span>Kits</span>
-        </button>
-        <button
-          onClick={() => setActiveView('workspaces')}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
-        >
-          <GitBranch size={13} className="text-cyan-400" />
-          <span>Workspaces</span>
-        </button>
-        <button
-          onClick={() => setActiveView('workers')}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
-        >
-          <Activity size={13} className="text-blue-400" />
-          <span>Monitor</span>
-        </button>
-        <button
-          onClick={() => setActiveView('catalog')}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
-        >
-          <Library size={13} className="text-emerald-400" />
-          <span>Catalog</span>
-        </button>
       </div>
 
       {/* Recommendations Summary */}
