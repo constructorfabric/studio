@@ -124,7 +124,33 @@ export interface LoopRun {
 // ─── Worker Types ─────────────────────────────────────────────────────────────
 
 export type WorkerCategory = 'quality' | 'security' | 'ops' | 'ai-cost' | 'traceability' | 'retrieval' | 'platform'
-export type WorkerProfile = 'realtime' | 'scheduled' | 'on_demand' | 'analyzer'
+export type WorkerProfile = 'realtime' | 'scheduled' | 'on_demand' | 'analyzer' | 'validator'
+export type GateMode = 'binary' | 'score'
+
+export interface Finding {
+  id: string
+  severity: 'critical' | 'major' | 'minor'
+  category: string
+  location?: string
+  description: string
+  suggestedFix?: string
+  resolved: boolean
+}
+
+export interface Evidence {
+  id: string
+  runId: string              // WorkerRun that produced this
+  validationSessionId: string
+  gateMode: GateMode
+  // Binary gate fields
+  passed?: boolean
+  errors?: string[]
+  // Score gate fields
+  score?: number             // 0.0–1.0
+  findings?: Finding[]
+  iterationIndex?: number    // which iteration produced this
+  createdAt: string
+}
 export type WorkerRunState = 'pending' | 'running' | 'awaiting_input' | 'paused' | 'done' | 'failed' | 'escalated' | 'aborted'
 export type InteractionKind = 'menu' | 'input_request' | 'free_form_intent'
 

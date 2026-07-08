@@ -2204,6 +2204,66 @@ Human approves  → resume → new WorkerRun
 Human rejects   → ValidationSession.state = aborted
 ```
 
+### 18.x Gate Modes: Binary vs Score
+
+Studio gates have two operating modes, selected by the Worker's `profile`:
+
+**Binary gate** (`profile: validator`)
+- Output: `pass | fail`
+- Used for: deterministic checks with no ambiguity — CI build, schema validation, lint, test suite, security CVE scan
+- On fail: retry the upstream producer Worker (as per §18 retry loop)
+- On pass: flow advances to next step
+- Evidence: binary ValidationSession result
+
+**Score gate** (`profile: analyzer, emits: score`)
+- Output: `score: float (0.0–1.0)` + `findings: Finding[]`
+- Used for: LLM-based review — design conformance, code quality, test coverage adequacy, PRD completeness
+- Never "fails" in the binary sense — it always emits a score and findings
+- Flow behaviour: if `score_improvement >= convergence_threshold`, loop back to the upstream producer (feed findings as context); if `improvement < threshold` or `maxIterations` reached, advance
+- This replaces the separate "LoopPolicy" concept — the gate itself carries convergence config
+- Evidence: scored ValidationSession with finding list attached
+
+**Finding** (emitted by score gate):
+```
+Finding {
+  id:           string
+  severity:     'critical' | 'major' | 'minor'
+  category:     string          // e.g. "design_conformance", "test_coverage", "security"
+  location:     string?         // file path or object reference
+  description:  string          // human-readable finding
+  suggestedFix: string?         // LLM-proposed fix
+  resolved:     boolean         // true once upstream producer addressed it
+}
+```
+
+**Key distinction:**
+- Binary gate asks: "Is this correct?" → yes/no → CI, schema, lint
+- Score gate asks: "How good is this?" → 0.0–1.0 + findings → LLM review, quality assessment
+
+A flow that ends with a score gate and has the producer Worker before it is an "iterative refinement flow" — no separate "loop" concept needed. The score gate's convergence config (`threshold`, `maxIterations`) controls when the loop terminates. This is exactly the LLM-based agentic loop pattern from Merouani et al. 2025.
+
+**Example gate configs:**
+
+```yaml
+# Binary gate — deterministic
+- workerId: ci_build_validator
+  profile: validator
+  mode: binary
+  maxRetries: 3
+  onMaxRetries: escalate
+
+# Score gate — LLM review, produces findings like CodeRabbit
+- workerId: code_quality_evaluator
+  profile: analyzer
+  mode: score
+  convergence:
+    metric: score          # Evidence.payload.score
+    threshold: 0.05        # stop when improvement < 5%
+    maxIterations: 8
+    budgetUsd: 5.00
+    onExhaustion: accept_best
+```
+
 ---
 
 ## 19. Connector

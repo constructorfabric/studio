@@ -101,6 +101,9 @@ function GateNodeComponent({ data }: NodeProps) {
   const style = nodeExecStyle(execState)
   const size = 88
 
+  // Score gate detection: gate workerId contains 'evaluator', 'analyzer', or 'review'
+  const isScoreGate = /evaluator|analyzer|review/i.test(node.id ?? node.label ?? '')
+
   return (
     <div style={{ width: size, height: size, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {/* Diamond shape */}
@@ -109,8 +112,10 @@ function GateNodeComponent({ data }: NodeProps) {
         height: size * 0.72,
         transform: 'rotate(45deg)',
         background: style.bg,
-        border: `2px solid ${style.border}`,
-        boxShadow: style.glow || '0 2px 8px rgba(0,0,0,0.3)',
+        border: `2px solid ${isScoreGate ? '#6366f1' : style.border}`,
+        boxShadow: isScoreGate
+          ? '0 0 8px rgba(99,102,241,0.25)'
+          : (style.glow || '0 2px 8px rgba(0,0,0,0.3)'),
         transition: 'all 0.25s ease',
         position: 'absolute',
       }} />
@@ -124,14 +129,22 @@ function GateNodeComponent({ data }: NodeProps) {
         {execState === 'retrying' && (
           <span style={{ fontSize: 9, color: '#f59e0b', fontWeight: 700, display: 'block', marginTop: 2 }}>retry {retryCount}×</span>
         )}
-        {node.maxRetries !== undefined && execState === 'idle' && (
+        {node.maxRetries !== undefined && execState === 'idle' && !isScoreGate && (
           <span style={{ fontSize: 9, color: '#52525b', display: 'block', marginTop: 1 }}>max {node.maxRetries}×</span>
+        )}
+        {/* Score gate badge */}
+        {isScoreGate && execState === 'idle' && (
+          <span style={{ fontSize: 8, color: '#818cf8', fontWeight: 600, display: 'block', marginTop: 2, letterSpacing: '0.03em' }}>score gate</span>
+        )}
+        {/* Score gate: show placeholder score bar when passed */}
+        {isScoreGate && execState === 'passed' && (
+          <span style={{ fontSize: 8, color: '#818cf8', fontWeight: 600, display: 'block', marginTop: 2 }}>████░░ 0.84</span>
         )}
       </div>
 
       {/* Handles */}
       <Handle type="target"  position={Position.Top}    id="in"     style={{ background: '#6366f1', width: 8, height: 8, border: '2px solid #09090b', top: 0 }} />
-      <Handle type="source"  position={Position.Bottom} id="pass"   style={{ background: '#10b981', width: 8, height: 8, border: '2px solid #09090b', bottom: 0 }} />
+      <Handle type="source"  position={Position.Bottom} id="pass"   style={{ background: isScoreGate ? '#6366f1' : '#10b981', width: 8, height: 8, border: '2px solid #09090b', bottom: 0 }} />
       <Handle type="source"  position={Position.Right}  id="fail"   style={{ background: '#ef4444', width: 8, height: 8, border: '2px solid #09090b', right: 0 }} />
       <Handle type="source"  position={Position.Left}   id="retry"  style={{ background: '#f59e0b', width: 8, height: 8, border: '2px solid #09090b', left: 0 }} />
     </div>
