@@ -4,10 +4,22 @@ import { useState } from 'react'
 import { useAppStore, selectActiveWorkerRuns } from '../../store/app-store'
 import type { WorkerRun } from '../../types/domain'
 
+
+
+const TERMINAL_STATES = new Set(['done', 'failed', 'aborted', 'escalated'])
+
 export function WorkerRunSimulator() {
   const activeRuns = useAppStore(selectActiveWorkerRuns)
-  const recentDoneRuns = useAppStore(s => s.workerRuns.filter(r => r.state === 'done' || r.state === 'failed').slice(0, 3))
+  const dismissedRunIds = useAppStore(s => s.dismissedRunIds)
   const dismissRunToast = useAppStore(s => s.dismissRunToast)
+
+  // Terminal runs that haven't been dismissed yet
+  const terminalRuns = useAppStore(s =>
+    s.workerRuns
+      .filter(r => TERMINAL_STATES.has(r.state) && !s.dismissedRunIds.includes(r.id))
+      .slice(-4)  // show last 4 terminal
+  )
+
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const toggleExpand = (id: string) => {
@@ -18,20 +30,44 @@ export function WorkerRunSimulator() {
     })
   }
 
-  const allVisible = [...activeRuns, ...recentDoneRuns].slice(0, 6)
+  const clearAll = () => {
+    terminalRuns.forEach(r => dismissRunToast(r.id))
+  }
+
+  const allVisible = [...activeRuns, ...terminalRuns]
 
   if (allVisible.length === 0) return null
 
   return (
     <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-2 max-w-sm w-full">
+      {/* Clear all — shown when there are ≥2 terminal (dismissible) toasts */}
       <AnimatePresence>
+        {terminalRuns.length >= 2 && (
+          <motion.div
+            key="clear-all"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            className="flex justify-end pr-1"
+          >
+            <button
+              onClick={clearAll}
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 rounded-md hover:bg-zinc-800/60"
+            >
+              Clear all
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence mode="popLayout">
         {allVisible.map(run => (
           <RunToast
             key={run.id}
             run={run}
             expanded={expanded.has(run.id)}
             onToggle={() => toggleExpand(run.id)}
-            onDismiss={() => dismissRunToast(run.id)}
+            onDismiss={TERMINAL_STATES.has(run.state) ? () => dismissRunToast(run.id) : undefined}
           />
         ))}
       </AnimatePresence>
@@ -48,7 +84,7 @@ function RunToast({
   run: WorkerRun
   expanded: boolean
   onToggle: () => void
-  onDismiss: () => void
+  onDismiss?: () => void
 }) {
   const stateConfig = {
     pending: {
@@ -126,8 +162,8 @@ function RunToast({
           <button onClick={onToggle} className="p-1 rounded text-zinc-500 hover:text-zinc-300 transition-colors">
             {expanded ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
           </button>
-          {(run.state === 'done' || run.state === 'failed') && (
-            <button onClick={onDismiss} className="p-1 rounded text-zinc-500 hover:text-zinc-300 transition-colors">
+          {onDismiss && (
+            <button onClick={onDismiss} className="p-1 rounded text-zinc-500 hover:text-zinc-300 transition-colors" title="Dismiss">
               <X size={12} />
             </button>
           )}

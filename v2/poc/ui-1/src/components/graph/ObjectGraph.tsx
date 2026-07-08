@@ -15,43 +15,39 @@ import { CustomNode } from './CustomNode'
 import { MOCK_OBJECTS, NODE_POSITIONS } from '../../data/mock-data'
 import type { StudioObject } from '../../types/domain'
 
-type HandleSide = 'left' | 'right' | 'top' | 'bottom'
+type HandleId = 'left' | 'right' | 'top-exit' | 'top-entry' | 'bottom-exit' | 'bottom-entry'
 
 function getEdgeHandles(
   srcPos: { x: number; y: number },
   tgtPos: { x: number; y: number },
-  hasReverse: boolean,
-  isFirstOfPair: boolean,
-): { sourceHandle: HandleSide; targetHandle: HandleSide } {
+): { sourceHandle: HandleId; targetHandle: HandleId } {
   const dx = tgtPos.x - srcPos.x
   const dy = tgtPos.y - srcPos.y
   const absDx = Math.abs(dx)
   const absDy = Math.abs(dy)
 
-  // Primarily horizontal movement
+  // Primarily horizontal
   if (absDx >= absDy) {
     if (dx > 0) {
-      // Forward left→right: connect right→left directly
-      if (hasReverse) {
-        // Bidirectional: offset one via top, one via bottom
-        return isFirstOfPair
-          ? { sourceHandle: 'top', targetHandle: 'top' }
-          : { sourceHandle: 'bottom', targetHandle: 'bottom' }
-      }
+      // Forward (left→right): straight right→left connection
       return { sourceHandle: 'right', targetHandle: 'left' }
-    } else {
-      // Backward right→left: always arc over or under to avoid crossing forward edges
-      return dy <= 0
-        ? { sourceHandle: 'top', targetHandle: 'top' }
-        : { sourceHandle: 'bottom', targetHandle: 'bottom' }
     }
+    // Backward (right→left): arc over or under.
+    // source = right node  → use top-exit (30% left) or bottom-exit (30% left)
+    // target = left node   → use top-entry (70% left) or bottom-entry (70% left)
+    // Asymmetric X positions guarantee non-zero horizontal span even at same Y,
+    // so the bezier arc actually curves rather than flattening into a line.
+    if (dy <= 0) {
+      return { sourceHandle: 'top-exit', targetHandle: 'top-entry' }
+    }
+    return { sourceHandle: 'bottom-exit', targetHandle: 'bottom-entry' }
   }
 
   // Primarily vertical
   if (dy > 0) {
-    return { sourceHandle: 'bottom', targetHandle: 'top' }
+    return { sourceHandle: 'bottom-exit', targetHandle: 'top-entry' }
   }
-  return { sourceHandle: 'top', targetHandle: 'bottom' }
+  return { sourceHandle: 'top-exit', targetHandle: 'bottom-entry' }
 }
 
 const nodeTypes: NodeTypes = {
@@ -104,14 +100,6 @@ export function ObjectGraph() {
   )
 
   const edges: Edge[] = useMemo(() => {
-    // Pre-build a set of all (source, target) pairs to detect bidirectional edges
-    const allPairs = new Set<string>()
-    objects.forEach((obj: StudioObject) => {
-      obj.links.forEach(link => allPairs.add(`${obj.id}→${link.targetId}`))
-    })
-
-    // Track which bidirectional pairs we've seen (to alternate top/bottom)
-    const biDirSeen = new Set<string>()
 
     const result: Edge[] = []
     const seen = new Set<string>()
@@ -132,14 +120,7 @@ export function ObjectGraph() {
         const srcPos = NODE_POSITIONS[obj.id] ?? { x: 0, y: 0 }
         const tgtPos = NODE_POSITIONS[link.targetId] ?? { x: 0, y: 0 }
         const reverseKey = `${link.targetId}→${obj.id}`
-        const hasReverse = allPairs.has(reverseKey)
-        const pairKey = [obj.id, link.targetId].sort().join('↔')
-        const isFirstOfPair = !biDirSeen.has(pairKey)
-        if (hasReverse) biDirSeen.add(pairKey)
-
-        const { sourceHandle, targetHandle } = getEdgeHandles(
-          srcPos, tgtPos, hasReverse, isFirstOfPair,
-        )
+        const { sourceHandle, targetHandle } = getEdgeHandles(srcPos, tgtPos)
 
         result.push({
           id: edgeId,

@@ -154,24 +154,38 @@ export const CustomNode = memo(({ data, selected }: NodeProps) => {
         )}
       </div>
 
-      {/* Handles — all four sides, both source and target, for smart edge routing */}
-      {(['left', 'right', 'top', 'bottom'] as const).map(pos => (
-        ['source', 'target'].map(htype => (
-          <Handle
-            key={`${htype}-${pos}`}
-            id={pos}
-            type={htype as 'source' | 'target'}
-            position={Position[pos.charAt(0).toUpperCase() + pos.slice(1) as 'Left' | 'Right' | 'Top' | 'Bottom']}
-            style={{
-              background: typeConfig.border,
-              width: 6,
-              height: 6,
-              border: '2px solid #09090b',
-              opacity: 0,
-            }}
-          />
-        ))
-      ))}
+      {/* ── Lateral handles (forward left↔right edges) ── */}
+      <Handle id="right" type="source" position={Position.Right}
+        style={{ background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="right" type="target" position={Position.Right}
+        style={{ background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="left" type="source" position={Position.Left}
+        style={{ background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="left" type="target" position={Position.Left}
+        style={{ background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+
+      {/*
+        ── Offset top/bottom handles for back-edges and arcs ──
+        top-exit  (30% from left) = source side of a back-edge arcing above
+        top-entry (70% from left) = target side of a back-edge arcing above
+        Asymmetric X ensures bezier has non-zero horizontal span even on same-Y nodes.
+      */}
+      <Handle id="top-exit" type="source" position={Position.Top}
+        style={{ left: '30%', background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="top-exit" type="target" position={Position.Top}
+        style={{ left: '30%', background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="top-entry" type="source" position={Position.Top}
+        style={{ left: '70%', background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="top-entry" type="target" position={Position.Top}
+        style={{ left: '70%', background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="bottom-exit" type="source" position={Position.Bottom}
+        style={{ left: '30%', background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="bottom-exit" type="target" position={Position.Bottom}
+        style={{ left: '30%', background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="bottom-entry" type="source" position={Position.Bottom}
+        style={{ left: '70%', background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
+      <Handle id="bottom-entry" type="target" position={Position.Bottom}
+        style={{ left: '70%', background: typeConfig.border, width: 6, height: 6, border: '2px solid #09090b', opacity: 0 }} />
     </div>
   )
 })
