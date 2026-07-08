@@ -579,8 +579,13 @@ context (tenantId, workspaceId, ownerId, createdByRunId auto-set):
 }
 ```
 
-Materialization flow: WorkerRun → done → platform reads output Contract →
-for each `x-gts-creates: true` field → creates Object → sets `WorkerRun.createdObjectIds`.
+Materialization flow (order matters; non-atomic — retry via WorkerRun.checkpoint):
+  1. x-gts-creates: create new Objects; set Object.createdByRunId, workspaceId, ownerId
+  2. x-gts-state-sets: update input Object states
+  3. Auto-create `derived_from` links (confidence: inferred) from new Objects to input Objects:
+     - Only for input Contract fields with `$ref` (Object refs), NOT scalar fields
+     - Opt-out: `x-gts-link: false` on $ref field = skip auto-link (e.g. workspace context fields)
+  4. WorkerRun.createdObjectIds = [new Object ids]
 
 `x-gts-traits.capabilities` — opt-in Object capabilities declaration:
 
