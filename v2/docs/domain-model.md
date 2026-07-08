@@ -391,6 +391,13 @@ Object {
 //   Platform traverses core kinds in traceability computation;
 //   custom kinds stored and returned in queries but not analysed for gaps.
 //
+// Cross-workspace link rules:
+//   Cross-Tenant: FORBIDDEN — enforced at link creation (target.tenantId must == source.tenantId)
+//   Cross-workspace (same Tenant): ALLOWED — access to target subject to Policy checks
+//   Tenant-level Objects (workspaceId=null): implicitly shared — any workspace can link to them
+//     Recommended pattern for shared artifacts (PRDs, ADRs, architecture guidelines):
+//     create with workspaceId=null → no workspace restriction on linking
+
 // Two-layer model:
 //   Object.links[] = flexible, user- and platform-declared contextual links
 //   Spec-level fields (pull_request.conformsToDesign, test_case.verifiesRequirements)
@@ -1251,6 +1258,11 @@ User {
 ## 9. Workspace
 
 Multi-repo configuration. **Extends Object.**
+
+**Shared artifact pattern:** Objects created with `workspaceId = null` are Tenant-level —
+implicitly shared across all workspaces in the Tenant. Use this for platform-wide artifacts:
+PRDs, ADRs, architecture guidelines, shared design templates. Any workspace member can
+create `links[]` to Tenant-level Objects without cross-workspace permission issues.
 
 ```
 Workspace extends Object {
