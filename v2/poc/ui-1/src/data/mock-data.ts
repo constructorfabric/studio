@@ -221,8 +221,8 @@ export const MOCK_OBJECTS: StudioObject[] = [
     stalenessScore: 0.0,
     description: 'Production incident: customers being charged twice for subscription renewals. Severity P1. Billing event deduplication logic suspect.',
     links: [
-      { targetId: 'fspec-001', kind: 'related_to' },
-      { targetId: 'design-001', kind: 'related_to' },
+      { targetId: 'fspec-001', kind: 'references' },
+      { targetId: 'design-001', kind: 'references' },
     ],
     createdAt: '2026-07-06T08:00:00Z',
     updatedAt: '2026-07-06T11:00:00Z',
@@ -407,7 +407,8 @@ export const WORKER_DEFS: WorkerDef[] = [
     description: 'Identifies the component most likely responsible for the bug',
     requiresAutomationGate: false,
     category: 'quality',
-    profile: 'analyzer',
+    profile: 'on_demand',
+    actionLabel: 'Find Component',
     applicableTypes: ['incident', 'task'],
   },
   // F-016: validators required by bug_fix_flow per §22.2
