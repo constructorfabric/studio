@@ -7,6 +7,7 @@ import type {
   FlowStepStatus,
   FlowExecState,
   FlowGraphDef,
+  FlowGraphNode,
   FlowNodeExecState,
   FlowPendingInteraction,
   Recommendation,
@@ -633,8 +634,35 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeFlowRun,
     })
 
+    // Resolve the best target object: selectedObjectId first, otherwise first object
+    const resolveTargetObj = () => {
+      const sel = get().selectedObjectId
+      return (sel ? get().objects.find(o => o.id === sel) : null) ?? get().objects[0]
+    }
+
+    // Find the best-matching WorkerDef for a node: prefer explicit workerId, then label match
+    const resolveWorker = (node: FlowGraphNode) => {
+      if (node.workerId) return WORKER_DEFS.find(w => w.id === node.workerId) ?? null
+      // Fuzzy: find a worker whose label is contained in the node label or vice versa
+      const nLabel = node.label.toLowerCase()
+      return WORKER_DEFS.find(w => nLabel.includes(w.label.toLowerCase()) || w.label.toLowerCase().includes(nLabel)) ?? null
+    }
+
+    // Pause guard: wait until status is no longer 'paused'
+    const checkPause = async () => {
+      while (get().flowExecState?.status === 'paused') {
+        await new Promise(r => setTimeout(r, 200))
+      }
+      // If aborted or cleared while paused, throw to stop execution
+      if (!get().flowExecState || get().flowExecState?.status === 'aborted') throw new Error('aborted')
+    }
+
+    // Score gate detection: same pattern as UI
+    const isScoreGate = (nodeId: string, nodeLabel: string) => /evaluator|analyzer|review/i.test(nodeId + nodeLabel)
+
     // Async step-by-step execution with pauses for user interactions
     const runStep = async (nodeId: string, takenBranches: Record<string, string>): Promise<void> => {
+      await checkPause()
       const node = flow.nodes.find(n => n.id === nodeId)
       if (!node) return
 
@@ -700,12 +728,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (node.nodeType === 'worker' || node.nodeType === 'human') {
         setNode('running')
-        // Spawn a WorkerRun parented to the FlowRun for monitor tree
-        const targetObj = get().objects[0]
-        if (targetObj && node.nodeType === 'worker') {
-          // Find a worker def that matches the node label (best effort)
-          const workerDef = WORKER_DEFS.find(w => w.label === node.label) ?? WORKER_DEFS[0]
-          if (workerDef) {
+        // Spawn a WorkerRun parented to the FlowRun — use resolved target + matched worker
+        if (node.nodeType === 'worker') {
+          const targetObj = resolveTargetObj()
+          const workerDef = resolveWorker(node)
+          if (targetObj && workerDef) {
             get().runWorker(workerDef.id, targetObj.id, { parentRunId: activeFlowRunId })
           }
         }
@@ -727,10 +754,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       if (node.nodeType === 'gate') {
+        await checkPause()
         const maxRetries = node.maxRetries ?? 2
         const retryCount = (get().flowExecState?.retryCounters[nodeId] ?? 0)
         setNode('running')
         await sleep(900)
+
+        // Score gate (analyzer/evaluator): emit a score, retry proposer if improvement >= threshold
+        if (isScoreGate(nodeId, node.label)) {
+          const score = 0.62 + retryCount * 0.12 + Math.random() * 0.04  // simulated improving score
+          const improvement = retryCount === 0 ? score : 0.12 - retryCount * 0.04
+          const converged = improvement < 0.05 || retryCount >= maxRetries
+          // Log the score as a WorkerRun output notification
+          const targetObj = resolveTargetObj()
+          const workerDef = resolveWorker(node)
+          if (targetObj && workerDef) {
+            get().runWorker(workerDef.id, targetObj.id, { parentRunId: activeFlowRunId })
+          }
+          if (!converged) {
+            // Continue iteration: follow 'fail' edge back to proposer
+            set(s => ({ flowExecState: s.flowExecState ? { ...s.flowExecState, nodeStates: { ...s.flowExecState.nodeStates, [nodeId]: 'retrying' }, retryCounters: { ...s.flowExecState.retryCounters, [nodeId]: retryCount + 1 } } : null }))
+            await sleep(400)
+            const failEdge = flow.edges.find(e => e.source === nodeId && e.edgeKind === 'fail')
+            if (failEdge) { await runStep(failEdge.target, takenBranches); await sleep(400) }
+          } else {
+            set(s => ({ flowExecState: s.flowExecState ? { ...s.flowExecState, nodeStates: { ...s.flowExecState.nodeStates, [nodeId]: 'passed' } } : null }))
+            await sleep(300)
+            const passEdge = flow.edges.find(e => e.source === nodeId && e.edgeKind === 'pass')
+            if (passEdge) await runStep(passEdge.target, takenBranches)
+          }
+          return
+        }
 
         const willFail = Math.random() < 0.45 && retryCount < maxRetries
         if (willFail) {
@@ -793,7 +847,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const startNode = flow.nodes.find(n => n.nodeType === 'start')
-    if (startNode) runStep(startNode.id, {}).catch(() => {})
+    if (startNode) runStep(startNode.id, {}).catch(err => {
+      // 'aborted' is expected when user cancels; other errors are unexpected
+      if (err?.message !== 'aborted') console.warn('Flow execution error:', err)
+    })
   },
 
   // ─── Recommendation Actions ──────────────────────────────────────────────────

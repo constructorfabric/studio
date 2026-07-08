@@ -316,6 +316,7 @@ export interface FlowGraphNode {
   label: string
   sublabel?: string
   maxRetries?: number
+  workerId?: string              // explicit worker to launch when this node runs
   interaction?: FlowNodeInteraction   // pauses flow for user input
   position: { x: number; y: number }
 }
