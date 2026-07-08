@@ -15,6 +15,7 @@ import type {
   LogEntry,
   LoopRun,
   IterationRun,
+  FlowDef,
 } from '../types/domain'
 import {
   MOCK_OBJECTS,
@@ -108,6 +109,13 @@ interface AppState {
   activeLoopId: string | null
   setActiveLoopId: (id: string | null) => void
   startAgenticLoop: (flowId: string, objectId: string) => string
+
+  // Custom Flow Designer
+  customFlowDefs: FlowDef[]
+  customFlowGraphDefs: FlowGraphDef[]
+  addCustomFlow: (flowDef: FlowDef, graphDef: FlowGraphDef) => void
+  updateCustomFlow: (flowDef: FlowDef, graphDef: FlowGraphDef) => void
+  deleteCustomFlow: (flowId: string) => void
 }
 
 let runIdCounter = 1000
@@ -185,6 +193,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   lineAction: { visible: false },
   loopRuns: MOCK_LOOP_RUNS,
   activeLoopId: null,
+  customFlowDefs: [],
+  customFlowGraphDefs: [],
 
   // ─── UI Actions ─────────────────────────────────────────────────────────────
   selectObject: (id) => set({ selectedObjectId: id, activeTab: 'overview' }),
@@ -923,6 +933,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isSimulating: false })
     }, FLOW_DEFS[0].steps.length * 2500 + 2000)
   },
+
+  // ─── Custom Flow Designer ────────────────────────────────────────────────────
+  addCustomFlow: (flowDef, graphDef) => set(s => ({
+    customFlowDefs: [...s.customFlowDefs, flowDef],
+    customFlowGraphDefs: [...s.customFlowGraphDefs, graphDef],
+  })),
+  updateCustomFlow: (flowDef, graphDef) => set(s => ({
+    customFlowDefs: s.customFlowDefs.map(f => f.id === flowDef.id ? flowDef : f),
+    customFlowGraphDefs: s.customFlowGraphDefs.map(g => g.id === graphDef.id ? graphDef : g),
+  })),
+  deleteCustomFlow: (flowId) => set(s => ({
+    customFlowDefs: s.customFlowDefs.filter(f => f.id !== flowId),
+    customFlowGraphDefs: s.customFlowGraphDefs.filter(g => g.id !== flowId),
+  })),
 
   // ─── Agentic Loop ────────────────────────────────────────────────────────────
   setActiveLoopId: (id) => set({ activeLoopId: id }),

@@ -1,16 +1,17 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { ReactFlowProvider, ReactFlow, Background, BackgroundVariant, Controls, Handle, Position, type NodeProps, type Node, type Edge } from '@xyflow/react'
-import { Play, Square, CheckCircle2, Loader2, AlertTriangle, User, RefreshCw, Zap, GitBranch, Split, MessageSquare, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Pause, Ban } from 'lucide-react'
+import { Play, Square, CheckCircle2, Loader2, AlertTriangle, User, RefreshCw, Zap, GitBranch, Split, MessageSquare, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Pause, Ban, Plus, Pencil } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '../../store/app-store'
 import { FLOW_GRAPH_DEFS, FLOW_DEFS } from '../../data/mock-data'
 import type { FlowGraphDef, FlowGraphNode, FlowNodeExecState, FlowInteractionOption, FlowDef } from '../../types/domain'
+import { FlowDesigner } from './FlowDesigner'
 
 // All flows — no loop/regular distinction any more
 const ALL_FLOWS: FlowDef[] = FLOW_DEFS
 
 // Map FlowDef.id → FlowGraphDef — all flows have visual graphs
-const GRAPH_MAP: Record<string, FlowGraphDef> = {
+const GRAPH_MAP_STATIC: Record<string, FlowGraphDef> = {
   'sdlc_pipeline_flow':              FLOW_GRAPH_DEFS.find(g => g.id === 'flow-sdlc-pipeline')!,
   'bug_fix_flow':                    FLOW_GRAPH_DEFS.find(g => g.id === 'flow-bug-fix')!,
   'release_readiness_review':        FLOW_GRAPH_DEFS.find(g => g.id === 'flow-release-readiness')!,
@@ -775,9 +776,10 @@ function FlowControlBar({ graphDef, flowDef }: { graphDef: FlowGraphDef; flowDef
   )
 }
 
-function FlowSidebarItem({ flow, selected, onSelect }: { flow: FlowDef; selected: boolean; onSelect: () => void }) {
+function FlowSidebarItem({ flow, selected, onSelect, isCustom, onEdit }: { flow: FlowDef; selected: boolean; onSelect: () => void; isCustom?: boolean; onEdit?: () => void }) {
   const execState  = useAppStore(s => s.flowExecState)
-  const graphDef   = GRAPH_MAP[flow.id]
+  const [hovered, setHovered] = useState(false)
+  const graphDef   = GRAPH_MAP_STATIC[flow.id]
   const isActive   = !!(graphDef && execState?.flowId === graphDef.id)
   const activeStatus = isActive ? execState!.status : null
   const dotColor: Record<string, string> = {
@@ -785,30 +787,50 @@ function FlowSidebarItem({ flow, selected, onSelect }: { flow: FlowDef; selected
     failed: '#ef4444', aborted: '#71717a', waiting_input: '#a78bfa',
   }
   return (
-    <button
-      onClick={onSelect}
-      style={{
-        width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 7, marginBottom: 2,
-        border: selected ? '1.5px solid rgba(99,102,241,0.5)' : '1px solid transparent',
-        background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
-        cursor: 'pointer', transition: 'all 0.12s',
-        display: 'flex', alignItems: 'center', gap: 7,
-      }}
-      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'rgba(39,39,42,0.5)' }}
-      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+    <div
+      style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: 2 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <GitBranch size={11} color={selected ? '#818cf8' : '#52525b'} style={{ flexShrink: 0 }} />
-      <span style={{ fontSize: 11, fontWeight: selected ? 600 : 400, color: selected ? '#c4b5fd' : '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {flow.label}
-      </span>
-      {activeStatus && (
-        <span style={{
-          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-          background: dotColor[activeStatus] ?? '#52525b',
-          animation: activeStatus === 'running' ? 'pulse 1s ease-in-out infinite' : 'none',
-        }} />
+      <button
+        onClick={onSelect}
+        style={{
+          flex: 1, textAlign: 'left', padding: '7px 10px', borderRadius: 7,
+          border: selected ? '1.5px solid rgba(99,102,241,0.5)' : '1px solid transparent',
+          background: selected ? 'rgba(99,102,241,0.1)' : hovered ? 'rgba(39,39,42,0.5)' : 'transparent',
+          cursor: 'pointer', transition: 'all 0.12s',
+          display: 'flex', alignItems: 'center', gap: 7,
+        }}
+      >
+        <GitBranch size={11} color={selected ? '#818cf8' : '#52525b'} style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: selected ? 600 : 400, color: selected ? '#c4b5fd' : '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {flow.label}
+        </span>
+        {activeStatus && (
+          <span style={{
+            width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+            background: dotColor[activeStatus] ?? '#52525b',
+            animation: activeStatus === 'running' ? 'pulse 1s ease-in-out infinite' : 'none',
+          }} />
+        )}
+      </button>
+      {isCustom && hovered && onEdit && (
+        <button
+          onClick={e => { e.stopPropagation(); onEdit() }}
+          style={{
+            position: 'absolute', right: 4,
+            padding: '3px 5px', borderRadius: 4,
+            background: 'rgba(99,102,241,0.15)',
+            border: '1px solid rgba(99,102,241,0.3)',
+            color: '#818cf8', cursor: 'pointer',
+            display: 'flex', alignItems: 'center',
+          }}
+          title="Edit flow"
+        >
+          <Pencil size={9} />
+        </button>
       )}
-    </button>
+    </div>
   )
 }
 
@@ -818,8 +840,23 @@ export function FlowsView() {
   const firstFlow = ALL_FLOWS[0]
   const [selectedId, setSelectedId] = useState<string>(firstFlow?.id ?? '')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(FLOW_GROUPS.map(g => g.label)))
+  const [showDesigner, setShowDesigner] = useState(false)
+  const [designerFlowId, setDesignerFlowId] = useState<string | undefined>(undefined)
 
-  const selectedFlow = ALL_FLOWS.find(f => f.id === selectedId) ?? null
+  const customFlowDefs   = useAppStore(s => s.customFlowDefs)
+  const customGraphDefs  = useAppStore(s => s.customFlowGraphDefs)
+
+  // Merged graph map: static + custom
+  const GRAPH_MAP: Record<string, FlowGraphDef> = {
+    ...GRAPH_MAP_STATIC,
+    ...Object.fromEntries(customGraphDefs.map(g => [g.id, g])),
+  }
+
+  // All flows: built-in + custom
+  const allFlows = [...ALL_FLOWS, ...customFlowDefs]
+  const customIds = new Set(customFlowDefs.map(f => f.id))
+
+  const selectedFlow = allFlows.find(f => f.id === selectedId) ?? null
   const graphDef = selectedFlow ? GRAPH_MAP[selectedFlow.id] : undefined
 
   const toggleGroup = (label: string) => setExpandedGroups(prev => {
@@ -829,7 +866,19 @@ export function FlowsView() {
   })
 
   // Which flows belong to each group
-  const flowById = Object.fromEntries(ALL_FLOWS.map(f => [f.id, f]))
+  const flowById = Object.fromEntries(allFlows.map(f => [f.id, f]))
+
+  if (showDesigner) {
+    return (
+      <ReactFlowProvider>
+        <FlowDesigner
+          existingFlowId={designerFlowId}
+          onSave={(id) => { setShowDesigner(false); setSelectedId(id) }}
+          onCancel={() => setShowDesigner(false)}
+        />
+      </ReactFlowProvider>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -840,9 +889,20 @@ export function FlowsView() {
         background: 'rgba(9,9,11,0.6)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
-        <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid rgba(63,63,70,0.4)', display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: '#e4e4e7' }}>Flows</h2>
-          <span style={{ fontSize: 10, color: '#52525b' }}>{ALL_FLOWS.length} total</span>
+        <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid rgba(63,63,70,0.4)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ fontSize: 13, fontWeight: 700, color: '#e4e4e7', flex: 1 }}>Flows</h2>
+          <span style={{ fontSize: 10, color: '#52525b' }}>{allFlows.length} total</span>
+          <button
+            onClick={() => { setDesignerFlowId(undefined); setShowDesigner(true) }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 3, padding: '3px 8px',
+              borderRadius: 5, background: 'rgba(99,102,241,0.15)',
+              border: '1px solid rgba(99,102,241,0.35)',
+              color: '#818cf8', fontSize: 10, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            <Plus size={11} /> New
+          </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
           {FLOW_GROUPS.map(group => {
@@ -860,11 +920,41 @@ export function FlowsView() {
                   <span style={{ fontSize: 9, color: '#3f3f46' }}>{groupFlows.length}</span>
                 </button>
                 {isOpen && groupFlows.map(flow => (
-                  <FlowSidebarItem key={flow.id} flow={flow} selected={selectedId === flow.id} onSelect={() => setSelectedId(flow.id)} />
+                  <FlowSidebarItem
+                    key={flow.id}
+                    flow={flow}
+                    selected={selectedId === flow.id}
+                    onSelect={() => setSelectedId(flow.id)}
+                    isCustom={customIds.has(flow.id)}
+                    onEdit={() => { setDesignerFlowId(flow.id); setShowDesigner(true) }}
+                  />
                 ))}
               </div>
             )
           })}
+          {/* Custom flows group */}
+          {customFlowDefs.length > 0 && (
+            <div>
+              <button
+                onClick={() => toggleGroup('Custom')}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 4px 3px', background: 'none', border: 'none', cursor: 'pointer', width: '100%' }}
+              >
+                {expandedGroups.has('Custom') ? <ChevronDown size={10} color="#3f3f46" /> : <ChevronRight size={10} color="#3f3f46" />}
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', flex: 1, textAlign: 'left' }}>Custom</span>
+                <span style={{ fontSize: 9, color: '#3f3f46' }}>{customFlowDefs.length}</span>
+              </button>
+              {expandedGroups.has('Custom') && customFlowDefs.map(flow => (
+                <FlowSidebarItem
+                  key={flow.id}
+                  flow={flow}
+                  selected={selectedId === flow.id}
+                  onSelect={() => setSelectedId(flow.id)}
+                  isCustom
+                  onEdit={() => { setDesignerFlowId(flow.id); setShowDesigner(true) }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -882,8 +972,21 @@ export function FlowsView() {
             <Legend />
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
             <p style={{ color: '#52525b', fontSize: 13 }}>Select a flow</p>
+            {customIds.has(selectedId) && (
+              <button
+                onClick={() => { setDesignerFlowId(selectedId); setShowDesigner(true) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px',
+                  borderRadius: 6, background: 'rgba(99,102,241,0.15)',
+                  border: '1px solid rgba(99,102,241,0.35)',
+                  color: '#818cf8', fontSize: 12, cursor: 'pointer',
+                }}
+              >
+                <Pencil size={12} /> Edit in Designer
+              </button>
+            )}
           </div>
         )}
       </div>
