@@ -12,6 +12,8 @@ import type {
   Recommendation,
   AppView,
   LogEntry,
+  LoopRun,
+  IterationRun,
 } from '../types/domain'
 import {
   MOCK_OBJECTS,
@@ -95,6 +97,12 @@ interface AppState {
 
   // Simulation
   simulateFullPipeline: () => void
+
+  // Agentic Loop
+  loopRuns: LoopRun[]
+  activeLoopId: string | null
+  setActiveLoopId: (id: string | null) => void
+  startAgenticLoop: (flowId: string, objectId: string) => string
 }
 
 let runIdCounter = 1000
@@ -170,6 +178,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   modifiedFiles: new Set(),
   expandedFolders: new Set(['folder-docs', 'folder-src', 'folder-billing']),
   lineAction: { visible: false },
+  loopRuns: [],
+  activeLoopId: null,
 
   // ─── UI Actions ─────────────────────────────────────────────────────────────
   selectObject: (id) => set({ selectedObjectId: id, activeTab: 'overview' }),
@@ -828,6 +838,139 @@ export const useAppStore = create<AppState>((set, get) => ({
     setTimeout(() => {
       set({ isSimulating: false })
     }, FLOW_DEFS[0].steps.length * 2500 + 2000)
+  },
+
+  // ─── Agentic Loop ────────────────────────────────────────────────────────────
+  setActiveLoopId: (id) => set({ activeLoopId: id }),
+
+  startAgenticLoop: (flowId, objectId) => {
+    const state = get()
+    const obj = state.objects.find(o => o.id === objectId)
+    const objectTitle = obj?.title ?? objectId
+
+    const loopId = `loop-${Date.now()}-${runIdCounter++}`
+    const startedAt = nowIso()
+
+    const loopRun: LoopRun = {
+      id: loopId,
+      flowId,
+      flowLabel: 'Code Quality Optimization Loop',
+      objectId,
+      objectTitle,
+      state: 'running',
+      startedAt,
+      iterations: [],
+      currentIteration: 0,
+      bestScore: 0,
+      bestIterationIdx: 0,
+      converged: false,
+      totalCostUsd: 0,
+      totalTokens: 0,
+      budgetConsumedPct: 0,
+      maxCostUsd: 5.0,
+      maxTokens: 200000,
+    }
+
+    set(s => ({ loopRuns: [loopRun, ...s.loopRuns], activeLoopId: loopId }))
+
+    // Iteration data (fixed mock)
+    const iterData: Array<{
+      score: number
+      improvement: number
+      costUsd: number
+      tokens: number
+      durationMs: number
+      isBest: boolean
+    }> = [
+      { score: 0.62, improvement: 0.62, costUsd: 0.14, tokens: 32000, durationMs: 8200, isBest: false },
+      { score: 0.78, improvement: 0.16, costUsd: 0.15, tokens: 34000, durationMs: 7900, isBest: false },
+      { score: 0.84, improvement: 0.06, costUsd: 0.13, tokens: 31000, durationMs: 7400, isBest: false },
+      { score: 0.87, improvement: 0.03, costUsd: 0.14, tokens: 33000, durationMs: 7200, isBest: true  },
+    ]
+
+    const workerSpecs = [
+      { workerId: 'implement_code_worker',      label: 'Implement Code',      durationMs: 1100 },
+      { workerId: 'pr_design_validator',         label: 'PR Design Validator', durationMs: 300  },
+      { workerId: 'code_quality_evaluator',      label: 'Quality Evaluator',   durationMs: 700  },
+      { workerId: 'feedback_synthesizer_worker', label: 'Feedback Synthesizer',durationMs: 450  },
+    ]
+
+    let runningTokens = 0
+
+    iterData.forEach((iter, idx) => {
+      setTimeout(() => {
+        // Create child WorkerRun records for this iteration
+        const iterStartedAt = nowIso()
+        const childRunIds: string[] = []
+
+        workerSpecs.forEach(spec => {
+          const childId = genId()
+          childRunIds.push(childId)
+          const childRun: WorkerRun = {
+            id: childId,
+            workerId: spec.workerId,
+            workerLabel: spec.label,
+            objectId,
+            objectTitle,
+            state: 'done',
+            progress: 100,
+            startedAt: iterStartedAt,
+            completedAt: new Date(new Date(iterStartedAt).getTime() + spec.durationMs).toISOString(),
+            durationMs: spec.durationMs,
+            costUsd: iter.costUsd / workerSpecs.length,
+            tokensIn: Math.floor(iter.tokens * 0.7 / workerSpecs.length),
+            tokensOut: Math.floor(iter.tokens * 0.3 / workerSpecs.length),
+            parentRunId: loopId,
+          }
+          set(s => ({ workerRuns: [...s.workerRuns, childRun] }))
+        })
+
+        runningTokens += iter.tokens
+        const budgetConsumedPct = runningTokens / 200000
+
+        const iterationRun: IterationRun = {
+          iteration: idx + 1,
+          score: iter.score,
+          improvement: iter.improvement,
+          valid: true,
+          costUsd: iter.costUsd,
+          tokens: iter.tokens,
+          durationMs: iter.durationMs,
+          workerRunIds: childRunIds,
+          isBest: iter.isBest,
+        }
+
+        set(s => ({
+          loopRuns: s.loopRuns.map(lr => {
+            if (lr.id !== loopId) return lr
+            const newIterations = [...lr.iterations, iterationRun]
+            const bestIdx = newIterations.reduce((bi, it, i) => it.score > newIterations[bi].score ? i : bi, 0)
+            return {
+              ...lr,
+              iterations: newIterations,
+              currentIteration: idx + 1,
+              bestScore: newIterations[bestIdx].score,
+              bestIterationIdx: bestIdx,
+              totalCostUsd: newIterations.reduce((sum, it) => sum + it.costUsd, 0),
+              totalTokens: runningTokens,
+              budgetConsumedPct,
+              // Mark done on last iteration
+              ...(idx === iterData.length - 1 ? {
+                state: 'done' as WorkerRunState,
+                completedAt: nowIso(),
+                converged: true,
+                terminationReason: 'converged' as const,
+                totalCostUsd: 0.56,
+                totalTokens: 130000,
+                budgetConsumedPct: 0.11,
+              } : {}),
+            }
+          }),
+        }))
+      }, (idx + 1) * 3000)
+    })
+
+    return loopId
   },
 }))
 

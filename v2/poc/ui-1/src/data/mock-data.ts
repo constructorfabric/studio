@@ -722,6 +722,36 @@ export const WORKER_DEFS: WorkerDef[] = [
     actionLabel: 'Analyze Impact',
     applicableTypes: ['component', 'pull_request', 'design'],
   },
+  {
+    id: 'feedback_synthesizer_worker',
+    label: 'Feedback Synthesizer',
+    description: 'Synthesizes evaluation results and validation errors into structured feedback for the next iteration of an agentic loop.',
+    requiresAutomationGate: false,
+    category: 'quality',
+    profile: 'on_demand',
+    actionLabel: 'Synthesize Feedback',
+    applicableTypes: ['pull_request', 'task', 'design', 'prd'],
+  },
+  {
+    id: 'code_quality_evaluator',
+    label: 'Code Quality Evaluator',
+    description: 'Measures code quality score (0.0–1.0) across dimensions: design conformance, test coverage, complexity, security. Emits Evidence with breakdown.',
+    requiresAutomationGate: false,
+    category: 'quality',
+    profile: 'analyzer',
+    actionLabel: 'Evaluate Quality',
+    applicableTypes: ['pull_request', 'task'],
+  },
+  {
+    id: 'agentic_code_optimization_loop',
+    label: 'Code Quality Optimization Loop',
+    description: 'Agentic loop: iteratively improves code quality through propose→validate→evaluate→feedback cycles. Converges when improvement < 5% or budget exhausted.',
+    requiresAutomationGate: true,
+    category: 'quality',
+    profile: 'on_demand',
+    actionLabel: 'Run Optimization Loop',
+    applicableTypes: ['pull_request', 'task'],
+  },
 ]
 
 // ─── Workers by Object Type ───────────────────────────────────────────────────

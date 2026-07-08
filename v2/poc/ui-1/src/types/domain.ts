@@ -81,6 +81,46 @@ export interface LogEntry {
   msg: string
 }
 
+export type LoopTerminationReason =
+  | 'converged' | 'maxIterations' | 'budgetExhausted' | 'failed' | 'escalated' | 'aborted'
+
+export interface IterationRun {
+  iteration: number          // 1-based
+  score: number              // quality metric (0.0–1.0)
+  improvement: number        // score delta vs previous (positive = better)
+  valid: boolean             // passed validation
+  costUsd: number
+  tokens: number
+  durationMs: number
+  workerRunIds: string[]     // all child WorkerRun IDs for this iteration
+  isBest: boolean
+}
+
+export interface LoopRun {
+  id: string
+  flowId: string
+  flowLabel: string
+  objectId: string
+  objectTitle: string
+  state: WorkerRunState
+  startedAt: string
+  completedAt?: string
+  // Iteration tracking
+  iterations: IterationRun[]
+  currentIteration: number
+  bestScore: number
+  bestIterationIdx: number   // 0-based index into iterations[]
+  // Convergence
+  converged: boolean
+  terminationReason?: LoopTerminationReason
+  // Budget
+  totalCostUsd: number
+  totalTokens: number
+  budgetConsumedPct: number  // 0.0–1.0
+  maxCostUsd: number
+  maxTokens: number
+}
+
 // ─── Worker Types ─────────────────────────────────────────────────────────────
 
 export type WorkerCategory = 'quality' | 'security' | 'ops' | 'ai-cost' | 'traceability' | 'retrieval' | 'platform'
@@ -193,7 +233,7 @@ export interface Recommendation {
 
 // ─── App View Types ───────────────────────────────────────────────────────────
 
-export type AppView = 'graph' | 'flows' | 'activity' | 'recommendations' | 'files' | 'kits' | 'workspaces' | 'chat' | 'workers' | 'catalog'
+export type AppView = 'graph' | 'flows' | 'activity' | 'recommendations' | 'files' | 'kits' | 'workspaces' | 'chat' | 'workers' | 'catalog' | 'loop'
 
 export interface GraphNodeData {
   object: StudioObject

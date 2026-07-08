@@ -10,6 +10,7 @@ import { RecommendationsPanel } from './components/recommendations/Recommendatio
 import { WorkerRunSimulator } from './components/workers/WorkerRunSimulator'
 import { WorkersMonitor } from './components/workers/WorkersMonitor'
 import { WorkersCatalog } from './components/workers/WorkersCatalog'
+import { AgenticLoopView } from './components/workers/AgenticLoopView'
 import { WorkerInteractionModal } from './components/workers/WorkerInteractionModal'
 import { FileTree } from './components/files/FileTree'
 import { FileViewer } from './components/files/FileViewer'
@@ -90,6 +91,12 @@ export default function App() {
           {activeView === 'catalog' && (
             <div className="flex-1 flex overflow-hidden">
               <WorkersCatalog />
+            </div>
+          )}
+
+          {activeView === 'loop' && (
+            <div className="flex-1 flex overflow-hidden">
+              <AgenticLoopView />
             </div>
           )}
 
