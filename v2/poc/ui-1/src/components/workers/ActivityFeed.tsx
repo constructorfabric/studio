@@ -3,20 +3,37 @@ import { useState } from 'react'
 import { useAppStore } from '../../store/app-store'
 import type { WorkerRun } from '../../types/domain'
 
+const TERMINAL = new Set(['done', 'failed', 'aborted', 'escalated'])
+const ACTIVE    = new Set(['running', 'pending', 'awaiting_input', 'paused'])
+
 export function ActivityFeed() {
-  const workerRuns = useAppStore(s => s.workerRuns)
-  const dismissRunToast = useAppStore(s => s.dismissRunToast)
+  const allRuns      = useAppStore(s => s.workerRuns)
+  const dismissed    = useAppStore(s => s.dismissedRunIds)
+  const dismissRun   = useAppStore(s => s.dismissRunToast)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  const toggleExpand = (id: string) => {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+  const toggle = (id: string) => setExpanded(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  // Visible = not dismissed
+  const visible = allRuns.filter(r => !dismissed.includes(r.id))
+
+  const groups = {
+    active:    visible.filter(r => ACTIVE.has(r.state)),
+    done:      visible.filter(r => r.state === 'done'),
+    failed:    visible.filter(r => r.state === 'failed'),
+    aborted:   visible.filter(r => r.state === 'aborted'),
+    escalated: visible.filter(r => r.state === 'escalated'),
   }
 
-  if (workerRuns.length === 0) {
+  const terminalRuns = [...groups.done, ...groups.failed, ...groups.aborted, ...groups.escalated]
+  const clearAll = () => terminalRuns.forEach(r => dismissRun(r.id))
+  const clearGroup = (runs: WorkerRun[]) => runs.forEach(r => dismissRun(r.id))
+
+  if (visible.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
@@ -30,97 +47,149 @@ export function ActivityFeed() {
     )
   }
 
-  const grouped = {
-    active: workerRuns.filter(r => r.state === 'running' || r.state === 'pending' || r.state === 'awaiting_input'),
-    done: workerRuns.filter(r => r.state === 'done'),
-    failed: workerRuns.filter(r => r.state === 'failed'),
-  }
-
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-6">
-      {grouped.active.length > 0 && (
-        <section>
-          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            Active ({grouped.active.length})
-          </h3>
-          <div className="space-y-2">
-            {grouped.active.map(run => (
-              <RunCard
-                key={run.id}
-                run={run}
-                expanded={expanded.has(run.id)}
-                onToggle={() => toggleExpand(run.id)}
-                onDismiss={() => dismissRunToast(run.id)}
-              />
-            ))}
-          </div>
-        </section>
+    <div className="flex-1 overflow-y-auto">
+      {/* Global header with Clear all */}
+      {terminalRuns.length >= 2 && (
+        <div className="flex items-center justify-end px-4 pt-3 pb-1">
+          <button
+            onClick={clearAll}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1 px-2 py-1 rounded-md hover:bg-zinc-800/60"
+          >
+            <Trash2 size={10} />
+            Clear all
+          </button>
+        </div>
       )}
 
-      {grouped.failed.length > 0 && (
-        <section>
-          <h3 className="text-xs font-semibold text-red-400/80 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            Failed ({grouped.failed.length})
-          </h3>
-          <div className="space-y-2">
-            {grouped.failed.map(run => (
-              <RunCard
-                key={run.id}
-                run={run}
-                expanded={expanded.has(run.id)}
-                onToggle={() => toggleExpand(run.id)}
-                onDismiss={() => dismissRunToast(run.id)}
-              />
+      <div className="p-4 space-y-5">
+        {/* Active */}
+        {groups.active.length > 0 && (
+          <Section
+            label="Active"
+            count={groups.active.length}
+            dotColor="bg-blue-500 animate-pulse"
+            labelColor="text-zinc-400"
+          >
+            {groups.active.map(run => (
+              <RunCard key={run.id} run={run} expanded={expanded.has(run.id)} onToggle={() => toggle(run.id)} />
             ))}
-          </div>
-        </section>
-      )}
+          </Section>
+        )}
 
-      {grouped.done.length > 0 && (
-        <section>
-          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            Completed ({grouped.done.length})
-          </h3>
-          <div className="space-y-2">
-            {grouped.done.map(run => (
-              <RunCard
-                key={run.id}
-                run={run}
-                expanded={expanded.has(run.id)}
-                onToggle={() => toggleExpand(run.id)}
-                onDismiss={() => dismissRunToast(run.id)}
-              />
+        {/* Escalated */}
+        {groups.escalated.length > 0 && (
+          <Section
+            label="Escalated"
+            count={groups.escalated.length}
+            dotColor="bg-orange-500"
+            labelColor="text-orange-400/80"
+            onClearAll={() => clearGroup(groups.escalated)}
+          >
+            {groups.escalated.map(run => (
+              <RunCard key={run.id} run={run} expanded={expanded.has(run.id)} onToggle={() => toggle(run.id)} onDismiss={() => dismissRun(run.id)} />
             ))}
-          </div>
-        </section>
-      )}
+          </Section>
+        )}
+
+        {/* Failed */}
+        {groups.failed.length > 0 && (
+          <Section
+            label="Failed"
+            count={groups.failed.length}
+            dotColor="bg-red-500"
+            labelColor="text-red-400/80"
+            onClearAll={() => clearGroup(groups.failed)}
+          >
+            {groups.failed.map(run => (
+              <RunCard key={run.id} run={run} expanded={expanded.has(run.id)} onToggle={() => toggle(run.id)} onDismiss={() => dismissRun(run.id)} />
+            ))}
+          </Section>
+        )}
+
+        {/* Aborted */}
+        {groups.aborted.length > 0 && (
+          <Section
+            label="Aborted"
+            count={groups.aborted.length}
+            dotColor="bg-zinc-500"
+            labelColor="text-zinc-400/80"
+            onClearAll={() => clearGroup(groups.aborted)}
+          >
+            {groups.aborted.map(run => (
+              <RunCard key={run.id} run={run} expanded={expanded.has(run.id)} onToggle={() => toggle(run.id)} onDismiss={() => dismissRun(run.id)} />
+            ))}
+          </Section>
+        )}
+
+        {/* Done */}
+        {groups.done.length > 0 && (
+          <Section
+            label="Completed"
+            count={groups.done.length}
+            dotColor="bg-emerald-500"
+            labelColor="text-zinc-400"
+            onClearAll={() => clearGroup(groups.done)}
+          >
+            {groups.done.map(run => (
+              <RunCard key={run.id} run={run} expanded={expanded.has(run.id)} onToggle={() => toggle(run.id)} onDismiss={() => dismissRun(run.id)} />
+            ))}
+          </Section>
+        )}
+      </div>
     </div>
   )
 }
 
+function Section({
+  label, count, dotColor, labelColor, onClearAll, children,
+}: {
+  label: string
+  count: number
+  dotColor: string
+  labelColor: string
+  onClearAll?: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className={`text-xs font-semibold ${labelColor} uppercase tracking-wider flex items-center gap-2`}>
+          <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+          {label} ({count})
+        </h3>
+        {onClearAll && count >= 1 && (
+          <button
+            onClick={onClearAll}
+            className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+            title={`Clear ${label.toLowerCase()}`}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="space-y-2">{children}</div>
+    </section>
+  )
+}
+
 function RunCard({
-  run,
-  expanded,
-  onToggle,
-  onDismiss,
+  run, expanded, onToggle, onDismiss,
 }: {
   run: WorkerRun
   expanded: boolean
   onToggle: () => void
-  onDismiss: () => void
+  onDismiss?: () => void
 }) {
-  const stateConfig = {
-    pending:        { icon: <Clock size={14} className="text-zinc-400" />,                         border: 'border-zinc-700',       headerBg: 'bg-zinc-900' },
-    running:        { icon: <Loader size={14} className="text-blue-400 animate-spin" />,           border: 'border-blue-800/40',    headerBg: 'bg-zinc-900' },
-    awaiting_input: { icon: <AlertCircle size={14} className="text-amber-400" />,                  border: 'border-amber-700/50',   headerBg: 'bg-amber-950/20' },
-    done:           { icon: <CheckCircle size={14} className="text-emerald-400" />,                border: 'border-emerald-800/30', headerBg: 'bg-zinc-900' },
-    failed:         { icon: <XCircle size={14} className="text-red-400" />,                        border: 'border-red-800/40',     headerBg: 'bg-red-950/20' },
-    paused:         { icon: <AlertCircle size={14} className="text-amber-400" />,                  border: 'border-amber-700/50',   headerBg: 'bg-zinc-900' },
-    aborted:        { icon: <XCircle size={14} className="text-zinc-400" />,                       border: 'border-zinc-700',       headerBg: 'bg-zinc-900' },
-    escalated:      { icon: <AlertCircle size={14} className="text-orange-400" />,                 border: 'border-orange-700/50',  headerBg: 'bg-orange-950/20' },
+  const cfg = {
+    pending:        { icon: <Clock size={14} className="text-zinc-400" />,                border: 'border-zinc-700',       headerBg: 'bg-zinc-900' },
+    running:        { icon: <Loader size={14} className="text-blue-400 animate-spin" />, border: 'border-blue-800/40',    headerBg: 'bg-zinc-900' },
+    awaiting_input: { icon: <AlertCircle size={14} className="text-amber-400" />,         border: 'border-amber-700/50',   headerBg: 'bg-amber-950/20' },
+    paused:         { icon: <AlertCircle size={14} className="text-amber-400" />,         border: 'border-amber-700/50',   headerBg: 'bg-zinc-900' },
+    done:           { icon: <CheckCircle size={14} className="text-emerald-400" />,       border: 'border-emerald-800/30', headerBg: 'bg-zinc-900' },
+    failed:         { icon: <XCircle size={14} className="text-red-400" />,               border: 'border-red-800/40',     headerBg: 'bg-red-950/20' },
+    aborted:        { icon: <XCircle size={14} className="text-zinc-400" />,              border: 'border-zinc-700',       headerBg: 'bg-zinc-900' },
+    escalated:      { icon: <AlertCircle size={14} className="text-orange-400" />,        border: 'border-orange-700/50',  headerBg: 'bg-orange-950/20' },
   }[run.state] ?? { icon: <Clock size={14} className="text-zinc-400" />, border: 'border-zinc-700', headerBg: 'bg-zinc-900' }
 
   const duration = run.completedAt
@@ -128,57 +197,47 @@ function RunCard({
     : null
 
   return (
-    <div className={`border ${stateConfig.border} rounded-xl overflow-hidden fade-in`}>
-      <div className={`${stateConfig.headerBg} px-3 py-2.5 flex items-center gap-2`}>
-        {stateConfig.icon}
+    <div className={`border ${cfg.border} rounded-xl overflow-hidden fade-in`}>
+      <div className={`${cfg.headerBg} px-3 py-2.5 flex items-center gap-2`}>
+        {cfg.icon}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-zinc-200 truncate">{run.workerLabel}</p>
             <div className="flex items-center gap-1 shrink-0 ml-2">
-              {duration !== null && (
-                <span className="text-[10px] text-zinc-500">{duration}s</span>
-              )}
+              {duration !== null && <span className="text-[10px] text-zinc-500">{duration}s</span>}
               <button onClick={onToggle} className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors">
                 {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </button>
-              <button onClick={onDismiss} className="p-1 text-zinc-600 hover:text-red-400 transition-colors">
-                <Trash2 size={12} />
-              </button>
+              {onDismiss && (
+                <button onClick={onDismiss} className="p-1 text-zinc-600 hover:text-red-400 transition-colors" title="Dismiss">
+                  <Trash2 size={12} />
+                </button>
+              )}
             </div>
           </div>
           <p className="text-[11px] text-zinc-500 truncate">on: {run.objectTitle}</p>
         </div>
       </div>
 
-      {/* Progress bar for active runs */}
       {(run.state === 'running' || run.state === 'pending') && (
         <div className="px-3 py-1.5 bg-zinc-950/50">
           <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{
-                width: `${run.progress}%`,
-                background: 'linear-gradient(90deg, #4f46e5, #6366f1, #818cf8)',
-              }}
-            />
+            <div className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${run.progress}%`, background: 'linear-gradient(90deg, #4f46e5, #6366f1, #818cf8)' }} />
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-[10px] text-zinc-600">{Math.round(run.progress)}% complete</span>
-            <span className="text-[10px] text-zinc-600">
-              {new Date(run.startedAt).toLocaleTimeString()}
-            </span>
+            <span className="text-[10px] text-zinc-600">{new Date(run.startedAt).toLocaleTimeString()}</span>
           </div>
         </div>
       )}
 
-      {/* Awaiting input state */}
       {run.state === 'awaiting_input' && (
         <div className="px-3 py-2 bg-amber-950/20 border-t border-amber-800/30">
           <p className="text-[11px] text-amber-300">Waiting for your input to continue…</p>
         </div>
       )}
 
-      {/* Expanded details */}
       {expanded && (
         <div className="px-3 pb-3 pt-1 space-y-2 border-t border-zinc-800">
           <div className="flex gap-4 text-[11px] text-zinc-500">
