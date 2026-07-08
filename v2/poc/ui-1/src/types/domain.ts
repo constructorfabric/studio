@@ -131,6 +131,7 @@ export interface WorkerRun {
   durationMs?: number
   logs?: LogEntry[]
   createdObjectIds?: string[]
+  parentRunId?: string   // ID of the FlowRun or WorkerRun that spawned this run
 }
 
 // ─── Flow Types ───────────────────────────────────────────────────────────────
@@ -192,7 +193,7 @@ export interface Recommendation {
 
 // ─── App View Types ───────────────────────────────────────────────────────────
 
-export type AppView = 'graph' | 'flows' | 'activity' | 'recommendations' | 'files' | 'kits' | 'workspaces' | 'chat' | 'workers'
+export type AppView = 'graph' | 'flows' | 'activity' | 'recommendations' | 'files' | 'kits' | 'workspaces' | 'chat' | 'workers' | 'catalog'
 
 export interface GraphNodeData {
   object: StudioObject

@@ -67,8 +67,12 @@ interface AppState {
   toggleFolder: (folderId: string) => void
   setLineAction: (action: LineAction) => void
 
+  selectedMonitorRunId: string | null
+  setSelectedMonitorRun: (id: string | null) => void
+  navigateToMonitor: (runId: string) => void  // sets activeView:'workers' and selectedMonitorRunId
+
   // Worker actions
-  runWorker: (workerId: string, objectId: string) => string
+  runWorker: (workerId: string, objectId: string, options?: { parentRunId?: string }) => string
   runWorkerOnFile: (workerId: string, fileId: string) => string
   respondToInteraction: (runId: string, response: string) => void
   cancelWorkerRun: (runId: string, cascade?: boolean) => void
@@ -160,6 +164,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   chatOpen: false,
   chatHeight: 320,
   dismissedRunIds: [],
+  selectedMonitorRunId: null,
   openFileId: null,
   fileContents: {},
   modifiedFiles: new Set(),
@@ -205,8 +210,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
   setLineAction: (action) => set({ lineAction: action }),
 
+  setSelectedMonitorRun: (id) => set({ selectedMonitorRunId: id }),
+  navigateToMonitor: (runId) => set({ activeView: 'workers', selectedMonitorRunId: runId }),
+
   // ─── Worker Run ─────────────────────────────────────────────────────────────
-  runWorker: (workerId, objectId) => {
+  runWorker: (workerId, objectId, options?) => {
     const workerDef = WORKER_DEFS.find(w => w.id === workerId)
     const obj = get().objects.find(o => o.id === objectId)
     if (!workerDef || !obj) return ''
@@ -223,6 +231,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       startedAt: nowIso(),
       logs: [],
       createdObjectIds: [],
+      parentRunId: options?.parentRunId,
     }
 
     set(state => ({ workerRuns: [run, ...state.workerRuns] }))
@@ -489,6 +498,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           : null,
       }))
 
+      // Spawn a WorkerRun for this step, parented to the FlowRun
+      const targetObj = get().objects[0]
+      if (targetObj && step.workerId) {
+        get().runWorker(step.workerId, targetObj.id, { parentRunId: flowRunId })
+      }
+
       setTimeout(() => {
         // Complete step
         set(state => ({
@@ -550,6 +565,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nodeStates: Record<string, FlowNodeExecState> = {}
     flow.nodes.forEach(n => { nodeStates[n.id] = 'idle' })
 
+    // Create a FlowRun to track this graph execution in the monitor tree
+    const activeFlowRunId = genId()
+    const stepStatus: Record<string, FlowStepStatus> = {}
+    flow.nodes.filter(n => n.nodeType === 'worker').forEach(n => { stepStatus[n.id] = 'pending' })
+    const activeFlowRun: FlowRun = {
+      id: activeFlowRunId,
+      flowId,
+      flowLabel: flow.name,
+      state: 'running',
+      completedSteps: [],
+      skippedSteps: [],
+      stepStatus,
+      startedAt: nowIso(),
+    }
+
     set({
       flowExecState: {
         flowId,
@@ -563,6 +593,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         inputResponses: {},
       },
       activeView: 'flows',
+      activeFlowRun,
     })
 
     // Async step-by-step execution with pauses for user interactions
@@ -596,14 +627,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (node.nodeType === 'end') {
         setNode('done')
         await sleep(400)
-        set(s => ({ flowExecState: s.flowExecState ? { ...s.flowExecState, status: 'done', currentNodeId: null } : null }))
+        const completedFlowRun: FlowRun = { ...activeFlowRun, state: 'done', completedAt: nowIso() }
+        set(s => ({
+          flowExecState: s.flowExecState ? { ...s.flowExecState, status: 'done', currentNodeId: null } : null,
+          activeFlowRun: null,
+          completedFlowRuns: [...s.completedFlowRuns, completedFlowRun],
+        }))
         return
       }
 
       if (node.nodeType === 'escalation') {
         setNode('done')
         await sleep(500)
-        set(s => ({ flowExecState: s.flowExecState ? { ...s.flowExecState, status: 'done', currentNodeId: null } : null }))
+        const completedFlowRun: FlowRun = { ...activeFlowRun, state: 'failed', completedAt: nowIso() }
+        set(s => ({
+          flowExecState: s.flowExecState ? { ...s.flowExecState, status: 'done', currentNodeId: null } : null,
+          activeFlowRun: null,
+          completedFlowRuns: [...s.completedFlowRuns, completedFlowRun],
+        }))
         return
       }
 
@@ -622,6 +663,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (node.nodeType === 'worker' || node.nodeType === 'human') {
         setNode('running')
+        // Spawn a WorkerRun parented to the FlowRun for monitor tree
+        const targetObj = get().objects[0]
+        if (targetObj && node.nodeType === 'worker') {
+          // Find a worker def that matches the node label (best effort)
+          const workerDef = WORKER_DEFS.find(w => w.label === node.label) ?? WORKER_DEFS[0]
+          if (workerDef) {
+            get().runWorker(workerDef.id, targetObj.id, { parentRunId: activeFlowRunId })
+          }
+        }
         const dur = node.nodeType === 'human' ? 800 : (1200 + Math.random() * 800)
         await sleep(dur)
         // Mid-run interaction?

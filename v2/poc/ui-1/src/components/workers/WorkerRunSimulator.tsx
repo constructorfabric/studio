@@ -85,6 +85,7 @@ function RunToast({
   onToggle: () => void
   onDismiss?: () => void
 }) {
+  const navigateToMonitor = useAppStore(s => s.navigateToMonitor)
   const stateConfig = {
     pending: {
       icon: <Loader size={14} className="text-zinc-400 animate-spin" />,
@@ -150,7 +151,10 @@ function RunToast({
       className={`bg-zinc-900 border ${stateConfig.border} rounded-xl shadow-2xl overflow-hidden backdrop-blur`}
     >
       {/* Header row */}
-      <div className="flex items-center gap-2 px-3 py-2.5">
+      <div
+        className="flex items-center gap-2 px-3 py-2.5 cursor-pointer"
+        onClick={() => navigateToMonitor(run.id)}
+      >
         {stateConfig.icon}
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-zinc-200 truncate">{run.workerLabel}</p>
@@ -158,11 +162,18 @@ function RunToast({
         </div>
         <span className={`text-[10px] font-medium shrink-0 ${stateConfig.labelColor}`}>{stateConfig.label}</span>
         <div className="flex items-center gap-1">
-          <button onClick={onToggle} className="p-1 rounded text-zinc-500 hover:text-zinc-300 transition-colors">
+          <button
+            onClick={e => { e.stopPropagation(); onToggle() }}
+            className="p-1 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
             {expanded ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
           </button>
           {onDismiss && (
-            <button onClick={onDismiss} className="p-1 rounded text-zinc-500 hover:text-zinc-300 transition-colors" title="Dismiss">
+            <button
+              onClick={e => { e.stopPropagation(); onDismiss() }}
+              className="p-1 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+              title="Dismiss"
+            >
               <X size={12} />
             </button>
           )}
