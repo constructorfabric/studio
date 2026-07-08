@@ -143,28 +143,35 @@ export const CustomNode = memo(({ data, selected }: NodeProps) => {
               overflow: 'hidden',
             }}>
               <div style={{
-                width: `${object.stalenessScore}%`,
+                width: `${Math.round(object.stalenessScore * 100)}%`,
                 height: '100%',
-                background: object.stalenessScore > 60 ? '#ef4444' : object.stalenessScore > 30 ? '#f59e0b' : '#3b82f6',
+                background: object.stalenessScore > 0.6 ? '#ef4444' : object.stalenessScore > 0.3 ? '#f59e0b' : '#3b82f6',
                 borderRadius: 2,
               }} />
             </div>
-            <span style={{ fontSize: 9, color: '#71717a' }}>{object.stalenessScore}%</span>
+            <span style={{ fontSize: 9, color: '#71717a' }}>{Math.round(object.stalenessScore * 100)}%</span>
           </div>
         )}
       </div>
 
-      {/* Handles */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{ background: typeConfig.border, width: 8, height: 8, border: '2px solid #09090b' }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ background: typeConfig.border, width: 8, height: 8, border: '2px solid #09090b' }}
-      />
+      {/* Handles — all four sides, both source and target, for smart edge routing */}
+      {(['left', 'right', 'top', 'bottom'] as const).map(pos => (
+        ['source', 'target'].map(htype => (
+          <Handle
+            key={`${htype}-${pos}`}
+            id={pos}
+            type={htype as 'source' | 'target'}
+            position={Position[pos.charAt(0).toUpperCase() + pos.slice(1) as 'Left' | 'Right' | 'Top' | 'Bottom']}
+            style={{
+              background: typeConfig.border,
+              width: 6,
+              height: 6,
+              border: '2px solid #09090b',
+              opacity: 0,
+            }}
+          />
+        ))
+      ))}
     </div>
   )
 })

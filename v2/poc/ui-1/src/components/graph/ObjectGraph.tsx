@@ -15,6 +15,45 @@ import { CustomNode } from './CustomNode'
 import { MOCK_OBJECTS, NODE_POSITIONS } from '../../data/mock-data'
 import type { StudioObject } from '../../types/domain'
 
+type HandleSide = 'left' | 'right' | 'top' | 'bottom'
+
+function getEdgeHandles(
+  srcPos: { x: number; y: number },
+  tgtPos: { x: number; y: number },
+  hasReverse: boolean,
+  isFirstOfPair: boolean,
+): { sourceHandle: HandleSide; targetHandle: HandleSide } {
+  const dx = tgtPos.x - srcPos.x
+  const dy = tgtPos.y - srcPos.y
+  const absDx = Math.abs(dx)
+  const absDy = Math.abs(dy)
+
+  // Primarily horizontal movement
+  if (absDx >= absDy) {
+    if (dx > 0) {
+      // Forward left→right: connect right→left directly
+      if (hasReverse) {
+        // Bidirectional: offset one via top, one via bottom
+        return isFirstOfPair
+          ? { sourceHandle: 'top', targetHandle: 'top' }
+          : { sourceHandle: 'bottom', targetHandle: 'bottom' }
+      }
+      return { sourceHandle: 'right', targetHandle: 'left' }
+    } else {
+      // Backward right→left: always arc over or under to avoid crossing forward edges
+      return dy <= 0
+        ? { sourceHandle: 'top', targetHandle: 'top' }
+        : { sourceHandle: 'bottom', targetHandle: 'bottom' }
+    }
+  }
+
+  // Primarily vertical
+  if (dy > 0) {
+    return { sourceHandle: 'bottom', targetHandle: 'top' }
+  }
+  return { sourceHandle: 'top', targetHandle: 'bottom' }
+}
+
 const nodeTypes: NodeTypes = {
   customNode: CustomNode,
 }
@@ -65,8 +104,18 @@ export function ObjectGraph() {
   )
 
   const edges: Edge[] = useMemo(() => {
+    // Pre-build a set of all (source, target) pairs to detect bidirectional edges
+    const allPairs = new Set<string>()
+    objects.forEach((obj: StudioObject) => {
+      obj.links.forEach(link => allPairs.add(`${obj.id}→${link.targetId}`))
+    })
+
+    // Track which bidirectional pairs we've seen (to alternate top/bottom)
+    const biDirSeen = new Set<string>()
+
     const result: Edge[] = []
     const seen = new Set<string>()
+
     objects.forEach((obj: StudioObject) => {
       obj.links.forEach(link => {
         const edgeId = `${obj.id}-${link.targetId}-${link.kind}`
@@ -76,17 +125,29 @@ export function ObjectGraph() {
         const isConnected = selectedObjectId !== null &&
           (obj.id === selectedObjectId || link.targetId === selectedObjectId)
 
-        // When nothing selected: hide all edges
-        // When something selected: show connected edges fully, dim others
         const opacity = selectedObjectId === null ? 0 : isConnected ? 1 : 0.08
-        const color = isConnected
-          ? (EDGE_KIND_COLORS[link.kind] ?? '#52525b')
-          : '#52525b'
+        const color = isConnected ? (EDGE_KIND_COLORS[link.kind] ?? '#52525b') : '#52525b'
+
+        // Determine smart handles based on node positions
+        const srcPos = NODE_POSITIONS[obj.id] ?? { x: 0, y: 0 }
+        const tgtPos = NODE_POSITIONS[link.targetId] ?? { x: 0, y: 0 }
+        const reverseKey = `${link.targetId}→${obj.id}`
+        const hasReverse = allPairs.has(reverseKey)
+        const pairKey = [obj.id, link.targetId].sort().join('↔')
+        const isFirstOfPair = !biDirSeen.has(pairKey)
+        if (hasReverse) biDirSeen.add(pairKey)
+
+        const { sourceHandle, targetHandle } = getEdgeHandles(
+          srcPos, tgtPos, hasReverse, isFirstOfPair,
+        )
 
         result.push({
           id: edgeId,
           source: obj.id,
           target: link.targetId,
+          sourceHandle,
+          targetHandle,
+          type: 'bezier',
           label: isConnected ? link.kind.replace(/_/g, ' ') : undefined,
           labelStyle: { fontSize: 9, fill: '#a1a1aa', fontFamily: 'Inter, sans-serif' },
           labelBgStyle: { fill: '#09090b', fillOpacity: 0.9 },
@@ -131,7 +192,7 @@ export function ObjectGraph() {
         minZoom={0.2}
         maxZoom={2}
         defaultEdgeOptions={{
-          type: 'smoothstep',
+          type: 'bezier',
         }}
         proOptions={{ hideAttribution: true }}
       >

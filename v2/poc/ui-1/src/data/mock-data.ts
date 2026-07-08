@@ -233,19 +233,25 @@ export const MOCK_OBJECTS: StudioObject[] = [
 // ─── Graph Node Positions ─────────────────────────────────────────────────────
 
 export const NODE_POSITIONS: Record<string, { x: number; y: number }> = {
-  'prd-001':    { x: 60,   y: 200 },
-  'adr-001':    { x: 60,   y: 60  },
-  'adr-002':    { x: 60,   y: 340 },
-  'design-001': { x: 320,  y: 200 },
-  'decomp-001': { x: 580,  y: 200 },
-  'task-001':   { x: 840,  y: 80  },
-  'task-002':   { x: 840,  y: 220 },
-  'task-003':   { x: 840,  y: 360 },
-  'fspec-001':  { x: 1100, y: 80  },
-  'fspec-002':  { x: 1100, y: 220 },
-  'pr-001':     { x: 1360, y: 80  },
-  'build-001':  { x: 1620, y: 80  },
-  'inc-001':    { x: 1360, y: 300 },
+  // ADRs flank the PRD vertically — enough gap for informs-arcs to curve cleanly
+  'adr-001':    { x: 0,    y: 0   },
+  'prd-001':    { x: 0,    y: 240 },
+  'adr-002':    { x: 0,    y: 480 },
+  // Main SDLC chain flows left→right on the centre lane
+  'design-001': { x: 340,  y: 240 },
+  'decomp-001': { x: 660,  y: 240 },
+  // Tasks spread vertically around the centre
+  'task-001':   { x: 980,  y: 100 },
+  'task-002':   { x: 980,  y: 240 },
+  'task-003':   { x: 980,  y: 380 },
+  // Feature specs beside their tasks
+  'fspec-001':  { x: 1300, y: 100 },
+  'fspec-002':  { x: 1300, y: 240 },
+  // PR and build continue the chain
+  'pr-001':     { x: 1620, y: 100 },
+  'build-001':  { x: 1940, y: 100 },
+  // Incident sits below the PR lane
+  'inc-001':    { x: 1620, y: 380 },
 }
 
 // ─── Worker Definitions ───────────────────────────────────────────────────────
