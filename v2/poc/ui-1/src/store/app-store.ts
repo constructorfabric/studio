@@ -653,12 +653,109 @@ export const useAppStore = create<AppState>((set, get) => ({
       return (sel ? get().objects.find(o => o.id === sel) : null) ?? get().objects[0]
     }
 
-    // Find the best-matching WorkerDef for a node: prefer explicit workerId, then label match
+    // Deterministic node-label → workerId map (avoids substring bugs like "Create PR" matching "Create PRD")
+    const LABEL_TO_WORKER_ID: Record<string, string> = {
+      'create pr': 'create_pr_worker',
+      'create fix pr': 'create_pr_worker',
+      'create hotfix pr': 'create_pr_worker',
+      'create prd': 'create_prd_worker',
+      'draft prd': 'create_prd_worker',
+      'refine requirements': 'create_prd_worker',
+      'requirements refiner': 'create_prd_worker',
+      'create design': 'create_design_worker',
+      'design author': 'create_design_worker',
+      'draft design': 'create_design_worker',
+      'create adr': 'create_adr_worker',
+      'draft adr': 'create_adr_worker',
+      'create feature spec': 'create_feature_spec_worker',
+      'spec author': 'create_feature_spec_worker',
+      'implement code': 'implement_code_worker',
+      'implement': 'implement_code_worker',
+      'implement fix': 'implement_code_worker',
+      'hotfix implementation': 'implement_code_worker',
+      'test generator': 'implement_code_worker',
+      'write failing tests': 'implement_code_worker',
+      'implement to pass': 'implement_code_worker',
+      'decompose tasks': 'decompose_feature_worker',
+      'decompose': 'decompose_feature_worker',
+      'gap analysis': 'gap_analysis_validator',
+      'validate completeness': 'gap_analysis_validator',
+      'completeness check': 'gap_analysis_validator',
+      'prd gaps': 'gap_analysis_validator',
+      'control gaps': 'gap_analysis_validator',
+      'triage failures': 'gap_analysis_validator',
+      'final gap analysis': 'gap_analysis_validator',
+      'test coverage': 'test_coverage_validator',
+      'test coverage (>=80%)': 'test_coverage_validator',
+      'validate coverage': 'test_coverage_validator',
+      'coverage check': 'test_coverage_validator',
+      'run coverage': 'test_coverage_validator',
+      'measure coverage score': 'code_quality_evaluator',
+      'confirm test fails': 'confirm_test_fails_validator',
+      'confirm tests fail': 'confirm_test_fails_validator',
+      'confirm test passes': 'confirm_test_passes_validator',
+      'confirm tests pass': 'confirm_test_passes_validator',
+      'verify fix': 'confirm_test_passes_validator',
+      'smoke tests': 'confirm_test_passes_validator',
+      'security scan': 'security_scan_validator',
+      'security verify': 'security_scan_validator',
+      'verify remediations': 'security_impact_analysis',
+      'security impact': 'security_impact_analysis',
+      'security impact analysis': 'security_impact_analysis',
+      'security review': 'security_impact_analysis',
+      'pr design validation': 'pr_design_validator',
+      'design validation': 'pr_design_validator',
+      'design conformance': 'pr_design_validator',
+      'expedited review': 'pr_design_validator',
+      'validate against design': 'pr_design_validator',
+      'validate prd gaps': 'gap_analysis_validator',
+      'traceability': 'traceability_analysis',
+      'prd traceability': 'traceability_analysis',
+      'trace coverage': 'traceability_analysis',
+      'trace to prd': 'traceability_analysis',
+      'identify test scope': 'traceability_analysis',
+      'bug description validation': 'bug_description_validator',
+      'validate bug': 'bug_description_validator',
+      'describe incident': 'bug_description_validator',
+      'validate incident': 'bug_description_validator',
+      'find root component': 'find_suspected_component',
+      'package release': 'create_release_worker',
+      'deploy to staging': 'deploy_to_staging_worker',
+      'deploy to production': 'deploy_to_prod_worker',
+      'deploy to prod': 'deploy_to_prod_worker',
+      'tech lead approval': 'tech_lead_approval',
+      'architecture review': 'tech_lead_approval',
+      'architecture approval': 'tech_lead_approval',
+      'stakeholder approval': 'tech_lead_approval',
+      'sprint planning approval': 'tech_lead_approval',
+      'sprint approval': 'tech_lead_approval',
+      'production approval': 'tech_lead_approval',
+      'postmortem sign-off': 'tech_lead_approval',
+      'security sign-off': 'tech_lead_approval',
+      'qa sign-off': 'tech_lead_approval',
+      'final approval': 'tech_lead_approval',
+      'approve spec': 'tech_lead_approval',
+      'peer review': 'tech_lead_approval',
+      'quality evaluator': 'code_quality_evaluator',
+      'coverage evaluator': 'code_quality_evaluator',
+      'conformance analyzer': 'code_quality_evaluator',
+      'evaluate quality': 'code_quality_evaluator',
+      'evaluate conformance': 'code_quality_evaluator',
+      'measure quality score': 'code_quality_evaluator',
+      'feedback synthesizer': 'feedback_synthesizer_worker',
+      'gap synthesizer': 'feedback_synthesizer_worker',
+      'identify gaps': 'feedback_synthesizer_worker',
+      'synthesize feedback': 'feedback_synthesizer_worker',
+    }
+
+    // Find the best-matching WorkerDef: prefer explicit workerId, then label map, then exact match
     const resolveWorker = (node: FlowGraphNode) => {
       if (node.workerId) return WORKER_DEFS.find(w => w.id === node.workerId) ?? null
-      // Fuzzy: find a worker whose label is contained in the node label or vice versa
-      const nLabel = node.label.toLowerCase()
-      return WORKER_DEFS.find(w => nLabel.includes(w.label.toLowerCase()) || w.label.toLowerCase().includes(nLabel)) ?? null
+      const nLabel = node.label.toLowerCase().trim()
+      const mappedId = LABEL_TO_WORKER_ID[nLabel]
+      if (mappedId) return WORKER_DEFS.find(w => w.id === mappedId) ?? null
+      // Exact label match only (no fuzzy — too error-prone)
+      return WORKER_DEFS.find(w => w.label.toLowerCase() === nLabel) ?? null
     }
 
     // Pause guard: wait until status is no longer 'paused'
