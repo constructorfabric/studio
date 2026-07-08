@@ -72,6 +72,7 @@ interface AppState {
   respondToInteraction: (runId: string, response: string) => void
   cancelWorkerRun: (runId: string, cascade?: boolean) => void
   dismissRunToast: (runId: string) => void
+  clearAllRunToasts: () => void   // atomically dismiss all current terminal runs
 
   // Flow actions
   runFlow: (flowId: string) => void
@@ -326,6 +327,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? state.dismissedRunIds
         : [...state.dismissedRunIds, runId],
     }))
+  },
+
+  // Atomic clear-all: dismiss every currently visible terminal run in one set() call
+  // so Zustand can't batch/race individual forEach dismissals.
+  clearAllRunToasts: () => {
+    set(state => {
+      const TERMINAL = new Set(['done', 'failed', 'aborted', 'escalated'])
+      const terminalIds = state.workerRuns
+        .filter(r => TERMINAL.has(r.state) && !state.dismissedRunIds.includes(r.id))
+        .map(r => r.id)
+      if (terminalIds.length === 0) return {}
+      return { dismissedRunIds: [...state.dismissedRunIds, ...terminalIds] }
+    })
   },
 
   // ─── Flow Actions ────────────────────────────────────────────────────────────

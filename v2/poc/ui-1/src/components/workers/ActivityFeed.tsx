@@ -8,8 +8,9 @@ const ACTIVE    = new Set(['running', 'pending', 'awaiting_input', 'paused'])
 
 export function ActivityFeed() {
   const allRuns      = useAppStore(s => s.workerRuns)
-  const dismissed    = useAppStore(s => s.dismissedRunIds)
-  const dismissRun   = useAppStore(s => s.dismissRunToast)
+  const dismissed         = useAppStore(s => s.dismissedRunIds)
+  const dismissRun        = useAppStore(s => s.dismissRunToast)
+  const clearAllRunToasts = useAppStore(s => s.clearAllRunToasts)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const toggle = (id: string) => setExpanded(prev => {
@@ -30,7 +31,7 @@ export function ActivityFeed() {
   }
 
   const terminalRuns = [...groups.done, ...groups.failed, ...groups.aborted, ...groups.escalated]
-  const clearAll = () => terminalRuns.forEach(r => dismissRun(r.id))
+  const clearAll = clearAllRunToasts   // atomic single set() — no forEach race
   const clearGroup = (runs: WorkerRun[]) => runs.forEach(r => dismissRun(r.id))
 
   if (visible.length === 0) {

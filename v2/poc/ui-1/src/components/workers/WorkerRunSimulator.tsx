@@ -11,7 +11,8 @@ const TERMINAL_STATES = new Set(['done', 'failed', 'aborted', 'escalated'])
 export function WorkerRunSimulator() {
   const activeRuns = useAppStore(selectActiveWorkerRuns)
   const dismissedRunIds = useAppStore(s => s.dismissedRunIds)
-  const dismissRunToast = useAppStore(s => s.dismissRunToast)
+  const dismissRunToast   = useAppStore(s => s.dismissRunToast)
+  const clearAllRunToasts = useAppStore(s => s.clearAllRunToasts)
 
   // Terminal runs that haven't been dismissed yet
   const terminalRuns = useAppStore(s =>
@@ -30,9 +31,7 @@ export function WorkerRunSimulator() {
     })
   }
 
-  const clearAll = () => {
-    terminalRuns.forEach(r => dismissRunToast(r.id))
-  }
+  const clearAll = clearAllRunToasts
 
   const allVisible = [...activeRuns, ...terminalRuns]
 
