@@ -1362,3 +1362,107 @@ export const MOCK_WORKER_RUNS: WorkerRun[] = [
   // Incident-001
   h('hr-100','gap_analysis_validator','Gap Analysis','incident-001','Billing duplicate charge INC-441','failed','2026-07-06T08:00:00Z',1200,0.04,1400,180,'claude-haiku-4-5',undefined,'Analysis failed: root cause not documented. No postmortem linked. 2 critical gaps.'),
 ]
+
+// ─── Agentic Loop Mock Data ───────────────────────────────────────────────────
+
+import type { LoopRun, IterationRun } from '../types/domain'
+
+function mkIter(
+  iteration: number, score: number, prevScore: number,
+  costUsd: number, tokens: number, durationMs: number,
+  runIds: string[], isBest = false,
+): IterationRun {
+  return {
+    iteration, score,
+    improvement: iteration === 1 ? score : score - prevScore,
+    valid: true, costUsd, tokens, durationMs,
+    workerRunIds: runIds, isBest,
+  }
+}
+
+export const MOCK_LOOP_RUNS: LoopRun[] = [
+  // ── Loop 1: Code quality optimization on PR — converged ─────────────────────
+  {
+    id: 'loop-001',
+    flowId: 'agentic_code_optimization_loop',
+    flowLabel: 'Code Quality Optimization',
+    objectId: 'pr-001',
+    objectTitle: 'feat/stripe-webhook-handler',
+    state: 'done',
+    startedAt: '2026-07-06T10:00:00Z',
+    completedAt: '2026-07-06T10:01:54Z',
+    iterations: [
+      mkIter(1, 0.62, 0,    0.14, 32000, 8200,  ['loop-001-p1','loop-001-v1','loop-001-e1','loop-001-f1']),
+      mkIter(2, 0.78, 0.62, 0.15, 34000, 7900,  ['loop-001-p2','loop-001-v2','loop-001-e2','loop-001-f2']),
+      mkIter(3, 0.84, 0.78, 0.13, 31000, 7400,  ['loop-001-p3','loop-001-v3','loop-001-e3','loop-001-f3']),
+      mkIter(4, 0.87, 0.84, 0.14, 33000, 7200,  ['loop-001-p4','loop-001-v4','loop-001-e4','loop-001-f4'], true),
+    ],
+    currentIteration: 4, bestScore: 0.87, bestIterationIdx: 3,
+    converged: true, terminationReason: 'converged',
+    totalCostUsd: 0.56, totalTokens: 130000, budgetConsumedPct: 0.11,
+    maxCostUsd: 5.00, maxTokens: 200000,
+  },
+
+  // ── Loop 2: Design conformance check on design-001 — budget exhausted ───────
+  {
+    id: 'loop-002',
+    flowId: 'agentic_code_optimization_loop',
+    flowLabel: 'Design Conformance Refinement',
+    objectId: 'design-001',
+    objectTitle: 'Billing Service Architecture',
+    state: 'done',
+    startedAt: '2026-07-05T14:30:00Z',
+    completedAt: '2026-07-05T14:34:10Z',
+    iterations: [
+      mkIter(1, 0.51, 0,    0.38, 82000, 14200, ['loop-002-p1','loop-002-v1','loop-002-e1','loop-002-f1']),
+      mkIter(2, 0.63, 0.51, 0.41, 87000, 13800, ['loop-002-p2','loop-002-v2','loop-002-e2','loop-002-f2']),
+      mkIter(3, 0.71, 0.63, 0.39, 84000, 14400, ['loop-002-p3','loop-002-v3','loop-002-e3','loop-002-f3']),
+      mkIter(4, 0.76, 0.71, 0.42, 89000, 13600, ['loop-002-p4','loop-002-v4','loop-002-e4','loop-002-f4'], true),
+      mkIter(5, 0.79, 0.76, 0.40, 86000, 14100, ['loop-002-p5','loop-002-v5','loop-002-e5','loop-002-f5']),
+    ],
+    currentIteration: 5, bestScore: 0.79, bestIterationIdx: 4,
+    converged: false, terminationReason: 'budgetExhausted',
+    totalCostUsd: 2.00, totalTokens: 428000, budgetConsumedPct: 0.96,
+    maxCostUsd: 2.00, maxTokens: 500000,
+  },
+
+  // ── Loop 3: Test coverage improvement on task-001 — converged fast ──────────
+  {
+    id: 'loop-003',
+    flowId: 'agentic_code_optimization_loop',
+    flowLabel: 'Test Coverage Improvement',
+    objectId: 'task-001',
+    objectTitle: 'Implement Stripe Webhook Handler',
+    state: 'done',
+    startedAt: '2026-07-04T09:00:00Z',
+    completedAt: '2026-07-04T09:00:45Z',
+    iterations: [
+      mkIter(1, 0.71, 0,    0.08, 18000, 5100,  ['loop-003-p1','loop-003-v1','loop-003-e1','loop-003-f1']),
+      mkIter(2, 0.88, 0.71, 0.09, 20000, 4900,  ['loop-003-p2','loop-003-v2','loop-003-e2','loop-003-f2']),
+      mkIter(3, 0.92, 0.88, 0.08, 18000, 4700,  ['loop-003-p3','loop-003-v3','loop-003-e3','loop-003-f3'], true),
+    ],
+    currentIteration: 3, bestScore: 0.92, bestIterationIdx: 2,
+    converged: true, terminationReason: 'converged',
+    totalCostUsd: 0.25, totalTokens: 56000, budgetConsumedPct: 0.06,
+    maxCostUsd: 5.00, maxTokens: 200000,
+  },
+
+  // ── Loop 4: PRD gap analysis — running (in-progress demo) ──────────────────
+  {
+    id: 'loop-004',
+    flowId: 'agentic_code_optimization_loop',
+    flowLabel: 'PRD Quality Loop',
+    objectId: 'prd-001',
+    objectTitle: 'Billing Service v2',
+    state: 'running',
+    startedAt: '2026-07-08T13:55:00Z',
+    iterations: [
+      mkIter(1, 0.58, 0,    0.12, 28000, 9400,  ['loop-004-p1','loop-004-v1','loop-004-e1','loop-004-f1']),
+      mkIter(2, 0.72, 0.58, 0.13, 30000, 8900,  ['loop-004-p2','loop-004-v2','loop-004-e2','loop-004-f2']),
+    ],
+    currentIteration: 2, bestScore: 0.72, bestIterationIdx: 1,
+    converged: false,
+    totalCostUsd: 0.25, totalTokens: 58000, budgetConsumedPct: 0.13,
+    maxCostUsd: 5.00, maxTokens: 200000,
+  },
+]

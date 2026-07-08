@@ -9,9 +9,213 @@ import {
   ChevronRight,
   AlertCircle,
   Clock,
+  Plus,
+  X,
+  Zap,
 } from 'lucide-react'
 import { useAppStore } from '../../store/app-store'
+import { WORKER_DEFS } from '../../data/mock-data'
 import type { LoopRun, IterationRun, WorkerRun, LoopTerminationReason } from '../../types/domain'
+
+// ─── Loop type definitions (for the picker) ───────────────────────────────────
+
+const LOOP_TYPES = [
+  {
+    id: 'agentic_code_optimization_loop',
+    label: 'Code Quality Optimization',
+    description: 'Iteratively improves code quality: implement → validate design → evaluate quality score → synthesize feedback. Converges when improvement < 5%.',
+    metric: 'quality_score',
+    steps: ['Proposer (LLM)', 'Design Validator', 'Quality Evaluator', 'Feedback Synthesizer'],
+    maxIter: 8,
+    budgetUsd: 5.0,
+    applicableTypes: ['pull_request', 'task'],
+  },
+  {
+    id: 'design_refinement_loop',
+    label: 'Design Conformance Refinement',
+    description: 'Iteratively aligns a system design artifact against PRD requirements. Proposes improvements, validates consistency, measures conformance score.',
+    metric: 'conformance_score',
+    steps: ['Design Proposer (LLM)', 'PRD Conformance Validator', 'Conformance Evaluator', 'Feedback Synthesizer'],
+    maxIter: 6,
+    budgetUsd: 3.0,
+    applicableTypes: ['design', 'prd'],
+  },
+  {
+    id: 'test_coverage_loop',
+    label: 'Test Coverage Improvement',
+    description: 'Generates and improves test scenarios iteratively until coverage threshold is met. Validates each scenario against the feature spec.',
+    metric: 'coverage_score',
+    steps: ['Test Generator (LLM)', 'Spec Validator', 'Coverage Evaluator', 'Gap Synthesizer'],
+    maxIter: 5,
+    budgetUsd: 2.0,
+    applicableTypes: ['feature_spec', 'task', 'pull_request'],
+  },
+  {
+    id: 'prd_quality_loop',
+    label: 'PRD Quality Loop',
+    description: 'Refines product requirements through iterative review: propose improvements → validate completeness → measure quality → synthesize next steps.',
+    metric: 'quality_score',
+    steps: ['Requirements Refiner (LLM)', 'Completeness Validator', 'Quality Evaluator', 'Feedback Synthesizer'],
+    maxIter: 4,
+    budgetUsd: 2.0,
+    applicableTypes: ['prd', 'adr'],
+  },
+]
+
+// ─── New Loop Picker Modal ────────────────────────────────────────────────────
+
+const TYPE_LABEL: Record<string, string> = {
+  prd: 'PRD', design: 'DESIGN', adr: 'ADR', decomposition: 'DECOMP',
+  feature_spec: 'FSPEC', task: 'TASK', pull_request: 'PR', build: 'BUILD',
+  incident: 'INC', component: 'COMP',
+}
+
+const STATE_DOT: Record<string, string> = {
+  approved: 'bg-emerald-500', done: 'bg-emerald-500',
+  in_progress: 'bg-amber-500', review: 'bg-amber-500',
+  failed: 'bg-red-500', open: 'bg-red-500',
+  draft: 'bg-zinc-500', planned: 'bg-zinc-500',
+}
+
+function NewLoopPicker({ onStart, onClose }: {
+  onStart: (loopTypeId: string, objectId: string) => void
+  onClose: () => void
+}) {
+  const objects = useAppStore(s => s.objects)
+  const [selectedType, setSelectedType] = useState(LOOP_TYPES[0].id)
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
+
+  const loopType = LOOP_TYPES.find(l => l.id === selectedType)!
+  const compatibleObjects = objects.filter(o => loopType.applicableTypes.includes(o.typeId))
+
+  const canStart = selectedObjectId !== null && compatibleObjects.some(o => o.id === selectedObjectId)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-[720px] max-h-[80vh] bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+          <div className="flex items-center gap-2">
+            <Zap size={16} className="text-indigo-400" />
+            <h2 className="text-sm font-semibold text-zinc-100">New Agentic Loop</h2>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* Loop type selector */}
+          <div className="w-56 shrink-0 border-r border-zinc-800 overflow-y-auto p-3">
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 px-1">Loop Type</p>
+            {LOOP_TYPES.map(lt => (
+              <button
+                key={lt.id}
+                onClick={() => { setSelectedType(lt.id); setSelectedObjectId(null) }}
+                className={`w-full text-left px-3 py-2.5 rounded-lg mb-1 transition-colors text-xs ${
+                  selectedType === lt.id
+                    ? 'bg-indigo-900/40 border border-indigo-700/50 text-indigo-200'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'
+                }`}
+              >
+                {lt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Config panel */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {/* Loop description */}
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-100 mb-1">{loopType.label}</h3>
+              <p className="text-xs text-zinc-400 leading-relaxed">{loopType.description}</p>
+            </div>
+
+            {/* Steps preview */}
+            <div>
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Steps per iteration</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {loopType.steps.map((step, i) => (
+                  <span key={i} className="flex items-center gap-1">
+                    <span className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded">{step}</span>
+                    {i < loopType.steps.length - 1 && <span className="text-zinc-600 text-[10px]">→</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Policy summary */}
+            <div className="flex items-center gap-4 p-3 bg-zinc-800/40 border border-zinc-700/50 rounded-lg">
+              <div className="text-center">
+                <p className="text-xs font-bold text-zinc-200">{loopType.maxIter}</p>
+                <p className="text-[10px] text-zinc-500">max iter</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-bold text-zinc-200">${loopType.budgetUsd.toFixed(2)}</p>
+                <p className="text-[10px] text-zinc-500">budget</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-bold text-zinc-200">5%</p>
+                <p className="text-[10px] text-zinc-500">threshold</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-bold text-indigo-300">{loopType.metric}</p>
+                <p className="text-[10px] text-zinc-500">metric</p>
+              </div>
+            </div>
+
+            {/* Object selector */}
+            <div>
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                Select Object ({loopType.applicableTypes.map(t => TYPE_LABEL[t] ?? t).join(', ')})
+              </p>
+              {compatibleObjects.length === 0 ? (
+                <p className="text-xs text-zinc-600 italic">No compatible objects in workspace</p>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                  {compatibleObjects.map(obj => (
+                    <button
+                      key={obj.id}
+                      onClick={() => setSelectedObjectId(obj.id)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-xs ${
+                        selectedObjectId === obj.id
+                          ? 'bg-indigo-900/40 border border-indigo-700/50 text-indigo-200'
+                          : 'bg-zinc-800/50 border border-zinc-700/30 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600'
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${STATE_DOT[obj.state] ?? 'bg-blue-500'}`} />
+                      <span className="font-medium truncate flex-1">{obj.title}</span>
+                      <span className="text-[9px] font-bold uppercase text-zinc-500 shrink-0">{TYPE_LABEL[obj.typeId] ?? obj.typeId}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-800">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => selectedObjectId && onStart(selectedType, selectedObjectId)}
+            disabled={!canStart}
+            className={`flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              canStart
+                ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
+            }`}
+          >
+            <RefreshCw size={11} />
+            Start Loop
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -389,68 +593,76 @@ export function AgenticLoopView() {
   const activeLoopId = useAppStore(s => s.activeLoopId)
   const setActiveLoopId = useAppStore(s => s.setActiveLoopId)
   const startAgenticLoop = useAppStore(s => s.startAgenticLoop)
-  const selectedObjectId = useAppStore(s => s.selectedObjectId)
 
-  // Sort loopRuns by startedAt desc
+  const [showPicker, setShowPicker] = useState(false)
+
+  // Sort loopRuns by startedAt desc; auto-select first on mount
   const sortedLoops = [...loopRuns].sort(
     (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
   )
 
-  const selectedLoop = activeLoopId
-    ? loopRuns.find(lr => lr.id === activeLoopId) ?? null
-    : null
+  const resolvedActiveId = activeLoopId ?? sortedLoops[0]?.id ?? null
+  const selectedLoop = resolvedActiveId ? loopRuns.find(lr => lr.id === resolvedActiveId) ?? null : null
 
-  function handleStartLoop() {
-    const objectId = selectedObjectId ?? 'pr-001'
-    const id = startAgenticLoop('agentic_code_optimization_loop', objectId)
+  function handleStart(loopTypeId: string, objectId: string) {
+    const id = startAgenticLoop(loopTypeId, objectId)
     setActiveLoopId(id)
+    setShowPicker(false)
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden">
-      {/* Left panel — Loop list */}
-      <div className="w-[360px] shrink-0 border-r border-zinc-800 flex flex-col overflow-hidden bg-zinc-950">
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-200">Agentic Loops</h2>
+    <>
+      {showPicker && (
+        <NewLoopPicker onStart={handleStart} onClose={() => setShowPicker(false)} />
+      )}
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left panel — Loop list */}
+        <div className="w-72 shrink-0 border-r border-zinc-800 flex flex-col overflow-hidden bg-zinc-950">
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-zinc-800 shrink-0 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-200">Loops</h2>
+              <p className="text-[10px] text-zinc-600 mt-0.5">{sortedLoops.length} runs</p>
+            </div>
             <button
-              onClick={handleStartLoop}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+              onClick={() => setShowPicker(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
             >
-              <RefreshCw size={11} />
-              Start Loop
+              <Plus size={11} />
+              New
             </button>
+          </div>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto">
+            {sortedLoops.length === 0 ? (
+              <div className="p-6 text-center">
+                <RefreshCw size={20} className="text-zinc-700 mx-auto mb-2" />
+                <p className="text-xs text-zinc-600">No loops yet — click New to start one</p>
+              </div>
+            ) : (
+              sortedLoops.map(loop => (
+                <LoopListItem
+                  key={loop.id}
+                  loop={loop}
+                  selected={resolvedActiveId === loop.id}
+                  onClick={() => setActiveLoopId(loop.id)}
+                />
+              ))
+            )}
           </div>
         </div>
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto">
-          {sortedLoops.length === 0 ? (
-            <div className="p-4 text-center">
-              <p className="text-xs text-zinc-600 italic">No loops yet — start one above</p>
-            </div>
+        {/* Right panel — detail */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {selectedLoop ? (
+            <LoopDetailPanel loop={selectedLoop} />
           ) : (
-            sortedLoops.map(loop => (
-              <LoopListItem
-                key={loop.id}
-                loop={loop}
-                selected={activeLoopId === loop.id}
-                onClick={() => setActiveLoopId(loop.id)}
-              />
-            ))
+            <EmptyDetail onStart={() => setShowPicker(true)} />
           )}
         </div>
       </div>
-
-      {/* Right panel — detail */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {selectedLoop ? (
-          <LoopDetailPanel loop={selectedLoop} />
-        ) : (
-          <EmptyDetail onStart={handleStartLoop} />
-        )}
-      </div>
-    </div>
+    </>
   )
 }

@@ -19,6 +19,7 @@ import {
   MOCK_OBJECTS,
   MOCK_RECOMMENDATIONS,
   MOCK_WORKER_RUNS,
+  MOCK_LOOP_RUNS,
   FLOW_DEFS,
   FLOW_GRAPH_DEFS,
   WORKER_DEFS,
@@ -178,7 +179,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   modifiedFiles: new Set(),
   expandedFolders: new Set(['folder-docs', 'folder-src', 'folder-billing']),
   lineAction: { visible: false },
-  loopRuns: [],
+  loopRuns: MOCK_LOOP_RUNS,
   activeLoopId: null,
 
   // ─── UI Actions ─────────────────────────────────────────────────────────────
