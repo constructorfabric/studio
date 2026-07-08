@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { Search, Lock, Play, Cpu } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Search, Lock, Play, Cpu, ChevronDown, X } from 'lucide-react'
 import { useAppStore } from '../../store/app-store'
 import { WORKER_DEFS } from '../../data/mock-data'
-import type { WorkerCategory, WorkerDef } from '../../types/domain'
+import type { WorkerCategory, WorkerDef, StudioObject } from '../../types/domain'
 
 // ─── Category config ──────────────────────────────────────────────────────────
 
@@ -45,30 +45,130 @@ const TYPE_LABEL: Record<string, string> = {
   worker_interaction: 'WINT',
 }
 
+const STATE_DOT: Record<string, string> = {
+  approved: 'bg-emerald-500', done: 'bg-emerald-500', merged: 'bg-emerald-500',
+  in_progress: 'bg-amber-500', running: 'bg-amber-500', review: 'bg-amber-500',
+  failed: 'bg-red-500', open: 'bg-red-500',
+  draft: 'bg-zinc-500', planned: 'bg-zinc-500',
+}
+
+// ─── Object Picker popover ────────────────────────────────────────────────────
+
+function ObjectPicker({
+  objects,
+  onSelect,
+  onClose,
+}: {
+  objects: StudioObject[]
+  onSelect: (obj: StudioObject) => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [search, setSearch] = useState('')
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose])
+
+  const filtered = objects.filter(o =>
+    !search || o.title.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full left-0 mb-2 w-72 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-50 overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
+        <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Select object</span>
+        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors p-0.5">
+          <X size={12} />
+        </button>
+      </div>
+
+      {/* Search */}
+      {objects.length > 6 && (
+        <div className="px-3 py-2 border-b border-zinc-800">
+          <input
+            autoFocus
+            type="text"
+            placeholder="Filter objects…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 transition-colors"
+          />
+        </div>
+      )}
+
+      {/* Object list */}
+      <div className="max-h-56 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <p className="text-xs text-zinc-600 text-center py-4">No matching objects</p>
+        ) : (
+          filtered.map(obj => (
+            <button
+              key={obj.id}
+              onClick={() => onSelect(obj)}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-zinc-800 transition-colors border-b border-zinc-800/50 last:border-0"
+            >
+              <div className={`w-2 h-2 rounded-full shrink-0 ${STATE_DOT[obj.state] ?? 'bg-blue-500'}`} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-zinc-200 truncate">{obj.title}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[9px] font-bold uppercase text-zinc-500">{TYPE_LABEL[obj.typeId] ?? obj.typeId}</span>
+                  <span className="text-[9px] text-zinc-600 capitalize">{obj.state.replace('_', ' ')}</span>
+                </div>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Worker Card ──────────────────────────────────────────────────────────────
 
 function WorkerCard({ worker }: { worker: WorkerDef }) {
-  const [message, setMessage] = useState<string | null>(null)
+  const [showPicker, setShowPicker] = useState(false)
   const selectedObjectId = useAppStore(s => s.selectedObjectId)
   const objects = useAppStore(s => s.objects)
   const runWorker = useAppStore(s => s.runWorker)
   const navigateToMonitor = useAppStore(s => s.navigateToMonitor)
+  const selectObject = useAppStore(s => s.selectObject)
 
+  // Objects compatible with this worker
+  const compatibleObjects = objects.filter(o => worker.applicableTypes.includes(o.typeId))
   const selectedObject = selectedObjectId ? objects.find(o => o.id === selectedObjectId) : null
-  const canRun = selectedObject && worker.applicableTypes.includes(selectedObject.typeId)
+  const canRunSelected = selectedObject && worker.applicableTypes.includes(selectedObject.typeId)
+
+  const runOn = (obj: StudioObject) => {
+    selectObject(obj.id)
+    const runId = runWorker(worker.id, obj.id)
+    navigateToMonitor(runId)
+    setShowPicker(false)
+  }
 
   const handleRun = () => {
-    if (!selectedObjectId || !canRun) {
-      setMessage('Select a compatible object first')
-      setTimeout(() => setMessage(null), 2500)
-      return
+    if (canRunSelected && selectedObjectId) {
+      // Selected object is already compatible — run directly
+      const runId = runWorker(worker.id, selectedObjectId)
+      navigateToMonitor(runId)
+    } else {
+      // Open picker to choose a compatible object
+      setShowPicker(v => !v)
     }
-    const runId = runWorker(worker.id, selectedObjectId)
-    navigateToMonitor(runId)
   }
 
   const categoryClass = CATEGORY_BADGE[worker.category] ?? 'text-zinc-300 bg-zinc-800 border-zinc-700'
   const profileClass = PROFILE_BADGE[worker.profile] ?? 'text-zinc-300 bg-zinc-800 border-zinc-700'
+  const hasCompatible = compatibleObjects.length > 0
 
   return (
     <div className="flex flex-col gap-3 p-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors">
@@ -83,7 +183,7 @@ function WorkerCard({ worker }: { worker: WorkerDef }) {
         {worker.requiresAutomationGate && (
           <span className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-900/20 border border-amber-700/30 px-1.5 py-0.5 rounded">
             <Lock size={9} />
-            Automation Gate Required
+            Gated
           </span>
         )}
       </div>
@@ -99,39 +199,37 @@ function WorkerCard({ worker }: { worker: WorkerDef }) {
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[10px] text-zinc-600">Applies to:</span>
           {worker.applicableTypes.map(t => (
-            <span
-              key={t}
-              className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400"
-            >
+            <span key={t} className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
               {TYPE_LABEL[t] ?? t}
             </span>
           ))}
         </div>
       )}
 
-      {/* Run button + message */}
-      <div className="mt-auto pt-1 flex items-center gap-2">
+      {/* Run button with object picker */}
+      <div className="mt-auto pt-1 relative">
         <button
           onClick={handleRun}
+          disabled={!hasCompatible}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            canRun
+            !hasCompatible
+              ? 'bg-zinc-800 text-zinc-600 border border-zinc-700 cursor-not-allowed'
+              : canRunSelected
               ? 'bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500'
-              : selectedObjectId
-              ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
-              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border border-zinc-700'
+              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
           }`}
         >
           <Play size={11} />
-          Run
+          {canRunSelected ? 'Run' : 'Run on…'}
+          {!canRunSelected && hasCompatible && <ChevronDown size={10} className="ml-0.5" />}
         </button>
-        {message && (
-          <span className="text-[11px] text-amber-400 animate-pulse">{message}</span>
-        )}
-        {!message && !selectedObjectId && (
-          <span className="text-[11px] text-zinc-600">Select an object first</span>
-        )}
-        {!message && selectedObjectId && !canRun && (
-          <span className="text-[11px] text-zinc-600">Object type not compatible</span>
+
+        {showPicker && (
+          <ObjectPicker
+            objects={compatibleObjects}
+            onSelect={runOn}
+            onClose={() => setShowPicker(false)}
+          />
         )}
       </div>
     </div>
