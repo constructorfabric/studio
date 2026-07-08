@@ -2686,6 +2686,332 @@ These are different Gears. Kit secrets always go to Credentials Store; never to 
 
 ---
 
+## 27. Agentic Loop Runs
+
+### 27.1 Motivation
+
+Modern AI engineering increasingly relies on **agentic feedback loops** — autonomous systems where an LLM agent iteratively proposes solutions, receives structured feedback from validators and evaluators, and refines its approach until convergence or budget exhaustion. This pattern is described in recent research as "Agentic Auto-Scheduling" (Merouani et al. 2025) and underpins code optimization, design refinement, test generation, and any task where quality improves through iteration.
+
+Constructor Studio is designed to be the **control plane** for exactly this pattern. The concern that "loops burn tokens" is a real one; Studio treats token budget as a **first-class constraint**, not an afterthought.
+
+The canonical loop structure:
+
+1. **Propose** — LLM Worker generates a candidate artifact or transformation
+2. **Validate** — Validator Worker checks structural/semantic correctness; invalid candidates cycle back without advancing the metric
+3. **Evaluate** — Evaluator Worker measures a quality metric (coverage score, performance ratio, conformance grade)
+4. **Synthesize feedback** — Feedback Worker packages Evidence + metric delta into a structured `suggestedInput` for the next iteration
+5. **Convergence check** — compare metric improvement against `ConvergencePolicy.threshold`
+6. **Loop or terminate** — continue if improvement ≥ threshold and budget allows; terminate with `terminationReason` otherwise
+
+### 27.2 Native Architecture Support
+
+Studio's existing primitives compose directly into this pattern without any new runtime. No new engine is needed — the orchestrator `Flow` already provides sequential step execution and loop semantics through its `runtime: orchestrator` + `loopPolicy` extension.
+
+| Loop concept | Studio primitive |
+|---|---|
+| Loop controller | `Flow` with `runtime: orchestrator` and `loopPolicy` attached |
+| Proposal step | `Worker (runtime: llm, profile: on_demand)` |
+| Validation step | `Worker (runtime: llm\|script, profile: validator)` |
+| Evaluation step | `Worker (runtime: llm\|script, profile: analyzer)` |
+| Feedback synthesis | `Worker (runtime: llm, profile: on_demand)` |
+| One iteration boundary | `WorkerRun` group sharing a common `parentRunId = LoopRun.id` |
+| Quality metric | `Evidence.payload.score` emitted by Evaluator Worker |
+| Token spend per iteration | `WorkerRun.cost` (LLM Gateway → Usage Collector) |
+| Accumulated loop spend | `LoopRun.totalCostUsd` (sum of all child `WorkerRun.cost`) |
+| Hard budget cap | `effectiveLimits.token_budget` + `BudgetPolicy.maxTokensPerLoop` |
+| Convergence history | `ValidationSession.iterations[]` |
+| Loop termination record | `LoopRun.terminationReason` |
+| Immutable audit trail | `AuditLog` — all WorkerRuns per iteration are immutable |
+
+### 27.3 LoopPolicy
+
+A `LoopPolicy` attached to a `Flow` definition transforms it into an **AgenticLoop**. It governs convergence, budget, and feedback context.
+
+```
+LoopPolicy {
+  convergence: {
+    metric:         string   // Evidence field path to track (e.g. "score", "coverage", "speedup_ratio")
+    threshold:      float    // minimum improvement per iteration to continue (e.g. 0.05 = 5%)
+    minIterations:  int      // always run at least N iterations regardless of metric (default: 1)
+    maxIterations:  int      // hard stop even if still improving (default: 10)
+    windowSize:     int      // compare metric over last N iterations to detect plateau (default: 1)
+    direction:      'maximize' | 'minimize'  // is higher or lower metric better?
+  }
+  budget: {
+    maxTokensPerLoop:  int    // total token budget for the whole loop (across all iterations)
+    maxCostUsd:        float  // cost cap enforced by Quota Enforcer (Gears) before each iteration
+    warningThreshold:  float  // emit BudgetWarning event at X% consumed (default: 0.80)
+    onExhaustion:      'escalate' | 'abort' | 'accept_best'
+    //   escalate    → create Approval; loop paused until approved or rejected
+    //   abort       → LoopRun.state: failed, best result discarded
+    //   accept_best → LoopRun.state: done, bestIterationIdx result accepted
+  }
+  feedback: {
+    summarizeHistory:       boolean  // include prior iteration summaries in proposer context
+    maxHistoryIterations:   int      // how many prior iteration summaries to include (default: 3)
+    includeEvidencePayload: boolean  // pass raw Evidence payload to next iteration's proposer
+    evidenceSizeLimit:      int      // max bytes of Evidence to include (prevents context bloat)
+  }
+}
+```
+
+### 27.4 LoopRun
+
+`LoopRun` extends `FlowRun` with iteration-tracking fields. It is the single observable unit representing the entire agentic loop execution.
+
+```
+LoopRun extends FlowRun {
+  // Iteration tracking
+  iterations:          IterationRun[]
+  currentIteration:    int
+  bestScore:           float
+  bestIterationIdx:    int           // 0-based index into iterations[]
+
+  // Convergence
+  converged:           boolean
+  terminationReason:   'converged' | 'maxIterations' | 'budgetExhausted' | 'failed' | 'escalated' | 'aborted'
+
+  // Budget aggregates (live totals, updated after each WorkerRun completes)
+  totalCostUsd:        float
+  totalTokens:         int
+  budgetConsumedPct:   float         // 0.0–1.0; checked before each new iteration
+}
+
+IterationRun {
+  iteration:        int              // 1-based
+  score:            float            // metric value this iteration
+  improvement:      float            // score − previousScore (direction-aware)
+  valid:            boolean          // passed validation step
+  costUsd:          float            // sum of all WorkerRun.cost this iteration
+  tokens:           int
+  durationMs:       int
+  proposerRunId:    ref → WorkerRun
+  validatorRunIds:  ref[] → WorkerRun
+  evaluatorRunId:   ref → WorkerRun
+  feedbackRunId:    ref → WorkerRun
+  evidenceId:       ref → Evidence   // Evidence emitted by evaluator
+}
+```
+
+### 27.5 Loop Termination Conditions
+
+A LoopRun terminates when the **first** matching condition is true, checked in this order at the end of each iteration:
+
+| Condition | `terminationReason` | `LoopRun.state` |
+|---|---|---|
+| `improvement < threshold` for last `windowSize` iterations | `converged` | `done` |
+| `currentIteration >= maxIterations` | `maxIterations` | `done` |
+| `totalTokens >= maxTokensPerLoop` OR `totalCostUsd >= maxCostUsd` with `onExhaustion: accept_best` | `budgetExhausted` | `done` |
+| Same budget exhausted with `onExhaustion: escalate` | `escalated` | `paused` → Approval required |
+| Same budget exhausted with `onExhaustion: abort` | `budgetExhausted` | `failed` |
+| Any mandatory step fails and `Flow.onStepFailure: abort` | `failed` | `failed` |
+
+### 27.6 Token Budget as a First-Class Constraint
+
+The "loops burning tokens" risk is addressed by multi-layer budget enforcement — not a single guard, but a defense-in-depth stack:
+
+```
+Layer 1 — Pre-loop:      Quota Enforcer (Gears) checks effectiveLimits.token_budget
+                         before the LoopRun is created. No LoopRun starts over quota.
+
+Layer 2 — Pre-iteration: budgetConsumedPct checked before each new iteration begins.
+                         If >= 1.0, loop terminates per onExhaustion policy.
+
+Layer 3 — Per-WorkerRun: WorkerRun.cost recorded by LLM Gateway → Usage Collector
+                         immediately after each LLM call. No post-hoc estimation.
+
+Layer 4 — Warning event: BudgetWarning Event emitted when budgetConsumedPct >=
+                         warningThreshold (default 80%). NotificationRule can alert
+                         the operator or trigger an Approval before exhaustion.
+
+Layer 5 — Audit:         All WorkerRun.cost values are immutable in AuditLog.
+                         Full cost breakdown per iteration always recoverable.
+```
+
+The key invariant: **the loop never starts an iteration it cannot afford**. Budget is checked before the proposer runs, not after.
+
+### 27.7 Architecture Diagram
+
+The complete agentic loop execution flow:
+
+```mermaid
+sequenceDiagram
+    participant UI as Studio UI / API
+    participant LR as LoopRun (orchestrator)
+    participant QE as Quota Enforcer (Gears)
+    participant P  as Proposer Worker (LLM)
+    participant V  as Validator Worker
+    participant E  as Evaluator Worker
+    participant F  as Feedback Worker (LLM)
+    participant AL as AuditLog
+
+    UI->>LR: startLoop(flowId, inputObject, loopPolicy)
+    LR->>QE: checkBudget(maxTokensPerLoop, maxCostUsd)
+    QE-->>LR: approved / rejected
+
+    loop Each iteration i = 1..maxIterations
+        LR->>QE: checkBudget(remaining = max − totalCostUsd)
+        QE-->>LR: ok | warning | exhausted
+
+        alt budgetConsumedPct >= warningThreshold
+            LR-->>UI: Event(BudgetWarning, pct, remaining)
+        end
+        alt budgetConsumedPct >= 1.0
+            LR-->>UI: LoopRun{terminationReason: budgetExhausted}
+        end
+
+        LR->>P: run(context + feedbackHistory[last N])
+        P-->>LR: candidate + WorkerRun{cost, tokens}
+        LR->>AL: append(iteration i, proposerRun)
+
+        LR->>V: validate(candidate)
+        V-->>LR: Evidence{valid: true|false, errors[]}
+
+        alt invalid
+            LR->>F: synthesize_feedback(errors, history)
+            F-->>LR: suggestedInput (no score advance this iteration)
+        else valid
+            LR->>E: evaluate(candidate, metric)
+            E-->>LR: Evidence{score, breakdown}
+            LR->>F: synthesize_feedback(score, evidence, history)
+            F-->>LR: suggestedInput for next iteration
+            LR->>LR: updateBestScore(score)
+        end
+
+        LR->>LR: convergenceCheck(improvement, threshold, windowSize)
+        note over LR: improvement < threshold for windowSize iters → converged
+    end
+
+    LR-->>UI: LoopRun{terminationReason, bestScore, bestIterationIdx, totalCostUsd, totalTokens}
+    LR-->>AL: finalize(LoopRun)
+```
+
+### 27.8 State Machine: LoopRun
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending : startLoop()
+    pending --> running : Quota approved
+    pending --> failed : Quota rejected
+
+    running --> running : iteration complete, improvement ≥ threshold
+    running --> paused : budgetWarning + onExhaustion=escalate → Approval pending
+    running --> done : converged
+    running --> done : maxIterations reached
+    running --> done : budgetExhausted + onExhaustion=accept_best
+    running --> failed : step failure + onStepFailure=abort
+    running --> failed : budgetExhausted + onExhaustion=abort
+
+    paused --> running : Approval granted (budget extended)
+    paused --> failed : Approval rejected
+
+    done --> [*]
+    failed --> [*]
+```
+
+### 27.9 Monitor View: Iteration Tree
+
+The Monitor renders a LoopRun as a collapsible iteration tree. Each iteration shows its score, improvement delta (colour-coded), cost, and child WorkerRuns.
+
+```
+▼ LoopRun: code_quality_optimization_loop    [converged]  $0.56  4 iter
+  ▼ Iteration 1                              score: 0.62  $0.14  8.2s
+      ✓  implement_code_worker               done    1.2s  $0.08
+      ✓  pr_design_validator                 pass    0.3s  $0.01
+      ✓  code_quality_evaluator              done    0.8s  $0.02
+      ✓  feedback_synthesizer_worker         done    0.5s  $0.03
+  ▼ Iteration 2                         +0.16  score: 0.78  $0.15  7.9s
+      ✓  implement_code_worker               done    1.1s  $0.07
+      ✓  pr_design_validator                 pass    0.3s  $0.01
+      ✓  code_quality_evaluator              done    0.7s  $0.02
+      ✓  feedback_synthesizer_worker         done    0.4s  $0.05
+  ▼ Iteration 3                         +0.06  score: 0.84  $0.13  7.4s
+      ✓  implement_code_worker               done    1.0s  $0.07
+      ✓  pr_design_validator                 pass    0.3s  $0.01
+      ✓  code_quality_evaluator              done    0.6s  $0.02
+      ✓  feedback_synthesizer_worker         done    0.4s  $0.03
+  ▼ Iteration 4  ★ best              +0.03  score: 0.87  $0.14  7.2s
+      ✓  implement_code_worker               done    1.0s  $0.07
+      ✓  pr_design_validator                 pass    0.3s  $0.01
+      ✓  code_quality_evaluator              done    0.6s  $0.02
+      ✓  feedback_synthesizer_worker         done    0.4s  $0.04
+  → Converged: improvement 0.03 < threshold 0.05 (window=1)
+  → Budget used: $0.56 / $5.00 (11%)  ·  124k / 200k tokens (62%)
+```
+
+Budget bar and score chart are shown in the Monitor detail panel.
+
+### 27.10 Relationship to §18 Validator Loop
+
+§18 defines the **Validator Loop** — a single-step retry cycle for one Object state transition. §27 defines the **Agentic Loop** — a multi-step, multi-iteration optimisation loop with convergence semantics and budget tracking. They are complementary, not competing.
+
+| Aspect | §18 Validator Loop | §27 Agentic Loop |
+|---|---|---|
+| Purpose | Gate one state transition | Iteratively improve a proposal |
+| Trigger | Object state-change attempt | Explicit `startLoop` call |
+| Iterations | `maxRetries` per transition | `maxIterations` per loop |
+| Success metric | binary pass/fail | continuous score (float) |
+| Feedback | error list back to fix agent | structured Evidence payload |
+| Budget | per-run `token_budget` | accumulated `maxTokensPerLoop` |
+| Escalation | maxRetries exceeded → human | `budgetExhausted` + policy |
+| Output | valid state transition | best proposal found so far |
+
+A Validator Loop (§18) MAY run **inside** an Agentic Loop (§27) as the validation step for each iteration. In this case `IterationRun.valid` is determined by the inner Validator Loop's `ValidationSession.state`.
+
+### 27.11 Example: Code Quality Optimization Loop
+
+A concrete SDLC Kit example demonstrating the full pattern:
+
+```
+Flow: code_quality_optimization_loop
+  input:  pull_request (state: review)
+  output: pull_request (state: approved, validationStatus: pass)
+
+  steps per iteration:
+    1. implement_code_worker      (proposer)   — runtime: llm
+    2. pr_design_validator        (validator)  — runtime: script
+    3. code_quality_evaluator     (evaluator)  — runtime: llm; emits Evidence{score}
+    4. feedback_synthesizer_worker (feedback)  — runtime: llm; emits suggestedInput
+
+  loopPolicy:
+    convergence.metric:         "score"
+    convergence.threshold:      0.05      # stop when improvement < 5%
+    convergence.minIterations:  2
+    convergence.maxIterations:  8
+    convergence.direction:      "maximize"
+    budget.maxTokensPerLoop:    200_000
+    budget.maxCostUsd:          5.00
+    budget.warningThreshold:    0.80
+    budget.onExhaustion:        "accept_best"
+    feedback.summarizeHistory:  true
+    feedback.maxHistoryIter:    3
+
+  example run:
+    Iter 1: score=0.62            cost=$0.14
+    Iter 2: score=0.78 (+0.16)    cost=$0.15   ← improvement > 0.05, continue
+    Iter 3: score=0.84 (+0.06)    cost=$0.13   ← improvement > 0.05, continue
+    Iter 4: score=0.87 (+0.03)    cost=$0.14   ← improvement < 0.05, converged ★
+    terminationReason: "converged"
+    totalCostUsd: $0.56  (11% of $5.00 budget)
+    totalTokens:  124_000
+```
+
+### 27.12 Designer Guidance
+
+When designing an Agentic Loop in Studio:
+
+**Choose `onExhaustion: accept_best`** for most SDLC loops. The best result seen so far is almost always better than nothing — abandoning it on budget exhaustion wastes all prior work.
+
+**Set `minIterations: 2`** to avoid premature convergence. A single good-looking first result may be a local optimum.
+
+**Keep `maxHistoryIterations: 3`** unless your context window is very large. Including too much history inflates prompt size and increases cost per iteration geometrically.
+
+**Monitor `budgetConsumedPct`** live in the Monitor. If a loop consistently hits 80% before converging, either the metric threshold is too tight, the context is too large, or the task needs decomposition into smaller sub-loops.
+
+**Use `windowSize: 2` or `3`** for noisy evaluators (e.g. LLM-scored metrics). A single-iteration comparison is fragile when the evaluator has variance.
+
+---
+
 ## Appendix A — Studio v2 Object Type Catalog
 
 All types follow the pattern:
