@@ -12,6 +12,12 @@ const TYPE_COLORS: Record<string, { border: string; bg: string; label: string; t
   pull_request:  { border: '#f97316', bg: 'rgba(249,115,22,0.08)', label: 'PR',      textColor: '#fb923c' },
   build:         { border: '#84cc16', bg: 'rgba(132,204,22,0.08)', label: 'BUILD',   textColor: '#a3e635' },
   incident:      { border: '#ef4444', bg: 'rgba(239,68,68,0.08)',  label: 'INC',     textColor: '#f87171' },
+  component:   { border: '#22d3ee', bg: 'rgba(34,211,238,0.07)',  label: 'COMPONENT', textColor: '#67e8f9' },
+  person:      { border: '#a78bfa', bg: 'rgba(167,139,250,0.07)', label: 'PERSON',    textColor: '#c4b5fd' },
+  team:        { border: '#818cf8', bg: 'rgba(129,140,248,0.07)', label: 'TEAM',      textColor: '#a5b4fc' },
+  release:     { border: '#34d399', bg: 'rgba(52,211,153,0.07)',  label: 'RELEASE',   textColor: '#6ee7b7' },
+  deployment:  { border: '#fb923c', bg: 'rgba(251,146,60,0.07)',  label: 'DEPLOY',    textColor: '#fdba74' },
+  environment: { border: '#94a3b8', bg: 'rgba(148,163,184,0.07)', label: 'ENV',       textColor: '#cbd5e1' },
 }
 
 function getStateColor(state: string): string {

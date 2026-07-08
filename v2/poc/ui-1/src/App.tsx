@@ -8,6 +8,7 @@ import { ActivityFeed } from './components/workers/ActivityFeed'
 import { FlowsView } from './components/flows/FlowsView'
 import { RecommendationsPanel } from './components/recommendations/RecommendationsPanel'
 import { WorkerRunSimulator } from './components/workers/WorkerRunSimulator'
+import { WorkersMonitor } from './components/workers/WorkersMonitor'
 import { WorkerInteractionModal } from './components/workers/WorkerInteractionModal'
 import { FileTree } from './components/files/FileTree'
 import { FileViewer } from './components/files/FileViewer'
@@ -79,6 +80,11 @@ export default function App() {
             </div>
           )}
 
+          {activeView === 'workers' && (
+            <div className="flex-1 flex overflow-hidden">
+              <WorkersMonitor />
+            </div>
+          )}
 
         </main>
 

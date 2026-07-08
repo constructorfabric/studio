@@ -11,6 +11,7 @@ import type {
   FlowPendingInteraction,
   Recommendation,
   AppView,
+  LogEntry,
 } from '../types/domain'
 import {
   MOCK_OBJECTS,
@@ -73,6 +74,9 @@ interface AppState {
   cancelWorkerRun: (runId: string, cascade?: boolean) => void
   dismissRunToast: (runId: string) => void
   clearAllRunToasts: () => void   // atomically dismiss all current terminal runs
+  pauseWorkerRun: (runId: string) => void
+  resumeWorkerRun: (runId: string) => void
+  addRunLog: (runId: string, entry: LogEntry) => void
 
   // Flow actions
   runFlow: (flowId: string) => void
@@ -97,6 +101,24 @@ function genId(): string {
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+// Tracks setInterval handles for active worker simulations
+const runIntervals = new Map<string, ReturnType<typeof setTimeout>>()
+
+function getSimLog(workerId: string, progress: number): string {
+  const phase = Math.floor(progress / 20)
+  const phases: Record<number, string[]> = {
+    0: ['Initializing context...', 'Loading workspace configuration...', 'Fetching linked objects...'],
+    1: ['Analyzing dependencies...', 'Building context graph...', 'Scanning related artifacts...'],
+    2: ['Running primary analysis...', 'Applying worker logic...', 'Processing object data...'],
+    3: ['Validating output...', 'Running compliance checks...', 'Cross-referencing schema...'],
+    4: ['Finalizing...', 'Persisting results...', 'Emitting events...'],
+  }
+  const msgs = phases[Math.min(phase, 4)] ?? phases[4]
+  // Vary by workerId so logs feel different per worker
+  const idx = (workerId.length + progress) % msgs.length
+  return msgs[idx]
 }
 
 // Flow interaction resume callback
@@ -199,9 +221,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       state: 'pending',
       progress: 0,
       startedAt: nowIso(),
+      logs: [],
+      createdObjectIds: [],
     }
 
     set(state => ({ workerRuns: [run, ...state.workerRuns] }))
+
+    // Emit start log
+    get().addRunLog(runId, { ts: nowIso(), level: 'info', msg: 'Worker started' })
 
     // Simulate pending → running
     setTimeout(() => {
@@ -210,6 +237,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           r.id === runId ? { ...r, state: 'running' as WorkerRunState, progress: 10 } : r
         ),
       }))
+      get().addRunLog(runId, { ts: nowIso(), level: 'info', msg: getSimLog(workerId, 10) })
 
       // Progress updates
       const progressInterval = setInterval(() => {
@@ -224,6 +252,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             r.id === runId ? { ...r, progress: nextProgress } : r
           ),
         }))
+        get().addRunLog(runId, { ts: nowIso(), level: 'info', msg: getSimLog(workerId, nextProgress) })
         if (nextProgress >= (workerDef.interaction ? 70 : 95)) {
           clearInterval(progressInterval)
         }
@@ -231,7 +260,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (workerDef.interaction) {
         // Pause for interaction after ~2s
-        setTimeout(() => {
+        const interactionHandle = setTimeout(() => {
           clearInterval(progressInterval)
           set(state => ({
             workerRuns: state.workerRuns.map(r =>
@@ -242,12 +271,14 @@ export const useAppStore = create<AppState>((set, get) => ({
             pendingInteractionRunId: runId,
           }))
         }, 2200)
+        runIntervals.set(runId, interactionHandle)
       } else {
         // Complete after ~3s
-        setTimeout(() => {
+        const completionHandle = setTimeout(() => {
           clearInterval(progressInterval)
           finishRun(runId, objectId, get, set)
         }, 3000)
+        runIntervals.set(runId, completionHandle)
       }
     }, 600)
 
@@ -306,6 +337,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // F-003: cancelWorkerRun — sets run to aborted state, preserves it in the list
   cancelWorkerRun: (runId, cascade) => {
+    const h = runIntervals.get(runId)
+    if (h) { clearTimeout(h); runIntervals.delete(runId) }
     set(state => ({
       workerRuns: state.workerRuns.map(r => {
         if (r.id === runId) {
@@ -340,6 +373,57 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (terminalIds.length === 0) return {}
       return { dismissedRunIds: [...state.dismissedRunIds, ...terminalIds] }
     })
+  },
+
+  pauseWorkerRun: (runId) => {
+    // Clear any pending simulation interval
+    const h = runIntervals.get(runId)
+    if (h) { clearTimeout(h); runIntervals.delete(runId) }
+    set(state => ({
+      workerRuns: state.workerRuns.map(r =>
+        r.id === runId && r.state === 'running'
+          ? { ...r, state: 'paused' as const }
+          : r
+      ),
+    }))
+  },
+
+  resumeWorkerRun: (runId) => {
+    const run = get().workerRuns.find(r => r.id === runId)
+    if (!run || run.state !== 'paused') return
+    // Transition back to running
+    set(state => ({
+      workerRuns: state.workerRuns.map(r =>
+        r.id === runId ? { ...r, state: 'running' as const } : r
+      ),
+    }))
+    // Resume simulation from current progress
+    const resumeProgress = (progress: number) => {
+      const current = get().workerRuns.find(r => r.id === runId)
+      if (!current || current.state !== 'running') return
+      if (progress >= 100) {
+        finishRun(runId, current.objectId, get, set)
+        return
+      }
+      const next = Math.min(progress + 12, 100)
+      set(state => ({
+        workerRuns: state.workerRuns.map(r =>
+          r.id === runId ? { ...r, progress: next } : r
+        ),
+      }))
+      get().addRunLog(runId, { ts: nowIso(), level: 'info', msg: getSimLog(current.workerId, next) })
+      const h = setTimeout(() => resumeProgress(next), 800)
+      runIntervals.set(runId, h)
+    }
+    resumeProgress(run.progress)
+  },
+
+  addRunLog: (runId, entry) => {
+    set(state => ({
+      workerRuns: state.workerRuns.map(r =>
+        r.id === runId ? { ...r, logs: [...(r.logs ?? []), entry] } : r
+      ),
+    }))
   },
 
   // ─── Flow Actions ────────────────────────────────────────────────────────────
@@ -697,6 +781,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 }))
 
+// ─── Worker → artifact type map ───────────────────────────────────────────────
+const WORKER_ARTIFACT_TYPE: Record<string, string> = {
+  create_prd_worker:       'prd',
+  create_design_worker:    'design',
+  create_adr_worker:       'adr',
+  decompose_feature_worker:'decomposition',
+  implement_code_worker:   'pull_request',
+  create_release_worker:   'release',
+  deploy_to_staging_worker:'deployment',
+  deploy_to_prod_worker:   'deployment',
+}
+
 // ─── Helper: finish a worker run ──────────────────────────────────────────────
 function finishRun(
   runId: string,
@@ -723,6 +819,9 @@ function finishRun(
 
   const output = outputMessages[run.workerId] || `${workerDef?.label ?? 'Worker'} completed successfully.`
 
+  // Emit completion log
+  get().addRunLog(runId, { ts: nowIso(), level: 'info', msg: 'Worker completed successfully' })
+
   set(state => ({
     workerRuns: state.workerRuns.map(r =>
       r.id === runId
@@ -730,6 +829,33 @@ function finishRun(
         : r
     ),
   }))
+
+  // Artifact creation
+  const artifactTypeId = WORKER_ARTIFACT_TYPE[run.workerId]
+  if (artifactTypeId) {
+    const now = nowIso()
+    const newObjId = `${artifactTypeId}-${Date.now()}`
+    const newObj: StudioObject = {
+      id: newObjId,
+      typeId: artifactTypeId as import('../types/domain').ObjectTypeId,
+      tenantId: 'tenant-acme',
+      state: 'draft',
+      title: `${run.objectTitle} — ${workerDef?.label ?? artifactTypeId}`,
+      validationStatus: 'none',
+      stalenessScore: 0,
+      links: [],
+      createdAt: now,
+      updatedAt: now,
+    }
+    set(state => ({
+      objects: [...state.objects, newObj],
+      workerRuns: state.workerRuns.map(r =>
+        r.id === runId
+          ? { ...r, createdObjectIds: [...(r.createdObjectIds ?? []), newObjId] }
+          : r
+      ),
+    }))
+  }
 
   // Update object state based on worker
   const objectUpdates: Partial<StudioObject> = {}
@@ -750,6 +876,9 @@ function finishRun(
       ),
     }))
   }
+
+  // Clean up interval handle if still tracked
+  runIntervals.delete(runId)
 }
 
 // ─── Selectors ────────────────────────────────────────────────────────────────

@@ -17,6 +17,12 @@ export type ObjectTypeId =
   | 'validation_session'
   | 'evidence'
   | 'worker_interaction'
+  | 'component'
+  | 'person'
+  | 'team'
+  | 'release'
+  | 'deployment'
+  | 'environment'
 
 export type ObjectState =
   | 'draft'
@@ -69,10 +75,16 @@ export interface StudioObject {
   metadata?: Record<string, unknown>
 }
 
+export interface LogEntry {
+  ts: string        // ISO timestamp string
+  level: 'debug' | 'info' | 'warn' | 'error'
+  msg: string
+}
+
 // ─── Worker Types ─────────────────────────────────────────────────────────────
 
 export type WorkerCategory = 'quality' | 'security' | 'ops' | 'ai-cost' | 'traceability' | 'retrieval' | 'platform'
-export type WorkerProfile = 'realtime' | 'scheduled' | 'on_demand'
+export type WorkerProfile = 'realtime' | 'scheduled' | 'on_demand' | 'analyzer'
 export type WorkerRunState = 'pending' | 'running' | 'awaiting_input' | 'paused' | 'done' | 'failed' | 'escalated' | 'aborted'
 export type InteractionKind = 'menu' | 'input_request' | 'free_form_intent'
 
@@ -117,6 +129,8 @@ export interface WorkerRun {
   tokensOut?: number
   model?: string
   durationMs?: number
+  logs?: LogEntry[]
+  createdObjectIds?: string[]
 }
 
 // ─── Flow Types ───────────────────────────────────────────────────────────────
@@ -178,7 +192,7 @@ export interface Recommendation {
 
 // ─── App View Types ───────────────────────────────────────────────────────────
 
-export type AppView = 'graph' | 'flows' | 'activity' | 'recommendations' | 'files' | 'kits' | 'workspaces' | 'chat'
+export type AppView = 'graph' | 'flows' | 'activity' | 'recommendations' | 'files' | 'kits' | 'workspaces' | 'chat' | 'workers'
 
 export interface GraphNodeData {
   object: StudioObject
