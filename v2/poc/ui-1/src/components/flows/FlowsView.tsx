@@ -1,37 +1,38 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { ReactFlowProvider, ReactFlow, Background, BackgroundVariant, Controls, Handle, Position, type NodeProps, type Node, type Edge } from '@xyflow/react'
-import { Play, Square, CheckCircle2, Loader2, AlertTriangle, User, RefreshCw, Zap, GitBranch, Split, MessageSquare, ThumbsUp, ThumbsDown, X, IterationCcw, ChevronDown, ChevronRight, Pause, RotateCcw, Ban } from 'lucide-react'
+import { Play, Square, CheckCircle2, Loader2, AlertTriangle, User, RefreshCw, Zap, GitBranch, Split, MessageSquare, ThumbsUp, ThumbsDown, ChevronDown, ChevronRight, Pause, Ban } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '../../store/app-store'
 import { FLOW_GRAPH_DEFS, FLOW_DEFS } from '../../data/mock-data'
 import type { FlowGraphDef, FlowGraphNode, FlowNodeExecState, FlowInteractionOption, FlowDef } from '../../types/domain'
 
-// Iterative (loop-capable) flows = FLOW_DEFS entries that have loopPolicy
-const LOOP_FLOWS: FlowDef[] = FLOW_DEFS.filter(f => f.loopPolicy != null)
+// All flows — no loop/regular distinction any more
+const ALL_FLOWS: FlowDef[] = FLOW_DEFS
 
-// Regular (non-loop) flows from FLOW_DEFS
-const REGULAR_FLOWS: FlowDef[] = FLOW_DEFS.filter(f => !f.loopPolicy)
-
-// Map FlowDef.id → FlowGraphDef — all regular flows have visual graphs
+// Map FlowDef.id → FlowGraphDef — all flows have visual graphs
 const GRAPH_MAP: Record<string, FlowGraphDef> = {
-  'sdlc_pipeline_flow':           FLOW_GRAPH_DEFS.find(g => g.id === 'flow-sdlc-pipeline')!,
-  'bug_fix_flow':                  FLOW_GRAPH_DEFS.find(g => g.id === 'flow-bug-fix')!,
-  'release_readiness_review':      FLOW_GRAPH_DEFS.find(g => g.id === 'flow-release-readiness')!,
-  'prd_creation_flow':             FLOW_GRAPH_DEFS.find(g => g.id === 'flow-prd-creation')!,
-  'design_creation_flow':          FLOW_GRAPH_DEFS.find(g => g.id === 'flow-design-creation')!,
-  'adr_creation_flow':             FLOW_GRAPH_DEFS.find(g => g.id === 'flow-adr-creation')!,
-  'feature_spec_creation_flow':    FLOW_GRAPH_DEFS.find(g => g.id === 'flow-feature-spec')!,
-  'implement_and_review_flow':     FLOW_GRAPH_DEFS.find(g => g.id === 'flow-implement-review')!,
-  'tdd_flow':                      FLOW_GRAPH_DEFS.find(g => g.id === 'flow-tdd')!,
-  'decompose_and_plan_flow':       FLOW_GRAPH_DEFS.find(g => g.id === 'flow-decompose-plan')!,
-  'code_review_flow':              FLOW_GRAPH_DEFS.find(g => g.id === 'flow-code-review')!,
-  'design_review_flow':            FLOW_GRAPH_DEFS.find(g => g.id === 'flow-design-review')!,
-  'security_audit_flow':           FLOW_GRAPH_DEFS.find(g => g.id === 'flow-security-audit')!,
-  'incident_to_postmortem_flow':   FLOW_GRAPH_DEFS.find(g => g.id === 'flow-incident-postmortem')!,
-  'hotfix_flow':                   FLOW_GRAPH_DEFS.find(g => g.id === 'flow-hotfix')!,
-  'release_candidate_flow':        FLOW_GRAPH_DEFS.find(g => g.id === 'flow-release-candidate')!,
-  'staged_deployment_flow':        FLOW_GRAPH_DEFS.find(g => g.id === 'flow-staged-deployment')!,
-  'regression_test_flow':          FLOW_GRAPH_DEFS.find(g => g.id === 'flow-regression-test')!,
+  'sdlc_pipeline_flow':              FLOW_GRAPH_DEFS.find(g => g.id === 'flow-sdlc-pipeline')!,
+  'bug_fix_flow':                    FLOW_GRAPH_DEFS.find(g => g.id === 'flow-bug-fix')!,
+  'release_readiness_review':        FLOW_GRAPH_DEFS.find(g => g.id === 'flow-release-readiness')!,
+  'prd_creation_flow':               FLOW_GRAPH_DEFS.find(g => g.id === 'flow-prd-creation')!,
+  'design_creation_flow':            FLOW_GRAPH_DEFS.find(g => g.id === 'flow-design-creation')!,
+  'adr_creation_flow':               FLOW_GRAPH_DEFS.find(g => g.id === 'flow-adr-creation')!,
+  'feature_spec_creation_flow':      FLOW_GRAPH_DEFS.find(g => g.id === 'flow-feature-spec')!,
+  'implement_and_review_flow':       FLOW_GRAPH_DEFS.find(g => g.id === 'flow-implement-review')!,
+  'tdd_flow':                        FLOW_GRAPH_DEFS.find(g => g.id === 'flow-tdd')!,
+  'decompose_and_plan_flow':         FLOW_GRAPH_DEFS.find(g => g.id === 'flow-decompose-plan')!,
+  'code_review_flow':                FLOW_GRAPH_DEFS.find(g => g.id === 'flow-code-review')!,
+  'design_review_flow':              FLOW_GRAPH_DEFS.find(g => g.id === 'flow-design-review')!,
+  'security_audit_flow':             FLOW_GRAPH_DEFS.find(g => g.id === 'flow-security-audit')!,
+  'incident_to_postmortem_flow':     FLOW_GRAPH_DEFS.find(g => g.id === 'flow-incident-postmortem')!,
+  'hotfix_flow':                     FLOW_GRAPH_DEFS.find(g => g.id === 'flow-hotfix')!,
+  'release_candidate_flow':          FLOW_GRAPH_DEFS.find(g => g.id === 'flow-release-candidate')!,
+  'staged_deployment_flow':          FLOW_GRAPH_DEFS.find(g => g.id === 'flow-staged-deployment')!,
+  'regression_test_flow':            FLOW_GRAPH_DEFS.find(g => g.id === 'flow-regression-test')!,
+  'code_quality_optimization_loop':  FLOW_GRAPH_DEFS.find(g => g.id === 'flow-code-quality-loop')!,
+  'design_conformance_loop':         FLOW_GRAPH_DEFS.find(g => g.id === 'flow-design-conformance-loop')!,
+  'test_coverage_improvement_loop':  FLOW_GRAPH_DEFS.find(g => g.id === 'flow-test-coverage-loop')!,
+  'prd_quality_improvement_loop':    FLOW_GRAPH_DEFS.find(g => g.id === 'flow-prd-quality-loop')!,
 }
 
 // Flow category groups for sidebar
@@ -41,6 +42,7 @@ const FLOW_GROUPS: { label: string; ids: string[] }[] = [
   { label: 'Review',        ids: ['code_review_flow','design_review_flow','security_audit_flow'] },
   { label: 'Bug Fix',       ids: ['bug_fix_flow','incident_to_postmortem_flow','hotfix_flow'] },
   { label: 'Delivery',      ids: ['sdlc_pipeline_flow','release_readiness_review','release_candidate_flow','staged_deployment_flow','regression_test_flow'] },
+  { label: 'Refinement',    ids: ['code_quality_optimization_loop','design_conformance_loop','test_coverage_improvement_loop','prd_quality_improvement_loop'] },
 ]
 
 // ─── Node exec state styling ──────────────────────────────────────────────────
@@ -812,168 +814,12 @@ function FlowSidebarItem({ flow, selected, onSelect }: { flow: FlowDef; selected
 
 // ─── Main FlowsView ───────────────────────────────────────────────────────────
 
-// ─── Loop Flow launcher panel ─────────────────────────────────────────────────
-
-const TYPE_LABEL: Record<string, string> = {
-  prd: 'PRD', design: 'DESIGN', adr: 'ADR', decomposition: 'DECOMP',
-  feature_spec: 'FSPEC', task: 'TASK', pull_request: 'PR', build: 'BUILD',
-  incident: 'INC', component: 'COMP', release: 'RELEASE',
-}
-const STATE_DOT: Record<string, string> = {
-  approved: '#10b981', done: '#10b981', in_progress: '#f59e0b',
-  review: '#f59e0b', failed: '#ef4444', open: '#ef4444',
-  draft: '#71717a', planned: '#71717a',
-}
-
-function LoopFlowPanel({ flow }: { flow: FlowDef }) {
-  const objects = useAppStore(s => s.objects)
-  const startAgenticLoop = useAppStore(s => s.startAgenticLoop)
-  const setActiveView = useAppStore(s => s.setActiveView)
-  const loopRuns = useAppStore(s => s.loopRuns)
-
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
-  const [policy, setPolicy] = useState(flow.loopPolicy!)
-  const [launched, setLaunched] = useState(false)
-
-  const applicableTypeIds = flow.entryConstraints?.map(c => c.typeId) ?? []
-  const compatibleObjects = objects.filter(o => applicableTypeIds.includes(o.typeId))
-
-  // Recent runs for this flow
-  const recentRuns = loopRuns.filter(r => r.flowId === flow.id).slice(0, 3)
-
-  const handleRun = () => {
-    if (!selectedObjectId) return
-    startAgenticLoop(flow.id, selectedObjectId)
-    setLaunched(true)
-    setTimeout(() => setLaunched(false), 2000)
-  }
-
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'rgba(9,9,11,0.6)' }}>
-      {/* Header */}
-      <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid rgba(63,63,70,0.4)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <IterationCcw size={14} color="#818cf8" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#e4e4e7' }}>{flow.label}</span>
-          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Loop mode</span>
-        </div>
-        <p style={{ fontSize: 11, color: '#71717a', lineHeight: 1.5 }}>{flow.description}</p>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-        {/* Steps preview */}
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Steps per iteration</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            {flow.steps.map((step, i) => (
-              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 10, background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(63,63,70,0.5)', color: '#a1a1aa', padding: '2px 8px', borderRadius: 4 }}>{step.workerLabel}</span>
-                {i < flow.steps.length - 1 && <span style={{ fontSize: 12, color: '#3f3f46' }}>›</span>}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Loop policy config */}
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Loop configuration</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
-            {[
-              { label: 'Metric', value: policy.metric, field: 'metric', type: 'text' },
-              { label: 'Threshold', value: `${(policy.threshold * 100).toFixed(0)}%`, field: 'threshold', type: 'pct' },
-              { label: 'Max iterations', value: String(policy.maxIterations), field: 'maxIterations', type: 'int' },
-              { label: 'Budget', value: `$${policy.budgetUsd.toFixed(2)}`, field: 'budgetUsd', type: 'usd' },
-            ].map(cfg => (
-              <div key={cfg.field} style={{ padding: '10px 12px', background: 'rgba(24,24,27,0.6)', border: '1px solid rgba(63,63,70,0.5)', borderRadius: 8 }}>
-                <p style={{ fontSize: 9, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{cfg.label}</p>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#c4b5fd' }}>{cfg.value}</p>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 10, color: '#52525b' }}>On budget exhaustion:</span>
-            <span style={{ fontSize: 10, fontWeight: 600, color: '#a78bfa' }}>{policy.onExhaustion.replace('_', ' ')}</span>
-          </div>
-        </div>
-
-        {/* Object selector */}
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-            Select object to run on ({applicableTypeIds.map(t => TYPE_LABEL[t] ?? t).join(', ')})
-          </p>
-          {compatibleObjects.length === 0 ? (
-            <p style={{ fontSize: 11, color: '#52525b', fontStyle: 'italic' }}>No compatible objects in workspace</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
-              {compatibleObjects.map(obj => (
-                <button
-                  key={obj.id}
-                  onClick={() => setSelectedObjectId(obj.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                    borderRadius: 8, border: `1px solid ${selectedObjectId === obj.id ? 'rgba(99,102,241,0.5)' : 'rgba(63,63,70,0.4)'}`,
-                    background: selectedObjectId === obj.id ? 'rgba(99,102,241,0.1)' : 'rgba(24,24,27,0.5)',
-                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
-                  }}
-                >
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATE_DOT[obj.state] ?? '#3b82f6', flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, fontWeight: 500, color: selectedObjectId === obj.id ? '#c4b5fd' : '#d4d4d8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{obj.title}</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: '#52525b', textTransform: 'uppercase' }}>{TYPE_LABEL[obj.typeId] ?? obj.typeId}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Run button */}
-        <button
-          onClick={handleRun}
-          disabled={!selectedObjectId}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            padding: '10px 20px', borderRadius: 10, border: 'none',
-            background: selectedObjectId ? '#4f46e5' : '#27272a',
-            color: selectedObjectId ? '#fff' : '#52525b',
-            fontSize: 13, fontWeight: 600, cursor: selectedObjectId ? 'pointer' : 'not-allowed',
-            transition: 'all 0.15s', boxShadow: selectedObjectId ? '0 4px 16px rgba(79,70,229,0.4)' : 'none',
-          }}
-        >
-          {launched ? <><CheckCircle2 size={14} /> Loop started → Monitor</> : <><IterationCcw size={14} /> Run as Loop</>}
-        </button>
-
-        {/* Recent runs */}
-        {recentRuns.length > 0 && (
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Recent loop runs</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {recentRuns.map(run => (
-                <div key={run.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(24,24,27,0.5)', border: '1px solid rgba(63,63,70,0.4)', borderRadius: 6 }}>
-                  <span style={{ fontSize: 10, color: run.state === 'done' ? '#10b981' : run.state === 'running' ? '#6366f1' : '#ef4444' }}>●</span>
-                  <span style={{ fontSize: 11, color: '#a1a1aa', flex: 1 }}>{run.objectTitle}</span>
-                  <span style={{ fontSize: 10, color: '#52525b' }}>{run.iterations.length} iter</span>
-                  <span style={{ fontSize: 10, color: '#52525b' }}>${run.totalCostUsd.toFixed(2)}</span>
-                  {run.terminationReason && <span style={{ fontSize: 9, color: run.terminationReason === 'converged' ? '#10b981' : '#f59e0b' }}>{run.terminationReason}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Main FlowsView ───────────────────────────────────────────────────────────
-
 export function FlowsView() {
-  const firstFlow = REGULAR_FLOWS[0]
+  const firstFlow = ALL_FLOWS[0]
   const [selectedId, setSelectedId] = useState<string>(firstFlow?.id ?? '')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(FLOW_GROUPS.map(g => g.label)))
-  const [loopsExpanded, setLoopsExpanded] = useState(false)
 
-  const selectedFlow = REGULAR_FLOWS.find(f => f.id === selectedId) ?? null
-  const selectedLoopFlow = LOOP_FLOWS.find(f => f.id === selectedId) ?? null
+  const selectedFlow = ALL_FLOWS.find(f => f.id === selectedId) ?? null
   const graphDef = selectedFlow ? GRAPH_MAP[selectedFlow.id] : undefined
 
   const toggleGroup = (label: string) => setExpandedGroups(prev => {
@@ -983,7 +829,7 @@ export function FlowsView() {
   })
 
   // Which flows belong to each group
-  const flowById = Object.fromEntries(REGULAR_FLOWS.map(f => [f.id, f]))
+  const flowById = Object.fromEntries(ALL_FLOWS.map(f => [f.id, f]))
 
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -996,10 +842,9 @@ export function FlowsView() {
       }}>
         <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid rgba(63,63,70,0.4)', display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: '#e4e4e7' }}>Flows</h2>
-          <span style={{ fontSize: 10, color: '#52525b' }}>{REGULAR_FLOWS.length + LOOP_FLOWS.length} total</span>
+          <span style={{ fontSize: 10, color: '#52525b' }}>{ALL_FLOWS.length} total</span>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
-          {/* Grouped regular flows */}
           {FLOW_GROUPS.map(group => {
             const groupFlows = group.ids.map(id => flowById[id]).filter(Boolean) as FlowDef[]
             if (groupFlows.length === 0) return null
@@ -1020,48 +865,12 @@ export function FlowsView() {
               </div>
             )
           })}
-
-          {/* Loop flows */}
-          {LOOP_FLOWS.length > 0 && (
-            <div>
-              <button
-                onClick={() => setLoopsExpanded(e => !e)}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 4px 3px', background: 'none', border: 'none', cursor: 'pointer', width: '100%' }}
-              >
-                {loopsExpanded ? <ChevronDown size={10} color="#3f3f46" /> : <ChevronRight size={10} color="#3f3f46" />}
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', flex: 1, textAlign: 'left' }}>Iterative</span>
-                <span style={{ fontSize: 9, color: '#3f3f46' }}>{LOOP_FLOWS.length}</span>
-              </button>
-              {loopsExpanded && LOOP_FLOWS.map(flow => (
-                <button
-                  key={flow.id}
-                  onClick={() => setSelectedId(flow.id)}
-                  style={{
-                    width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 7, marginBottom: 2,
-                    border: selectedId === flow.id ? '1.5px solid rgba(99,102,241,0.5)' : '1px solid transparent',
-                    background: selectedId === flow.id ? 'rgba(99,102,241,0.1)' : 'transparent',
-                    cursor: 'pointer', transition: 'all 0.12s',
-                    display: 'flex', alignItems: 'center', gap: 7,
-                  }}
-                  onMouseEnter={e => { if (selectedId !== flow.id) (e.currentTarget as HTMLElement).style.background = 'rgba(39,39,42,0.5)' }}
-                  onMouseLeave={e => { if (selectedId !== flow.id) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-                >
-                  <IterationCcw size={11} color={selectedId === flow.id ? '#818cf8' : '#52525b'} style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, fontWeight: selectedId === flow.id ? 600 : 400, color: selectedId === flow.id ? '#c4b5fd' : '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {flow.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
       {/* Right: content panel */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {selectedLoopFlow ? (
-          <LoopFlowPanel flow={selectedLoopFlow} />
-        ) : graphDef ? (
+        {graphDef ? (
           <>
             <FlowControlBar graphDef={graphDef} flowDef={selectedFlow ?? undefined} />
             <ReactFlowProvider>

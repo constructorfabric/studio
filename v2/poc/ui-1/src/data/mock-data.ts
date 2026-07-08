@@ -1751,6 +1751,94 @@ export const FLOW_GRAPH_DEFS: FlowGraphDef[] = [
       { id: 'rt9', source: 'rt-approval',    target: 'rt-gate-cov',   edgeKind: 'fail',  label: 'More tests' },
     ],
   },
+
+  // ─── Flow 19: Code Quality Optimization (score-gate loop) ─────────────────
+  {
+    id: 'flow-code-quality-loop',
+    name: 'Code Quality Optimization',
+    description: 'Iterative code quality improvement via score gate',
+    category: 'sdlc',
+    nodes: [
+      { id: 'cql-start',     nodeType: 'start',  label: 'START',                                            position: { x: 60,  y: 200 } },
+      { id: 'implement',     nodeType: 'worker', label: 'Implement Code',       sublabel: 'LLM proposer',    position: { x: 280, y: 200 } },
+      { id: 'quality-evaluator', nodeType: 'gate', label: 'Quality Evaluator', sublabel: '0.0–1.0 score', maxRetries: 8, position: { x: 540, y: 200 } },
+      { id: 'cql-feedback',  nodeType: 'worker', label: 'Feedback Synthesizer', sublabel: 'packages findings', position: { x: 540, y: 380 } },
+      { id: 'cql-end',       nodeType: 'end',    label: 'END',                                               position: { x: 760, y: 200 } },
+    ],
+    edges: [
+      { id: 'cql1', source: 'cql-start',         target: 'implement',          edgeKind: 'default' },
+      { id: 'cql2', source: 'implement',          target: 'quality-evaluator',  edgeKind: 'default' },
+      { id: 'cql3', source: 'quality-evaluator',  target: 'cql-end',            edgeKind: 'pass',  label: 'converged' },
+      { id: 'cql4', source: 'quality-evaluator',  target: 'cql-feedback',       edgeKind: 'fail',  label: 'improvement ≥ 5%' },
+      { id: 'cql5', source: 'cql-feedback',       target: 'implement',          edgeKind: 'default', label: 'with feedback' },
+    ],
+  },
+
+  // ─── Flow 20: Design Conformance Refinement (score-gate loop) ─────────────
+  {
+    id: 'flow-design-conformance-loop',
+    name: 'Design Conformance Refinement',
+    description: 'Iterative design conformance improvement via score gate',
+    category: 'sdlc',
+    nodes: [
+      { id: 'dcl-start',              nodeType: 'start',  label: 'START',                                   position: { x: 60,  y: 200 } },
+      { id: 'design-author',          nodeType: 'worker', label: 'Design Author',    sublabel: 'LLM proposer', position: { x: 280, y: 200 } },
+      { id: 'conformance-analyzer',   nodeType: 'gate',   label: 'Conformance Analyzer', sublabel: '0.0–1.0 score', maxRetries: 6, position: { x: 540, y: 200 } },
+      { id: 'dcl-feedback',           nodeType: 'worker', label: 'Feedback Synthesizer',                    position: { x: 540, y: 380 } },
+      { id: 'dcl-end',                nodeType: 'end',    label: 'END',                                     position: { x: 760, y: 200 } },
+    ],
+    edges: [
+      { id: 'dcl1', source: 'dcl-start',           target: 'design-author',        edgeKind: 'default' },
+      { id: 'dcl2', source: 'design-author',        target: 'conformance-analyzer', edgeKind: 'default' },
+      { id: 'dcl3', source: 'conformance-analyzer', target: 'dcl-end',              edgeKind: 'pass',  label: 'converged' },
+      { id: 'dcl4', source: 'conformance-analyzer', target: 'dcl-feedback',         edgeKind: 'fail',  label: 'improvement ≥ 5%' },
+      { id: 'dcl5', source: 'dcl-feedback',         target: 'design-author',        edgeKind: 'default', label: 'with feedback' },
+    ],
+  },
+
+  // ─── Flow 21: Test Coverage Improvement (score-gate loop) ─────────────────
+  {
+    id: 'flow-test-coverage-loop',
+    name: 'Test Coverage Improvement',
+    description: 'Iterative test coverage improvement via score gate',
+    category: 'sdlc',
+    nodes: [
+      { id: 'tcl-start',           nodeType: 'start',  label: 'START',                                     position: { x: 60,  y: 200 } },
+      { id: 'test-generator',      nodeType: 'worker', label: 'Test Generator',   sublabel: 'LLM proposer', position: { x: 280, y: 200 } },
+      { id: 'coverage-evaluator',  nodeType: 'gate',   label: 'Coverage Evaluator', sublabel: '0.0–1.0 score', maxRetries: 5, position: { x: 540, y: 200 } },
+      { id: 'tcl-feedback',        nodeType: 'worker', label: 'Gap Synthesizer',                           position: { x: 540, y: 380 } },
+      { id: 'tcl-end',             nodeType: 'end',    label: 'END',                                       position: { x: 760, y: 200 } },
+    ],
+    edges: [
+      { id: 'tcl1', source: 'tcl-start',          target: 'test-generator',     edgeKind: 'default' },
+      { id: 'tcl2', source: 'test-generator',      target: 'coverage-evaluator', edgeKind: 'default' },
+      { id: 'tcl3', source: 'coverage-evaluator',  target: 'tcl-end',            edgeKind: 'pass',  label: 'converged' },
+      { id: 'tcl4', source: 'coverage-evaluator',  target: 'tcl-feedback',       edgeKind: 'fail',  label: 'improvement ≥ 5%' },
+      { id: 'tcl5', source: 'tcl-feedback',        target: 'test-generator',     edgeKind: 'default', label: 'with feedback' },
+    ],
+  },
+
+  // ─── Flow 22: PRD Quality Improvement (score-gate loop) ───────────────────
+  {
+    id: 'flow-prd-quality-loop',
+    name: 'PRD Quality Improvement',
+    description: 'Iterative PRD quality improvement via score gate',
+    category: 'sdlc',
+    nodes: [
+      { id: 'pql-start',           nodeType: 'start',  label: 'START',                                     position: { x: 60,  y: 200 } },
+      { id: 'prd-refiner',         nodeType: 'worker', label: 'Requirements Refiner', sublabel: 'LLM proposer', position: { x: 280, y: 200 } },
+      { id: 'pql-quality-evaluator', nodeType: 'gate', label: 'Quality Evaluator', sublabel: '0.0–1.0 score', maxRetries: 4, position: { x: 540, y: 200 } },
+      { id: 'pql-feedback',        nodeType: 'worker', label: 'Feedback Synthesizer',                      position: { x: 540, y: 380 } },
+      { id: 'pql-end',             nodeType: 'end',    label: 'END',                                       position: { x: 760, y: 200 } },
+    ],
+    edges: [
+      { id: 'pql1', source: 'pql-start',              target: 'prd-refiner',           edgeKind: 'default' },
+      { id: 'pql2', source: 'prd-refiner',             target: 'pql-quality-evaluator', edgeKind: 'default' },
+      { id: 'pql3', source: 'pql-quality-evaluator',   target: 'pql-end',               edgeKind: 'pass',  label: 'converged' },
+      { id: 'pql4', source: 'pql-quality-evaluator',   target: 'pql-feedback',          edgeKind: 'fail',  label: 'improvement ≥ 5%' },
+      { id: 'pql5', source: 'pql-feedback',            target: 'prd-refiner',           edgeKind: 'default', label: 'with feedback' },
+    ],
+  },
 ]
 
 // ─── Kit Definitions ─────────────────────────────────────────────────────────
