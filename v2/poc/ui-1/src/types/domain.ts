@@ -187,12 +187,24 @@ export interface FlowStep {
   workerRunId?: string
 }
 
+export interface LoopPolicy {
+  metric: string           // Evidence field to track, e.g. "score"
+  threshold: number        // min improvement per iteration to continue (e.g. 0.05)
+  minIterations: number
+  maxIterations: number
+  budgetUsd: number
+  maxTokens: number
+  onExhaustion: 'accept_best' | 'abort' | 'escalate'
+}
+
 export interface FlowDef {
   id: string
   label: string
   description: string
   steps: FlowStep[]
   entryConstraints?: { typeId: ObjectTypeId; requiredStates?: ObjectState[] }[]
+  // When set, this Flow runs in iterative loop mode (Loop = Flow + LoopPolicy)
+  loopPolicy?: LoopPolicy
 }
 
 export interface FlowRun {

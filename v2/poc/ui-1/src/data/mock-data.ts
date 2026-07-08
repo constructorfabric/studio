@@ -802,6 +802,75 @@ export const FLOW_DEFS: FlowDef[] = [
       { id: 'step-pr',             workerId: 'create_pr_worker',              workerLabel: 'Create Fix PR',              objectTypeTarget: 'pull_request', status: 'pending' },
     ],
   },
+
+  // ── Iterative Flows (Loop = Flow + LoopPolicy) ────────────────────────────
+  // These Flows have loopPolicy set — they run their steps repeatedly until
+  // convergence. The evaluator step emits Evidence.payload.score which the
+  // LoopPolicy tracks. Selecting one of these in the UI shows the Loop launcher.
+  {
+    id: 'code_quality_optimization_loop',
+    label: 'Code Quality Optimization',
+    description: 'Iteratively improves code quality through propose → design-validate → quality-evaluate → feedback cycles. Converges when improvement < threshold.',
+    steps: [
+      { id: 'step-propose',  workerId: 'implement_code_worker',        workerLabel: 'Propose Implementation',  objectTypeTarget: 'pull_request', status: 'pending' },
+      { id: 'step-validate', workerId: 'pr_design_validator',           workerLabel: 'Validate Design',         objectTypeTarget: 'pull_request', status: 'pending' },
+      { id: 'step-evaluate', workerId: 'code_quality_evaluator',        workerLabel: 'Evaluate Quality',        objectTypeTarget: 'pull_request', status: 'pending' },
+      { id: 'step-feedback', workerId: 'feedback_synthesizer_worker',   workerLabel: 'Synthesize Feedback',     objectTypeTarget: 'pull_request', status: 'pending' },
+    ],
+    entryConstraints: [{ typeId: 'pull_request' }, { typeId: 'task' }],
+    loopPolicy: {
+      metric: 'score', threshold: 0.05, minIterations: 2, maxIterations: 8,
+      budgetUsd: 5.0, maxTokens: 200000, onExhaustion: 'accept_best',
+    },
+  },
+  {
+    id: 'design_conformance_loop',
+    label: 'Design Conformance Refinement',
+    description: 'Iteratively aligns a system design against PRD requirements: propose revisions → validate PRD consistency → measure conformance → synthesize gaps.',
+    steps: [
+      { id: 'step-propose',  workerId: 'create_design_worker',         workerLabel: 'Propose Design Revision', objectTypeTarget: 'design',       status: 'pending' },
+      { id: 'step-validate', workerId: 'gap_analysis_validator',        workerLabel: 'Validate PRD Gaps',       objectTypeTarget: 'design',       status: 'pending' },
+      { id: 'step-evaluate', workerId: 'code_quality_evaluator',        workerLabel: 'Evaluate Conformance',    objectTypeTarget: 'design',       status: 'pending' },
+      { id: 'step-feedback', workerId: 'feedback_synthesizer_worker',   workerLabel: 'Synthesize Feedback',     objectTypeTarget: 'design',       status: 'pending' },
+    ],
+    entryConstraints: [{ typeId: 'design' }, { typeId: 'prd' }],
+    loopPolicy: {
+      metric: 'conformance_score', threshold: 0.05, minIterations: 2, maxIterations: 6,
+      budgetUsd: 3.0, maxTokens: 150000, onExhaustion: 'accept_best',
+    },
+  },
+  {
+    id: 'test_coverage_improvement_loop',
+    label: 'Test Coverage Improvement',
+    description: 'Generates and improves test scenarios iteratively: propose tests → validate against spec → measure coverage → identify remaining gaps.',
+    steps: [
+      { id: 'step-propose',  workerId: 'implement_code_worker',        workerLabel: 'Generate Tests',          objectTypeTarget: 'feature_spec', status: 'pending' },
+      { id: 'step-validate', workerId: 'test_coverage_validator',       workerLabel: 'Validate Coverage',       objectTypeTarget: 'feature_spec', status: 'pending' },
+      { id: 'step-evaluate', workerId: 'code_quality_evaluator',        workerLabel: 'Measure Coverage Score',  objectTypeTarget: 'feature_spec', status: 'pending' },
+      { id: 'step-feedback', workerId: 'feedback_synthesizer_worker',   workerLabel: 'Identify Gaps',           objectTypeTarget: 'feature_spec', status: 'pending' },
+    ],
+    entryConstraints: [{ typeId: 'feature_spec' }, { typeId: 'task' }, { typeId: 'pull_request' }],
+    loopPolicy: {
+      metric: 'coverage_score', threshold: 0.05, minIterations: 2, maxIterations: 5,
+      budgetUsd: 2.0, maxTokens: 100000, onExhaustion: 'accept_best',
+    },
+  },
+  {
+    id: 'prd_quality_improvement_loop',
+    label: 'PRD Quality Improvement',
+    description: 'Refines product requirements through iterative review: propose improvements → validate completeness → measure quality score → synthesize next improvements.',
+    steps: [
+      { id: 'step-propose',  workerId: 'create_prd_worker',            workerLabel: 'Refine Requirements',     objectTypeTarget: 'prd',          status: 'pending' },
+      { id: 'step-validate', workerId: 'gap_analysis_validator',        workerLabel: 'Validate Completeness',   objectTypeTarget: 'prd',          status: 'pending' },
+      { id: 'step-evaluate', workerId: 'code_quality_evaluator',        workerLabel: 'Measure Quality Score',   objectTypeTarget: 'prd',          status: 'pending' },
+      { id: 'step-feedback', workerId: 'feedback_synthesizer_worker',   workerLabel: 'Synthesize Next Steps',   objectTypeTarget: 'prd',          status: 'pending' },
+    ],
+    entryConstraints: [{ typeId: 'prd' }, { typeId: 'adr' }],
+    loopPolicy: {
+      metric: 'quality_score', threshold: 0.05, minIterations: 2, maxIterations: 4,
+      budgetUsd: 2.0, maxTokens: 80000, onExhaustion: 'accept_best',
+    },
+  },
 ]
 
 // ─── Recommendations ──────────────────────────────────────────────────────────

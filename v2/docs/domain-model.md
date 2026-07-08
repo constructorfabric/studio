@@ -2723,9 +2723,30 @@ Studio's existing primitives compose directly into this pattern without any new 
 | Loop termination record | `LoopRun.terminationReason` |
 | Immutable audit trail | `AuditLog` — all WorkerRuns per iteration are immutable |
 
-### 27.3 LoopPolicy
+### 27.3 Loop = Flow + LoopPolicy
 
-A `LoopPolicy` attached to a `Flow` definition transforms it into an **AgenticLoop**. It governs convergence, budget, and feedback context.
+**A Loop is not a separate entity type. It is a Flow with a `loopPolicy` field set.**
+
+This is the key architectural decision: the same Flow registry, the same steps[] definition, the same Kit packaging — with one additional optional field that opts the Flow into iterative execution semantics. A Flow without `loopPolicy` runs its steps once and terminates. A Flow with `loopPolicy` runs its steps repeatedly until convergence or budget exhaustion.
+
+```
+Flow {
+  id, label, description, steps[], ...  // same as §6
+  loopPolicy?: LoopPolicy               // optional — presence activates loop mode
+}
+```
+
+In the Studio UI, when launching a Flow that has `loopPolicy` set, the user is presented with the Loop configuration panel (metric, threshold, budget) rather than the standard Flow launcher. The Flow's steps define *what* runs each iteration; the LoopPolicy defines *when to stop* and *how to pass feedback forward*.
+
+This means:
+- **Loop catalog = subset of Flow catalog** filtered on `loopPolicy != null`
+- **Launching a loop = launching a Flow** with LoopPolicy overrides (user may tune threshold/budget at launch time)
+- **A Flow designed for loops** includes the evaluator step that emits `Evidence.payload.score` — the metric the LoopPolicy tracks
+- **Existing Flows** can be "promoted" to loops by adding `loopPolicy` in the Kit definition — no code change
+
+### 27.3a LoopPolicy
+
+Attached to a `Flow` definition; governs convergence, budget, and feedback context.
 
 ```
 LoopPolicy {

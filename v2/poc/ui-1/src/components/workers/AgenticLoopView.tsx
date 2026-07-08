@@ -14,53 +14,11 @@ import {
   Zap,
 } from 'lucide-react'
 import { useAppStore } from '../../store/app-store'
-import { WORKER_DEFS } from '../../data/mock-data'
+import { FLOW_DEFS } from '../../data/mock-data'
 import type { LoopRun, IterationRun, WorkerRun, LoopTerminationReason } from '../../types/domain'
 
-// ─── Loop type definitions (for the picker) ───────────────────────────────────
-
-const LOOP_TYPES = [
-  {
-    id: 'agentic_code_optimization_loop',
-    label: 'Code Quality Optimization',
-    description: 'Iteratively improves code quality: implement → validate design → evaluate quality score → synthesize feedback. Converges when improvement < 5%.',
-    metric: 'quality_score',
-    steps: ['Proposer (LLM)', 'Design Validator', 'Quality Evaluator', 'Feedback Synthesizer'],
-    maxIter: 8,
-    budgetUsd: 5.0,
-    applicableTypes: ['pull_request', 'task'],
-  },
-  {
-    id: 'design_refinement_loop',
-    label: 'Design Conformance Refinement',
-    description: 'Iteratively aligns a system design artifact against PRD requirements. Proposes improvements, validates consistency, measures conformance score.',
-    metric: 'conformance_score',
-    steps: ['Design Proposer (LLM)', 'PRD Conformance Validator', 'Conformance Evaluator', 'Feedback Synthesizer'],
-    maxIter: 6,
-    budgetUsd: 3.0,
-    applicableTypes: ['design', 'prd'],
-  },
-  {
-    id: 'test_coverage_loop',
-    label: 'Test Coverage Improvement',
-    description: 'Generates and improves test scenarios iteratively until coverage threshold is met. Validates each scenario against the feature spec.',
-    metric: 'coverage_score',
-    steps: ['Test Generator (LLM)', 'Spec Validator', 'Coverage Evaluator', 'Gap Synthesizer'],
-    maxIter: 5,
-    budgetUsd: 2.0,
-    applicableTypes: ['feature_spec', 'task', 'pull_request'],
-  },
-  {
-    id: 'prd_quality_loop',
-    label: 'PRD Quality Loop',
-    description: 'Refines product requirements through iterative review: propose improvements → validate completeness → measure quality → synthesize next steps.',
-    metric: 'quality_score',
-    steps: ['Requirements Refiner (LLM)', 'Completeness Validator', 'Quality Evaluator', 'Feedback Synthesizer'],
-    maxIter: 4,
-    budgetUsd: 2.0,
-    applicableTypes: ['prd', 'adr'],
-  },
-]
+// Loop-capable flows = Flows from the catalog that have loopPolicy set
+const LOOP_FLOWS = FLOW_DEFS.filter(f => f.loopPolicy != null)
 
 // ─── New Loop Picker Modal ────────────────────────────────────────────────────
 
@@ -78,15 +36,17 @@ const STATE_DOT: Record<string, string> = {
 }
 
 function NewLoopPicker({ onStart, onClose }: {
-  onStart: (loopTypeId: string, objectId: string) => void
+  onStart: (flowId: string, objectId: string) => void
   onClose: () => void
 }) {
   const objects = useAppStore(s => s.objects)
-  const [selectedType, setSelectedType] = useState(LOOP_TYPES[0].id)
+  const [selectedFlowId, setSelectedFlowId] = useState(LOOP_FLOWS[0]?.id ?? '')
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
 
-  const loopType = LOOP_TYPES.find(l => l.id === selectedType)!
-  const compatibleObjects = objects.filter(o => loopType.applicableTypes.includes(o.typeId))
+  const loopFlow = LOOP_FLOWS.find(f => f.id === selectedFlowId) ?? LOOP_FLOWS[0]
+  const loopPolicy = loopFlow?.loopPolicy
+  const applicableTypeIds = loopFlow?.entryConstraints?.map(c => c.typeId) ?? []
+  const compatibleObjects = objects.filter(o => applicableTypeIds.includes(o.typeId))
 
   const canStart = selectedObjectId !== null && compatibleObjects.some(o => o.id === selectedObjectId)
 
@@ -107,67 +67,75 @@ function NewLoopPicker({ onStart, onClose }: {
         <div className="flex flex-1 overflow-hidden">
           {/* Loop type selector */}
           <div className="w-56 shrink-0 border-r border-zinc-800 overflow-y-auto p-3">
-            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 px-1">Loop Type</p>
-            {LOOP_TYPES.map(lt => (
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 px-1">Flow (loop-capable)</p>
+            {LOOP_FLOWS.map(f => (
               <button
-                key={lt.id}
-                onClick={() => { setSelectedType(lt.id); setSelectedObjectId(null) }}
+                key={f.id}
+                onClick={() => { setSelectedFlowId(f.id); setSelectedObjectId(null) }}
                 className={`w-full text-left px-3 py-2.5 rounded-lg mb-1 transition-colors text-xs ${
-                  selectedType === lt.id
+                  selectedFlowId === f.id
                     ? 'bg-indigo-900/40 border border-indigo-700/50 text-indigo-200'
                     : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-transparent'
                 }`}
               >
-                {lt.label}
+                {f.label}
               </button>
             ))}
           </div>
 
           {/* Config panel */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            {/* Loop description */}
+            {/* Flow description */}
             <div>
-              <h3 className="text-sm font-semibold text-zinc-100 mb-1">{loopType.label}</h3>
-              <p className="text-xs text-zinc-400 leading-relaxed">{loopType.description}</p>
+              <h3 className="text-sm font-semibold text-zinc-100 mb-1">{loopFlow?.label}</h3>
+              <p className="text-xs text-zinc-400 leading-relaxed">{loopFlow?.description}</p>
             </div>
 
             {/* Steps preview */}
-            <div>
-              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Steps per iteration</p>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {loopType.steps.map((step, i) => (
-                  <span key={i} className="flex items-center gap-1">
-                    <span className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded">{step}</span>
-                    {i < loopType.steps.length - 1 && <span className="text-zinc-600 text-[10px]">→</span>}
-                  </span>
-                ))}
+            {loopFlow && (
+              <div>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Steps per iteration</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {loopFlow.steps.map((step, i) => (
+                    <span key={i} className="flex items-center gap-1">
+                      <span className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded">{step.workerLabel}</span>
+                      {i < loopFlow.steps.length - 1 && <span className="text-zinc-600 text-[10px]">→</span>}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Policy summary */}
-            <div className="flex items-center gap-4 p-3 bg-zinc-800/40 border border-zinc-700/50 rounded-lg">
-              <div className="text-center">
-                <p className="text-xs font-bold text-zinc-200">{loopType.maxIter}</p>
-                <p className="text-[10px] text-zinc-500">max iter</p>
+            {/* LoopPolicy summary */}
+            {loopPolicy && (
+              <div className="flex items-center gap-4 p-3 bg-zinc-800/40 border border-zinc-700/50 rounded-lg">
+                <div className="text-center">
+                  <p className="text-xs font-bold text-zinc-200">{loopPolicy.maxIterations}</p>
+                  <p className="text-[10px] text-zinc-500">max iter</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-bold text-zinc-200">${loopPolicy.budgetUsd.toFixed(2)}</p>
+                  <p className="text-[10px] text-zinc-500">budget</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-bold text-zinc-200">{(loopPolicy.threshold * 100).toFixed(0)}%</p>
+                  <p className="text-[10px] text-zinc-500">threshold</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-bold text-indigo-300">{loopPolicy.metric}</p>
+                  <p className="text-[10px] text-zinc-500">metric</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-bold text-amber-300">{loopPolicy.onExhaustion}</p>
+                  <p className="text-[10px] text-zinc-500">on budget</p>
+                </div>
               </div>
-              <div className="text-center">
-                <p className="text-xs font-bold text-zinc-200">${loopType.budgetUsd.toFixed(2)}</p>
-                <p className="text-[10px] text-zinc-500">budget</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs font-bold text-zinc-200">5%</p>
-                <p className="text-[10px] text-zinc-500">threshold</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs font-bold text-indigo-300">{loopType.metric}</p>
-                <p className="text-[10px] text-zinc-500">metric</p>
-              </div>
-            </div>
+            )}
 
             {/* Object selector */}
             <div>
               <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                Select Object ({loopType.applicableTypes.map(t => TYPE_LABEL[t] ?? t).join(', ')})
+                Select Object ({applicableTypeIds.map(t => TYPE_LABEL[t] ?? t).join(', ')})
               </p>
               {compatibleObjects.length === 0 ? (
                 <p className="text-xs text-zinc-600 italic">No compatible objects in workspace</p>
@@ -200,7 +168,7 @@ function NewLoopPicker({ onStart, onClose }: {
             Cancel
           </button>
           <button
-            onClick={() => selectedObjectId && onStart(selectedType, selectedObjectId)}
+            onClick={() => selectedObjectId && onStart(selectedFlowId, selectedObjectId)}
             disabled={!canStart}
             className={`flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-semibold transition-colors ${
               canStart
