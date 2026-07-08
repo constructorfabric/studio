@@ -6,6 +6,8 @@ import {
   Controls,
   MiniMap,
   BackgroundVariant,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
   type NodeTypes,
@@ -64,10 +66,12 @@ function bottomHandle(pos: {x:number;y:number}, xFrac = 0.5): {x:number;y:number
   return { x: pos.x + NODE_WIDTH * xFrac, y: pos.y + NODE_HEIGHT }
 }
 
-export function ObjectGraph() {
+// Inner component that has access to ReactFlow context (useReactFlow)
+function ObjectGraphInner() {
   const objects = useAppStore(s => s.objects)
   const selectedObjectId = useAppStore(s => s.selectedObjectId)
   const selectObject = useAppStore(s => s.selectObject)
+  const { setCenter } = useReactFlow()
 
   // Local draggable position overrides — start from static NODE_POSITIONS
   const [positions, setPositions] = useState<Record<string, {x:number;y:number}>>(
@@ -220,8 +224,14 @@ export function ObjectGraph() {
   }, [objects, selectedObjectId, positions])
 
   const onNodeClick = useCallback((_evt: React.MouseEvent, node: Node) => {
-    selectObject(node.id === selectedObjectId ? null : node.id)
-  }, [selectObject, selectedObjectId])
+    const newId = node.id === selectedObjectId ? null : node.id
+    selectObject(newId)
+    // Center the clicked node in the viewport
+    if (newId) {
+      const pos = positions[node.id] ?? { x: 0, y: 0 }
+      setCenter(pos.x + NODE_WIDTH / 2, pos.y + NODE_HEIGHT / 2, { duration: 400, zoom: 1 })
+    }
+  }, [selectObject, selectedObjectId, positions, setCenter])
 
   const onPaneClick = useCallback(() => selectObject(null), [selectObject])
 
@@ -260,5 +270,14 @@ export function ObjectGraph() {
         />
       </ReactFlow>
     </div>
+  )
+}
+
+// Public export wraps in ReactFlowProvider so ObjectGraphInner can call useReactFlow()
+export function ObjectGraph() {
+  return (
+    <ReactFlowProvider>
+      <ObjectGraphInner />
+    </ReactFlowProvider>
   )
 }

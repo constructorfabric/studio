@@ -791,6 +791,7 @@ const WORKER_ARTIFACT_TYPE: Record<string, string> = {
   create_release_worker:   'release',
   deploy_to_staging_worker:'deployment',
   deploy_to_prod_worker:   'deployment',
+  create_task_worker:      'task',
 }
 
 // ─── Helper: finish a worker run ──────────────────────────────────────────────

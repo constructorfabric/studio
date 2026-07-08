@@ -663,6 +663,16 @@ export const WORKER_DEFS: WorkerDef[] = [
     applicableTypes: ['prd', 'design', 'pull_request'],
   },
   {
+    id: 'create_task_worker',
+    label: 'Create Task',
+    description: 'Generates a new implementation task from a decomposition entry, pre-filling context from the parent decomposition and linked design.',
+    requiresAutomationGate: true,
+    category: 'quality',
+    profile: 'on_demand',
+    actionLabel: 'Create Task',
+    applicableTypes: ['decomposition'],
+  },
+  {
     id: 'create_release_worker',
     label: 'Create Release',
     description: 'Packages a validated build into a versioned release artifact.',
