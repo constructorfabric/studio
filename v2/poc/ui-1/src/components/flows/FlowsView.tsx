@@ -12,11 +12,26 @@ const LOOP_FLOWS: FlowDef[] = FLOW_DEFS.filter(f => f.loopPolicy != null)
 // Regular (non-loop) flows from FLOW_DEFS
 const REGULAR_FLOWS: FlowDef[] = FLOW_DEFS.filter(f => !f.loopPolicy)
 
-// Map FlowDef.id → FlowGraphDef for flows that have visual graphs
+// Map FlowDef.id → FlowGraphDef — all regular flows have visual graphs
 const GRAPH_MAP: Record<string, FlowGraphDef> = {
-  'sdlc_pipeline_flow':      FLOW_GRAPH_DEFS.find(g => g.id === 'flow-sdlc-pipeline')!,
-  'bug_fix_flow':             FLOW_GRAPH_DEFS.find(g => g.id === 'flow-bug-fix')!,
-  'release_readiness_review': FLOW_GRAPH_DEFS.find(g => g.id === 'flow-release-readiness')!,
+  'sdlc_pipeline_flow':           FLOW_GRAPH_DEFS.find(g => g.id === 'flow-sdlc-pipeline')!,
+  'bug_fix_flow':                  FLOW_GRAPH_DEFS.find(g => g.id === 'flow-bug-fix')!,
+  'release_readiness_review':      FLOW_GRAPH_DEFS.find(g => g.id === 'flow-release-readiness')!,
+  'prd_creation_flow':             FLOW_GRAPH_DEFS.find(g => g.id === 'flow-prd-creation')!,
+  'design_creation_flow':          FLOW_GRAPH_DEFS.find(g => g.id === 'flow-design-creation')!,
+  'adr_creation_flow':             FLOW_GRAPH_DEFS.find(g => g.id === 'flow-adr-creation')!,
+  'feature_spec_creation_flow':    FLOW_GRAPH_DEFS.find(g => g.id === 'flow-feature-spec')!,
+  'implement_and_review_flow':     FLOW_GRAPH_DEFS.find(g => g.id === 'flow-implement-review')!,
+  'tdd_flow':                      FLOW_GRAPH_DEFS.find(g => g.id === 'flow-tdd')!,
+  'decompose_and_plan_flow':       FLOW_GRAPH_DEFS.find(g => g.id === 'flow-decompose-plan')!,
+  'code_review_flow':              FLOW_GRAPH_DEFS.find(g => g.id === 'flow-code-review')!,
+  'design_review_flow':            FLOW_GRAPH_DEFS.find(g => g.id === 'flow-design-review')!,
+  'security_audit_flow':           FLOW_GRAPH_DEFS.find(g => g.id === 'flow-security-audit')!,
+  'incident_to_postmortem_flow':   FLOW_GRAPH_DEFS.find(g => g.id === 'flow-incident-postmortem')!,
+  'hotfix_flow':                   FLOW_GRAPH_DEFS.find(g => g.id === 'flow-hotfix')!,
+  'release_candidate_flow':        FLOW_GRAPH_DEFS.find(g => g.id === 'flow-release-candidate')!,
+  'staged_deployment_flow':        FLOW_GRAPH_DEFS.find(g => g.id === 'flow-staged-deployment')!,
+  'regression_test_flow':          FLOW_GRAPH_DEFS.find(g => g.id === 'flow-regression-test')!,
 }
 
 // Flow category groups for sidebar
@@ -653,103 +668,9 @@ function FlowInteractionModal() {
   )
 }
 
-// ─── Step-list panel for flows without visual graphs ─────────────────────────
-
-function FlowStepListPanel({ flow }: { flow: FlowDef }) {
-  const runFlow = useAppStore(s => s.runFlow)
-  const setActiveView = useAppStore(s => s.setActiveView)
-
-  const STEP_ICONS: Record<string, string> = {
-    create_prd_worker: '📄', create_design_worker: '🏗', create_adr_worker: '📐',
-    create_feature_spec_worker: '📋', implement_code_worker: '⚙️', create_pr_worker: '🔀',
-    decompose_feature_worker: '🗂', gap_analysis_validator: '🔍', traceability_analysis: '🔗',
-    security_impact_analysis: '🛡', test_coverage_validator: '✅', pr_design_validator: '📐',
-    bug_description_validator: '🐛', confirm_test_fails_validator: '❌', confirm_test_passes_validator: '✅',
-    tech_lead_approval: '👤', find_suspected_component: '🔎', create_release_worker: '🏷',
-    deploy_to_staging_worker: '🚀', deploy_to_prod_worker: '🚀', security_scan_validator: '🛡',
-    rollback_deployment_worker: '↩️', feedback_synthesizer_worker: '💬', code_quality_evaluator: '📊',
-  }
-
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid rgba(63,63,70,0.4)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <GitBranch size={14} color="#818cf8" />
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#e4e4e7' }}>{flow.label}</span>
-        </div>
-        <p style={{ fontSize: 11, color: '#71717a', lineHeight: 1.5, marginBottom: 10 }}>{flow.description}</p>
-        {flow.entryConstraints && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 10, color: '#52525b' }}>Runs on:</span>
-            {flow.entryConstraints.map(c => (
-              <span key={c.typeId} style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', color: '#818cf8', textTransform: 'uppercase' }}>
-                {TYPE_LABEL[c.typeId] ?? c.typeId}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Step list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-        <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>Steps</p>
-        <div style={{ position: 'relative' }}>
-          {/* Vertical connector line */}
-          <div style={{ position: 'absolute', left: 17, top: 30, bottom: 30, width: 2, background: 'rgba(63,63,70,0.4)' }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {flow.steps.map((step, i) => (
-              <div key={step.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, paddingBottom: 16, position: 'relative' }}>
-                {/* Step number circle */}
-                <div style={{
-                  width: 34, height: 34, borderRadius: '50%', flexShrink: 0, zIndex: 1,
-                  background: '#18181b', border: '2px solid rgba(99,102,241,0.4)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14,
-                }}>
-                  {STEP_ICONS[step.workerId] ?? <span style={{ fontSize: 11, color: '#71717a', fontWeight: 700 }}>{i + 1}</span>}
-                </div>
-                {/* Step info */}
-                <div style={{ flex: 1, paddingTop: 6, paddingBottom: 8, background: 'rgba(24,24,27,0.5)', border: '1px solid rgba(63,63,70,0.4)', borderRadius: 8, padding: '8px 12px' }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: '#d4d4d8', marginBottom: 2 }}>{step.workerLabel}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 9, color: '#52525b', textTransform: 'uppercase' }}>{step.workerId.replace(/_worker|_validator|_analysis/g, '').replace(/_/g, ' ')}</span>
-                    {step.objectTypeTarget && (
-                      <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: 'rgba(63,63,70,0.4)', color: '#71717a', textTransform: 'uppercase' }}>
-                        → {TYPE_LABEL[step.objectTypeTarget] ?? step.objectTypeTarget}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Run button */}
-        <button
-          onClick={() => { runFlow(flow.id); setActiveView('flows') }}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            width: '100%', padding: '10px 20px', borderRadius: 10, border: 'none',
-            background: '#4f46e5', color: '#fff',
-            fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(79,70,229,0.35)', transition: 'all 0.15s', marginTop: 8,
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#4338ca' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#4f46e5' }}
-        >
-          <Play size={14} /> Launch Flow
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ─── Sidebar flow item ────────────────────────────────────────────────────────
 
 function FlowSidebarItem({ flow, selected, onSelect }: { flow: FlowDef; selected: boolean; onSelect: () => void }) {
-  const hasGraph = !!GRAPH_MAP[flow.id]
   return (
     <button
       onClick={onSelect}
@@ -767,7 +688,6 @@ function FlowSidebarItem({ flow, selected, onSelect }: { flow: FlowDef; selected
       <span style={{ fontSize: 11, fontWeight: selected ? 600 : 400, color: selected ? '#c4b5fd' : '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {flow.label}
       </span>
-      {hasGraph && <span style={{ fontSize: 8, color: '#3f3f46', fontWeight: 700, textTransform: 'uppercase' }}>graph</span>}
     </button>
   )
 }
@@ -1023,7 +943,7 @@ export function FlowsView() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {selectedLoopFlow ? (
           <LoopFlowPanel flow={selectedLoopFlow} />
-        ) : selectedFlow && graphDef ? (
+        ) : graphDef ? (
           <>
             <ReactFlowProvider>
               <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -1033,8 +953,6 @@ export function FlowsView() {
             <ArtifactsStrip flowId={graphDef.id} />
             <Legend />
           </>
-        ) : selectedFlow ? (
-          <FlowStepListPanel flow={selectedFlow} />
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <p style={{ color: '#52525b', fontSize: 13 }}>Select a flow</p>
