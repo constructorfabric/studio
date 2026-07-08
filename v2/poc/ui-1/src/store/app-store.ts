@@ -606,7 +606,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   startFlowGraph: (flowId: string) => {
-    const flowMaybe = FLOW_GRAPH_DEFS.find((f: FlowGraphDef) => f.id === flowId)
+    // Look in static defs first, then user-created custom flows
+    const flowMaybe =
+      FLOW_GRAPH_DEFS.find((f: FlowGraphDef) => f.id === flowId) ??
+      get().customFlowGraphDefs.find((f: FlowGraphDef) => f.id === flowId)
     if (!flowMaybe) return
     const flow: FlowGraphDef = flowMaybe
 

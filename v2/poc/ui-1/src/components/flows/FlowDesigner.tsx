@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type DragEvent } from 'react'
+import { useState, useCallback, useRef, useEffect, type DragEvent } from 'react'
 import {
   ReactFlow,
   Background,
@@ -482,9 +482,10 @@ interface CanvasInnerProps {
   onConnect: OnConnect
   selectedNodeId: string | null
   setSelectedNodeId: (id: string | null) => void
+  fitViewOnMount?: boolean
 }
 
-function CanvasInner({ nodes, edges, setNodes, setEdges, onConnect, selectedNodeId, setSelectedNodeId }: CanvasInnerProps) {
+function CanvasInner({ nodes, edges, setNodes, setEdges, onConnect, selectedNodeId, setSelectedNodeId, fitViewOnMount }: CanvasInnerProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition } = useReactFlow()
 
@@ -498,12 +499,7 @@ function CanvasInner({ nodes, edges, setNodes, setEdges, onConnect, selectedNode
     const workerJson = e.dataTransfer.getData('workerJson')
     if (!workerJson) return
     const worker: WorkerDef = JSON.parse(workerJson)
-    const reactFlowBounds = reactFlowWrapper.current?.getBoundingClientRect()
-    if (!reactFlowBounds) return
-    const position = screenToFlowPosition({
-      x: e.clientX - reactFlowBounds.left,
-      y: e.clientY - reactFlowBounds.top,
-    })
+    const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
     const nodeType: DesignerNodeData['nodeType'] =
       worker.profile === 'validator' || worker.profile === 'analyzer' ? 'gate' : 'worker'
     const newNode: Node = {
@@ -526,6 +522,8 @@ function CanvasInner({ nodes, edges, setNodes, setEdges, onConnect, selectedNode
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        fitView={fitViewOnMount}
+        fitViewOptions={{ padding: 0.15 }}
         onNodesChange={(changes) => {
           // Apply changes manually
           setNodes(nds => {
@@ -563,7 +561,6 @@ function CanvasInner({ nodes, edges, setNodes, setEdges, onConnect, selectedNode
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: 'designerEdge', data: { edgeKind: 'default' } }}
-        fitView
         style={{ background: '#0c0c0e' }}
       >
         <Background variant={BackgroundVariant.Dots} color="#27272a" gap={20} />
@@ -607,10 +604,10 @@ export function FlowDesigner({ existingFlowId, onSave, onCancel }: FlowDesignerP
     label: ge.label,
   })
 
-  const [nodes, setNodes] = useNodesState(
+  const [nodes, setNodes, onNodesChange] = useNodesState(
     existingGraph ? existingGraph.nodes.map(toRfNode) : INITIAL_NODES
   )
-  const [edges, setEdges] = useEdgesState(
+  const [edges, setEdges, onEdgesChange] = useEdgesState(
     existingGraph ? existingGraph.edges.map(toRfEdge) : []
   )
 
@@ -798,6 +795,7 @@ export function FlowDesigner({ existingFlowId, onSave, onCancel }: FlowDesignerP
           onConnect={onConnect}
           selectedNodeId={selectedNodeId}
           setSelectedNodeId={setSelectedNodeId}
+          fitViewOnMount={!!existingGraph}
         />
 
         {selectedNodeId && (
