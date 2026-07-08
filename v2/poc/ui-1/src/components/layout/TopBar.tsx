@@ -4,10 +4,10 @@ import type { AppView } from '../../types/domain'
 
 const VIEWS: { id: AppView; label: string; icon: React.ReactNode }[] = [
   { id: 'graph',           label: 'Graph',       icon: <Network size={13} /> },
+  { id: 'files',           label: 'Files',       icon: <FolderOpen size={13} /> },
   { id: 'flows',           label: 'Flows',       icon: <GitBranch size={13} /> },
   { id: 'workers',         label: 'Monitor',     icon: <Activity size={13} /> },
   { id: 'catalog',         label: 'Actions',     icon: <Library size={13} /> },
-  { id: 'files',           label: 'Files',       icon: <FolderOpen size={13} /> },
   { id: 'activity',        label: 'Activity',    icon: <Server size={13} /> },
   { id: 'recommendations', label: 'Recs',        icon: <Lightbulb size={13} /> },
   { id: 'kits',            label: 'Kits',        icon: <Package size={13} /> },
