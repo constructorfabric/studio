@@ -352,7 +352,7 @@ export interface FlowPendingInteraction {
 
 export interface FlowExecState {
   flowId: string
-  status: 'running' | 'done' | 'failed' | 'waiting_input'
+  status: 'running' | 'paused' | 'done' | 'failed' | 'aborted' | 'waiting_input'
   nodeStates: Record<string, FlowNodeExecState>
   retryCounters: Record<string, number>
   currentNodeId: string | null

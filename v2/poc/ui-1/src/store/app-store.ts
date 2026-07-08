@@ -90,6 +90,9 @@ interface AppState {
   stopFlow: () => void
   startFlowGraph: (flowId: string) => void
   stopFlowGraph: () => void
+  pauseFlowGraph: () => void
+  resumeFlowGraph: () => void
+  cancelFlowGraph: () => void
   respondToFlowInteraction: (optionId: string, textInput?: string) => void
 
   // Recommendation actions
@@ -548,6 +551,29 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   stopFlowGraph: () => {
     set({ flowExecState: null })
+  },
+
+  pauseFlowGraph: () => {
+    set(s => s.flowExecState?.status === 'running'
+      ? { flowExecState: { ...s.flowExecState, status: 'paused' } }
+      : s
+    )
+  },
+
+  resumeFlowGraph: () => {
+    set(s => s.flowExecState?.status === 'paused'
+      ? { flowExecState: { ...s.flowExecState, status: 'running' } }
+      : s
+    )
+  },
+
+  cancelFlowGraph: () => {
+    set(s => s.flowExecState
+      ? { flowExecState: { ...s.flowExecState, status: 'aborted', currentNodeId: null } }
+      : s
+    )
+    // Clear after brief delay so the aborted state is visible
+    setTimeout(() => set({ flowExecState: null }), 2000)
   },
 
   respondToFlowInteraction: (optionId: string, textInput?: string) => {

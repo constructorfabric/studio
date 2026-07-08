@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { ReactFlowProvider, ReactFlow, Background, BackgroundVariant, Controls, Handle, Position, type NodeProps, type Node, type Edge } from '@xyflow/react'
-import { Play, Square, CheckCircle2, Loader2, AlertTriangle, User, RefreshCw, Zap, GitBranch, Split, MessageSquare, ThumbsUp, ThumbsDown, X, IterationCcw, ChevronDown, ChevronRight } from 'lucide-react'
+import { Play, Square, CheckCircle2, Loader2, AlertTriangle, User, RefreshCw, Zap, GitBranch, Split, MessageSquare, ThumbsUp, ThumbsDown, X, IterationCcw, ChevronDown, ChevronRight, Pause, RotateCcw, Ban } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '../../store/app-store'
 import { FLOW_GRAPH_DEFS, FLOW_DEFS } from '../../data/mock-data'
@@ -670,7 +670,118 @@ function FlowInteractionModal() {
 
 // ─── Sidebar flow item ────────────────────────────────────────────────────────
 
+// ─── Flow Control Bar (header above graph) ────────────────────────────────────
+
+function FlowControlBar({ graphDef, flowDef }: { graphDef: FlowGraphDef; flowDef: FlowDef | undefined }) {
+  const flowExecState  = useAppStore(s => s.flowExecState)
+  const startFlowGraph = useAppStore(s => s.startFlowGraph)
+  const stopFlowGraph  = useAppStore(s => s.stopFlowGraph)
+  const pauseFlowGraph = useAppStore(s => s.pauseFlowGraph)
+  const resumeFlowGraph= useAppStore(s => s.resumeFlowGraph)
+  const cancelFlowGraph= useAppStore(s => s.cancelFlowGraph)
+
+  const exec = flowExecState?.flowId === graphDef.id ? flowExecState : null
+  const status = exec?.status ?? 'idle'
+
+  const elapsed = exec
+    ? Math.round((Date.now() - exec.startedAt) / 100) / 10
+    : null
+
+  const statusLabel: Record<string, { text: string; color: string }> = {
+    running:      { text: 'Running',       color: '#6366f1' },
+    paused:       { text: 'Paused',        color: '#f59e0b' },
+    done:         { text: 'Completed',     color: '#10b981' },
+    failed:       { text: 'Failed',        color: '#ef4444' },
+    aborted:      { text: 'Aborted',       color: '#71717a' },
+    waiting_input:{ text: 'Waiting input', color: '#a78bfa' },
+    idle:         { text: 'Ready',         color: '#52525b' },
+  }
+  const s = statusLabel[status] ?? statusLabel.idle
+
+  const btn = (
+    onClick: () => void,
+    icon: React.ReactNode,
+    label: string,
+    accent = '#27272a',
+    textColor = '#a1a1aa',
+    disabled = false,
+  ) => (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        padding: '5px 12px', borderRadius: 7, border: 'none',
+        background: disabled ? '#18181b' : accent,
+        color: disabled ? '#3f3f46' : textColor,
+        fontSize: 12, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'all 0.15s', whiteSpace: 'nowrap',
+      }}
+      onMouseEnter={e => { if (!disabled) (e.currentTarget as HTMLElement).style.filter = 'brightness(1.15)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = '' }}
+    >
+      {icon} {label}
+    </button>
+  )
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+      borderBottom: '1px solid rgba(63,63,70,0.5)',
+      background: 'rgba(9,9,11,0.8)', flexShrink: 0,
+    }}>
+      {/* Flow title */}
+      <GitBranch size={13} color="#52525b" />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#e4e4e7' }}>{graphDef.name}</span>
+        {flowDef && <span style={{ fontSize: 10, color: '#52525b', marginLeft: 8 }}>{flowDef.description.slice(0, 60)}{flowDef.description.length > 60 ? '…' : ''}</span>}
+      </div>
+
+      {/* Status + elapsed */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {status === 'running' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color, display: 'inline-block', animation: 'pulse 1s ease-in-out infinite' }} />}
+        <span style={{ fontSize: 11, fontWeight: 600, color: s.color }}>{s.text}</span>
+        {elapsed !== null && status !== 'idle' && (
+          <span style={{ fontSize: 10, color: '#52525b' }}>{elapsed}s</span>
+        )}
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+        {status === 'idle' || status === 'done' || status === 'failed' || status === 'aborted' ? (
+          btn(() => startFlowGraph(graphDef.id), <Play size={11} />, status === 'done' ? 'Re-run' : 'Run', '#4f46e5', '#fff')
+        ) : status === 'running' ? (
+          <>
+            {btn(() => pauseFlowGraph(),  <Pause size={11} />,  'Pause',  '#27272a', '#fbbf24')}
+            {btn(() => cancelFlowGraph(), <Ban size={11} />,    'Cancel', '#27272a', '#f87171')}
+          </>
+        ) : status === 'paused' ? (
+          <>
+            {btn(() => resumeFlowGraph(), <Play size={11} />,   'Resume', '#14532d', '#4ade80')}
+            {btn(() => cancelFlowGraph(), <Ban size={11} />,    'Cancel', '#27272a', '#f87171')}
+          </>
+        ) : status === 'waiting_input' ? (
+          btn(() => cancelFlowGraph(), <Ban size={11} />, 'Cancel', '#27272a', '#f87171')
+        ) : null}
+
+        {/* Stop (clear) — always visible when exec exists */}
+        {exec && status !== 'idle' && (
+          btn(() => stopFlowGraph(), <Square size={11} />, 'Clear', '#18181b', '#71717a')
+        )}
+      </div>
+    </div>
+  )
+}
+
 function FlowSidebarItem({ flow, selected, onSelect }: { flow: FlowDef; selected: boolean; onSelect: () => void }) {
+  const execState  = useAppStore(s => s.flowExecState)
+  const graphDef   = GRAPH_MAP[flow.id]
+  const isActive   = !!(graphDef && execState?.flowId === graphDef.id)
+  const activeStatus = isActive ? execState!.status : null
+  const dotColor: Record<string, string> = {
+    running: '#6366f1', paused: '#f59e0b', done: '#10b981',
+    failed: '#ef4444', aborted: '#71717a', waiting_input: '#a78bfa',
+  }
   return (
     <button
       onClick={onSelect}
@@ -688,6 +799,13 @@ function FlowSidebarItem({ flow, selected, onSelect }: { flow: FlowDef; selected
       <span style={{ fontSize: 11, fontWeight: selected ? 600 : 400, color: selected ? '#c4b5fd' : '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {flow.label}
       </span>
+      {activeStatus && (
+        <span style={{
+          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+          background: dotColor[activeStatus] ?? '#52525b',
+          animation: activeStatus === 'running' ? 'pulse 1s ease-in-out infinite' : 'none',
+        }} />
+      )}
     </button>
   )
 }
@@ -945,6 +1063,7 @@ export function FlowsView() {
           <LoopFlowPanel flow={selectedLoopFlow} />
         ) : graphDef ? (
           <>
+            <FlowControlBar graphDef={graphDef} flowDef={selectedFlow ?? undefined} />
             <ReactFlowProvider>
               <div style={{ flex: 1, overflow: 'hidden' }}>
                 <FlowGraph key={graphDef.id} flow={graphDef} />
