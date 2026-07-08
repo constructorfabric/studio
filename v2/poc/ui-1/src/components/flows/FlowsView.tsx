@@ -1,10 +1,13 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { ReactFlowProvider, ReactFlow, Background, BackgroundVariant, Controls, Handle, Position, type NodeProps, type Node, type Edge } from '@xyflow/react'
-import { Play, Square, CheckCircle2, Loader2, AlertTriangle, User, RefreshCw, Zap, GitBranch, Split, MessageSquare, ThumbsUp, ThumbsDown, X } from 'lucide-react'
+import { Play, Square, CheckCircle2, Loader2, AlertTriangle, User, RefreshCw, Zap, GitBranch, Split, MessageSquare, ThumbsUp, ThumbsDown, X, IterationCcw, ChevronDown, ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '../../store/app-store'
-import { FLOW_GRAPH_DEFS } from '../../data/mock-data'
-import type { FlowGraphDef, FlowGraphNode, FlowNodeExecState, FlowInteractionOption } from '../../types/domain'
+import { FLOW_GRAPH_DEFS, FLOW_DEFS } from '../../data/mock-data'
+import type { FlowGraphDef, FlowGraphNode, FlowNodeExecState, FlowInteractionOption, FlowDef } from '../../types/domain'
+
+// Iterative (loop-capable) flows = FLOW_DEFS entries that have loopPolicy
+const LOOP_FLOWS: FlowDef[] = FLOW_DEFS.filter(f => f.loopPolicy != null)
 
 // ─── Node exec state styling ──────────────────────────────────────────────────
 
@@ -620,41 +623,241 @@ function FlowInteractionModal() {
 
 // ─── Main FlowsView ───────────────────────────────────────────────────────────
 
-export function FlowsView() {
-  const [selectedFlowId, setSelectedFlowId] = useState<string>(FLOW_GRAPH_DEFS[0].id)
-  const selectedFlow = FLOW_GRAPH_DEFS.find(f => f.id === selectedFlowId) ?? FLOW_GRAPH_DEFS[0]
+// ─── Loop Flow launcher panel ─────────────────────────────────────────────────
 
-  const handleSelect = useCallback((id: string) => setSelectedFlowId(id), [])
+const TYPE_LABEL: Record<string, string> = {
+  prd: 'PRD', design: 'DESIGN', adr: 'ADR', decomposition: 'DECOMP',
+  feature_spec: 'FSPEC', task: 'TASK', pull_request: 'PR', build: 'BUILD',
+  incident: 'INC', component: 'COMP', release: 'RELEASE',
+}
+const STATE_DOT: Record<string, string> = {
+  approved: '#10b981', done: '#10b981', in_progress: '#f59e0b',
+  review: '#f59e0b', failed: '#ef4444', open: '#ef4444',
+  draft: '#71717a', planned: '#71717a',
+}
+
+function LoopFlowPanel({ flow }: { flow: FlowDef }) {
+  const objects = useAppStore(s => s.objects)
+  const startAgenticLoop = useAppStore(s => s.startAgenticLoop)
+  const setActiveView = useAppStore(s => s.setActiveView)
+  const loopRuns = useAppStore(s => s.loopRuns)
+
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
+  const [policy, setPolicy] = useState(flow.loopPolicy!)
+  const [launched, setLaunched] = useState(false)
+
+  const applicableTypeIds = flow.entryConstraints?.map(c => c.typeId) ?? []
+  const compatibleObjects = objects.filter(o => applicableTypeIds.includes(o.typeId))
+
+  // Recent runs for this flow
+  const recentRuns = loopRuns.filter(r => r.flowId === flow.id).slice(0, 3)
+
+  const handleRun = () => {
+    if (!selectedObjectId) return
+    startAgenticLoop(flow.id, selectedObjectId)
+    setLaunched(true)
+    setTimeout(() => setLaunched(false), 2000)
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'rgba(9,9,11,0.6)' }}>
+      {/* Header */}
+      <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid rgba(63,63,70,0.4)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <IterationCcw size={14} color="#818cf8" />
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#e4e4e7' }}>{flow.label}</span>
+          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Loop mode</span>
+        </div>
+        <p style={{ fontSize: 11, color: '#71717a', lineHeight: 1.5 }}>{flow.description}</p>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+        {/* Steps preview */}
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Steps per iteration</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {flow.steps.map((step, i) => (
+              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 10, background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(63,63,70,0.5)', color: '#a1a1aa', padding: '2px 8px', borderRadius: 4 }}>{step.workerLabel}</span>
+                {i < flow.steps.length - 1 && <span style={{ fontSize: 12, color: '#3f3f46' }}>›</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Loop policy config */}
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Loop configuration</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
+            {[
+              { label: 'Metric', value: policy.metric, field: 'metric', type: 'text' },
+              { label: 'Threshold', value: `${(policy.threshold * 100).toFixed(0)}%`, field: 'threshold', type: 'pct' },
+              { label: 'Max iterations', value: String(policy.maxIterations), field: 'maxIterations', type: 'int' },
+              { label: 'Budget', value: `$${policy.budgetUsd.toFixed(2)}`, field: 'budgetUsd', type: 'usd' },
+            ].map(cfg => (
+              <div key={cfg.field} style={{ padding: '10px 12px', background: 'rgba(24,24,27,0.6)', border: '1px solid rgba(63,63,70,0.5)', borderRadius: 8 }}>
+                <p style={{ fontSize: 9, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{cfg.label}</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#c4b5fd' }}>{cfg.value}</p>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10, color: '#52525b' }}>On budget exhaustion:</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#a78bfa' }}>{policy.onExhaustion.replace('_', ' ')}</span>
+          </div>
+        </div>
+
+        {/* Object selector */}
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+            Select object to run on ({applicableTypeIds.map(t => TYPE_LABEL[t] ?? t).join(', ')})
+          </p>
+          {compatibleObjects.length === 0 ? (
+            <p style={{ fontSize: 11, color: '#52525b', fontStyle: 'italic' }}>No compatible objects in workspace</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+              {compatibleObjects.map(obj => (
+                <button
+                  key={obj.id}
+                  onClick={() => setSelectedObjectId(obj.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                    borderRadius: 8, border: `1px solid ${selectedObjectId === obj.id ? 'rgba(99,102,241,0.5)' : 'rgba(63,63,70,0.4)'}`,
+                    background: selectedObjectId === obj.id ? 'rgba(99,102,241,0.1)' : 'rgba(24,24,27,0.5)',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
+                  }}
+                >
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATE_DOT[obj.state] ?? '#3b82f6', flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 500, color: selectedObjectId === obj.id ? '#c4b5fd' : '#d4d4d8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{obj.title}</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: '#52525b', textTransform: 'uppercase' }}>{TYPE_LABEL[obj.typeId] ?? obj.typeId}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Run button */}
+        <button
+          onClick={handleRun}
+          disabled={!selectedObjectId}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '10px 20px', borderRadius: 10, border: 'none',
+            background: selectedObjectId ? '#4f46e5' : '#27272a',
+            color: selectedObjectId ? '#fff' : '#52525b',
+            fontSize: 13, fontWeight: 600, cursor: selectedObjectId ? 'pointer' : 'not-allowed',
+            transition: 'all 0.15s', boxShadow: selectedObjectId ? '0 4px 16px rgba(79,70,229,0.4)' : 'none',
+          }}
+        >
+          {launched ? <><CheckCircle2 size={14} /> Loop started → Monitor</> : <><IterationCcw size={14} /> Run as Loop</>}
+        </button>
+
+        {/* Recent runs */}
+        {recentRuns.length > 0 && (
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Recent loop runs</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {recentRuns.map(run => (
+                <div key={run.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(24,24,27,0.5)', border: '1px solid rgba(63,63,70,0.4)', borderRadius: 6 }}>
+                  <span style={{ fontSize: 10, color: run.state === 'done' ? '#10b981' : run.state === 'running' ? '#6366f1' : '#ef4444' }}>●</span>
+                  <span style={{ fontSize: 11, color: '#a1a1aa', flex: 1 }}>{run.objectTitle}</span>
+                  <span style={{ fontSize: 10, color: '#52525b' }}>{run.iterations.length} iter</span>
+                  <span style={{ fontSize: 10, color: '#52525b' }}>${run.totalCostUsd.toFixed(2)}</span>
+                  {run.terminationReason && <span style={{ fontSize: 9, color: run.terminationReason === 'converged' ? '#10b981' : '#f59e0b' }}>{run.terminationReason}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main FlowsView ───────────────────────────────────────────────────────────
+
+export function FlowsView() {
+  // 'graph-<id>' for regular flows, 'loop-<id>' for iterative flows
+  const [selected, setSelected] = useState<string>(`graph-${FLOW_GRAPH_DEFS[0].id}`)
+  const [loopsExpanded, setLoopsExpanded] = useState(true)
+
+  const isLoop = selected.startsWith('loop-')
+  const selectedGraphFlow = !isLoop ? FLOW_GRAPH_DEFS.find(f => `graph-${f.id}` === selected) ?? FLOW_GRAPH_DEFS[0] : FLOW_GRAPH_DEFS[0]
+  const selectedLoopFlow = isLoop ? LOOP_FLOWS.find(f => `loop-${f.id}` === selected) ?? null : null
 
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
       {/* Left: flow list */}
       <div style={{
-        width: 260, flexShrink: 0,
+        width: 270, flexShrink: 0,
         borderRight: '1px solid rgba(63,63,70,0.6)',
         background: 'rgba(9,9,11,0.5)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid rgba(63,63,70,0.4)' }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: '#e4e4e7', marginBottom: 2 }}>Flows</h2>
-          <p style={{ fontSize: 10, color: '#71717a' }}>State machine pipelines with validator gates</p>
+          <p style={{ fontSize: 10, color: '#71717a' }}>Pipelines · Iterative loops</p>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+          {/* Regular flows */}
+          <p style={{ fontSize: 9, fontWeight: 700, color: '#3f3f46', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '4px 4px 6px' }}>Pipelines</p>
           {FLOW_GRAPH_DEFS.map(flow => (
-            <FlowCard key={flow.id} flow={flow} selected={selectedFlowId === flow.id} onSelect={() => handleSelect(flow.id)} />
+            <FlowCard key={flow.id} flow={flow} selected={selected === `graph-${flow.id}`} onSelect={() => setSelected(`graph-${flow.id}`)} />
           ))}
+
+          {/* Loop flows section */}
+          {LOOP_FLOWS.length > 0 && (
+            <>
+              <button
+                onClick={() => setLoopsExpanded(e => !e)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 4px 4px', background: 'none', border: 'none', cursor: 'pointer', width: '100%' }}
+              >
+                {loopsExpanded ? <ChevronDown size={11} color="#52525b" /> : <ChevronRight size={11} color="#52525b" />}
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Iterative Loops</span>
+                <span style={{ fontSize: 9, color: '#3f3f46', marginLeft: 'auto' }}>{LOOP_FLOWS.length}</span>
+              </button>
+              {loopsExpanded && LOOP_FLOWS.map(flow => (
+                <button
+                  key={flow.id}
+                  onClick={() => setSelected(`loop-${flow.id}`)}
+                  style={{
+                    width: '100%', textAlign: 'left',
+                    padding: '8px 10px', borderRadius: 8, marginBottom: 4,
+                    border: selected === `loop-${flow.id}` ? '1.5px solid rgba(99,102,241,0.5)' : '1px solid rgba(63,63,70,0.5)',
+                    background: selected === `loop-${flow.id}` ? 'rgba(99,102,241,0.1)' : 'rgba(24,24,27,0.4)',
+                    cursor: 'pointer', transition: 'all 0.12s',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <IterationCcw size={11} color={selected === `loop-${flow.id}` ? '#818cf8' : '#52525b'} />
+                    <span style={{ fontSize: 11, fontWeight: 600, color: selected === `loop-${flow.id}` ? '#c4b5fd' : '#a1a1aa' }}>{flow.label}</span>
+                  </div>
+                  <p style={{ fontSize: 10, color: '#52525b', lineHeight: 1.3 }}>
+                    {flow.loopPolicy?.metric} · max {flow.loopPolicy?.maxIterations} iter · ${flow.loopPolicy?.budgetUsd.toFixed(0)} budget
+                  </p>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
-      {/* Right: graph */}
+      {/* Right: graph or loop panel */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <ReactFlowProvider>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <FlowGraph key={selectedFlowId} flow={selectedFlow} />
-          </div>
-        </ReactFlowProvider>
-        <ArtifactsStrip flowId={selectedFlowId} />
-        <Legend />
+        {isLoop && selectedLoopFlow ? (
+          <LoopFlowPanel flow={selectedLoopFlow} />
+        ) : (
+          <>
+            <ReactFlowProvider>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <FlowGraph key={selectedGraphFlow.id} flow={selectedGraphFlow} />
+              </div>
+            </ReactFlowProvider>
+            <ArtifactsStrip flowId={selectedGraphFlow.id} />
+            <Legend />
+          </>
+        )}
       </div>
     </div>
   )
