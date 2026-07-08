@@ -332,6 +332,8 @@ Object {
   //   "tracked"   → createdByRunId, lastModifiedByRunId are set by platform
   //   "versioned" → supersedes pattern; state "superseded" reserved
   // Execution records (WorkerRun, Evidence, etc.) and infra types declare no capabilities.
+  workspaceId?: ref → Workspace       // workspace scope; set by platform from WorkerRun.costAttributedTo
+                                      // used by is_workspace_member_worker for ABAC conditions
   // NOT applicable to execution records (WorkerRun, Evidence, ValidationSession,
   // WorkerInteraction, FlowRun) — they are immutable or have specialized lifecycle
   concurrentEditors?: [               // "you are not alone" — visibility of concurrent access
@@ -358,8 +360,7 @@ Object {
                                       // WorkerRun, Evidence, ValidationSession,
                                       // WorkerInteraction, FlowRun use specialized refs
     {
-      targetId:    ref → Object        // any Object in the graph
-      targetType:  GTS Type ID         // for type-safe querying
+      targetId:    ref → Object        // any Object in the graph (typeId derived from target)
       kind:        GTS Type ID          // link kind — all kinds are GTS Type IDs
                                       // core kinds: gts.cf.studio.link.kind.v1~{name}.v1~
                                       // kit kinds: same format, registered in Types Registry at Kit install
@@ -1612,8 +1613,7 @@ Policy (registry) {
                                      // pre-built: is_assigned_to_principal_worker,
                                      //            is_workspace_member_worker, is_object_owner_worker
       conditionCache: { ttl: duration }    // default: 60s
-      allowedFields?: string[]       // Phase 3: field-level restriction (dot-notation)
-                                     // null = all fields accessible (default, Phase 1-2)
+      // Phase 3 TODO: allowedFields?: string[] — field-level restriction (not yet implemented)
     }
   ]
 }
