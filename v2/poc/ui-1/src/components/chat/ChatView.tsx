@@ -1,8 +1,181 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Cpu, User, Loader2, Play, CheckCircle2, XCircle, ChevronDown, Zap, AlertTriangle, GitBranch, FileText, Search, Wrench, TestTube2, Link2, X } from 'lucide-react'
+import { Send, Cpu, Loader2, CheckCircle2, XCircle, ChevronDown, Zap, AlertTriangle, GitBranch, FileText, Search, Wrench, TestTube2, Link2, X, Settings2, MessageSquare, ChevronRight } from 'lucide-react'
 import { useAppStore } from '../../store/app-store'
 import { WORKER_DEFS, MOCK_RECOMMENDATIONS, MOCK_OBJECTS } from '../../data/mock-data'
+
+// ─── Chat config types ────────────────────────────────────────────────────────
+
+type ModelId = 'claude-sonnet-4-6' | 'claude-opus-4-8' | 'claude-haiku-4-5'
+type ChatMode = 'normal' | 'extended_thinking' | 'code_focus' | 'autonomous'
+type ReasoningEffort = 'low' | 'medium' | 'high' | 'max'
+type ContextWindow = '8k' | '32k' | '200k' | '1m'
+
+interface ChatConfig {
+  model: ModelId
+  mode: ChatMode
+  effort: ReasoningEffort
+  context: ContextWindow
+}
+
+const MODELS: { id: ModelId; label: string; description: string; tier: 'fast' | 'balanced' | 'powerful' }[] = [
+  { id: 'claude-haiku-4-5',  label: 'Haiku 4.5',  description: 'Fastest, lowest cost',     tier: 'fast' },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6',  description: 'Balanced speed & quality', tier: 'balanced' },
+  { id: 'claude-opus-4-8',   label: 'Opus 4.8',    description: 'Most capable, slowest',    tier: 'powerful' },
+]
+
+const MODES: { id: ChatMode; label: string; description: string }[] = [
+  { id: 'normal',           label: 'Normal',           description: 'Standard responses' },
+  { id: 'extended_thinking', label: 'Extended Thinking', description: 'Visible reasoning chain' },
+  { id: 'code_focus',       label: 'Code Focus',        description: 'Optimised for code tasks' },
+  { id: 'autonomous',       label: 'Autonomous',        description: 'Agent acts without confirmation' },
+]
+
+const EFFORTS: { id: ReasoningEffort; label: string; tokens: string }[] = [
+  { id: 'low',    label: 'Low',    tokens: '~1k' },
+  { id: 'medium', label: 'Medium', tokens: '~8k' },
+  { id: 'high',   label: 'High',   tokens: '~32k' },
+  { id: 'max',    label: 'Max',    tokens: '~64k' },
+]
+
+const CONTEXTS: { id: ContextWindow; label: string; description: string }[] = [
+  { id: '8k',   label: '8k',   description: 'Light — quick tasks' },
+  { id: '32k',  label: '32k',  description: 'Standard' },
+  { id: '200k', label: '200k', description: 'Large — full codebase' },
+  { id: '1m',   label: '1M',   description: 'Maximum — entire repo' },
+]
+
+const DEFAULT_CONFIG: ChatConfig = { model: 'claude-sonnet-4-6', mode: 'normal', effort: 'medium', context: '32k' }
+
+// ─── Config Tab ───────────────────────────────────────────────────────────────
+
+function ConfigTab({ config, onChange }: { config: ChatConfig; onChange: (c: ChatConfig) => void }) {
+  function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ fontSize: 10, fontWeight: 700, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{title}</p>
+        {children}
+      </div>
+    )
+  }
+
+  function OptionGrid<T extends string>({ items, value, onChange: onChg, renderLabel }: {
+    items: { id: T; label: string; description?: string }[]
+    value: T
+    onChange: (v: T) => void
+    renderLabel?: (item: { id: T; label: string; description?: string }) => React.ReactNode
+  }) {
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(items.length, 2)}, 1fr)`, gap: 6 }}>
+        {items.map(item => (
+          <button
+            key={item.id}
+            onClick={() => onChg(item.id)}
+            style={{
+              padding: '8px 10px', borderRadius: 8, border: `1px solid ${value === item.id ? 'rgba(99,102,241,0.6)' : 'rgba(63,63,70,0.5)'}`,
+              background: value === item.id ? 'rgba(99,102,241,0.12)' : 'rgba(24,24,27,0.6)',
+              cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+            }}
+          >
+            {renderLabel ? renderLabel(item) : (
+              <>
+                <p style={{ fontSize: 12, fontWeight: 600, color: value === item.id ? '#a5b4fc' : '#d4d4d8', margin: 0 }}>{item.label}</p>
+                {item.description && <p style={{ fontSize: 10, color: '#71717a', margin: '2px 0 0' }}>{item.description}</p>}
+              </>
+            )}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  const tierColor = { fast: '#10b981', balanced: '#6366f1', powerful: '#f59e0b' }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+      <Section title="Model">
+        <OptionGrid
+          items={MODELS}
+          value={config.model}
+          onChange={m => onChange({ ...config, model: m })}
+          renderLabel={item => (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: tierColor[(item as typeof MODELS[0]).tier], display: 'inline-block', flexShrink: 0 }} />
+                <p style={{ fontSize: 12, fontWeight: 600, color: config.model === item.id ? '#a5b4fc' : '#d4d4d8', margin: 0 }}>{item.label}</p>
+              </div>
+              <p style={{ fontSize: 10, color: '#71717a', margin: 0 }}>{item.description}</p>
+            </>
+          )}
+        />
+      </Section>
+
+      <Section title="Mode">
+        <OptionGrid items={MODES} value={config.mode} onChange={m => onChange({ ...config, mode: m })} />
+      </Section>
+
+      <Section title="Reasoning Effort">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+          {EFFORTS.map(e => (
+            <button
+              key={e.id}
+              onClick={() => onChange({ ...config, effort: e.id })}
+              style={{
+                padding: '7px 6px', borderRadius: 8, border: `1px solid ${config.effort === e.id ? 'rgba(99,102,241,0.6)' : 'rgba(63,63,70,0.5)'}`,
+                background: config.effort === e.id ? 'rgba(99,102,241,0.12)' : 'rgba(24,24,27,0.6)',
+                cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s',
+              }}
+            >
+              <p style={{ fontSize: 11, fontWeight: 600, color: config.effort === e.id ? '#a5b4fc' : '#d4d4d8', margin: 0 }}>{e.label}</p>
+              <p style={{ fontSize: 9, color: '#52525b', margin: '2px 0 0' }}>{e.tokens}</p>
+            </button>
+          ))}
+        </div>
+        {(config.effort === 'high' || config.effort === 'max') && (
+          <p style={{ fontSize: 10, color: '#f59e0b', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+            ⚠ Higher effort increases latency and cost
+          </p>
+        )}
+      </Section>
+
+      <Section title="Context Window">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+          {CONTEXTS.map(c => (
+            <button
+              key={c.id}
+              onClick={() => onChange({ ...config, context: c.id })}
+              style={{
+                padding: '7px 6px', borderRadius: 8, border: `1px solid ${config.context === c.id ? 'rgba(16,185,129,0.5)' : 'rgba(63,63,70,0.5)'}`,
+                background: config.context === c.id ? 'rgba(16,185,129,0.1)' : 'rgba(24,24,27,0.6)',
+                cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s',
+              }}
+            >
+              <p style={{ fontSize: 11, fontWeight: 700, color: config.context === c.id ? '#6ee7b7' : '#d4d4d8', margin: 0 }}>{c.label}</p>
+              <p style={{ fontSize: 9, color: '#52525b', margin: '2px 0 0' }}>{c.description}</p>
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      {/* Summary */}
+      <div style={{ padding: '10px 12px', background: 'rgba(24,24,27,0.6)', borderRadius: 8, border: '1px solid rgba(63,63,70,0.4)' }}>
+        <p style={{ fontSize: 10, color: '#52525b', margin: '0 0 6px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Current Config</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {[
+            { label: MODELS.find(m => m.id === config.model)?.label ?? config.model, color: '#818cf8' },
+            { label: MODES.find(m => m.id === config.mode)?.label ?? config.mode, color: '#a78bfa' },
+            { label: `Effort: ${config.effort}`, color: '#6ee7b7' },
+            { label: `${config.context} ctx`, color: '#fbbf24' },
+          ].map(b => (
+            <span key={b.label} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: `${b.color}15`, border: `1px solid ${b.color}30`, color: b.color }}>
+              {b.label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -289,11 +462,15 @@ const WELCOME: Message = {
   text: `Hello! I'm your **Constructor Studio AI Agent**.\n\nI can help you analyze objects, run workers, track recommendations, and navigate the SDLC graph.\n\nSelect an object in the graph for context, or type \`/\` to see available commands.`,
 }
 
+type ChatTab = 'chat' | 'config'
+
 export function ChatView() {
   const selectedObjectId = useAppStore(s => s.selectedObjectId)
   const runWorker = useAppStore(s => s.runWorker)
   const objects = useAppStore(s => s.objects)
 
+  const [tab, setTab] = useState<ChatTab>('chat')
+  const [config, setConfig] = useState<ChatConfig>(DEFAULT_CONFIG)
   const [messages, setMessages] = useState<Message[]>([WELCOME])
   const [input, setInput] = useState('')
   const [showPalette, setShowPalette] = useState(false)
@@ -415,40 +592,72 @@ export function ChatView() {
 
   const clearChat = () => setMessages([WELCOME])
 
+  const currentModel = MODELS.find(m => m.id === config.model)
+  const tierColor = { fast: '#10b981', balanced: '#6366f1', powerful: '#f59e0b' }
+
   return (
     <div style={{ display: 'flex', flex: 1, flexDirection: 'column', overflow: 'hidden', background: '#09090b' }}>
       {/* Header */}
       <div style={{
-        padding: '10px 16px', borderBottom: '1px solid rgba(63,63,70,0.5)', flexShrink: 0,
-        display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(9,9,11,0.9)',
+        padding: '8px 12px 0', borderBottom: '1px solid rgba(63,63,70,0.5)', flexShrink: 0,
+        background: 'rgba(9,9,11,0.95)',
       }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Cpu size={14} color="#fff" />
+        {/* Top row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Cpu size={13} color="#fff" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#e4e4e7', margin: 0 }}>Studio AI</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: tierColor[currentModel?.tier ?? 'balanced'], display: 'inline-block' }} />
+              <span style={{ fontSize: 9, color: '#71717a' }}>{currentModel?.label}</span>
+              <span style={{ fontSize: 9, color: '#3f3f46' }}>·</span>
+              <span style={{ fontSize: 9, color: '#71717a', textTransform: 'capitalize' }}>{config.mode.replace('_', ' ')}</span>
+              <span style={{ fontSize: 9, color: '#3f3f46' }}>·</span>
+              <span style={{ fontSize: 9, color: '#71717a' }}>effort:{config.effort}</span>
+              <span style={{ fontSize: 9, color: '#3f3f46' }}>·</span>
+              <span style={{ fontSize: 9, color: '#71717a' }}>{config.context} ctx</span>
+            </div>
+          </div>
+          {selectedObj && (
+            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 20, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', color: '#818cf8', flexShrink: 0, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selectedObj.title.length > 14 ? selectedObj.title.slice(0, 14) + '…' : selectedObj.title}
+            </span>
+          )}
+          {tab === 'chat' && (
+            <button onClick={clearChat} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#52525b', padding: '2px 4px', fontSize: 10 }} title="Clear">
+              Clear
+            </button>
+          )}
         </div>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: '#e4e4e7', margin: 0 }}>Studio AI Agent</p>
-          <p style={{ fontSize: 10, color: '#52525b', margin: 0 }}>claude-sonnet-4-6 · Workers: {WORKER_DEFS.length} skills</p>
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 0 }}>
+          {([['chat', 'Chat', MessageSquare], ['config', 'Config', Settings2]] as const).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                background: 'none', border: 'none', cursor: 'pointer',
+                borderBottom: `2px solid ${tab === id ? '#6366f1' : 'transparent'}`,
+                color: tab === id ? '#818cf8' : '#52525b',
+                fontSize: 11, fontWeight: tab === id ? 600 : 400,
+                transition: 'all 0.15s',
+              }}
+            >
+              <Icon size={11} />
+              {label}
+            </button>
+          ))}
         </div>
-        {selectedObj && (
-          <span style={{
-            fontSize: 10, padding: '3px 8px', borderRadius: 20,
-            background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', color: '#818cf8',
-            display: 'flex', alignItems: 'center', gap: 4,
-          }}>
-            Context: {selectedObj.title.length > 22 ? selectedObj.title.slice(0, 22) + '…' : selectedObj.title}
-          </span>
-        )}
-        <button
-          onClick={clearChat}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#52525b', padding: 4, fontSize: 10 }}
-          title="Clear chat"
-        >
-          Clear
-        </button>
       </div>
 
+      {/* Config tab */}
+      {tab === 'config' && <ConfigTab config={config} onChange={setConfig} />}
+
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {tab === 'chat' && <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {messages.map(msg => (
           <motion.div
             key={msg.id}
@@ -476,86 +685,89 @@ export function ChatView() {
           </div>
         )}
         <div ref={bottomRef} />
-      </div>
+      </div>}
 
-      {/* Quick command chips */}
-      <div style={{ padding: '0 14px 8px', display: 'flex', gap: 5, flexWrap: 'nowrap', overflowX: 'auto' }}>
-        {['/analyze', '/trace', '/explain', '/recs', '/score'].map(cmd => {
-          const c = SLASH_COMMANDS.find(s => s.cmd === cmd)!
-          return (
-            <button
-              key={cmd}
-              onClick={() => { setInput(cmd); handleSubmit() }}
-              disabled={loading}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 20,
-                border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.07)',
-                color: '#818cf8', fontSize: 11, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }}
-            >
-              {c?.icon} {cmd}
-            </button>
-          )
-        })}
-      </div>
+      {/* Chat tab — quick chips + input */}
+      {tab === 'chat' && (
+        <>
+          <div style={{ padding: '0 14px 8px', display: 'flex', gap: 5, flexWrap: 'nowrap', overflowX: 'auto' }}>
+            {['/analyze', '/trace', '/explain', '/recs', '/score'].map(cmd => {
+              const c = SLASH_COMMANDS.find(s => s.cmd === cmd)!
+              return (
+                <button
+                  key={cmd}
+                  onClick={() => { setInput(cmd); handleSubmit() }}
+                  disabled={loading}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 20,
+                    border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.07)',
+                    color: '#818cf8', fontSize: 11, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  {c?.icon} {cmd}
+                </button>
+              )
+            })}
+          </div>
 
-      {/* Input area */}
-      <div style={{ padding: '0 14px 14px', position: 'relative' }}>
-        <AnimatePresence>
-          {showPalette && (
-            <CommandPalette
-              query={input.slice(1)}
-              onSelect={handleCommandSelect}
-              onClose={() => setShowPalette(false)}
-            />
-          )}
-        </AnimatePresence>
+          <div style={{ padding: '0 14px 14px', position: 'relative' }}>
+            <AnimatePresence>
+              {showPalette && (
+                <CommandPalette
+                  query={input.slice(1)}
+                  onSelect={handleCommandSelect}
+                  onClose={() => setShowPalette(false)}
+                />
+              )}
+            </AnimatePresence>
 
-        <div style={{
-          display: 'flex', alignItems: 'flex-end', gap: 8,
-          background: 'rgba(24,24,27,0.9)', border: '1px solid rgba(99,102,241,0.3)',
-          borderRadius: 12, padding: '8px 8px 8px 12px',
-          boxShadow: '0 0 0 1px rgba(99,102,241,0.1)',
-        }}>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder={`Ask anything, or type / for commands…`}
-            rows={1}
-            disabled={loading}
-            style={{
-              flex: 1, background: 'none', border: 'none', outline: 'none', resize: 'none',
-              fontSize: 13, color: '#e4e4e7', lineHeight: 1.5,
-              fontFamily: 'inherit', maxHeight: 120, overflowY: 'auto',
-            }}
-            onInput={e => {
-              const el = e.currentTarget
-              el.style.height = 'auto'
-              el.style.height = Math.min(el.scrollHeight, 120) + 'px'
-            }}
-          />
-          <button
-            onClick={handleSubmit}
-            disabled={!input.trim() || loading}
-            style={{
-              width: 32, height: 32, borderRadius: 8, border: 'none', flexShrink: 0,
-              background: input.trim() && !loading ? '#4f46e5' : 'rgba(63,63,70,0.4)',
-              color: input.trim() && !loading ? '#fff' : '#52525b',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-              transition: 'all 0.15s',
-            }}
-          >
-            {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
-          </button>
-        </div>
-        <p style={{ fontSize: 9, color: '#3f3f46', marginTop: 5, textAlign: 'center' }}>
-          Enter to send · Shift+Enter for new line · / for commands
-        </p>
-      </div>
+            <div style={{
+              display: 'flex', alignItems: 'flex-end', gap: 8,
+              background: 'rgba(24,24,27,0.9)', border: '1px solid rgba(99,102,241,0.3)',
+              borderRadius: 12, padding: '8px 8px 8px 12px',
+              boxShadow: '0 0 0 1px rgba(99,102,241,0.1)',
+            }}>
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask anything, or type / for commands…"
+                rows={1}
+                disabled={loading}
+                style={{
+                  flex: 1, background: 'none', border: 'none', outline: 'none', resize: 'none',
+                  fontSize: 13, color: '#e4e4e7', lineHeight: 1.5,
+                  fontFamily: 'inherit', maxHeight: 120, overflowY: 'auto',
+                }}
+                onInput={e => {
+                  const el = e.currentTarget
+                  el.style.height = 'auto'
+                  el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+                }}
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!input.trim() || loading}
+                style={{
+                  width: 32, height: 32, borderRadius: 8, border: 'none', flexShrink: 0,
+                  background: input.trim() && !loading ? '#4f46e5' : 'rgba(63,63,70,0.4)',
+                  color: input.trim() && !loading ? '#fff' : '#52525b',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
+              </button>
+            </div>
+            <p style={{ fontSize: 9, color: '#3f3f46', marginTop: 5, textAlign: 'center' }}>
+              Enter · Shift+Enter new line · / commands · {currentModel?.label} · {config.effort} effort
+            </p>
+          </div>
+        </>
+      )}
     </div>
   )
 }
