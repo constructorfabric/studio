@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Play, ExternalLink, Clock, CheckCircle, XCircle, AlertCircle, Loader, Lock, AlertTriangle, ShieldCheck, TrendingUp, TrendingDown, Minus, FileCheck, GitMerge } from 'lucide-react'
 import { useAppStore } from '../../store/app-store'
-import { getWorkersForObject, MOCK_OBJECTS, MOCK_RECOMMENDATIONS } from '../../data/mock-data'
+import { getWorkersForObject, getFlowsForObject, MOCK_OBJECTS, MOCK_RECOMMENDATIONS } from '../../data/mock-data'
 import type { StudioObject, WorkerRun, ObjectTypeId } from '../../types/domain'
 import { StateBadge, ValidationBadge } from '../layout/RightPanel'
 
@@ -381,8 +381,14 @@ function OverviewTab({ object }: { object: StudioObject }) {
 
 function ActionsTab({ object }: { object: StudioObject }) {
   const runWorker = useAppStore(s => s.runWorker)
+  const runFlow   = useAppStore(s => s.runFlow)
+  const navigateToMonitor = useAppStore(s => s.navigateToMonitor)
+  const setActiveView = useAppStore(s => s.setActiveView)
   const workerRuns = useAppStore(s => s.workerRuns)
   const workers = getWorkersForObject(object.typeId)
+  const allFlows = getFlowsForObject(object.typeId)
+  const flows = allFlows.filter(f => !f.loopPolicy)
+  const loops = allFlows.filter(f => f.loopPolicy)
 
   const isRunning = (workerId: string) =>
     workerRuns.some(r => r.objectId === object.id && r.workerId === workerId &&
@@ -390,46 +396,138 @@ function ActionsTab({ object }: { object: StudioObject }) {
 
   const categoryColors: Record<string, string> = {
     quality: 'text-emerald-400', security: 'text-red-400', ops: 'text-amber-400',
-    traceability: 'text-blue-400', retrieval: 'text-purple-400', platform: 'text-indigo-400',
+    'ai-cost': 'text-purple-400', traceability: 'text-blue-400', retrieval: 'text-cyan-400', platform: 'text-indigo-400',
   }
   const categoryBg: Record<string, string> = {
     quality: 'bg-emerald-900/20 border-emerald-800/30', security: 'bg-red-900/20 border-red-800/30',
-    ops: 'bg-amber-900/20 border-amber-800/30', traceability: 'bg-blue-900/20 border-blue-800/30',
-    retrieval: 'bg-purple-900/20 border-purple-800/30', platform: 'bg-indigo-900/20 border-indigo-800/30',
+    ops: 'bg-amber-900/20 border-amber-800/30', 'ai-cost': 'bg-purple-900/20 border-purple-800/30',
+    traceability: 'bg-blue-900/20 border-blue-800/30', retrieval: 'bg-cyan-900/20 border-cyan-800/30',
+    platform: 'bg-indigo-900/20 border-indigo-800/30',
   }
 
-  if (workers.length === 0) {
-    return <div className="p-4 text-center text-zinc-500 text-sm py-12">No workers available for this object type.</div>
+  const hasAnything = workers.length > 0 || flows.length > 0 || loops.length > 0
+  if (!hasAnything) {
+    return <div className="p-4 text-center text-zinc-500 text-sm py-12">No actions available for this object type.</div>
+  }
+
+  function SectionHeader({ label, count }: { label: string; count: number }) {
+    return (
+      <div className="flex items-center gap-2 mb-2">
+        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{label}</p>
+        <span className="text-[10px] text-zinc-700 tabular-nums">{count}</span>
+      </div>
+    )
   }
 
   return (
-    <div className="p-4 space-y-3">
-      <p className="text-xs text-zinc-500">Available workers for <span className="text-zinc-300">{object.typeId}</span>:</p>
-      {workers.map(worker => {
-        const running = isRunning(worker.id)
-        return (
-          <div key={worker.id} className={`border rounded-lg p-3 ${categoryBg[worker.category] ?? 'bg-zinc-900 border-zinc-800'}`}>
-            <div className="flex items-start justify-between gap-2 mb-1">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${categoryColors[worker.category] ?? 'text-zinc-400'}`}>{worker.category}</span>
-                  {worker.requiresAutomationGate && <span className="flex items-center gap-0.5 text-[10px] text-amber-500"><Lock size={9} />gated</span>}
-                  <span className="text-[10px] text-zinc-600">• {worker.profile}</span>
+    <div className="p-4 space-y-5">
+
+      {/* ── Workers ─────────────────────────────────────────── */}
+      {workers.length > 0 && (
+        <div>
+          <SectionHeader label="Workers" count={workers.length} />
+          <div className="space-y-2">
+            {workers.map(worker => {
+              const running = isRunning(worker.id)
+              return (
+                <div key={worker.id} className={`border rounded-lg p-3 ${categoryBg[worker.category] ?? 'bg-zinc-900 border-zinc-800'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className={`text-[10px] font-semibold uppercase tracking-wider ${categoryColors[worker.category] ?? 'text-zinc-400'}`}>{worker.category}</span>
+                        {worker.requiresAutomationGate && <span className="flex items-center gap-0.5 text-[10px] text-amber-500"><Lock size={9} />gated</span>}
+                        <span className="text-[10px] text-zinc-600">· {worker.profile}</span>
+                      </div>
+                      <p className="text-xs font-semibold text-zinc-200">{worker.label}</p>
+                      <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{worker.description}</p>
+                    </div>
+                    <button
+                      onClick={() => { if (!running) { const id = runWorker(worker.id, object.id); navigateToMonitor(id) } }}
+                      disabled={running}
+                      className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${running ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'}`}
+                    >
+                      {running ? <><Loader size={11} className="animate-spin" />Running</> : <><Play size={11} />{worker.actionLabel}</>}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs font-semibold text-zinc-200">{worker.label}</p>
-                <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{worker.description}</p>
-              </div>
-              <button
-                onClick={() => !running && runWorker(worker.id, object.id)}
-                disabled={running}
-                className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${running ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'}`}
-              >
-                {running ? <><Loader size={11} className="animate-spin" /> Running</> : <><Play size={11} /> {worker.actionLabel}</>}
-              </button>
-            </div>
+              )
+            })}
           </div>
-        )
-      })}
+        </div>
+      )}
+
+      {/* ── Flows ───────────────────────────────────────────── */}
+      {flows.length > 0 && (
+        <div>
+          <SectionHeader label="Flows" count={flows.length} />
+          <div className="space-y-2">
+            {flows.map(flow => (
+              <div key={flow.id} className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-zinc-200 mb-0.5">{flow.label}</p>
+                    <p className="text-[11px] text-zinc-500 leading-relaxed mb-2">{flow.description}</p>
+                    {/* Step breadcrumb */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {flow.steps.slice(0, 4).map((step, i) => (
+                        <span key={i} className="flex items-center gap-0.5">
+                          <span className="text-[9px] bg-zinc-800 border border-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded whitespace-nowrap">{step.workerLabel}</span>
+                          {i < Math.min(flow.steps.length, 4) - 1 && <span className="text-zinc-700 text-[10px]">›</span>}
+                        </span>
+                      ))}
+                      {flow.steps.length > 4 && <span className="text-[9px] text-zinc-600">+{flow.steps.length - 4} more</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { runFlow(flow.id); setActiveView('flows') }}
+                    className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-all"
+                  >
+                    <Play size={11} />Launch
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Loops ───────────────────────────────────────────── */}
+      {loops.length > 0 && (
+        <div>
+          <SectionHeader label="Loops (iterative)" count={loops.length} />
+          <div className="space-y-2">
+            {loops.map(flow => (
+              <div key={flow.id} className="bg-indigo-950/20 border border-indigo-800/30 rounded-lg p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-[9px] font-bold uppercase text-indigo-400 tracking-wider">Loop</span>
+                      {flow.loopPolicy && (
+                        <>
+                          <span className="text-[9px] text-indigo-600">·</span>
+                          <span className="text-[9px] text-indigo-500">{flow.loopPolicy.metric}</span>
+                          <span className="text-[9px] text-indigo-600">·</span>
+                          <span className="text-[9px] text-indigo-500">max {flow.loopPolicy.maxIterations} iter</span>
+                          <span className="text-[9px] text-indigo-600">·</span>
+                          <span className="text-[9px] text-indigo-500">${flow.loopPolicy.budgetUsd} budget</span>
+                        </>
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold text-indigo-200 mb-0.5">{flow.label}</p>
+                    <p className="text-[11px] text-zinc-500 leading-relaxed">{flow.description}</p>
+                  </div>
+                  <button
+                    onClick={() => setActiveView('loop')}
+                    className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium bg-indigo-700 hover:bg-indigo-600 text-white transition-all"
+                  >
+                    <Play size={11} />Run Loop
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

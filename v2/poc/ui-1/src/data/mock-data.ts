@@ -760,7 +760,18 @@ export function getWorkersForObject(typeId: string): WorkerDef[] {
   return WORKER_DEFS.filter(w => w.applicableTypes.includes(typeId as never))
 }
 
+export function getFlowsForObject(typeId: string): FlowDef[] {
+  return FLOW_DEFS.filter(f =>
+    !f.entryConstraints ||
+    f.entryConstraints.some(c => c.typeId === typeId)
+  )
+}
+
 // ─── Flow Definitions ─────────────────────────────────────────────────────────
+
+import type { ObjectTypeId } from '../types/domain'
+const s = (id: string, workerId: string, workerLabel: string, target: string) =>
+  ({ id, workerId, workerLabel, objectTypeTarget: target as ObjectTypeId, status: 'pending' as const })
 
 export const FLOW_DEFS: FlowDef[] = [
   {
@@ -801,6 +812,121 @@ export const FLOW_DEFS: FlowDef[] = [
       { id: 'step-confirm-passes', workerId: 'confirm_test_passes_validator', workerLabel: 'Confirm Test Passes',        objectTypeTarget: 'task',         status: 'pending' },
       { id: 'step-pr',             workerId: 'create_pr_worker',              workerLabel: 'Create Fix PR',              objectTypeTarget: 'pull_request', status: 'pending' },
     ],
+  },
+
+  // ── Creation flows ────────────────────────────────────────────────────────
+  {
+    id: 'prd_creation_flow',
+    label: 'Create PRD',
+    description: 'Author a Product Requirements Document: draft requirements → gap analysis → stakeholder review → approval.',
+    steps: [s('s1','create_prd_worker','Draft PRD','prd'), s('s2','gap_analysis_validator','Validate Completeness','prd'), s('s3','traceability_analysis','Trace Coverage','prd'), s('s4','tech_lead_approval','Stakeholder Approval','prd')],
+    entryConstraints: [{ typeId: 'prd' }],
+  },
+  {
+    id: 'design_creation_flow',
+    label: 'Create System Design',
+    description: 'Produce a system design from an approved PRD: generate design → consistency check → architecture review → approval.',
+    steps: [s('s1','create_design_worker','Draft Design','design'), s('s2','gap_analysis_validator','Gap Analysis','design'), s('s3','traceability_analysis','Trace to PRD','design'), s('s4','tech_lead_approval','Architecture Review','design')],
+    entryConstraints: [{ typeId: 'design' }, { typeId: 'prd' }],
+  },
+  {
+    id: 'adr_creation_flow',
+    label: 'Record Architecture Decision',
+    description: 'Document and socialise an Architecture Decision Record: draft ADR → consistency check → peer review → approval.',
+    steps: [s('s1','create_adr_worker','Draft ADR','adr'), s('s2','gap_analysis_validator','Completeness Check','adr'), s('s3','tech_lead_approval','Peer Review & Approve','adr')],
+    entryConstraints: [{ typeId: 'adr' }, { typeId: 'design' }],
+  },
+  {
+    id: 'feature_spec_creation_flow',
+    label: 'Author Feature Spec',
+    description: 'Write a Feature Specification: draft spec → validate against design → test scenario review → approve.',
+    steps: [s('s1','create_feature_spec_worker','Draft Feature Spec','feature_spec'), s('s2','gap_analysis_validator','Validate Against Design','feature_spec'), s('s3','test_coverage_validator','Review Test Scenarios','feature_spec'), s('s4','tech_lead_approval','Approve Spec','feature_spec')],
+    entryConstraints: [{ typeId: 'feature_spec' }, { typeId: 'task' }],
+  },
+
+  // ── Implementation flows ──────────────────────────────────────────────────
+  {
+    id: 'implement_and_review_flow',
+    label: 'Implement & Review',
+    description: 'Full implementation cycle: decompose → implement code → run tests → PR design validation → code review.',
+    steps: [s('s1','decompose_feature_worker','Decompose Tasks','decomposition'), s('s2','implement_code_worker','Implement','task'), s('s3','confirm_test_passes_validator','Confirm Tests Pass','task'), s('s4','create_pr_worker','Create PR','pull_request'), s('s5','pr_design_validator','Design Validation','pull_request')],
+    entryConstraints: [{ typeId: 'task' }, { typeId: 'decomposition' }, { typeId: 'feature_spec' }],
+  },
+  {
+    id: 'tdd_flow',
+    label: 'Test-First Development',
+    description: 'TDD cycle: write failing tests → confirm they fail → implement code → confirm tests pass → create PR.',
+    steps: [s('s1','implement_code_worker','Write Failing Tests','task'), s('s2','confirm_test_fails_validator','Confirm Tests Fail','task'), s('s3','implement_code_worker','Implement to Pass','task'), s('s4','confirm_test_passes_validator','Confirm Tests Pass','task'), s('s5','create_pr_worker','Create PR','pull_request')],
+    entryConstraints: [{ typeId: 'task' }, { typeId: 'feature_spec' }],
+  },
+  {
+    id: 'decompose_and_plan_flow',
+    label: 'Decompose & Plan Sprint',
+    description: 'Break a design into tasks and plan the sprint: decompose → estimate → traceability check → tech lead review.',
+    steps: [s('s1','decompose_feature_worker','Decompose to Tasks','decomposition'), s('s2','traceability_analysis','Trace Coverage','decomposition'), s('s3','gap_analysis_validator','Completeness Check','decomposition'), s('s4','tech_lead_approval','Sprint Planning Approval','decomposition')],
+    entryConstraints: [{ typeId: 'decomposition' }, { typeId: 'design' }],
+  },
+
+  // ── Review & validation flows ─────────────────────────────────────────────
+  {
+    id: 'code_review_flow',
+    label: 'Code Review Pipeline',
+    description: 'Thorough code review: design validation → security scan → test coverage check → traceability → approval.',
+    steps: [s('s1','pr_design_validator','Design Conformance','pull_request'), s('s2','security_impact_analysis','Security Impact','pull_request'), s('s3','test_coverage_validator','Test Coverage','pull_request'), s('s4','traceability_analysis','Traceability Check','pull_request'), s('s5','tech_lead_approval','Final Approval','pull_request')],
+    entryConstraints: [{ typeId: 'pull_request' }],
+  },
+  {
+    id: 'design_review_flow',
+    label: 'Design Peer Review',
+    description: 'Structured design review: consistency check → gap analysis → architecture review → stakeholder sign-off.',
+    steps: [s('s1','gap_analysis_validator','Gap Analysis','design'), s('s2','traceability_analysis','PRD Traceability','design'), s('s3','security_impact_analysis','Security Review','design'), s('s4','tech_lead_approval','Architecture Approval','design')],
+    entryConstraints: [{ typeId: 'design' }],
+  },
+  {
+    id: 'security_audit_flow',
+    label: 'Security Audit',
+    description: 'Full security audit: impact analysis → gap check → remediation plan → security sign-off.',
+    steps: [s('s1','security_impact_analysis','Security Impact Analysis','pull_request'), s('s2','gap_analysis_validator','Control Gap Check','pull_request'), s('s3','implement_code_worker','Apply Remediations','pull_request'), s('s4','security_impact_analysis','Verify Remediations','pull_request'), s('s5','tech_lead_approval','Security Sign-off','pull_request')],
+    entryConstraints: [{ typeId: 'pull_request' }, { typeId: 'design' }, { typeId: 'incident' }],
+  },
+
+  // ── Bug fix & incident flows ──────────────────────────────────────────────
+  {
+    id: 'incident_to_postmortem_flow',
+    label: 'Incident → Postmortem',
+    description: 'Full incident response: describe incident → reproduce → find component → implement fix → postmortem → prevention tasks.',
+    steps: [s('s1','bug_description_validator','Describe Incident','incident'), s('s2','find_suspected_component','Find Root Component','incident'), s('s3','implement_code_worker','Implement Fix','task'), s('s4','confirm_test_passes_validator','Verify Fix','task'), s('s5','create_pr_worker','Create Fix PR','pull_request'), s('s6','tech_lead_approval','Postmortem Sign-off','incident')],
+    entryConstraints: [{ typeId: 'incident' }],
+  },
+  {
+    id: 'hotfix_flow',
+    label: 'Emergency Hotfix',
+    description: 'Fast-track hotfix: validate bug → implement → confirm tests pass → PR → expedited review → deploy to prod.',
+    steps: [s('s1','bug_description_validator','Validate Bug','incident'), s('s2','implement_code_worker','Hotfix Implementation','task'), s('s3','confirm_test_passes_validator','Confirm Tests Pass','task'), s('s4','create_pr_worker','Create Hotfix PR','pull_request'), s('s5','pr_design_validator','Expedited Review','pull_request'), s('s6','deploy_to_prod_worker','Deploy to Production','deployment')],
+    entryConstraints: [{ typeId: 'incident' }, { typeId: 'task' }],
+  },
+
+  // ── Delivery flows ────────────────────────────────────────────────────────
+  {
+    id: 'release_candidate_flow',
+    label: 'Create Release Candidate',
+    description: 'Package a validated build into a release candidate: gap analysis → test coverage → security → create release.',
+    steps: [s('s1','gap_analysis_validator','Final Gap Analysis','build'), s('s2','test_coverage_validator','Test Coverage Gate','build'), s('s3','security_scan_validator','Security Scan','build'), s('s4','create_release_worker','Package Release','release')],
+    entryConstraints: [{ typeId: 'build' }],
+  },
+  {
+    id: 'staged_deployment_flow',
+    label: 'Staged Deployment',
+    description: 'Safe progressive deployment: deploy to staging → smoke tests → security check → prod deploy → verify.',
+    steps: [s('s1','deploy_to_staging_worker','Deploy to Staging','release'), s('s2','confirm_test_passes_validator','Smoke Tests','deployment'), s('s3','security_scan_validator','Security Verify','deployment'), s('s4','tech_lead_approval','Production Approval','release'), s('s5','deploy_to_prod_worker','Deploy to Production','deployment')],
+    entryConstraints: [{ typeId: 'release' }, { typeId: 'build' }],
+  },
+  {
+    id: 'regression_test_flow',
+    label: 'Regression Testing',
+    description: 'Scope and execute regression tests: identify test scope → run coverage → triage failures → sign-off.',
+    steps: [s('s1','traceability_analysis','Identify Test Scope','pull_request'), s('s2','test_coverage_validator','Run Coverage Check','pull_request'), s('s3','gap_analysis_validator','Triage Failures','pull_request'), s('s4','tech_lead_approval','QA Sign-off','pull_request')],
+    entryConstraints: [{ typeId: 'pull_request' }, { typeId: 'build' }, { typeId: 'release' }],
   },
 
   // ── Iterative Flows (Loop = Flow + LoopPolicy) ────────────────────────────
