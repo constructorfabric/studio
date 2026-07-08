@@ -586,12 +586,15 @@ context (tenantId, workspaceId, ownerId, createdByRunId auto-set):
 }
 ```
 
-Materialization flow (order matters; non-atomic — retry via WorkerRun.checkpoint):
+Materialization flow (order matters; non-atomic; idempotent):
+  0. Check WorkerRun.createdObjectIds: if already populated → skip step 1 (idempotent retry)
   1. x-gts-creates: create new Objects; set Object.createdByRunId, workspaceId, ownerId
   2. x-gts-state-sets: update input Object states
-  3. Auto-create `derived_from` links (confidence: inferred) from new Objects to input Objects:
-     - Only for input Contract fields with `$ref` (Object refs), NOT scalar fields
-     - Opt-out: `x-gts-link: false` on $ref field = skip auto-link (e.g. workspace context fields)
+  3. Auto-create `derived_from` links (confidence: inferred, sourceRunId: WorkerRun) from new Objects
+     to input Objects marked with `x-gts-link: true` (OPT-IN — not all $ref fields):
+       "prd": { "$ref": "...prd.v1~", "x-gts-link": true }   // → derived_from link created
+       "workspace": { "$ref": "...workspace.v1~" }             // → no link (default; context field)
+     Analyzer Workers typically have no x-gts-link: true fields → no exponential auto-links.
   4. WorkerRun.createdObjectIds = [new Object ids]
 
 `x-gts-traits.capabilities` — opt-in Object capabilities declaration:
