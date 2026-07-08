@@ -1609,7 +1609,11 @@ Policy (registry) {
       action:         "run" | "read" | "write" | "delete"
       target:         GTS Type Identifier (wildcard ok)
       condition?:     ref → Worker    // { principal, object, action } → { allowed, reason }
+                                     // pre-built: is_assigned_to_principal_worker,
+                                     //            is_workspace_member_worker, is_object_owner_worker
       conditionCache: { ttl: duration }    // default: 60s
+      allowedFields?: string[]       // Phase 3: field-level restriction (dot-notation)
+                                     // null = all fields accessible (default, Phase 1-2)
     }
   ]
 }
@@ -2547,6 +2551,9 @@ metadata.category:        platform
 | `connector_inbound_sync_worker` | script | realtime | Receive Gears OAGW event → create/update Object in graph. Calls per-Kit `event_handler_worker` for custom mapping. |
 | `connector_outbound_sync_worker` | script | on_demand | Object change → Connector write-back via WriteBackPolicy. |
 | `data_erasure_worker` | script | on_demand | Process DataErasureRequest — anonymize or delete PII-containing Objects per GDPR request. Creates WorkerRun on request activation. |
+| `is_assigned_to_principal_worker` | script | on_demand | ABAC condition: `allowed = object.assigneeId == principal.id OR object.ownerId == principal.id`. Standard building block for Policy.rules.condition. |
+| `is_workspace_member_worker` | script | on_demand | ABAC condition: `allowed = principal is member of object.workspaceId`. Workspace-scoped access control. |
+| `is_object_owner_worker` | script | on_demand | ABAC condition: `allowed = object.ownerId == principal.id`. Owner-only write access pattern. |
 
 Per-Kit Connectors may register additional `event_handler_worker` Workers in their Kit manifest using the naming convention `{vendor}_{connector}_event_handler` (e.g. `jira_jira_event_handler`, `github_github_event_handler`). These are registered through the standard Worker registry and are not platform Workers.
 
