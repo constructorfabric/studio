@@ -390,6 +390,12 @@ Object {
 //   Object.links[] = flexible, user- and platform-declared contextual links
 //   Spec-level fields (pull_request.conformsToDesign, test_case.verifiesRequirements)
 //     remain as explicit Contract fields — required by Validator Workers
+//
+// Graph traversal API (Gears platform):
+//   GET /objects/{id}/links?kind={GTS_kind_ID}&depth=N&direction=outgoing|incoming|both
+//   GET /objects/{id} + OData $filter for filtered Object queries
+//   effectiveLimits.depth = max traversal depth backstop per WorkerRun
+//   Workers maintain visited-set to prevent cycles; depth limit as safety net
 ```
 
 ### D2 — Object Base Hierarchy
@@ -2413,15 +2419,25 @@ metadata: {
 
 Studio uses a **two-layer link model**:
 
-1. **`Object.links[]`** — generic Jira-style typed graph edges (see §1.1) for all
-   contextual relationships between any Objects. Used for: prd→design (derived_from),
-   design→adr (references), design→design (incorporates), etc.
-   `traceability_analysis` Analyzer traverses `links[]` using core LINK_KINDs.
+1. **`Object.links[]`** — generic Jira-style typed graph edges (see §1.1) for contextual
+   relationships. Used for: prd→design (derived_from), design→adr (references), etc.
+   Traversed via: `GET /objects/{id}/links?kind=...&depth=N&direction=outgoing|incoming`
 
 2. **Spec-level Contract fields** — explicit refs required by Validator Workers:
    `pull_request.conformsToDesign`, `pull_request.implementsRequirements`,
-   `test_case.verifiesRequirements`. These are NOT in `links[]` — they are
-   Contract inputs read by `pr_design_validator` and other Validators.
+   `test_case.verifiesRequirements`. Contract inputs — NOT in `links[]`.
+
+**Mixed traversal pattern** (used by `traceability_analysis`):
+
+```
+requirement
+  --[links[]: implements]──→ task           (flexible, declared by Worker/user)
+  task ←── pull_request.closesIssues        (spec-level Contract field)
+       pull_request.verifiedBy ──→ test_case (spec-level Contract field)
+```
+
+`traceability_analysis` uses BOTH mechanisms — they serve different purposes and
+are not interchangeable. Platform provides unified Object fetch API for both paths.
 
 ### D19 — SDLC Traceability Chain
 
