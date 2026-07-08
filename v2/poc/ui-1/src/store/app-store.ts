@@ -292,8 +292,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }, 400)
 
-      if (workerDef.interaction) {
-        // Pause for interaction after ~2s
+      if (workerDef.interaction && !options?.parentRunId) {
+        // Pause for interaction only when run standalone (not as part of a flow).
+        // Flow-spawned workers (parentRunId set) auto-complete so the flow doesn't hang.
         const interactionHandle = setTimeout(() => {
           clearInterval(progressInterval)
           set(state => ({
