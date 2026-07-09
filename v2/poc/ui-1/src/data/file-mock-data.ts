@@ -83,96 +83,192 @@ export const FILE_TREE: FileNode[] = [
 export const FILE_CONTENTS: Record<string, string> = {
   'file-prd': `# Billing Service v2 — Product Requirements
 
-## Overview
-
-The Billing Service v2 is a cloud-native microservice responsible for processing payments,
-generating invoices, and maintaining a tamper-proof financial ledger for the SaaS platform.
-
-**Version:** 2.0  
-**Status:** Draft  
-**Authors:** Platform Team  
+**Version:** 2.0
+**Status:** Draft
+**Authors:** Platform Team
 **Date:** 2026-01-15
 
 ---
 
-## Actors
+## 1. Overview
+
+The Billing Service v2 is a cloud-native microservice responsible for processing payments,
+generating invoices, and maintaining a tamper-proof financial ledger for the SaaS platform.
+
+---
+
+## 2. Actors
+
+#### Tenant (Customer)
+
+- [ ] \`p1\` - **ID**: \`cpt-billing-actor-tenant\`
+
+A paying customer organisation whose billing events, invoices, and ledger entries are managed
+by the system.
 
 | Actor | Description |
 |-------|-------------|
-| Customer | End-user who initiates subscriptions and views invoices |
 | Stripe | External payment processor providing webhook events |
 | Billing Admin | Internal operator who manages billing rules and disputes |
 | Audit System | Downstream consumer of ledger events for compliance |
 
 ---
 
-## CPT Traceability
+## 3. Goals & Non-Goals
 
-**Actor** \`cpt-billing-actor-tenant\` — Tenant (Customer): a paying customer organisation whose billing events, invoices, and ledger entries are managed by the system.
+**Goals:** Process Stripe webhook events reliably; generate invoices asynchronously; maintain
+an append-only financial ledger with full audit trail.
 
-**Use Case** \`cpt-billing-usecase-stripe-payment\` — Process Stripe Payment Event: a payment_intent.succeeded event arrives, is verified, an invoice is generated, the ledger is updated, and the tenant is notified.
-
----
-
-## Functional Requirements
-
-**FR** \`cpt-billing-fr-webhook-ingestion\` — The system shall accept, verify HMAC signatures, and dispatch Stripe webhook events to the internal billing event bus.
-
-**FR** \`cpt-billing-fr-invoice-generation\` — The system shall asynchronously generate PDF invoices from billing events and store them in S3.
-
-**FR** \`cpt-billing-fr-ledger-partitioning\` — The billing ledger shall be partitioned by tenant_id and month to support high-volume transaction data.
-
-### R-001 — Webhook Ingestion
-The system SHALL receive and validate Stripe webhook events via HMAC-SHA256 signature verification.
-
-### R-002 — Event Routing
-The system SHALL route validated events to appropriate domain handlers based on event type.
-
-### R-003 — Invoice Generation
-The system SHALL generate PDF invoices upon successful payment events within 30 seconds.
-
-### R-004 — Ledger Recording
-The system SHALL record every financial transaction in an append-only PostgreSQL ledger.
-
-### R-005 — Idempotency
-The system SHALL ensure idempotent processing of webhook events using Stripe event IDs.
-
-### R-006 — Retry Handling
-The system SHALL handle payment failures with configurable retry schedules (3 attempts, exponential backoff).
-
-### R-007 — Audit Trail
-The system SHALL emit structured events to the Audit System for every state transition.
-
-### R-008 — Invoice Retrieval
-The system SHALL expose a REST API for customers to retrieve their invoice history.
+**Non-Goals:** Payment method management; subscription plan creation; customer identity.
 
 ---
 
-## Non-Functional Requirements
+## 4. Use Cases
 
-**NFR** \`cpt-billing-nfr-throughput\` — Process >= 1 000 webhook events/sec sustained, >= 5 000 peak.
+#### Process Stripe Payment Event
 
-**NFR** \`cpt-billing-nfr-latency\` — Acknowledgement p99 <= 200 ms; invoice generation p99 <= 30 s.
+- [ ] \`p1\` - **ID**: \`cpt-billing-usecase-stripe-payment\`
 
-- **Availability:** 99.9% uptime SLA
-- **Latency:** Webhook processing < 200ms p99
-- **Throughput:** 500 events/second sustained
-- **Data Retention:** 7 years for financial records
-- **Security:** TLS 1.3, secrets via Vault, no PII in logs
+A \`payment_intent.succeeded\` event arrives, is verified, an invoice is generated, the ledger
+is updated, and the tenant is notified.
+
+**Primary Actor**: \`cpt-billing-actor-tenant\`
 
 ---
 
-## Success Criteria
+## 5. Functional Requirements
+
+#### Webhook Ingestion
+
+- [ ] \`p1\` - **ID**: \`cpt-billing-fr-webhook-ingestion\`
+
+The system **MUST** accept, verify HMAC signatures, and dispatch Stripe webhook events to the
+internal billing event bus.
+
+**Rationale**: Core revenue-critical integration point.
+
+**Actors**: \`cpt-billing-actor-tenant\`
+
+#### Invoice Generation
+
+- [ ] \`p1\` - **ID**: \`cpt-billing-fr-invoice-generation\`
+
+The system **MUST** asynchronously generate PDF invoices from billing events and store them
+in S3 within 30 seconds of a successful payment event.
+
+**Rationale**: Tenants require timely invoice delivery for accounting purposes.
+
+**Actors**: \`cpt-billing-actor-tenant\`
+
+#### Ledger Partitioning
+
+- [ ] \`p1\` - **ID**: \`cpt-billing-fr-ledger-partitioning\`
+
+The billing ledger **MUST** be partitioned by \`tenant_id\` and month to support
+high-volume transaction data and performant per-tenant queries.
+
+**Rationale**: Regulatory requirement to isolate financial records per tenant.
+
+**Actors**: \`cpt-billing-actor-tenant\`
+
+---
+
+## 6. Non-Functional Requirements
+
+#### Throughput
+
+- [ ] \`p1\` - **ID**: \`cpt-billing-nfr-throughput\`
+
+The system **MUST** process >= 1 000 webhook events/second sustained and >= 5 000 events/second
+at peak load without dropping events.
+
+#### Webhook Acknowledgement Latency
+
+- [ ] \`p1\` - **ID**: \`cpt-billing-nfr-latency\`
+
+Webhook acknowledgement p99 **MUST** be <= 200 ms. Invoice generation p99 **MUST** be <= 30 s.
+
+**Additional constraints:**
+- Availability: 99.9% uptime SLA
+- Data Retention: 7 years for financial records
+- Security: TLS 1.3, secrets via Vault, no PII in logs
+
+---
+
+## 7. Success Criteria
 
 - [ ] Zero missed Stripe events over 30-day period
-- [ ] Invoice generation latency < 30s
+- [ ] Invoice generation latency < 30 s
 - [ ] All ledger entries pass double-entry bookkeeping validation
 - [ ] 100% audit trail coverage for financial events
 `,
 
-  'file-design': `# Billing Service v2 — System Design
+  'file-design': `# Billing Service Architecture
 
-## Architecture Overview
+**Version:** 2.0
+**Status:** Accepted
+**Authors:** Platform Team
+**Date:** 2026-01-15
+
+---
+
+## 1. Introduction
+
+### 1.1 Purpose
+
+This document describes the system design for Billing Service v2. It defines components,
+their responsibilities, interaction sequences, and database structures.
+
+### 1.2 Architecture Drivers
+
+#### Functional Drivers
+
+| Requirement | Design Response |
+|-------------|-----------------|
+| \`cpt-billing-fr-webhook-ingestion\` | Webhook Handler component with HMAC verification and event bus dispatch |
+| \`cpt-billing-fr-invoice-generation\` | Invoice Service component with async PDF generation and S3 storage |
+| \`cpt-billing-fr-ledger-partitioning\` | Billing Ledger partitioned by \`tenant_id\` + month |
+
+#### Non-Functional Drivers
+
+| Requirement | Design Response |
+|-------------|-----------------|
+| \`cpt-billing-nfr-throughput\` | Async event-driven processing; no blocking between handler and invoice generation |
+| \`cpt-billing-nfr-latency\` | Webhook handler returns 200 immediately after signature verification and bus dispatch |
+
+#### Governing ADRs
+
+- \`cpt-billing-adr-event-driven-arch\` — in-process EventEmitter + PostgreSQL outbox
+- \`cpt-billing-adr-postgresql-ledger\` — PostgreSQL with row-level security for ledger storage
+
+---
+
+## 2. Design Principles & Constraints
+
+### 2.1 Design Principles
+
+#### Event-Driven Processing
+
+- [ ] \`p2\` - **ID**: \`cpt-billing-principle-event-driven\`
+
+All billing processing is asynchronous and event-driven. The webhook handler MUST NOT block
+on invoice generation or ledger writes. Components communicate exclusively via domain events
+on the internal event bus.
+
+### 2.2 Constraints
+
+#### Tenant Data Isolation
+
+- [ ] \`p2\` - **ID**: \`cpt-billing-constraint-data-isolation\`
+
+All ledger and invoice data MUST be strictly partitioned by \`tenant_id\`. No cross-tenant
+queries are permitted at any layer. Row-level security enforces this at the database level.
+
+---
+
+## 3. System Architecture
+
+### 3.1 Architectural Style
 
 The Billing Service follows a hexagonal (ports-and-adapters) architecture with an
 event-driven core. External systems communicate via webhooks and REST; internal
@@ -198,46 +294,92 @@ components communicate via domain events on an in-process event bus.
     └─────────┘                          └────────────┘
 \`\`\`
 
----
+### 3.2 Component Model
 
-## Components
+#### Webhook Handler
 
-#### \`cpt-billing-component-webhook-handler\` Webhook Handler
-Ingests raw Stripe events via HTTP, verifies HMAC signatures, deduplicates, and publishes to internal event bus.
+- [ ] \`p2\` - **ID**: \`cpt-billing-component-webhook-handler\`
 
-#### \`cpt-billing-component-invoice-service\` Invoice Service
-Subscribes to billing events, generates PDF invoices asynchronously, stores in S3, and notifies tenants.
+##### Why this component exists
+Ingests raw Stripe events via HTTP, verifies HMAC-SHA256 signatures, deduplicates using
+idempotency keys, and publishes validated events to the internal event bus.
 
-#### \`cpt-billing-component-billing-ledger\` Billing Ledger
-Append-only PostgreSQL ledger partitioned by tenant_id + month; the authoritative record of all billing transactions.
+##### Responsibility scope
+HMAC verification, idempotency enforcement, event parsing, bus dispatch.
 
-**Constraint** \`cpt-billing-constraint-data-isolation\` — All ledger and invoice data must be strictly partitioned by tenant_id; no cross-tenant queries are permitted.
+##### Related components (by ID)
+- \`cpt-billing-component-invoice-service\` — receives events from
+- \`cpt-billing-component-billing-ledger\` — receives events from
 
-**Principle** \`cpt-billing-principle-event-driven\` — All billing processing is asynchronous and event-driven; the webhook handler never blocks on invoice generation.
+#### Invoice Service
 
-| Component | Responsibility | Technology |
-|-----------|---------------|------------|
-| WebhookHandler | Signature validation, event parsing | Node.js, crypto |
-| InvoiceGenerator | PDF generation, S3 upload | PDFKit, AWS S3 |
-| LedgerService | Double-entry bookkeeping | PostgreSQL, Knex |
-| EventBus | Internal domain event routing | Node EventEmitter |
-| RetryScheduler | Failed payment retry logic | Bull queue |
+- [ ] \`p2\` - **ID**: \`cpt-billing-component-invoice-service\`
 
----
+##### Why this component exists
+Subscribes to \`billing.payment_succeeded\` domain events, generates PDF invoices
+asynchronously, uploads them to S3, and notifies tenants.
 
-## Database Schemas
+##### Responsibility scope
+PDF rendering, S3 storage, tenant notification, invoice record persistence.
 
-**Table** \`cpt-billing-dbtable-billing-ledger\` — billing_ledger (tenant_id, invoice_id, amount_cents, currency, event_type, created_at). Partitioned by tenant_id, month.
+##### Related components (by ID)
+- \`cpt-billing-component-webhook-handler\` — receives events from
+- \`cpt-billing-component-billing-ledger\` — writes invoice records alongside
 
----
+#### Billing Ledger
 
-## Interactions & Sequences
+- [ ] \`p2\` - **ID**: \`cpt-billing-component-billing-ledger\`
 
-**Sequence** \`cpt-billing-seq-webhook-to-invoice\` — Stripe sends event -> Webhook Handler verifies + dispatches -> Invoice Service generates PDF -> S3 + notify.
+##### Why this component exists
+Provides the append-only authoritative record of all billing transactions, enforcing
+double-entry bookkeeping and tenant data isolation via PostgreSQL row-level security.
 
----
+##### Responsibility scope
+Ledger entry persistence, balance calculation, reconciliation, audit trail.
 
-## Sequence Diagram — Payment Success Flow
+##### Related components (by ID)
+- \`cpt-billing-component-webhook-handler\` — receives events from
+
+### 3.3 Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| WebhookHandler | Node.js, crypto |
+| InvoiceGenerator | PDFKit, AWS S3 |
+| LedgerService | PostgreSQL, Knex |
+| EventBus | Node EventEmitter |
+| RetryScheduler | Bull queue |
+
+### 3.4 Interface Definitions
+
+\`\`\`typescript
+interface IWebhookHandler {
+  handleWebhook(payload: Buffer, signature: string): Promise<void>
+}
+
+interface ILedgerService {
+  record(entry: LedgerEntry): Promise<string>  // returns entry ID
+  getHistory(customerId: string): Promise<LedgerEntry[]>
+}
+
+interface IInvoiceGenerator {
+  generate(event: PaymentSucceededEvent): Promise<string>  // returns PDF URL
+}
+\`\`\`
+
+### 3.5 Error Handling & Resilience
+
+Webhook handler returns 200 immediately after dispatch; downstream failures are isolated.
+The PostgreSQL outbox pattern ensures at-least-once delivery to the Invoice Service and Ledger.
+
+### 3.6 Sequences
+
+#### Webhook to Invoice
+
+**ID**: \`cpt-billing-seq-webhook-to-invoice\`
+
+Stripe sends event → Webhook Handler verifies HMAC + dispatches to bus → Invoice Service
+generates PDF and uploads to S3 → tenant notified; Billing Ledger records entry in parallel.
 
 \`\`\`mermaid
 sequenceDiagram
@@ -256,36 +398,22 @@ sequenceDiagram
     LedgerService-->>Stripe: (async) ledger entry created
 \`\`\`
 
----
+### 3.7 Database
 
-## Interface Definitions
+#### billing_ledger
 
-### WebhookHandler
-\`\`\`typescript
-interface IWebhookHandler {
-  handleWebhook(payload: Buffer, signature: string): Promise<void>
-}
-\`\`\`
+**ID**: \`cpt-billing-dbtable-billing-ledger\`
 
-### LedgerService
-\`\`\`typescript
-interface ILedgerService {
-  record(entry: LedgerEntry): Promise<string>  // returns entry ID
-  getHistory(customerId: string): Promise<LedgerEntry[]>
-}
-\`\`\`
+PostgreSQL table: \`billing_ledger (tenant_id, invoice_id, amount_cents, currency, event_type, created_at)\`.
+Partitioned by \`tenant_id\`, month. Append-only (UPDATE and DELETE rules disabled).
+Row-level security enforces \`cpt-billing-constraint-data-isolation\`.
 
-### InvoiceGenerator
-\`\`\`typescript
-interface IInvoiceGenerator {
-  generate(event: PaymentSucceededEvent): Promise<string>  // returns PDF URL
-}
-\`\`\`
+**Satisfies**: \`cpt-billing-fr-ledger-partitioning\`
 `,
 
-  'file-adr-001': `# ADR-001 — Event-Driven Billing Architecture
+  'file-adr-001': `# Event-Driven Billing Architecture
 
-\`cpt-billing-adr-event-driven-arch\`
+- [ ] \`p1\` - **ID**: \`cpt-billing-adr-event-driven-arch\`
 
 **Status:** Accepted
 **Date:** 2026-01-10
@@ -293,18 +421,19 @@ interface IInvoiceGenerator {
 
 ---
 
-## Context
+## Context and Problem Statement
 
 The previous billing system used synchronous REST calls between components,
 causing cascading failures when downstream services were slow or unavailable.
-Payment processing latency was unacceptably high (p99 > 2s).
+Payment processing latency was unacceptably high (p99 > 2 s). We need an
+architecture that decouples payment recording from downstream processing.
 
 ---
 
 ## Decision Drivers
 
 - Decouple payment processing from invoice generation
-- Improve resilience: partial failures should not block payment recording
+- Improve resilience: partial failures must not block payment recording
 - Enable independent scaling of invoice generation
 - Support audit trail requirements without coupling to business logic
 
@@ -326,13 +455,13 @@ Payment processing latency was unacceptably high (p99 > 2s).
 
 ---
 
-## Decision
+## Decision Outcome
 
 We adopt **Option C** for the initial v2 release: an in-process EventEmitter for
 domain event routing, with a PostgreSQL outbox table for durability and replay.
 
-This gives us event-driven semantics without introducing Kafka operational overhead
-at our current scale (< 500 events/second).
+This provides event-driven semantics without introducing Kafka operational overhead
+at our current scale. Satisfies \`cpt-billing-principle-event-driven\`.
 
 ---
 
@@ -345,15 +474,15 @@ at our current scale (< 500 events/second).
 
 **Negative:**
 - Cannot scale invoice generator independently from webhook handler
-- No cross-service event consumption (revisit when we need that)
-- Outbox polling adds ~100ms latency to downstream consumers
+- No cross-service event consumption (revisit at higher scale)
+- Outbox polling adds ~100 ms latency to downstream consumers
 
-References: \`cpt-billing-fr-webhook-ingestion\`, \`cpt-billing-nfr-throughput\`
+**References**: \`cpt-billing-fr-webhook-ingestion\`, \`cpt-billing-nfr-throughput\`
 `,
 
-  'file-adr-002': `# ADR-002 — PostgreSQL for Ledger Storage
+  'file-adr-002': `# PostgreSQL for Billing Ledger
 
-\`cpt-billing-adr-postgresql-ledger\`
+- [ ] \`p1\` - **ID**: \`cpt-billing-adr-postgresql-ledger\`
 
 **Status:** Accepted
 **Date:** 2026-01-12
@@ -361,10 +490,11 @@ References: \`cpt-billing-fr-webhook-ingestion\`, \`cpt-billing-nfr-throughput\`
 
 ---
 
-## Context
+## Context and Problem Statement
 
 The billing ledger requires ACID guarantees, complex querying for reconciliation,
-and 7-year retention with audit trail integrity. We need to choose a storage backend.
+and 7-year retention with audit trail integrity. We need to choose a storage backend
+that satisfies \`cpt-billing-fr-ledger-partitioning\` and tenant isolation requirements.
 
 ---
 
@@ -373,7 +503,7 @@ and 7-year retention with audit trail integrity. We need to choose a storage bac
 - ACID transactions for double-entry bookkeeping
 - Complex SQL queries for reconciliation reports
 - Familiarity: team has deep PostgreSQL expertise
-- Row-level security for multi-tenant isolation
+- Row-level security for multi-tenant isolation per \`cpt-billing-constraint-data-isolation\`
 
 ---
 
@@ -381,7 +511,7 @@ and 7-year retention with audit trail integrity. We need to choose a storage bac
 
 ### Option A: PostgreSQL
 - Pro: ACID, familiar, row-level security, JSONB for flexible data
-- Con: Vertical scaling limits, not optimized for time-series
+- Con: Vertical scaling limits, not optimised for time-series
 
 ### Option B: DynamoDB
 - Pro: Horizontal scale, managed
@@ -393,10 +523,12 @@ and 7-year retention with audit trail integrity. We need to choose a storage bac
 
 ---
 
-## Decision
+## Decision Outcome
 
 **PostgreSQL** with append-only ledger table, row-level security per tenant,
-and read replicas for reporting queries.
+native range partitioning by \`tenant_id\` + month, and read replicas for reporting.
+
+Implements \`cpt-billing-dbtable-billing-ledger\`.
 
 ---
 
@@ -405,46 +537,60 @@ and read replicas for reporting queries.
 - Single-region write endpoint (acceptable for current scale)
 - Reconciliation queries can use standard SQL window functions
 - Leverage existing PostgreSQL expertise and tooling
+- Partitioning satisfies \`cpt-billing-fr-ledger-partitioning\`
 
-References: \`cpt-billing-fr-ledger-partitioning\`
+**References**: \`cpt-billing-fr-ledger-partitioning\`
 `,
 
-  'file-feat-stripe': `# FEAT-stripe-webhook — Stripe Webhook Processing
+  'file-feat-stripe': `# Stripe Webhook Flow
 
 **Status:** Implemented
-**Linked PRD Requirements:** R-001, R-002, R-005, R-007
-**Linked Design Components:** WebhookHandler, EventBus
+**Date:** 2026-01-20
 
-References: \`cpt-billing-fr-webhook-ingestion\`, \`cpt-billing-usecase-stripe-payment\`
+## Context
 
----
+Implements \`cpt-billing-fr-webhook-ingestion\` for the use case \`cpt-billing-usecase-stripe-payment\`.
 
-## Overview
+This feature covers the ingestion path: receiving Stripe webhook events, verifying
+their HMAC-SHA256 signatures, enforcing idempotency, and dispatching to the internal
+billing event bus.
 
-Receive, validate, and route Stripe webhook events to domain handlers.
+**Requirements covered:**
+- \`cpt-billing-fr-webhook-ingestion\`
+
+**Use cases covered:**
+- \`cpt-billing-usecase-stripe-payment\`
+
+**Design components:**
+- \`cpt-billing-component-webhook-handler\`
 
 ---
 
 ## Flows
 
-**Flow** \`cpt-billing-flow-stripe-webhook-happy\` — GIVEN valid Stripe event WHEN received THEN verify HMAC, dispatch to bus, return 200.
+### Happy Path — Valid Stripe Webhook
 
-**DoD** \`cpt-billing-dod-webhook-handler-impl\` — StripeWebhookHandler class with HMAC verification, event routing, idempotency guards, and error handling implemented and tested.
+- [ ] \`p1\` - **ID**: \`cpt-billing-flow-stripe-webhook-happy\`
 
-### Flow-001 — Webhook Ingestion
+**GIVEN** a valid Stripe event with a correct HMAC-SHA256 signature
+**WHEN** the event is received at \`POST /webhooks/stripe\`
+**THEN** the system verifies the signature, checks idempotency, dispatches to the
+event bus, and returns HTTP 200 within p99 <= 200 ms.
+
+**Steps:**
 1. Stripe POSTs event to \`/webhooks/stripe\`
 2. Extract \`stripe-signature\` header
 3. Validate HMAC-SHA256 signature using webhook secret
 4. Parse JSON payload
 5. Check idempotency: if event ID already processed, return 200 immediately
-6. Route to appropriate handler
+6. Dispatch to event bus (\`billing.payment_succeeded\` or appropriate type)
 7. Return 200 OK
 
-### Flow-002 — Signature Validation
+### Signature Validation Detail
 1. Reconstruct signed payload: \`{timestamp}.{body}\`
 2. Compute HMAC-SHA256 using webhook secret
 3. Compare with provided signature (constant-time comparison)
-4. Reject with 400 if invalid, log warning
+4. Reject with HTTP 400 if invalid, emit security warning log
 
 ---
 
@@ -461,22 +607,31 @@ function isAlreadyProcessed(eventId: string): Promise<boolean>
 
 ---
 
+## Definition of Done
+
+- [ ] \`p1\` - **ID**: \`cpt-billing-dod-webhook-handler-impl\`
+
+\`StripeWebhookHandler\` class with HMAC verification, event routing, idempotency guards,
+and error handling is implemented, code-reviewed, and test coverage >= 90%.
+
+---
+
 ## Test Scenarios
 
 ### GIVEN a valid Stripe webhook payload
-**WHEN** the HMAC signature matches the expected digest  
+**WHEN** the HMAC signature matches the expected digest
 **THEN** the event is accepted and routed to the domain handler
 
 ### GIVEN a webhook with invalid signature
-**WHEN** the signature validation fails  
+**WHEN** the signature validation fails
 **THEN** HTTP 400 is returned and a security warning is logged
 
 ### GIVEN a duplicate event (same event ID)
-**WHEN** the event has already been processed  
+**WHEN** the event has already been processed
 **THEN** HTTP 200 is returned immediately without re-processing
 
-### GIVEN an unrecognized event type
-**WHEN** no handler is registered for the event type  
+### GIVEN an unrecognised event type
+**WHEN** no handler is registered for the event type
 **THEN** the event is logged as unhandled and HTTP 200 returned
 `,
 
@@ -532,7 +687,8 @@ function renderInvoice(data: InvoiceData): Buffer
 
   'file-webhook-handler': `import { EventEmitter } from 'events'
 
-// @cpt-obj-fspec-stripe
+// @cpt-billing-flow-stripe-webhook-happy
+// @cpt-billing-dod-webhook-handler-impl
 export class StripeWebhookHandler {
   private readonly secret: string
   private readonly emitter: EventEmitter
@@ -542,14 +698,13 @@ export class StripeWebhookHandler {
     this.emitter = emitter
   }
 
-  // @cpt-obj-fspec-stripe-flow-001
+  // Implements: cpt-billing-flow-stripe-webhook-happy — happy-path ingestion
   async handleWebhook(payload: Buffer, signature: string): Promise<void> {
     await this.validateSignature(payload, signature)
     const event = JSON.parse(payload.toString())
     await this.routeEvent(event)
   }
 
-  // @cpt-obj-fspec-stripe-flow-002
   private async validateSignature(payload: Buffer, signature: string): Promise<void> {
     // Stripe signature validation using HMAC-SHA256
     const crypto = await import('crypto')
@@ -575,7 +730,6 @@ export class StripeWebhookHandler {
   }
 
   private async handlePaymentSuccess(event: Record<string, unknown>): Promise<void> {
-    // TODO: emit billing.payment_succeeded domain event
     const invoiceId = (event.data as Record<string, unknown>)?.object as string
     this.emitter.emit('billing.payment_succeeded', { invoiceId })
     console.log(\`Payment succeeded for invoice: \${invoiceId}\`)
