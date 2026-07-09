@@ -162,6 +162,17 @@ const FILE_TO_OBJECT: Record<string, string> = {
   'file-webhook-spec':  'pr-001',
 }
 
+// Reverse map: objectId → primary fileId
+const OBJECT_TO_FILE: Record<string, string> = {
+  'prd-001':    'file-prd',
+  'design-001': 'file-design',
+  'adr-001':    'file-adr-001',
+  'adr-002':    'file-adr-002',
+  'fspec-001':  'file-feat-stripe',
+  'fspec-002':  'file-feat-invoice',
+  'pr-001':     'file-webhook-handler',
+}
+
 function findFileInTree(nodes: FileNode[], id: string): FileNode | null {
   for (const n of nodes) {
     if (n.id === id) return n
@@ -200,7 +211,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   customFlowGraphDefs: [],
 
   // ─── UI Actions ─────────────────────────────────────────────────────────────
-  selectObject: (id) => set({ selectedObjectId: id, activeTab: 'overview' }),
+  selectObject: (id) => {
+    if (!id) { set({ selectedObjectId: null, activeTab: 'overview' }); return }
+    const state = get()
+    // If a file is currently open, switch to the file associated with the selected object
+    const associatedFile = OBJECT_TO_FILE[id]
+    if (state.openFileId && associatedFile) {
+      // Open the associated file (this also loads content into fileContents)
+      const file = findFileInTree(FILE_TREE, associatedFile)
+      set(s => ({
+        selectedObjectId: id,
+        activeTab: 'overview',
+        openFileId: associatedFile,
+        fileContents: associatedFile in s.fileContents
+          ? s.fileContents
+          : { ...s.fileContents, [associatedFile]: FILE_CONTENTS[associatedFile] ?? '' },
+      }))
+    } else {
+      set({ selectedObjectId: id, activeTab: 'overview' })
+    }
+  },
   setActiveView: (view) => set({ activeView: view }),
   setActiveTab: (tab) => set({ activeTab: tab }),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
