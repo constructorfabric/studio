@@ -106,7 +106,21 @@ generating invoices, and maintaining a tamper-proof financial ledger for the Saa
 
 ---
 
+## CPT Traceability
+
+**Actor** \`cpt-billing-actor-tenant\` — Tenant (Customer): a paying customer organisation whose billing events, invoices, and ledger entries are managed by the system.
+
+**Use Case** \`cpt-billing-usecase-stripe-payment\` — Process Stripe Payment Event: a payment_intent.succeeded event arrives, is verified, an invoice is generated, the ledger is updated, and the tenant is notified.
+
+---
+
 ## Functional Requirements
+
+**FR** \`cpt-billing-fr-webhook-ingestion\` — The system shall accept, verify HMAC signatures, and dispatch Stripe webhook events to the internal billing event bus.
+
+**FR** \`cpt-billing-fr-invoice-generation\` — The system shall asynchronously generate PDF invoices from billing events and store them in S3.
+
+**FR** \`cpt-billing-fr-ledger-partitioning\` — The billing ledger shall be partitioned by tenant_id and month to support high-volume transaction data.
 
 ### R-001 — Webhook Ingestion
 The system SHALL receive and validate Stripe webhook events via HMAC-SHA256 signature verification.
@@ -135,6 +149,10 @@ The system SHALL expose a REST API for customers to retrieve their invoice histo
 ---
 
 ## Non-Functional Requirements
+
+**NFR** \`cpt-billing-nfr-throughput\` — Process >= 1 000 webhook events/sec sustained, >= 5 000 peak.
+
+**NFR** \`cpt-billing-nfr-latency\` — Acknowledgement p99 <= 200 ms; invoice generation p99 <= 30 s.
 
 - **Availability:** 99.9% uptime SLA
 - **Latency:** Webhook processing < 200ms p99
@@ -184,6 +202,19 @@ components communicate via domain events on an in-process event bus.
 
 ## Components
 
+#### \`cpt-billing-component-webhook-handler\` Webhook Handler
+Ingests raw Stripe events via HTTP, verifies HMAC signatures, deduplicates, and publishes to internal event bus.
+
+#### \`cpt-billing-component-invoice-service\` Invoice Service
+Subscribes to billing events, generates PDF invoices asynchronously, stores in S3, and notifies tenants.
+
+#### \`cpt-billing-component-billing-ledger\` Billing Ledger
+Append-only PostgreSQL ledger partitioned by tenant_id + month; the authoritative record of all billing transactions.
+
+**Constraint** \`cpt-billing-constraint-data-isolation\` — All ledger and invoice data must be strictly partitioned by tenant_id; no cross-tenant queries are permitted.
+
+**Principle** \`cpt-billing-principle-event-driven\` — All billing processing is asynchronous and event-driven; the webhook handler never blocks on invoice generation.
+
 | Component | Responsibility | Technology |
 |-----------|---------------|------------|
 | WebhookHandler | Signature validation, event parsing | Node.js, crypto |
@@ -191,6 +222,18 @@ components communicate via domain events on an in-process event bus.
 | LedgerService | Double-entry bookkeeping | PostgreSQL, Knex |
 | EventBus | Internal domain event routing | Node EventEmitter |
 | RetryScheduler | Failed payment retry logic | Bull queue |
+
+---
+
+## Database Schemas
+
+**Table** \`cpt-billing-dbtable-billing-ledger\` — billing_ledger (tenant_id, invoice_id, amount_cents, currency, event_type, created_at). Partitioned by tenant_id, month.
+
+---
+
+## Interactions & Sequences
+
+**Sequence** \`cpt-billing-seq-webhook-to-invoice\` — Stripe sends event -> Webhook Handler verifies + dispatches -> Invoice Service generates PDF -> S3 + notify.
 
 ---
 
@@ -242,8 +285,10 @@ interface IInvoiceGenerator {
 
   'file-adr-001': `# ADR-001 — Event-Driven Billing Architecture
 
-**Status:** Accepted  
-**Date:** 2026-01-10  
+\`cpt-billing-adr-event-driven-arch\`
+
+**Status:** Accepted
+**Date:** 2026-01-10
 **Authors:** Platform Team
 
 ---
@@ -302,12 +347,16 @@ at our current scale (< 500 events/second).
 - Cannot scale invoice generator independently from webhook handler
 - No cross-service event consumption (revisit when we need that)
 - Outbox polling adds ~100ms latency to downstream consumers
+
+References: \`cpt-billing-fr-webhook-ingestion\`, \`cpt-billing-nfr-throughput\`
 `,
 
   'file-adr-002': `# ADR-002 — PostgreSQL for Ledger Storage
 
-**Status:** Accepted  
-**Date:** 2026-01-12  
+\`cpt-billing-adr-postgresql-ledger\`
+
+**Status:** Accepted
+**Date:** 2026-01-12
 **Authors:** Platform Team
 
 ---
@@ -356,13 +405,17 @@ and read replicas for reporting queries.
 - Single-region write endpoint (acceptable for current scale)
 - Reconciliation queries can use standard SQL window functions
 - Leverage existing PostgreSQL expertise and tooling
+
+References: \`cpt-billing-fr-ledger-partitioning\`
 `,
 
   'file-feat-stripe': `# FEAT-stripe-webhook — Stripe Webhook Processing
 
-**Status:** Implemented  
-**Linked PRD Requirements:** R-001, R-002, R-005, R-007  
+**Status:** Implemented
+**Linked PRD Requirements:** R-001, R-002, R-005, R-007
 **Linked Design Components:** WebhookHandler, EventBus
+
+References: \`cpt-billing-fr-webhook-ingestion\`, \`cpt-billing-usecase-stripe-payment\`
 
 ---
 
@@ -373,6 +426,10 @@ Receive, validate, and route Stripe webhook events to domain handlers.
 ---
 
 ## Flows
+
+**Flow** \`cpt-billing-flow-stripe-webhook-happy\` — GIVEN valid Stripe event WHEN received THEN verify HMAC, dispatch to bus, return 200.
+
+**DoD** \`cpt-billing-dod-webhook-handler-impl\` — StripeWebhookHandler class with HMAC verification, event routing, idempotency guards, and error handling implemented and tested.
 
 ### Flow-001 — Webhook Ingestion
 1. Stripe POSTs event to \`/webhooks/stripe\`

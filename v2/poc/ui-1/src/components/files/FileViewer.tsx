@@ -5,6 +5,8 @@ import { Save, Link2, Eye, Code2, Columns2 } from 'lucide-react'
 import { useAppStore } from '../../store/app-store'
 import { FILE_TREE, type FileNode } from '../../data/file-mock-data'
 import { MOCK_OBJECTS } from '../../data/mock-data'
+import { getCptById, type CptIdentifier } from '../../data/cpt-registry'
+import { CptPopup } from './CptPopup'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,9 +160,16 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+const CPT_PATTERN = /\bcpt-[a-z]+-[a-z]+-[a-z0-9-]+\b/
+
 function inlineMarkdown(text: string): string {
   return text
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/`([^`]+)`/g, (_m, inner: string) => {
+      if (CPT_PATTERN.test(inner)) {
+        return `<code class="md-cpt-chip" data-cpt-id="${inner}">${inner}</code>`
+      }
+      return `<code>${inner}</code>`
+    })
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
@@ -194,17 +203,67 @@ const PREVIEW_CSS = `
 .md-preview a { color: #818cf8; text-decoration: none; }
 .md-preview a:hover { text-decoration: underline; }
 .md-preview .md-req-id { font-size: 11px; font-weight: 700; color: #34d399; background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); border-radius: 4px; padding: 1px 5px; font-family: monospace; }
+.md-preview code.md-cpt-chip { color: #86efac; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); cursor: pointer; transition: opacity 0.1s; }
+.md-preview code.md-cpt-chip:hover { opacity: 0.75; }
+.md-preview code.md-cpt-chip.md-cpt-definition { color: #a5b4fc; background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.3); }
 `
 
-function MarkdownPreview({ content }: { content: string }) {
+interface MarkdownPreviewProps {
+  content: string
+  openFileId: string | null
+  onCptClick: (cpt: CptIdentifier, pos: { x: number; y: number }) => void
+}
+
+function MarkdownPreview({ content, openFileId, onCptClick }: MarkdownPreviewProps) {
   const html = useMemo(() => renderMarkdown(content), [content])
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    if (target.tagName === 'CODE' && target.classList.contains('md-cpt-chip')) {
+      const cptId = target.getAttribute('data-cpt-id')
+      if (cptId) {
+        const cpt = getCptById(cptId)
+        if (cpt) {
+          e.stopPropagation()
+          onCptClick(cpt, { x: e.clientX + 10, y: e.clientY - 10 })
+          return
+        }
+      }
+    }
+  }
+
+  // After render, apply definition styling to chips whose definedIn matches current file
+  const containerRef = useRef<HTMLDivElement>(null)
+  useMemo(() => {
+    // Run after paint via queueMicrotask
+    if (typeof window !== 'undefined') {
+      queueMicrotask(() => {
+        const el = containerRef.current
+        if (!el || !openFileId) return
+        el.querySelectorAll<HTMLElement>('code.md-cpt-chip').forEach(chip => {
+          const id = chip.getAttribute('data-cpt-id')
+          if (!id) return
+          const cpt = getCptById(id)
+          if (cpt && cpt.definedIn.fileId === openFileId) {
+            chip.classList.add('md-cpt-definition')
+          } else {
+            chip.classList.remove('md-cpt-definition')
+          }
+        })
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html, openFileId])
+
   return (
     <>
       <style>{PREVIEW_CSS}</style>
       <div
+        ref={containerRef}
         className="md-preview flex-1 overflow-y-auto"
         dangerouslySetInnerHTML={{ __html: html }}
         style={{ background: '#09090b', height: '100%', overflowY: 'auto' }}
+        onClick={handleClick}
       />
     </>
   )
@@ -262,6 +321,8 @@ export function FileViewer() {
   const setLineAction = useAppStore(s => s.setLineAction)
   const selectObject = useAppStore(s => s.selectObject)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+
+  const [activeCpt, setActiveCpt] = useState<{ cpt: CptIdentifier; pos: { x: number; y: number } } | null>(null)
 
   const file = openFileId ? findFileById(FILE_TREE, openFileId) : null
   const content = openFileId ? (fileContents[openFileId] ?? '') : ''
@@ -408,7 +469,11 @@ export function FileViewer() {
             flex: 1, overflow: 'hidden',
             borderRight: viewMode === 'split' ? '1px solid rgba(63,63,70,0.5)' : 'none',
           }}>
-            <MarkdownPreview content={content} />
+            <MarkdownPreview
+              content={content}
+              openFileId={openFileId}
+              onCptClick={(cpt, pos) => setActiveCpt({ cpt, pos })}
+            />
           </div>
         )}
 
@@ -438,6 +503,16 @@ export function FileViewer() {
           </div>
         )}
       </div>
+
+      {/* CPT cross-reference popup */}
+      {activeCpt && (
+        <CptPopup
+          cpt={activeCpt.cpt}
+          isDefinition={activeCpt.cpt.definedIn.fileId === openFileId}
+          position={activeCpt.pos}
+          onClose={() => setActiveCpt(null)}
+        />
+      )}
     </div>
   )
 }
