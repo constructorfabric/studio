@@ -260,35 +260,32 @@ export function Sidebar() {
                   {cat.types.map(({ typeId, label, icon, color }) => {
                     const count = countByType(typeId)
                     const isActive = filterType === typeId
+                    const typeObjects = objects.filter(o => o.typeId === typeId)
                     return (
-                      <button
-                        key={`${cat.id}-${typeId}`}
-                        onClick={() => {
-                          setFilterType(isActive ? null : typeId)
-                        }}
-                        className={`w-full flex items-center justify-between px-2 py-1 rounded-md text-xs transition-colors ${
-                          isActive
-                            ? 'bg-zinc-800 text-zinc-100'
-                            : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900/70'
-                        }`}
-                      >
-                        <span className={`flex items-center gap-1.5 ${color}`}>
-                          {icon}
-                          <span className="text-zinc-300 text-[11px]">{label}</span>
-                        </span>
-                        <span className="text-[10px] text-zinc-600 tabular-nums">{count}</span>
-                      </button>
-                    )
-                  })}
-
-                  {/* Objects under selected type */}
-                  {filterType && cat.types.some(t => t.typeId === filterType) && (
-                    <div className="mt-1 space-y-0.5 pl-2 border-l border-zinc-800">
-                      {filteredObjects.map(obj => (
+                      <div key={`${cat.id}-${typeId}`}>
                         <button
-                          key={obj.id}
-                          onClick={() => selectObject(obj.id)}
-                          className={`w-full text-left px-2 py-1 rounded-md transition-colors text-[11px] ${
+                          onClick={() => setFilterType(isActive ? null : typeId)}
+                          className={`w-full flex items-center justify-between px-2 py-1 rounded-md text-xs transition-colors ${
+                            isActive
+                              ? 'bg-zinc-800 text-zinc-100'
+                              : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900/70'
+                          }`}
+                        >
+                          <span className={`flex items-center gap-1.5 ${color}`}>
+                            {icon}
+                            <span className="text-zinc-300 text-[11px]">{label}</span>
+                          </span>
+                          <span className="text-[10px] text-zinc-600 tabular-nums">{count}</span>
+                        </button>
+
+                        {/* Objects directly under this type when active */}
+                        {isActive && (
+                          <div className="mt-0.5 mb-1 space-y-0.5 pl-3 border-l border-zinc-800 ml-2">
+                            {typeObjects.map(obj => (
+                              <button
+                                key={obj.id}
+                                onClick={() => selectObject(obj.id)}
+                                className={`w-full text-left px-2 py-1 rounded-md transition-colors text-[11px] ${
                             selectedObjectId === obj.id
                               ? 'bg-indigo-900/40 text-zinc-100'
                               : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
@@ -300,8 +297,11 @@ export function Sidebar() {
                           </div>
                         </button>
                       ))}
-                    </div>
-                  )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
