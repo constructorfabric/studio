@@ -139,9 +139,7 @@ function getStateColor(state: string): string {
 export function Sidebar() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<ObjectTypeId | null>(null)
-  const [expandedCats, setExpandedCats] = useState<Set<string>>(
-    new Set(['workspace', 'tasks', 'version_control'])
-  )
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set())
 
   const objects = useAppStore(s => s.objects)
   const workerRuns = useAppStore(s => s.workerRuns)
