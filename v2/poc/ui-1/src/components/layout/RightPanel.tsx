@@ -529,7 +529,7 @@ export function ValidationBadge({ status }: { status: string }) {
 
 // ─── Main RightPanel ──────────────────────────────────────────────────────────
 
-const TABS = ['Overview', 'Actions', 'History', 'Links', 'Score']
+const TABS = ['Overview', 'Actions', 'Runs & Cost', 'Links', 'Score']
 
 export function RightPanel() {
   const selectedObject = useAppStore(selectObject)
