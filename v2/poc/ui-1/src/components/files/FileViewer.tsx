@@ -236,9 +236,10 @@ interface MarkdownPreviewProps {
   content: string
   openFileId: string | null
   onCptClick: (cpt: CptIdentifier, pos: { x: number; y: number }) => void
+  outerRef?: React.RefObject<HTMLDivElement>
 }
 
-function MarkdownPreview({ content, openFileId, onCptClick }: MarkdownPreviewProps) {
+function MarkdownPreview({ content, openFileId, onCptClick, outerRef }: MarkdownPreviewProps) {
   const html = useMemo(() => renderMarkdown(content), [content])
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -258,6 +259,11 @@ function MarkdownPreview({ content, openFileId, onCptClick }: MarkdownPreviewPro
 
   // After render, apply definition styling to chips whose definedIn matches current file
   const containerRef = useRef<HTMLDivElement>(null)
+  // Merged ref: assigns to both internal containerRef and outer previewRef
+  const setDivRef = (el: HTMLDivElement | null) => {
+    (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+    if (outerRef) (outerRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+  }
   useMemo(() => {
     // Run after paint via queueMicrotask
     if (typeof window !== 'undefined') {
@@ -283,7 +289,7 @@ function MarkdownPreview({ content, openFileId, onCptClick }: MarkdownPreviewPro
     <>
       <style>{PREVIEW_CSS}</style>
       <div
-        ref={containerRef}
+        ref={setDivRef}
         className="md-preview flex-1 overflow-y-auto"
         dangerouslySetInnerHTML={{ __html: html }}
         style={{ background: '#09090b', height: '100%', overflowY: 'auto' }}
@@ -402,23 +408,77 @@ export function FileViewer() {
     decorationIdsRef.current = model.deltaDecorations(decorationIdsRef.current, newDecorations)
   }
 
-  // When scrollToCptId changes (after navigation), scroll Monaco to that line
+  const previewRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to CPT id after navigation — works in both source (Monaco) and preview modes
   useEffect(() => {
-    if (!scrollToCptId || !editorRef.current || !openFileId) return
-    const text = fileContents[openFileId] ?? ''
-    const line = findCptLine(text, scrollToCptId)
-    editorRef.current.revealLineInCenter(line)
-    // Flash the line briefly
-    const model = editorRef.current.getModel()
-    if (model) {
-      const flashDec = model.deltaDecorations([], [{
-        range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1000 },
-        options: { isWholeLine: true, className: 'cpt-flash-line' },
-      }])
-      setTimeout(() => model.deltaDecorations(flashDec, []), 1500)
+    if (!scrollToCptId || !openFileId) return
+
+    // Retry until content is available (Monaco loads asynchronously after file switch)
+    let attempts = 0
+    const MAX = 10
+
+    const tryScroll = () => {
+      attempts++
+
+      // ── Preview mode: scroll the preview container via DOM ──────────────
+      if (previewRef.current) {
+        const chip = previewRef.current.querySelector<HTMLElement>(`[data-cpt-id="${scrollToCptId}"]`)
+        if (chip) {
+          chip.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          // Briefly highlight
+          const prev = chip.style.outline
+          chip.style.outline = '2px solid rgba(99,102,241,0.7)'
+          chip.style.borderRadius = '4px'
+          setTimeout(() => { chip.style.outline = prev }, 1500)
+          setScrollToCptId(null)
+          return
+        }
+        // Preview rendered but chip not found yet — retry
+        if (attempts < MAX) { setTimeout(tryScroll, 80); return }
+        setScrollToCptId(null)
+        return
+      }
+
+      // ── Source mode: scroll Monaco editor ───────────────────────────────
+      const editor = editorRef.current
+      if (!editor) {
+        if (attempts < MAX) { setTimeout(tryScroll, 80); return }
+        setScrollToCptId(null)
+        return
+      }
+
+      // Read content from store (always up-to-date)
+      const text = useAppStore.getState().fileContents[openFileId] ?? ''
+      if (!text && attempts < MAX) { setTimeout(tryScroll, 80); return }
+
+      const line = findCptLine(text, scrollToCptId)
+
+      // Verify Monaco model has caught up to the new file
+      const modelLineCount = editor.getModel()?.getLineCount() ?? 0
+      const expectedLines = text.split('\n').length
+      if (modelLineCount !== expectedLines && attempts < MAX) {
+        setTimeout(tryScroll, 80)
+        return
+      }
+
+      editor.revealLineInCenter(line)
+      const model = editor.getModel()
+      if (model) {
+        const flashDec = model.deltaDecorations([], [{
+          range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1000 },
+          options: { isWholeLine: true, className: 'cpt-flash-line' },
+        }])
+        setTimeout(() => model.deltaDecorations(flashDec, []), 1500)
+      }
+      setScrollToCptId(null)
     }
-    setScrollToCptId(null)
-  }, [scrollToCptId, openFileId, fileContents, setScrollToCptId])
+
+    // Initial delay to let Monaco/preview render the new file
+    const t = setTimeout(tryScroll, 100)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToCptId, openFileId])
 
   const handleEditorMount = (editorInstance: MonacoEditor.IStandaloneCodeEditor) => {
     editorRef.current = editorInstance
@@ -592,6 +652,7 @@ export function FileViewer() {
               content={content}
               openFileId={openFileId}
               onCptClick={(cpt, pos) => setActiveCpt({ cpt, pos })}
+              outerRef={previewRef}
             />
           </div>
         )}
