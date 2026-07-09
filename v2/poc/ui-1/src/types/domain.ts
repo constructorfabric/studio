@@ -171,6 +171,7 @@ export interface WorkerDef {
   actionLabel: string
   applicableTypes: ObjectTypeId[]
   interaction?: WorkerInteractionDef
+  estimatedCostUsd?: number
 }
 
 // ─── Worker Run ───────────────────────────────────────────────────────────────

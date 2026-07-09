@@ -450,6 +450,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Create PRD',
     applicableTypes: ['prd'],
+    estimatedCostUsd: 0.35,
   },
   {
     id: 'create_design_worker',
@@ -460,6 +461,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Create Design',
     applicableTypes: ['prd'],
+    estimatedCostUsd: 0.42,
     interaction: {
       kind: 'input_request',
       prompt: 'Specify any architectural constraints or technology preferences for this design:',
@@ -474,6 +476,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Decompose',
     applicableTypes: ['design'],
+    estimatedCostUsd: 0.28,
     interaction: {
       kind: 'menu',
       prompt: 'Choose decomposition strategy:',
@@ -489,6 +492,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Create Feature Spec',
     applicableTypes: ['task'],
+    estimatedCostUsd: 0.22,
   },
   {
     id: 'implement_code_worker',
@@ -499,6 +503,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Implement',
     applicableTypes: ['task', 'feature_spec'],
+    estimatedCostUsd: 0.45,
     interaction: {
       kind: 'input_request',
       prompt: 'Clarify the implementation scope (e.g. files to touch, patterns to follow, tests to write):',
@@ -513,6 +518,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Create PR',
     applicableTypes: ['pull_request', 'task'],
+    estimatedCostUsd: 0.15,
   },
   {
     id: 'create_adr_worker',
@@ -523,6 +529,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Create ADR',
     applicableTypes: ['adr'],
+    estimatedCostUsd: 0.18,
   },
   {
     id: 'gap_analysis_validator',
@@ -533,6 +540,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'validator',
     actionLabel: 'Run Gap Analysis',
     applicableTypes: ['prd', 'design', 'feature_spec', 'incident'],
+    estimatedCostUsd: 0.04,
   },
   {
     id: 'pr_design_validator',
@@ -543,6 +551,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'validator',
     actionLabel: 'Validate vs Design',
     applicableTypes: ['pull_request'],
+    estimatedCostUsd: 0.05,
     interaction: {
       kind: 'menu',
       prompt: 'Select action for finding: "Missing event deduplication guard"',
@@ -558,6 +567,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'analyzer',
     actionLabel: 'Analyze Traceability',
     applicableTypes: ['prd', 'design', 'decomposition'],
+    estimatedCostUsd: 0.07,
   },
   {
     id: 'stale_artifact_detection',
@@ -578,6 +588,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'analyzer',
     actionLabel: 'Security Review',
     applicableTypes: ['pull_request', 'design'],
+    estimatedCostUsd: 0.09,
   },
   {
     id: 'object_graph_retriever',
@@ -599,6 +610,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Find Component',
     applicableTypes: ['incident', 'task'],
+    estimatedCostUsd: 0.07,
   },
   // F-016: validators required by bug_fix_flow per §22.2
   {
@@ -610,6 +622,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'validator',
     actionLabel: 'Validate Bug',
     applicableTypes: ['incident', 'task'],
+    estimatedCostUsd: 0.02,
   },
   {
     id: 'confirm_test_fails_validator',
@@ -620,6 +633,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'validator',
     actionLabel: 'Confirm Fails',
     applicableTypes: ['incident', 'task'],
+    estimatedCostUsd: 0.02,
   },
   {
     id: 'confirm_test_passes_validator',
@@ -630,6 +644,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'validator',
     actionLabel: 'Confirm Passes',
     applicableTypes: ['incident', 'task'],
+    estimatedCostUsd: 0.02,
   },
   // F-008: validators required by release_readiness_review per §22.2
   {
@@ -641,6 +656,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'validator',
     actionLabel: 'Check Coverage',
     applicableTypes: ['pull_request', 'task', 'feature_spec'],
+    estimatedCostUsd: 0.03,
   },
   {
     id: 'security_scan_validator',
@@ -651,6 +667,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'validator',
     actionLabel: 'Security Scan',
     applicableTypes: ['pull_request', 'design'],
+    estimatedCostUsd: 0.04,
   },
   {
     id: 'tech_lead_approval',
@@ -661,6 +678,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'validator',
     actionLabel: 'Approve',
     applicableTypes: ['prd', 'design', 'pull_request'],
+    estimatedCostUsd: 0,
   },
   {
     id: 'create_task_worker',
@@ -671,6 +689,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Create Task',
     applicableTypes: ['decomposition'],
+    estimatedCostUsd: 0.12,
   },
   {
     id: 'create_release_worker',
@@ -681,6 +700,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Create Release',
     applicableTypes: ['build'],
+    estimatedCostUsd: 0.08,
   },
   {
     id: 'deploy_to_staging_worker',
@@ -691,6 +711,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Deploy to Staging',
     applicableTypes: ['release'],
+    estimatedCostUsd: 0.05,
   },
   {
     id: 'deploy_to_prod_worker',
@@ -701,6 +722,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Deploy to Production',
     applicableTypes: ['release'],
+    estimatedCostUsd: 0.05,
   },
   {
     id: 'rollback_deployment_worker',
@@ -711,6 +733,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Rollback',
     applicableTypes: ['deployment'],
+    estimatedCostUsd: 0.03,
   },
   {
     id: 'component_impact_analysis',
@@ -721,6 +744,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'analyzer',
     actionLabel: 'Analyze Impact',
     applicableTypes: ['component', 'pull_request', 'design'],
+    estimatedCostUsd: 0.08,
   },
   {
     id: 'feedback_synthesizer_worker',
@@ -731,6 +755,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Synthesize Feedback',
     applicableTypes: ['pull_request', 'task', 'design', 'prd'],
+    estimatedCostUsd: 0.06,
   },
   {
     id: 'code_quality_evaluator',
@@ -741,6 +766,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'analyzer',
     actionLabel: 'Evaluate Quality',
     applicableTypes: ['pull_request', 'task'],
+    estimatedCostUsd: 0.10,
   },
   {
     id: 'agentic_code_optimization_loop',
@@ -751,6 +777,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'on_demand',
     actionLabel: 'Run Optimization Loop',
     applicableTypes: ['pull_request', 'task'],
+    estimatedCostUsd: 0.50,
   },
   {
     id: 'design_review_analyzer',
@@ -761,6 +788,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'analyzer',
     actionLabel: 'Review Design',
     applicableTypes: ['design', 'prd'],
+    estimatedCostUsd: 0.11,
   },
   {
     id: 'code_review_analyzer',
@@ -771,6 +799,7 @@ export const WORKER_DEFS: WorkerDef[] = [
     profile: 'analyzer',
     actionLabel: 'Review Code',
     applicableTypes: ['pull_request', 'task'],
+    estimatedCostUsd: 0.12,
   },
 ]
 

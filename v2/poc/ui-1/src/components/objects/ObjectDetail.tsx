@@ -276,6 +276,51 @@ function ScoreTab({ object }: { object: StudioObject }) {
   )
 }
 
+// ─── AI Spend Section ─────────────────────────────────────────────────────────
+
+function AiSpendSection({ objectId }: { objectId: string }) {
+  const workerRuns = useAppStore(s => s.workerRuns.filter(r => r.objectId === objectId && r.costUsd != null))
+  if (workerRuns.length === 0) return null
+
+  const totalCost = workerRuns.reduce((s, r) => s + (r.costUsd ?? 0), 0)
+  const totalTokens = workerRuns.reduce((s, r) => s + (r.tokensIn ?? 0) + (r.tokensOut ?? 0), 0)
+
+  // Group by workerId, sum costs
+  const byWorker: Record<string, { label: string; cost: number; runs: number }> = {}
+  for (const run of workerRuns) {
+    if (!byWorker[run.workerId]) byWorker[run.workerId] = { label: run.workerLabel, cost: 0, runs: 0 }
+    byWorker[run.workerId].cost += run.costUsd ?? 0
+    byWorker[run.workerId].runs++
+  }
+  const sorted = Object.values(byWorker).sort((a, b) => b.cost - a.cost)
+
+  return (
+    <div>
+      <div className="border border-zinc-800 rounded-lg p-3 bg-zinc-900/40">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">AI Spend</p>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-indigo-300">${totalCost.toFixed(2)}</span>
+            <span className="text-[10px] text-zinc-600">{Math.round(totalTokens/1000)}k tok</span>
+          </div>
+        </div>
+        <div className="space-y-1">
+          {sorted.slice(0, 4).map(w => (
+            <div key={w.label} className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-500/50 rounded-full" style={{ width: `${Math.min((w.cost / totalCost) * 100, 100)}%` }} />
+              </div>
+              <span className="text-[10px] text-zinc-500 w-20 truncate">{w.label}</span>
+              <span className="text-[10px] text-zinc-400 w-10 text-right tabular-nums">${w.cost.toFixed(2)}</span>
+              <span className="text-[9px] text-zinc-600">×{w.runs}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Overview Tab (findings + status focused) ─────────────────────────────────
 
 function OverviewTab({ object }: { object: StudioObject }) {
@@ -373,6 +418,8 @@ function OverviewTab({ object }: { object: StudioObject }) {
           <span style={{ fontSize: 11, color: '#6ee7b7' }}>No findings — object is healthy</span>
         </div>
       )}
+
+      <AiSpendSection objectId={object.id} />
     </div>
   )
 }
@@ -441,13 +488,18 @@ function ActionsTab({ object }: { object: StudioObject }) {
                       <p className="text-xs font-semibold text-zinc-200">{worker.label}</p>
                       <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{worker.description}</p>
                     </div>
-                    <button
-                      onClick={() => { if (!running) { const id = runWorker(worker.id, object.id); navigateToMonitor(id) } }}
-                      disabled={running}
-                      className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${running ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'}`}
-                    >
-                      {running ? <><Loader size={11} className="animate-spin" />Running</> : <><Play size={11} />{worker.actionLabel}</>}
-                    </button>
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      <button
+                        onClick={() => { if (!running) { const id = runWorker(worker.id, object.id); navigateToMonitor(id) } }}
+                        disabled={running}
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${running ? 'bg-zinc-700 text-zinc-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'}`}
+                      >
+                        {running ? <><Loader size={11} className="animate-spin" />Running</> : <><Play size={11} />{worker.actionLabel}</>}
+                      </button>
+                      {worker.estimatedCostUsd != null && worker.estimatedCostUsd > 0 && (
+                        <span className="text-[10px] text-zinc-600">~${worker.estimatedCostUsd.toFixed(2)}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )

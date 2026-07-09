@@ -339,6 +339,30 @@ function WorkerRunDetailPanel({ run }: { run: WorkerRun }) {
         {tab === 'log' && <LogTab run={run} />}
         {tab === 'artifacts' && <ArtifactsTab run={run} />}
       </div>
+
+      {/* Cost & Performance */}
+      {(run.costUsd != null || run.model) && (
+        <div className="px-4 py-3 border-t border-zinc-800 shrink-0">
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Cost & Performance</p>
+          <div className="flex items-center gap-4 text-xs">
+            {run.costUsd != null && (
+              <div>
+                <span className="text-indigo-300 font-bold">${run.costUsd.toFixed(2)}</span>
+                <span className="text-zinc-600 ml-1">cost</span>
+              </div>
+            )}
+            {run.tokensIn != null && (
+              <div>
+                <span className="text-zinc-300">{Math.round(((run.tokensIn ?? 0) + (run.tokensOut ?? 0))/1000)}k</span>
+                <span className="text-zinc-600 ml-1">tokens</span>
+              </div>
+            )}
+            {run.model && (
+              <div className="text-zinc-500 text-[10px]">{run.model}</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -667,6 +691,9 @@ function WorkerTreeItem({
           <div className="flex items-center gap-2 mt-0.5">
             <WorkerStateBadge state={run.state} />
             <span className="text-[10px] text-zinc-600">{elapsed(run.startedAt, run.completedAt)}</span>
+            {run.costUsd != null && run.costUsd > 0 && (
+              <span className="text-[9px] text-zinc-600 tabular-nums">${run.costUsd.toFixed(2)}</span>
+            )}
           </div>
         </div>
       </button>

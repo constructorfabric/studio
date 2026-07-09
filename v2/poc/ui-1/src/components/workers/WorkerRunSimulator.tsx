@@ -161,6 +161,12 @@ function RunToast({
           <p className="text-[10px] text-zinc-500 truncate">{run.objectTitle}</p>
         </div>
         <span className={`text-[10px] font-medium shrink-0 ${stateConfig.labelColor}`}>{stateConfig.label}</span>
+        {(run.state === 'done' || run.state === 'failed') && run.costUsd != null && run.costUsd > 0 && (
+          <span className="text-[9px] text-zinc-600 tabular-nums">${run.costUsd.toFixed(2)}</span>
+        )}
+        {run.durationMs != null && (
+          <span className="text-[9px] text-zinc-600">{(run.durationMs/1000).toFixed(1)}s</span>
+        )}
         <div className="flex items-center gap-1">
           <button
             onClick={e => { e.stopPropagation(); onToggle() }}
