@@ -1,9 +1,44 @@
 import { useState } from 'react'
-import { Play, ExternalLink, Clock, CheckCircle, XCircle, AlertCircle, Loader, Lock, AlertTriangle, ShieldCheck, TrendingUp, TrendingDown, Minus, FileCheck, GitMerge } from 'lucide-react'
+import { Play, ExternalLink, Clock, CheckCircle, XCircle, AlertCircle, Loader, Lock, AlertTriangle, ShieldCheck, TrendingUp, TrendingDown, Minus, FileCheck, GitMerge, Tag, ArrowUpRight } from 'lucide-react'
 import { useAppStore } from '../../store/app-store'
 import { getWorkersForObject, getFlowsForObject, MOCK_OBJECTS, MOCK_RECOMMENDATIONS } from '../../data/mock-data'
 import type { StudioObject, WorkerRun, ObjectTypeId } from '../../types/domain'
 import { StateBadge, ValidationBadge } from '../layout/RightPanel'
+import { getCptIdsForFile, getCptDefinitionsInFile, type CptIdentifier } from '../../data/cpt-registry'
+
+// Map object ID → associated file ID
+const OBJECT_TO_FILE: Record<string, string> = {
+  'prd-001':    'file-prd',
+  'design-001': 'file-design',
+  'adr-001':    'file-adr-001',
+  'adr-002':    'file-adr-002',
+  'fspec-001':  'file-feat-stripe',
+  'fspec-002':  'file-feat-invoice',
+  'pr-001':     'file-webhook-handler',
+}
+
+const KIND_LABEL: Record<string, string> = {
+  fr: 'FR', nfr: 'NFR', actor: 'ACTOR', usecase: 'UC',
+  component: 'COMP', constraint: 'CONST', principle: 'PRINC',
+  seq: 'SEQ', dbtable: 'TABLE', adr: 'ADR', flow: 'FLOW',
+  dod: 'DOD', feature: 'FEAT',
+}
+
+const KIND_COLOR: Record<string, string> = {
+  fr: 'text-purple-400 bg-purple-900/20 border-purple-700/40',
+  nfr: 'text-violet-400 bg-violet-900/20 border-violet-700/40',
+  actor: 'text-blue-400 bg-blue-900/20 border-blue-700/40',
+  usecase: 'text-cyan-400 bg-cyan-900/20 border-cyan-700/40',
+  component: 'text-indigo-400 bg-indigo-900/20 border-indigo-700/40',
+  constraint: 'text-red-400 bg-red-900/20 border-red-700/40',
+  principle: 'text-amber-400 bg-amber-900/20 border-amber-700/40',
+  seq: 'text-teal-400 bg-teal-900/20 border-teal-700/40',
+  dbtable: 'text-lime-400 bg-lime-900/20 border-lime-700/40',
+  adr: 'text-violet-400 bg-violet-900/20 border-violet-700/40',
+  flow: 'text-emerald-400 bg-emerald-900/20 border-emerald-700/40',
+  dod: 'text-green-400 bg-green-900/20 border-green-700/40',
+  feature: 'text-cyan-400 bg-cyan-900/20 border-cyan-700/40',
+}
 
 interface Props {
   object: StudioObject
@@ -779,6 +814,115 @@ function RunCard({ run }: { run: WorkerRun }) {
 
 // ─── Links Tab ────────────────────────────────────────────────────────────────
 
+function CptLinksSection({ objectId }: { objectId: string }) {
+  const openFile       = useAppStore(s => s.openFile)
+  const setActiveView  = useAppStore(s => s.setActiveView)
+  const setScrollToCptId = useAppStore(s => s.setScrollToCptId)
+
+  const fileId = OBJECT_TO_FILE[objectId]
+  if (!fileId) return null
+
+  const allCpts        = getCptIdsForFile(fileId)        // defined here + referenced here
+  const definedHere    = getCptDefinitionsInFile(fileId) // only definitions
+  const definedIds     = new Set(definedHere.map(c => c.id))
+  const referencedHere = allCpts.filter(c => !definedIds.has(c.id)) // only references
+
+  if (allCpts.length === 0) return null
+
+  const navigateTo = (targetFileId: string, cptId: string) => {
+    setScrollToCptId(cptId)
+    openFile(targetFileId)
+    setActiveView('files')
+  }
+
+  const CptRow = ({ cpt, isDefinition }: { cpt: CptIdentifier; isDefinition: boolean }) => {
+    const kindClass = KIND_COLOR[cpt.kind] ?? 'text-zinc-400 bg-zinc-800 border-zinc-700'
+    const kindShort = KIND_LABEL[cpt.kind] ?? cpt.kind.toUpperCase()
+    return (
+      <div className="border border-zinc-800 rounded-lg overflow-hidden">
+        {/* Identifier header */}
+        <div className="flex items-start gap-2 px-3 py-2 bg-zinc-900/50">
+          <Tag size={11} className="text-zinc-600 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${kindClass}`}>
+                {kindShort}
+              </span>
+              {isDefinition && (
+                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-emerald-900/20 border-emerald-700/40 text-emerald-400">
+                  defined here
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] font-semibold text-zinc-200">{cpt.name}</p>
+            <p className="text-[10px] font-mono text-zinc-600 truncate">{cpt.id}</p>
+          </div>
+        </div>
+        {/* Description */}
+        <div className="px-3 py-1.5 border-t border-zinc-800/60">
+          <p className="text-[10px] text-zinc-500 leading-relaxed">{cpt.description}</p>
+        </div>
+        {/* Navigation links */}
+        <div className="px-3 py-1.5 border-t border-zinc-800/60 space-y-1">
+          {/* Definition link — show when we're viewing a reference */}
+          {!isDefinition && (
+            <button
+              onClick={() => navigateTo(cpt.definedIn.fileId, cpt.id)}
+              className="w-full flex items-center gap-2 text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors text-left"
+            >
+              <ArrowUpRight size={10} className="shrink-0" />
+              <span className="flex-1 truncate">Defined in {cpt.definedIn.documentTitle}</span>
+              <span className="text-[9px] font-bold uppercase text-zinc-600 shrink-0">{cpt.definedIn.artifactType}</span>
+            </button>
+          )}
+          {/* Reference links */}
+          {cpt.references.map((ref, i) => {
+            // Skip self-references (current file)
+            if (ref.fileId === fileId) return null
+            return (
+              <button
+                key={i}
+                onClick={() => navigateTo(ref.fileId, cpt.id)}
+                className="w-full flex items-center gap-2 text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors text-left"
+              >
+                <ArrowUpRight size={10} className="shrink-0 text-zinc-600" />
+                <div className="flex-1 min-w-0">
+                  <span className="truncate">{ref.documentTitle}</span>
+                  {ref.context && <span className="text-zinc-600 ml-1">— {ref.context}</span>}
+                </div>
+                <span className="text-[9px] font-bold uppercase text-zinc-600 shrink-0">{ref.artifactType}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-t border-zinc-800 pt-4 space-y-3">
+      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+        <Tag size={11} />
+        CPT Traceability ({allCpts.length})
+      </h3>
+
+      {definedHere.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Defined in this document ({definedHere.length})</p>
+          {definedHere.map(cpt => <CptRow key={cpt.id} cpt={cpt} isDefinition={true} />)}
+        </div>
+      )}
+
+      {referencedHere.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Referenced from other documents ({referencedHere.length})</p>
+          {referencedHere.map(cpt => <CptRow key={cpt.id} cpt={cpt} isDefinition={false} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function LinksTab({ object }: { object: StudioObject }) {
   const allObjects = MOCK_OBJECTS
   const selectObject = useAppStore(s => s.selectObject)
@@ -828,7 +972,10 @@ function LinksTab({ object }: { object: StudioObject }) {
           </div>
         </div>
       )}
-      {outgoing.length === 0 && incoming.length === 0 && <div className="text-center py-12"><p className="text-zinc-500 text-sm">No links defined.</p></div>}
+      {outgoing.length === 0 && incoming.length === 0 && <div className="text-center py-8"><p className="text-zinc-500 text-sm">No object links defined.</p></div>}
+
+      {/* CPT traceability identifiers for this object's document */}
+      <CptLinksSection objectId={object.id} />
     </div>
   )
 }
