@@ -1,12 +1,24 @@
-import { useRef, useState, useMemo } from 'react'
+import { useRef, useState, useEffect, useMemo } from 'react'
 import Editor from '@monaco-editor/react'
-import type { editor } from 'monaco-editor'
+import type { editor as MonacoEditor } from 'monaco-editor'
 import { Save, Link2, Eye, Code2, Columns2 } from 'lucide-react'
 import { useAppStore } from '../../store/app-store'
 import { FILE_TREE, type FileNode } from '../../data/file-mock-data'
 import { MOCK_OBJECTS } from '../../data/mock-data'
 import { getCptById, type CptIdentifier } from '../../data/cpt-registry'
 import { CptPopup } from './CptPopup'
+
+// ─── CPT regex ────────────────────────────────────────────────────────────────
+const CPT_RE = /\bcpt-[a-z]+-[a-z]+-[a-z0-9-]+\b/g
+
+// Find line number (1-based) of the first occurrence of a CPT id in text
+function findCptLine(content: string, cptId: string): number {
+  const lines = content.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(cptId)) return i + 1
+  }
+  return 1
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -208,6 +220,18 @@ const PREVIEW_CSS = `
 .md-preview code.md-cpt-chip.md-cpt-definition { color: #a5b4fc; background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.3); }
 `
 
+// Inject Monaco decoration styles globally (once)
+if (typeof document !== 'undefined' && !document.getElementById('cpt-monaco-styles')) {
+  const s = document.createElement('style')
+  s.id = 'cpt-monaco-styles'
+  s.textContent = `
+    .cpt-def-deco { color: #a5b4fc !important; background: rgba(99,102,241,0.15) !important; border-radius: 3px; cursor: pointer; }
+    .cpt-ref-deco { color: #86efac !important; background: rgba(34,197,94,0.1) !important; border-radius: 3px; cursor: pointer; }
+    .cpt-flash-line { background: rgba(99,102,241,0.08) !important; }
+  `
+  document.head.appendChild(s)
+}
+
 interface MarkdownPreviewProps {
   content: string
   openFileId: string | null
@@ -313,14 +337,17 @@ function ViewModeToggle({ mode, onChange, isMarkdown }: {
 // ─── Main FileViewer ──────────────────────────────────────────────────────────
 
 export function FileViewer() {
-  const openFileId = useAppStore(s => s.openFileId)
-  const fileContents = useAppStore(s => s.fileContents)
-  const modifiedFiles = useAppStore(s => s.modifiedFiles)
+  const openFileId       = useAppStore(s => s.openFileId)
+  const fileContents     = useAppStore(s => s.fileContents)
+  const modifiedFiles    = useAppStore(s => s.modifiedFiles)
   const updateFileContent = useAppStore(s => s.updateFileContent)
-  const saveFile = useAppStore(s => s.saveFile)
-  const setLineAction = useAppStore(s => s.setLineAction)
-  const selectObject = useAppStore(s => s.selectObject)
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  const saveFile         = useAppStore(s => s.saveFile)
+  const setLineAction    = useAppStore(s => s.setLineAction)
+  const selectObject     = useAppStore(s => s.selectObject)
+  const scrollToCptId    = useAppStore(s => s.scrollToCptId)
+  const setScrollToCptId = useAppStore(s => s.setScrollToCptId)
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
+  const decorationIdsRef = useRef<string[]>([])
 
   const [activeCpt, setActiveCpt] = useState<{ cpt: CptIdentifier; pos: { x: number; y: number } } | null>(null)
 
@@ -347,7 +374,53 @@ export function FileViewer() {
   const linkedObjectId = openFileId ? FILE_TO_OBJECT[openFileId] : null
   const linkedObject = linkedObjectId ? MOCK_OBJECTS.find(o => o.id === linkedObjectId) : null
 
-  const handleEditorMount = (editorInstance: editor.IStandaloneCodeEditor) => {
+  // Apply CPT decorations to Monaco editor (source view)
+  const applyCptDecorations = (editorInstance: MonacoEditor.IStandaloneCodeEditor, text: string, fileId: string) => {
+    const model = editorInstance.getModel()
+    if (!model) return
+    const newDecorations: MonacoEditor.IModelDeltaDecoration[] = []
+    const lines = text.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      let m: RegExpExecArray | null
+      CPT_RE.lastIndex = 0
+      while ((m = CPT_RE.exec(lines[i])) !== null) {
+        const cptDef = getCptById(m[0])
+        if (!cptDef) continue
+        const isDefinition = cptDef.definedIn.fileId === fileId
+        newDecorations.push({
+          range: {
+            startLineNumber: i + 1, startColumn: m.index + 1,
+            endLineNumber: i + 1, endColumn: m.index + m[0].length + 1,
+          },
+          options: {
+            inlineClassName: isDefinition ? 'cpt-def-deco' : 'cpt-ref-deco',
+            hoverMessage: { value: `**${cptDef.name}** (${cptDef.kind})\n\n${cptDef.description}` },
+          },
+        })
+      }
+    }
+    decorationIdsRef.current = model.deltaDecorations(decorationIdsRef.current, newDecorations)
+  }
+
+  // When scrollToCptId changes (after navigation), scroll Monaco to that line
+  useEffect(() => {
+    if (!scrollToCptId || !editorRef.current || !openFileId) return
+    const text = fileContents[openFileId] ?? ''
+    const line = findCptLine(text, scrollToCptId)
+    editorRef.current.revealLineInCenter(line)
+    // Flash the line briefly
+    const model = editorRef.current.getModel()
+    if (model) {
+      const flashDec = model.deltaDecorations([], [{
+        range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1000 },
+        options: { isWholeLine: true, className: 'cpt-flash-line' },
+      }])
+      setTimeout(() => model.deltaDecorations(flashDec, []), 1500)
+    }
+    setScrollToCptId(null)
+  }, [scrollToCptId, openFileId, fileContents, setScrollToCptId])
+
+  const handleEditorMount = (editorInstance: MonacoEditor.IStandaloneCodeEditor) => {
     editorRef.current = editorInstance
 
     editorInstance.onDidChangeCursorSelection((e) => {
@@ -373,7 +446,53 @@ export function FileViewer() {
         language: file?.language,
       })
     })
+
+    // CPT click handler in source view
+    editorInstance.onMouseDown((e) => {
+      // Only handle content-text clicks (not gutter, minimap, etc.)
+      if (e.target.position == null) return
+      const position = e.target.position
+      const model = editorInstance.getModel()
+      if (!model) return
+      const lineText = model.getLineContent(position.lineNumber)
+
+      // Find all CPT ids on this line and check if click falls within one
+      CPT_RE.lastIndex = 0
+      let match: RegExpExecArray | null
+      while ((match = CPT_RE.exec(lineText)) !== null) {
+        const startCol = match.index + 1
+        const endCol   = startCol + match[0].length - 1
+        if (position.column >= startCol && position.column <= endCol) {
+          const cpt = getCptById(match[0])
+          if (cpt) {
+            const domNode = editorInstance.getDomNode()
+            const rect = domNode?.getBoundingClientRect()
+            const visPos = editorInstance.getScrolledVisiblePosition(position)
+            if (rect && visPos) {
+              e.event.preventDefault()
+              setActiveCpt({
+                cpt,
+                pos: { x: rect.left + visPos.left + 80, y: rect.top + visPos.top + 20 },
+              })
+            }
+          }
+          break
+        }
+      }
+    })
+
+    // Apply initial CPT decorations
+    const initialContent = editorInstance.getModel()?.getValue() ?? ''
+    if (openFileId) applyCptDecorations(editorInstance, initialContent, openFileId)
   }
+
+  // Re-apply decorations when file or content changes
+  useEffect(() => {
+    if (editorRef.current && openFileId) {
+      const text = fileContents[openFileId] ?? ''
+      applyCptDecorations(editorRef.current, text, openFileId)
+    }
+  }, [openFileId, fileContents])
 
   if (!openFileId || !file) {
     return (

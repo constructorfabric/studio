@@ -75,6 +75,8 @@ interface AppState {
   selectedMonitorRunId: string | null
   setSelectedMonitorRun: (id: string | null) => void
   navigateToMonitor: (runId: string) => void  // sets activeView:'workers' and selectedMonitorRunId
+  scrollToCptId: string | null               // after file navigation, scroll editor to this CPT id
+  setScrollToCptId: (id: string | null) => void
 
   // Worker actions
   runWorker: (workerId: string, objectId: string, options?: { parentRunId?: string }) => string
@@ -186,6 +188,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   chatHeight: 320,
   dismissedRunIds: [],
   selectedMonitorRunId: null,
+  scrollToCptId: null,
   openFileId: null,
   fileContents: {},
   modifiedFiles: new Set(),
@@ -236,6 +239,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLineAction: (action) => set({ lineAction: action }),
 
   setSelectedMonitorRun: (id) => set({ selectedMonitorRunId: id }),
+  setScrollToCptId: (id) => set({ scrollToCptId: id }),
   navigateToMonitor: (runId) => set({ activeView: 'workers', selectedMonitorRunId: runId }),
 
   // ─── Worker Run ─────────────────────────────────────────────────────────────

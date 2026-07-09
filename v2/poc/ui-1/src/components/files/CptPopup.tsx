@@ -35,12 +35,15 @@ interface Props {
 }
 
 export function CptPopup({ cpt, isDefinition, position, onClose }: Props) {
-  const openFile = useAppStore(s => s.openFile)
-  const setActiveView = useAppStore(s => s.setActiveView)
+  const openFile       = useAppStore(s => s.openFile)
+  const setActiveView  = useAppStore(s => s.setActiveView)
+  const setScrollToCptId = useAppStore(s => s.setScrollToCptId)
 
   const kindClass = KIND_COLORS[cpt.kind] ?? 'text-zinc-400 bg-zinc-800 border-zinc-700'
 
-  const navigateTo = (fileId: string) => {
+  // Navigate to a file AND request scroll to the CPT identifier line
+  const navigateTo = (fileId: string, cptIdToScrollTo: string) => {
+    setScrollToCptId(cptIdToScrollTo)
     openFile(fileId)
     setActiveView('files')
     onClose()
@@ -92,7 +95,7 @@ export function CptPopup({ cpt, isDefinition, position, onClose }: Props) {
         <div className="px-4 py-2 border-b border-zinc-800">
           <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Defined in</p>
           <button
-            onClick={() => navigateTo(cpt.definedIn.fileId)}
+            onClick={() => navigateTo(cpt.definedIn.fileId, cpt.id)}
             className="flex items-center gap-2 text-xs text-indigo-300 hover:text-indigo-200 transition-colors w-full text-left"
           >
             <FileText size={11} className="shrink-0" />
@@ -112,7 +115,7 @@ export function CptPopup({ cpt, isDefinition, position, onClose }: Props) {
               {cpt.references.map((ref, i) => (
                 <button
                   key={i}
-                  onClick={() => navigateTo(ref.fileId)}
+                  onClick={() => navigateTo(ref.fileId, cpt.id)}
                   className="flex items-start gap-2 text-xs text-zinc-400 hover:text-zinc-200 transition-colors w-full text-left"
                 >
                   <FileText size={11} className="shrink-0 mt-0.5 text-zinc-600" />
