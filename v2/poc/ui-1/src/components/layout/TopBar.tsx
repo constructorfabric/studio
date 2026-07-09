@@ -1,4 +1,4 @@
-import { Bell, Play, GitBranch, Layers, Activity, Lightbulb, Network, ChevronRight, Cpu, FolderOpen, Package, Library, Globe, RefreshCw } from 'lucide-react'
+import { Bell, GitBranch, Layers, Activity, Lightbulb, Network, ChevronRight, Cpu, FolderOpen, Package, Library, Globe, RefreshCw, ScrollText } from 'lucide-react'
 import { useAppStore, selectPendingRecommendations } from '../../store/app-store'
 import type { AppView } from '../../types/domain'
 
@@ -8,6 +8,7 @@ const VIEWS: { id: AppView; label: string; icon: React.ReactNode }[] = [
   { id: 'catalog',         label: 'Actions',     icon: <Library size={13} /> },
   { id: 'flows',           label: 'Flows',       icon: <GitBranch size={13} /> },
   { id: 'workers',         label: 'Monitor',     icon: <Activity size={13} /> },
+  { id: 'audit',           label: 'Audit',       icon: <ScrollText size={13} /> },
   { id: 'recommendations', label: 'Recs',        icon: <Lightbulb size={13} /> },
   { id: 'kits',            label: 'Kits',        icon: <Package size={13} /> },
   { id: 'workspaces',      label: 'Workspaces',  icon: <Globe size={13} /> },

@@ -271,7 +271,7 @@ export interface Recommendation {
 
 // ─── App View Types ───────────────────────────────────────────────────────────
 
-export type AppView = 'graph' | 'flows' | 'activity' | 'recommendations' | 'files' | 'kits' | 'workspaces' | 'chat' | 'workers' | 'catalog' | 'loop'
+export type AppView = 'graph' | 'flows' | 'activity' | 'recommendations' | 'files' | 'kits' | 'workspaces' | 'chat' | 'workers' | 'catalog' | 'loop' | 'audit'
 
 export interface GraphNodeData {
   object: StudioObject

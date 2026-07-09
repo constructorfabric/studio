@@ -12,6 +12,7 @@ import { WorkersMonitor } from './components/workers/WorkersMonitor'
 import { WorkersCatalog } from './components/workers/WorkersCatalog'
 import { AgenticLoopView } from './components/workers/AgenticLoopView'
 import { WorkerInteractionModal } from './components/workers/WorkerInteractionModal'
+import { AuditLog } from './components/audit/AuditLog'
 import { FileTree } from './components/files/FileTree'
 import { FileViewer } from './components/files/FileViewer'
 import { LineActionBar } from './components/files/LineActionBar'
@@ -91,6 +92,12 @@ export default function App() {
           {activeView === 'catalog' && (
             <div className="flex-1 flex overflow-hidden">
               <WorkersCatalog />
+            </div>
+          )}
+
+          {activeView === 'audit' && (
+            <div className="flex-1 flex overflow-hidden">
+              <AuditLog />
             </div>
           )}
 
