@@ -1,6 +1,8 @@
-import { Bell, GitBranch, Layers, Activity, Lightbulb, Network, ChevronRight, Cpu, FolderOpen, Package, Library, Globe, RefreshCw, ScrollText } from 'lucide-react'
+import { Bell, GitBranch, Layers, Activity, Lightbulb, Network, ChevronRight, Cpu, FolderOpen, Package, Library, Globe, RefreshCw, ScrollText, Zap } from 'lucide-react'
 import { useAppStore, selectPendingRecommendations } from '../../store/app-store'
 import type { AppView } from '../../types/domain'
+
+const MONTHLY_BUDGET = 50  // USD — mock tenant budget
 
 const VIEWS: { id: AppView; label: string; icon: React.ReactNode }[] = [
   { id: 'graph',           label: 'Graph',       icon: <Network size={13} /> },
@@ -15,12 +17,18 @@ const VIEWS: { id: AppView; label: string; icon: React.ReactNode }[] = [
 ]
 
 export function TopBar() {
-  const activeView = useAppStore(s => s.activeView)
+  const activeView  = useAppStore(s => s.activeView)
   const setActiveView = useAppStore(s => s.setActiveView)
-  const simulateFullPipeline = useAppStore(s => s.simulateFullPipeline)
-  const isSimulating = useAppStore(s => s.isSimulating)
   const recommendations = useAppStore(selectPendingRecommendations)
   const criticalCount = recommendations.filter(r => r.severity === 'critical').length
+
+  // Aggregate total AI spend from all worker runs that have cost
+  const totalSpent = useAppStore(s =>
+    s.workerRuns.reduce((sum, r) => sum + (r.costUsd ?? 0), 0)
+  )
+  const spentPct   = Math.min(totalSpent / MONTHLY_BUDGET, 1)
+  const nearLimit  = spentPct >= 0.8
+  const overBudget = spentPct >= 1
 
   return (
     <header className="h-12 flex items-center justify-between px-4 border-b border-zinc-800 bg-zinc-950 shrink-0 z-50">
@@ -72,6 +80,38 @@ export function TopBar() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* AI Budget meter */}
+        <button
+          onClick={() => setActiveView('audit')}
+          title={`AI spend: $${totalSpent.toFixed(2)} / $${MONTHLY_BUDGET} budget`}
+          className="flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors"
+        >
+          <Zap size={11} className={overBudget ? 'text-red-400' : nearLimit ? 'text-amber-400' : 'text-indigo-400'} />
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[11px] font-semibold tabular-nums ${overBudget ? 'text-red-300' : nearLimit ? 'text-amber-300' : 'text-zinc-200'}`}>
+                ${totalSpent.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-zinc-600">/ ${MONTHLY_BUDGET}</span>
+            </div>
+            {/* Progress bar */}
+            <div className="w-20 h-1 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  overBudget ? 'bg-red-500' : nearLimit ? 'bg-amber-500' : 'bg-indigo-500'
+                }`}
+                style={{ width: `${spentPct * 100}%` }}
+              />
+            </div>
+          </div>
+          {nearLimit && !overBudget && (
+            <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider">80%</span>
+          )}
+          {overBudget && (
+            <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">LIMIT</span>
+          )}
+        </button>
+
         {/* Tenant info */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-lg">
           <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
