@@ -1,0 +1,12 @@
+name: code-ranker
+on:
+  pull_request:
+  push:
+jobs:
+  code-ranker:
+    uses: ffedoroff/code-ranker-ci/.github/workflows/report.yml@v1
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      security-events: write
