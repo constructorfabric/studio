@@ -360,6 +360,8 @@ Planned:
 
 Feedback, bug reports, use cases, and documentation fixes are welcome. Open an issue or discussion in the repository when something is unclear, broken, or missing.
 
+Join to our discord channel: [Studio Discord](https://discord.com/channels/1502234982930972722/1502236980585693356)
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for local development, validation, and contribution rules.
