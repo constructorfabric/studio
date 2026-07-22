@@ -1098,21 +1098,21 @@ def _target_path_from_root(target: Path, project_root: Path, studio_root: Option
 
     Falls back to ``@/<project-root-relative>`` for paths outside studio_root.
     """
+    resolved_target = target.resolve()
+    resolved_project_root = project_root.resolve()
     if studio_root is not None:
-        try:
-            rel = target.relative_to(studio_root).as_posix()
+        resolved_studio_root = studio_root.resolve()
+        if resolved_target.is_relative_to(resolved_studio_root):
+            rel = resolved_target.relative_to(resolved_studio_root).as_posix()
             return "{cf-studio-path}/" + rel
-        except ValueError as exc:
-            _warn_agents(f"path {target} is not relative to studio root {studio_root}: {exc}")
-    try:
-        rel = target.relative_to(project_root).as_posix()
+    if resolved_target.is_relative_to(resolved_project_root):
+        rel = resolved_target.relative_to(resolved_project_root).as_posix()
         return "{cf-studio-path}/" + rel if studio_root is None else f"@/{rel}"
-    except ValueError:
-        _warn_agents(
-            f"path {target} is outside project root {project_root}, "
-            "agent proxy will contain an absolute path"
-        )
-        return target.as_posix()
+    _warn_agents(
+        f"path {resolved_target} is outside project root {resolved_project_root}, "
+        "agent proxy will contain an absolute path"
+    )
+    return resolved_target.as_posix()
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-path-helpers
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-ensure-local-copy
@@ -2151,13 +2151,21 @@ def _registered_kit_roots(
         if not isinstance(kit_cfg, dict):
             continue
         raw_path = str(kit_cfg.get("path") or f"config/kits/{slug}").strip()
-        resolved = _resolve_registered_project_relative_path(project_root_resolved, raw_path)
-        if resolved is None or not resolved.exists():
-            resolved = _resolve_registered_legacy_studio_path(
+        project_resolved = _resolve_registered_project_relative_path(project_root_resolved, raw_path)
+        legacy_resolved = None
+        if project_resolved is None or not project_resolved.exists():
+            legacy_resolved = _resolve_registered_legacy_studio_path(
                 _studio_root.resolve(),
                 project_root_resolved,
                 raw_path,
             )
+        if project_resolved is None and legacy_resolved is None:
+            _warn_registered_path_escape(raw_path, project_root_resolved, _studio_root)
+        resolved = (
+            project_resolved
+            if project_resolved is not None and project_resolved.exists()
+            else legacy_resolved
+        )
         if resolved is not None:
             roots[str(slug)] = resolved
     return roots
@@ -2257,12 +2265,7 @@ def _resolve_registered_project_relative_path(
     ):
         return None
     resolved = (project_root / Path(normalized)).resolve()
-    try:
-        resolved.relative_to(project_root.resolve())
-    except ValueError as exc:
-        _warn_agents(f"registered legacy project path escapes project root: {resolved} ({exc})")
-        return None
-    return resolved
+    return resolved if resolved.is_relative_to(project_root.resolve()) else None
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
 
@@ -2283,12 +2286,15 @@ def _resolve_registered_legacy_studio_path(
     ):
         return None
     resolved = (studio_root / Path(normalized)).resolve()
-    try:
-        resolved.relative_to(project_root.resolve())
-    except ValueError as exc:
-        _warn_agents(f"registered legacy studio path escapes project root: {resolved} ({exc})")
-        return None
-    return resolved
+    return resolved if resolved.is_relative_to(project_root.resolve()) else None
+
+
+def _warn_registered_path_escape(raw_path: str, project_root: Path, studio_root: Path) -> None:
+    """Warn once when neither registered-kit path base keeps *raw_path* in-project."""
+    _warn_agents(
+        "registered kit path escapes project root after checking project and studio roots: "
+        f"{raw_path!r} (project={project_root.resolve()}, studio={studio_root.resolve()})"
+    )
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
 
 
@@ -2315,6 +2321,8 @@ def _resolve_registered_kit_path(project_root: Path, studio_root: Path, slug: st
             legacy_resolved = _resolve_registered_legacy_studio_path(studio_root, project_root, raw_path)
             if legacy_resolved is not None:
                 return legacy_resolved
+            if resolved is None:
+                _warn_registered_path_escape(raw_path, project_root, studio_root)
             return resolved
     # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
     return _resolve_registered_project_relative_path(project_root, f"config/kits/{slug}")
@@ -2340,6 +2348,8 @@ def _resolve_registered_resource_path(
         legacy_resolved = _resolve_registered_legacy_studio_path(_studio_root, project_root, raw_path)
         if legacy_resolved is not None:
             return legacy_resolved
+        if resolved is None:
+            _warn_registered_path_escape(raw_path, project_root, _studio_root)
         return resolved
     component_source = source if source is not None else str(getattr(component, "source", ""))
     if not component_source:
@@ -2574,13 +2584,10 @@ def _resolve_registered_public_skill_source(
 
 
 def _path_within_any_root(path: Path, roots: Tuple[Path, ...]) -> bool:
+    resolved_path = path.resolve()
     for root in roots:
-        try:
-            path.relative_to(root.resolve())
+        if resolved_path.is_relative_to(root.resolve()):
             return True
-        except ValueError as exc:
-            _warn_agents(f"path {path} is not under trusted root {root}: {exc}")
-            continue
     return False
 
 # ---------------------------------------------------------------------------
