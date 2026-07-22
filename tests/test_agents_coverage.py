@@ -58,6 +58,18 @@ class TestStudioEndpointTarget(unittest.TestCase):
         self.assertEqual(result, target.as_posix())
         self.assertIn("outside project root", "\n".join(captured.output))
 
+    def test_target_path_project_fallback_is_quiet(self):
+        from studio.commands.agents import _target_path_from_root
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".cf-studio"
+            target = project_root / "workflows" / "example.md"
+            with self.assertNoLogs("studio.commands.agents", level="WARNING"):
+                result = _target_path_from_root(target, project_root, studio_root)
+
+        self.assertEqual(result, "@/workflows/example.md")
+
     def test_registered_legacy_studio_path_allows_parent_traversal_within_project(self):
         from studio.commands.agents import _resolve_registered_legacy_studio_path
 
@@ -129,6 +141,49 @@ class TestStudioEndpointTarget(unittest.TestCase):
             )
 
         self.assertIsNone(resolved)
+
+    def test_registered_kit_path_warns_once_after_all_fallbacks_escape(self):
+        from studio.commands.agents import _resolve_registered_kit_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
+                resolved = _resolve_registered_kit_path(
+                    project_root,
+                    studio_root,
+                    "demo",
+                    {"path": "../../escape"},
+                )
+
+        self.assertIsNone(resolved)
+        self.assertEqual(len(captured.output), 1)
+        self.assertIn("registered kit path escapes project root", captured.output[0])
+
+    def test_path_within_any_root_accepts_later_root_quietly(self):
+        from studio.commands.agents import _path_within_any_root
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".cf-studio"
+            target = project_root / "workflows" / "example.md"
+            with self.assertNoLogs("studio.commands.agents", level="WARNING"):
+                accepted = _path_within_any_root(target, (studio_root, project_root))
+
+        self.assertTrue(accepted)
+
+    def test_path_within_any_root_rejects_when_no_root_matches(self):
+        from studio.commands.agents import _path_within_any_root
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".cf-studio"
+            target = Path(td) / "outside" / "example.md"
+            with self.assertNoLogs("studio.commands.agents", level="WARNING"):
+                accepted = _path_within_any_root(target, (studio_root, project_root))
+
+        self.assertFalse(accepted)
 
     def test_registered_kit_path_prefers_legacy_studio_fallback(self):
         from studio.commands.agents import _resolve_registered_kit_path
@@ -949,14 +1004,15 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = _process_single_agent(
-                "cursor",
-                root,
-                studio_root,
-                _default_agents_config(),
-                None,
-                dry_run=False,
-            )
+            with self.assertNoLogs("studio.commands.agents", level="WARNING"):
+                result = _process_single_agent(
+                    "cursor",
+                    root,
+                    studio_root,
+                    _default_agents_config(),
+                    None,
+                    dry_run=False,
+                )
 
             self.assertEqual(result["status"], "PASS")
             generated_skill = root / ".agents" / "skills" / "cf-gears-doc-prd" / "SKILL.md"
@@ -1177,6 +1233,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 f"kit 'pubkit' public skill source escapes project/studio root: {outside_skill.resolve()}, skipping",
                 "\n".join(captured.output),
             )
+            self.assertEqual(len(captured.output), 1)
 
     def test_list_public_components_skips_unresolvable_source(self):
         from studio.commands.agents import _list_public_components
