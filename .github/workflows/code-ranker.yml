@@ -6,7 +6,7 @@ jobs:
   code-ranker:
     # Pinned to an immutable commit SHA (supply-chain hardening); the trailing
     # '# v1' comment lets Dependabot bump it and marks the tracked version.
-    uses: code-ranker-com/actions/.github/workflows/report.yml@306007e6a69049b20a125d1af15decf9713b6c5c  # v1
+    uses: code-ranker-com/actions/.github/workflows/report.yml@485febd51d1cf0f666e262de6e37e1d2e3f6d7f5  # v1
     permissions:
       id-token: write
       contents: read
