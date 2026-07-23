@@ -293,6 +293,7 @@ class WorkspaceConfig:
     workspace_file: Optional[Path] = None  # Absolute path to the workspace file
     is_inline: bool = False  # True if loaded from core.toml inline workspace
     resolution_base: Optional[Path] = None  # Override for source path resolution base directory
+    is_legacy_fallback: bool = False  # True only for automatic legacy-file discovery
 
     @classmethod
     def from_dict(
@@ -544,7 +545,8 @@ def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig]
     1. 'workspace' key in project config (core.toml via AGENTS.md):
        - If string: treat as path to external workspace file
        - If dict: treat as inline workspace definition
-    2. Standalone .cf-workspace.toml at project_root
+    2. Standalone .cf-workspace.toml at project_root, with
+       .studio-workspace.toml as a compatibility fallback
 
     Args:
         project_root: The project root directory.
@@ -603,20 +605,29 @@ def _find_standalone_workspace(
 ) -> Tuple[Optional[WorkspaceConfig], Optional[str]]:
     """Fallback: discover standalone workspace TOML at project root.
 
-    Checks in order:
-    1. .cf-workspace.toml  (canonical name)
-    2. .studio-workspace.toml         (legacy / test-fixture name)
+    Checks both filenames before loading either:
+    1. .cf-workspace.toml (canonical name)
+    2. .studio-workspace.toml (legacy compatibility fallback)
     """
     candidate = (project_root / WORKSPACE_CONFIG_FILENAME).resolve()
-    if candidate.is_file():
+    legacy = (project_root / _LEGACY_WORKSPACE_FILENAME).resolve()
+    has_canonical = candidate.is_file()
+    has_legacy = legacy.is_file()
+    if has_canonical and has_legacy:
+        return None, (
+            "Found both standalone workspace markers: "
+            f"{candidate} and {legacy}. Remove one or configure workspace explicitly in core.toml."
+        )
+    if has_canonical:
         # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
         ws_cfg, ws_err = WorkspaceConfig.load(candidate)
         return ws_cfg, ws_err
         # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
-    legacy = (project_root / _LEGACY_WORKSPACE_FILENAME).resolve()
-    if legacy.is_file():
+    if has_legacy:
         # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
         ws_cfg, ws_err = WorkspaceConfig.load(legacy)
+        if ws_cfg is not None:
+            ws_cfg.is_legacy_fallback = True
         return ws_cfg, ws_err
         # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-standalone
     return None, None

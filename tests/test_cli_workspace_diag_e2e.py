@@ -138,7 +138,27 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             self.assertEqual(payload["status"], "CREATED")
             self.assertEqual(payload["config_path"], str(output_path.resolve()))
             self.assertIn("Custom output path used", payload["hint"])
+            self.assertIn('workspace = "generated/custom-workspace.toml"', payload["hint"])
             self.assertFalse((root / ".cf-workspace.toml").exists())
+
+    def test_workspace_init_accepts_legacy_output_path_with_explicit_discovery_hint(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "workspace-root"
+            _make_repo(root)
+            _make_adapter_repo(root / "docs-repo", role_dir="architecture")
+            output_path = root / ".studio-workspace.toml"
+
+            exit_code, stdout, stderr = _run_main(
+                ["--json", "workspace-init", "--output", str(output_path)],
+                cwd=root,
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stderr, "")
+            payload = json.loads(stdout)
+            self.assertEqual(payload["config_path"], str(output_path.resolve()))
+            self.assertIn('workspace = ".studio-workspace.toml"', payload["hint"])
+            self.assertTrue(output_path.is_file())
 
     def test_workspace_init_inline_and_output_are_mutually_exclusive(self):
         with TemporaryDirectory() as tmpdir:
@@ -213,6 +233,29 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             workspace_data = toml_utils.load(workspace_path)
             self.assertNotIn("stale-source", workspace_data["sources"])
             self.assertEqual(set(workspace_data["sources"]), {"docs-repo", "shared-lib"})
+
+    def test_workspace_init_warns_when_legacy_marker_is_automatic_fallback(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "workspace-root"
+            _make_repo(root)
+            _make_adapter_repo(root / "docs-repo", role_dir="architecture")
+            toml_utils.dump(
+                {
+                    "version": "1.0",
+                    "sources": {"docs": {"path": "docs", "role": "artifacts"}},
+                },
+                root / ".studio-workspace.toml",
+            )
+
+            exit_code, stdout, stderr = _run_main(["--json", "workspace-init", "--force"], cwd=root)
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Legacy .studio-workspace.toml", stderr)
+            self.assertIn(".cf-workspace.toml", stderr)
+            self.assertIn('workspace = "<path>"', stderr)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["status"], "CREATED")
+            self.assertEqual(payload["sources"], ["docs-repo"])
 
     def test_workspace_init_max_depth_excludes_deeper_repos(self):
         with TemporaryDirectory() as tmpdir:
@@ -584,6 +627,26 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             source = payload["sources"][0]
             self.assertFalse(source["reachable"])
             self.assertIn("Source not cloned", source["warning"])
+
+    def test_workspace_info_warns_when_legacy_marker_is_automatic_fallback(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "workspace-root"
+            _make_repo(root)
+            toml_utils.dump(
+                {
+                    "version": "1.0",
+                    "sources": {"docs": {"path": "docs", "role": "artifacts"}},
+                },
+                root / ".studio-workspace.toml",
+            )
+
+            exit_code, stdout, stderr = _run_main(["--json", "workspace-info"], cwd=root)
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Legacy .studio-workspace.toml", stderr)
+            self.assertIn(".cf-workspace.toml", stderr)
+            self.assertIn('workspace = "<path>"', stderr)
+            self.assertEqual(json.loads(stdout)["status"], "OK")
 
     def test_workspace_info_metadata_error_marks_workspace_degraded(self):
         with TemporaryDirectory() as tmpdir:

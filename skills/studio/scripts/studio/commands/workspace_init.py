@@ -10,13 +10,25 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ..utils.stderr_logging import emit_stderr_message
 from ..utils.ui import ui
 
 logger = logging.getLogger(__name__)
 
 
+_LEGACY_WORKSPACE_WARNING = (
+    "Legacy .studio-workspace.toml was discovered automatically; rename it to "
+    ".cf-workspace.toml or configure workspace = \"<path>\" in config/core.toml."
+)
+
+
 def _warn_workspace_init(message: str) -> None:
     logger.warning("workspace-init: %s", message)
+
+
+def _emit_stderr(message: str) -> None:
+    """Emit a line through a handler bound to the current stderr."""
+    emit_stderr_message(message, logger_name=f"{__name__}.stderr")
 
 
 def _is_project_dir(entry: Path) -> bool:
@@ -285,6 +297,9 @@ def _check_existing_workspace(project_root: Path, *, inline: bool, force: bool) 
             return f"Existing workspace config is broken: {ws_err}. Fix or remove it before reinitializing."
         return None
 
+    if existing_ws.is_legacy_fallback:
+        _emit_stderr(f"WARNING: {_LEGACY_WORKSPACE_WARNING}\n")
+
     if inline and not existing_ws.is_inline:
         return (
             f"Standalone workspace already exists at {existing_ws.workspace_file}. "
@@ -356,8 +371,8 @@ def _write_workspace_config(
     if output_arg and not exit_code:
         rel = output_path.relative_to(project_root) if output_path.is_relative_to(project_root) else output_path
         data["hint"] = (
-            f"Custom output path used. Other commands will not discover this file automatically. "
-            f'Add \'workspace = "{rel}"\' to config/core.toml to enable discovery.'
+            "Custom output path used. Automatic discovery requires "
+            f'workspace = "{rel}" in config/core.toml.'
         )
     # @cpt-end:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-reinit-standalone
     # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-else-standalone

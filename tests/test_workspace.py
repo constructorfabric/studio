@@ -734,7 +734,61 @@ class TestFindWorkspaceConfig:
             assert err is None
             assert cfg is not None
             assert cfg.is_inline is False
+            assert cfg.is_legacy_fallback is False
             assert "lib" in cfg.sources
+
+    def test_legacy_standalone_file_is_discovered_as_fallback(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            legacy_path = tmp / ".studio-workspace.toml"
+            toml_utils.dump({
+                "version": "1.0",
+                "sources": {"lib": {"path": "../lib"}},
+            }, legacy_path)
+
+            cfg, err = find_workspace_config(tmp)
+
+            assert err is None
+            assert cfg is not None
+            assert cfg.workspace_file == legacy_path.resolve()
+            assert cfg.is_legacy_fallback is True
+
+    def test_both_standalone_markers_return_error_without_loading_either(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            for filename in (".cf-workspace.toml", ".studio-workspace.toml"):
+                toml_utils.dump({
+                    "version": "1.0",
+                    "sources": {"lib": {"path": "../lib"}},
+                }, tmp / filename)
+
+            cfg, err = find_workspace_config(tmp)
+
+            assert cfg is None
+            assert err is not None
+            assert "both standalone workspace markers" in err.lower()
+
+    def test_explicit_legacy_path_wins_without_fallback_flag(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            legacy_path = tmp / ".studio-workspace.toml"
+            toml_utils.dump({
+                "version": "1.0",
+                "sources": {"configured": {"path": "../configured"}},
+            }, legacy_path)
+            toml_utils.dump({
+                "version": "1.0",
+                "sources": {"automatic": {"path": "../automatic"}},
+            }, tmp / ".cf-workspace.toml")
+            self._setup_v3_project(tmp, {"workspace": ".studio-workspace.toml"})
+
+            cfg, err = find_workspace_config(tmp)
+
+            assert err is None
+            assert cfg is not None
+            assert cfg.workspace_file == legacy_path.resolve()
+            assert cfg.is_legacy_fallback is False
+            assert "configured" in cfg.sources
 
     def test_standalone_file_not_discovered_at_parent(self):
         """Standalone .cf-constructor-workspace.toml one level above project root is NOT discovered (no parent walk-up)."""
