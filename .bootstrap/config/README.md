@@ -1,4 +1,4 @@
-# config — User Configuration
+# config -- User Configuration
 
 This directory contains **user-editable** configuration files.
 
