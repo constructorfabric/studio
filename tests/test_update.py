@@ -1132,6 +1132,99 @@ class TestShowKitWhatsnew(unittest.TestCase):
 class TestShowCoreWhatsnew(unittest.TestCase):
     """Tests for core whatsnew display and prompting."""
 
+    @staticmethod
+    def _v160_markdown_details() -> str:
+        """Return a realistic Markdown release-notes body for terminal tests."""
+        return """## What's New
+
+Studio workflows are more predictable by separating planning, authoring, review, fixing, and validation into clearer task-focused paths.
+
+### Focused workflows
+
+- Code planning, generation, review, fixes, tests, and CI.
+- Documentation workflows include `cfs validate` and **explicit approval**.
+
+1. Studio presents the findings first.
+2. You choose what to fix.
+
+```bash
+cfs update
+cfs validate
+```
+"""
+
+    def test_non_interactive_renders_multiline_markdown_release_notes(self):
+        """Release-note Markdown stays readable instead of becoming a text wall."""
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+
+        ref = {
+            "v1.6.0": {
+                "summary": "v1.6.0",
+                "details": self._v160_markdown_details(),
+            },
+        }
+        err = io.StringIO()
+        with (
+            patch("shutil.get_terminal_size", return_value=os.terminal_size((56, 24))),
+            redirect_stderr(err),
+        ):
+            result = _show_core_whatsnew(ref, {}, interactive=False)
+
+        self.assertTrue(result)
+        output = err.getvalue()
+        self.assertEqual(output.count("v1.6.0"), 1)
+        self.assertIn("What's New", output)
+        self.assertIn("Focused workflows", output)
+        self.assertIn("- Code planning, generation, review, fixes, tests,", output)
+        self.assertIn("  and CI.", output)
+        self.assertIn("1. Studio presents the findings first.", output)
+        self.assertIn("2. You choose what to fix.", output)
+        self.assertIn("cfs update", output)
+        self.assertIn("cfs validate", output)
+        self.assertNotIn("##", output)
+        self.assertNotIn("###", output)
+        self.assertNotIn("```", output)
+        self.assertNotIn("\n    bash\n", output)
+        self.assertNotIn("**explicit approval**", output)
+        self.assertNotIn("`cfs validate`", output)
+        self.assertIn("paths.\n    \n    Focused workflows", output)
+
+        prose_lines = [
+            line for line in output.splitlines()
+            if any(
+                fragment in line
+                for fragment in ("Studio workflows", "more predictable", "task-focused paths")
+            )
+        ]
+        self.assertGreater(len(prose_lines), 1)
+        self.assertLessEqual(max(len(line) for line in prose_lines), 56)
+
+    def test_tty_renders_inline_markdown_within_multiline_release_notes(self):
+        """ANSI output retains inline styling after Markdown block rendering."""
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+
+        ref = {
+            "v1.6.0": {
+                "summary": "v1.6.0",
+                "details": self._v160_markdown_details(),
+            },
+        }
+        err = io.StringIO()
+        with (
+            patch("studio.utils.whatsnew.stderr_supports_ansi", return_value=True),
+            redirect_stderr(err),
+        ):
+            result = _show_core_whatsnew(ref, {}, interactive=False)
+
+        self.assertTrue(result)
+        output = err.getvalue()
+        self.assertIn("\033[36mcfs validate\033[0m", output)
+        self.assertIn("\033[1mexplicit approval\033[0m", output)
+        self.assertNotIn("**explicit approval**", output)
+        self.assertNotIn("`cfs validate`", output)
+        self.assertNotIn("##", output)
+        self.assertNotIn("```", output)
+
     def test_non_interactive_shows_missing(self):
         from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
@@ -1214,6 +1307,144 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertIn("- Updated skills/cypilot/SKILL.md and requirements/workspace.md", output)
         self.assertNotIn("`skills/cypilot/SKILL.md`", output)
         self.assertNotIn("\033[36mskills/cypilot/SKILL.md\033[0m", output)
+
+    def test_code_blocks_only_close_with_a_matching_fence(self):
+        """Fence-like source inside a code block is rendered literally."""
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+
+        ref = {
+            "v3.2.0": {
+                "summary": "Fence handling",
+                "details": (
+                    "````bash\n"
+                    "```not_a_closing_fence\n"
+                    "````\n"
+                    "~~~text\n"
+                    "~~~not_a_closing_fence\n"
+                    "~~~\n"
+                    "After the code blocks."
+                ),
+            },
+        }
+        err = io.StringIO()
+        with redirect_stderr(err):
+            result = _show_core_whatsnew(ref, {}, interactive=False)
+
+        self.assertTrue(result)
+        output = err.getvalue()
+        self.assertIn("    ```not_a_closing_fence", output)
+        self.assertIn("    ~~~not_a_closing_fence", output)
+        self.assertIn("After the code blocks.", output)
+
+    def test_narrow_prose_keeps_inline_spans_atomic_in_plain_and_ansi_output(self):
+        """Wrapping cannot split inline code or bold markup before formatting."""
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+
+        ref = {
+            "v3.2.0": {
+                "summary": "Inline wrapping",
+                "details": "Run `cfs update --with-kits yes` now for **all project files**.",
+            },
+        }
+
+        plain_err = io.StringIO()
+        with (
+            patch("shutil.get_terminal_size", return_value=os.terminal_size((36, 24))),
+            redirect_stderr(plain_err),
+        ):
+            self.assertTrue(_show_core_whatsnew(ref, {}, interactive=False))
+        plain_output = plain_err.getvalue()
+        self.assertIn("cfs update --with-kits yes", plain_output)
+        self.assertIn("all project files", plain_output)
+        self.assertNotIn("`", plain_output)
+        self.assertNotIn("**", plain_output)
+        self.assertEqual(
+            sum("cfs update --with-kits yes" in line for line in plain_output.splitlines()),
+            1,
+        )
+
+        ansi_err = io.StringIO()
+        with (
+            patch("shutil.get_terminal_size", return_value=os.terminal_size((36, 24))),
+            patch("studio.utils.whatsnew.stderr_supports_ansi", return_value=True),
+            redirect_stderr(ansi_err),
+        ):
+            self.assertTrue(_show_core_whatsnew(ref, {}, interactive=False))
+        ansi_output = ansi_err.getvalue()
+        self.assertIn("\033[36mcfs update --with-kits yes\033[0m", ansi_output)
+        self.assertIn("\033[1mall project files\033[0m", ansi_output)
+        self.assertNotIn("`", ansi_output)
+        self.assertNotIn("**", ansi_output)
+
+    def test_adjacent_inline_spans_do_not_gain_spaces_in_plain_or_ansi_output(self):
+        """Wrapping preserves adjacency around inline Markdown formatting spans."""
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+
+        ref = {
+            "v3.2.0": {
+                "summary": "Inline adjacency",
+                "details": "prefix`code`suffix **bold**tail and `a``b`.",
+            },
+        }
+
+        plain_err = io.StringIO()
+        with (
+            patch("shutil.get_terminal_size", return_value=os.terminal_size((28, 24))),
+            redirect_stderr(plain_err),
+        ):
+            self.assertTrue(_show_core_whatsnew(ref, {}, interactive=False))
+        plain_output = plain_err.getvalue()
+        self.assertIn("prefixcodesuffix", plain_output)
+        self.assertIn("boldtail", plain_output)
+        self.assertIn("ab.", plain_output)
+        self.assertNotIn("prefix code", plain_output)
+        self.assertNotIn("bold tail", plain_output)
+        self.assertNotIn("a b", plain_output)
+
+        ansi_err = io.StringIO()
+        with (
+            patch("shutil.get_terminal_size", return_value=os.terminal_size((28, 24))),
+            patch("studio.utils.whatsnew.stderr_supports_ansi", return_value=True),
+            redirect_stderr(ansi_err),
+        ):
+            self.assertTrue(_show_core_whatsnew(ref, {}, interactive=False))
+        ansi_output = ansi_err.getvalue()
+        self.assertIn("prefix\033[36mcode\033[0msuffix", ansi_output)
+        self.assertIn("\033[1mbold\033[0mtail", ansi_output)
+        self.assertIn("\033[36ma\033[0m\033[36mb\033[0m.", ansi_output)
+
+    def test_narrow_list_items_wrap_with_hanging_indentation(self):
+        """Long list items retain their markers and align continuation lines."""
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+
+        ref = {
+            "v3.2.0": {
+                "summary": "List wrapping",
+                "details": (
+                    "  - Update `cfs validate --local-only` before continuing with the "
+                    "very long configuration migration.\n"
+                    "12. Review **all generated integration files** before committing results."
+                ),
+            },
+        }
+        err = io.StringIO()
+        with (
+            patch("shutil.get_terminal_size", return_value=os.terminal_size((42, 24))),
+            redirect_stderr(err),
+        ):
+            self.assertTrue(_show_core_whatsnew(ref, {}, interactive=False))
+
+        output_lines = err.getvalue().splitlines()
+        first_marker = next(line for line in output_lines if "- Update" in line)
+        first_continuation = next(line for line in output_lines if "before continuing" in line)
+        ordered_marker = next(line for line in output_lines if "12. Review" in line)
+        ordered_continuation = next(line for line in output_lines if "before committing" in line)
+        self.assertTrue(first_marker.startswith("      - "))
+        self.assertTrue(first_continuation.startswith("        "))
+        self.assertTrue(ordered_marker.startswith("    12. "))
+        self.assertTrue(ordered_continuation.startswith("        "))
+        self.assertIn("cfs validate --local-only", first_marker)
+        self.assertTrue(any("all generated integration files" in line for line in output_lines))
 
     def test_non_interactive_tty_renders_ansi_markup(self):
         from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew

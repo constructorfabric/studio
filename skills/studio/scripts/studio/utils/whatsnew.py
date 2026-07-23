@@ -8,6 +8,7 @@ Used by both `cfs update` (core) and `cfs kit update` (kit).
 # @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
 import logging
 import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Dict, Tuple
@@ -21,12 +22,19 @@ logger = logging.getLogger(__name__)
 
 def _emit_terminal_message(message: str) -> None:
     """Emit human-facing terminal text through the logger channel."""
-    emit_stderr_message(message.rstrip("\n"), logger_name=f"{__name__}.stderr")
+    emit_stderr_message(message.rstrip("\n") + "\n", logger_name=f"{__name__}.stderr")
 
 # @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-format
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])")
 _BOLD_MARKUP_RE = re.compile(r"\*\*(.+?)\*\*")
 _INLINE_CODE_RE = re.compile(r"`(.+?)`")
+_ATX_HEADING_RE = re.compile(r"^(?P<indent>\s{0,3})#{1,6}\s+(?P<text>.*?)(?:\s+#+)?\s*$")
+_UNORDERED_LIST_RE = re.compile(r"^(?P<indent>\s*)[-+*]\s+(?P<text>.*)$")
+_ORDERED_LIST_RE = re.compile(r"^(?P<indent>\s*)(?P<number>\d+)\.\s+(?P<text>.*)$")
+_FENCED_CODE_OPEN_RE = re.compile(
+    r"^\s*(?P<delimiter>`{3,}|~{3,})(?P<info>.*)$"
+)
+_INLINE_MARKDOWN_SPAN_RE = re.compile(r"\*\*.+?\*\*|`.+?`")
 _ANSI_BOLD = "\033[1m"
 _ANSI_CYAN = "\033[36m"
 _ANSI_RESET = "\033[0m"
@@ -132,6 +140,191 @@ def format_whatsnew_text(text: str, *, use_ansi: bool) -> str:
     plain = _BOLD_MARKUP_RE.sub(_replace_bold_markup, text)
     return _INLINE_CODE_RE.sub(_replace_inline_code_markup, plain)
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-format-text
+
+
+def _terminal_text_width() -> int:
+    """Return a stable text width for the indented whatsnew body."""
+    terminal_width = shutil.get_terminal_size(fallback=(80, 24)).columns
+    return max(20, terminal_width - 4)
+
+
+def _markdown_wrap_tokens(text: str) -> list[tuple[str, bool]]:
+    """Return atomic inline-Markdown tokens and whether whitespace precedes them."""
+    tokens: list[tuple[str, bool]] = []
+    current_token = ""
+    pending_whitespace = False
+    position = 0
+
+    def consume_plain(segment: str) -> None:
+        """Add plain text, retaining whitespace boundaries around inline spans."""
+        nonlocal current_token, pending_whitespace
+        for part in re.findall(r"\s+|\S+", segment):
+            if part.isspace():
+                if current_token:
+                    tokens.append((current_token, pending_whitespace))
+                    current_token = ""
+                pending_whitespace = True
+            else:
+                if not current_token:
+                    # The pending whitespace applies to this new contiguous token.
+                    current_token = part
+                else:
+                    current_token += part
+
+    for span in _INLINE_MARKDOWN_SPAN_RE.finditer(text):
+        consume_plain(text[position:span.start()])
+        if not current_token:
+            current_token = span.group(0)
+        else:
+            current_token += span.group(0)
+        position = span.end()
+
+    consume_plain(text[position:])
+    if current_token:
+        tokens.append((current_token, pending_whitespace))
+    return tokens
+
+
+def _wrap_markdown_line(
+    text: str,
+    *,
+    width: int,
+    initial_indent: str = "",
+    subsequent_indent: str | None = None,
+) -> list[str]:
+    """Wrap Markdown prose without splitting bold or inline-code spans."""
+    continuation_indent = initial_indent if subsequent_indent is None else subsequent_indent
+    tokens = _markdown_wrap_tokens(text)
+    if not tokens:
+        return [initial_indent]
+
+    wrapped: list[str] = []
+    current = initial_indent
+    has_content = False
+    for token, preceded_by_whitespace in tokens:
+        separator = " " if has_content and preceded_by_whitespace else ""
+        candidate = f"{current}{separator}{token}"
+        if has_content and len(candidate) > width:
+            if preceded_by_whitespace:
+                wrapped.append(current)
+                current = f"{continuation_indent}{token}"
+            else:
+                # Adjacent text and inline markup must remain visually adjacent.
+                current = candidate
+        else:
+            current = candidate
+        has_content = True
+    wrapped.append(current)
+    return wrapped
+
+
+def _wrap_prose_line(text: str, *, width: int) -> list[str]:
+    """Wrap prose while preserving the source indentation and inline Markdown."""
+    indent_length = len(text) - len(text.lstrip())
+    return _wrap_markdown_line(
+        text[indent_length:],
+        width=width,
+        initial_indent=text[:indent_length],
+    )
+
+
+def _is_closing_code_fence(
+    source_line: str,
+    *,
+    delimiter_char: str,
+    minimum_length: int,
+) -> bool:
+    """Return whether a line is a compatible closing fence for an open block."""
+    stripped = source_line.lstrip()
+    fence_length = len(stripped) - len(stripped.lstrip(delimiter_char))
+    return (
+        fence_length >= minimum_length
+        and fence_length > 0
+        and not stripped[fence_length:].strip()
+    )
+
+
+def _render_regular_markdown_line(
+    source_line: str,
+    *,
+    use_ansi: bool,
+    prose_width: int,
+) -> list[str]:
+    """Render one non-code Markdown line."""
+    if not source_line.strip():
+        return [""]
+
+    heading = _ATX_HEADING_RE.match(source_line)
+    if heading:
+        heading_text = format_whatsnew_text(heading.group("text"), use_ansi=use_ansi)
+        if use_ansi:
+            heading_text = f"{_ANSI_BOLD}{heading_text}{_ANSI_RESET}"
+        return [f"{heading.group('indent')}{heading_text}"]
+
+    unordered_item = _UNORDERED_LIST_RE.match(source_line)
+    if unordered_item:
+        marker = f"{unordered_item.group('indent')}- "
+        return [
+            format_whatsnew_text(wrapped_line, use_ansi=use_ansi)
+            for wrapped_line in _wrap_markdown_line(
+                unordered_item.group("text"),
+                width=prose_width,
+                initial_indent=marker,
+                subsequent_indent=" " * len(marker),
+            )
+        ]
+
+    ordered_item = _ORDERED_LIST_RE.match(source_line)
+    if ordered_item:
+        marker = f"{ordered_item.group('indent')}{ordered_item.group('number')}. "
+        return [
+            format_whatsnew_text(wrapped_line, use_ansi=use_ansi)
+            for wrapped_line in _wrap_markdown_line(
+                ordered_item.group("text"),
+                width=prose_width,
+                initial_indent=marker,
+                subsequent_indent=" " * len(marker),
+            )
+        ]
+
+    return [
+        format_whatsnew_text(wrapped_line, use_ansi=use_ansi)
+        for wrapped_line in _wrap_prose_line(source_line, width=prose_width)
+    ]
+
+
+def _render_whatsnew_details(details: str, *, use_ansi: bool) -> list[str]:
+    """Render the supported Markdown subset as readable terminal lines."""
+    rendered: list[str] = []
+    code_fence: str | None = None
+    prose_width = _terminal_text_width()
+
+    for source_line in details.splitlines():
+        if code_fence is not None:
+            if _is_closing_code_fence(
+                source_line,
+                delimiter_char=code_fence[0],
+                minimum_length=len(code_fence),
+            ):
+                code_fence = None
+            else:
+                rendered.append(f"  {source_line}")
+            continue
+
+        opening_fence = _FENCED_CODE_OPEN_RE.match(source_line)
+        if opening_fence:
+            code_fence = opening_fence.group("delimiter")
+            continue
+
+        rendered.extend(
+            _render_regular_markdown_line(
+                source_line,
+                use_ansi=use_ansi,
+                prose_width=prose_width,
+            )
+        )
+
+    return rendered
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-format
 
 
@@ -196,18 +389,19 @@ def _display_whatsnew_entries(
         summary_source = strip_control_chars(entry["summary"])
         details_source = strip_control_chars(entry["details"], preserve_newlines=True)
         summary = format_whatsnew_text(summary_source, use_ansi=use_ansi)
+        if summary_source == ver:
+            version_label = f"\033[1m{ver}\033[0m" if use_ansi else ver
+            _emit_terminal_message(f"\n  {version_label}")
         # If summary wasn't changed by formatting, wrap version in bold
-        if use_ansi and summary == summary_source:
+        elif use_ansi and summary == summary_source:
             _emit_terminal_message(f"\n  \033[1m{ver}: {summary_source}\033[0m")
         else:
             version_label = f"\033[1m{ver}:\033[0m" if use_ansi else f"{ver}:"
             _emit_terminal_message(f"\n  {version_label} {summary}")
 
         if details_source:
-            for line in details_source.splitlines():
-                _emit_terminal_message(
-                    f"    {format_whatsnew_text(strip_control_chars(line), use_ansi=use_ansi)}"
-                )
+            for line in _render_whatsnew_details(details_source, use_ansi=use_ansi):
+                _emit_terminal_message(f"    {line}")
 
     _emit_terminal_message(f"\n{'=' * 60}")
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-display-entries
