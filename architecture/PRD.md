@@ -1,3 +1,11 @@
+---
+version: 1.1.0
+significant_changes:
+  - version: 1.1.0
+    date: 2026-07-23
+    summary: Added first-class, explicitly selected OpenCode support with an initial OpenCode v1.18.4 compatibility boundary.
+---
+
 # PRD — Constructor Studio
 
 
@@ -67,7 +75,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 ### 1.2 Background / Problem Statement
 
 **Target Users**:
-- Developers using AI coding assistants (Windsurf, Cursor, Claude, Copilot) for daily work
+- Developers using AI coding assistants (Windsurf, Cursor, Claude, Copilot, OpenCode) for daily work
 - Technical Leads setting up development methodology and project conventions
 - Teams adopting structured design-to-code workflows with AI assistance
 - DevOps engineers integrating Studio validation into CI/CD pipelines for artifact and code quality gates
@@ -75,7 +83,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 **Key Problems Solved**:
 - **AI Agent Non-Determinism**: AI agents produce inconsistent results without structured guardrails; deterministic validation catches structural and traceability issues that LLMs miss or hallucinate
 - **Design-Code Disconnect**: Code diverges from design when there is no single source of truth and no automated traceability enforcement
-- **Fragmented Tool Setup**: Each AI agent (Windsurf, Cursor, Claude, Copilot) requires different file formats for skills, workflows, and rules; maintaining these manually is error-prone
+- **Fragmented Tool Setup**: Each AI agent (Windsurf, Cursor, Claude, Copilot, OpenCode) requires different integration needs for skills, workflows, and rules; maintaining these manually is error-prone
 - **Inconsistent PR Reviews**: Code reviews vary in depth and focus without structured checklists and prompts; reviewers miss patterns that deterministic analysis catches
 - **Manual Configuration Overhead**: Project-specific conventions, artifact locations, and validation rules require manual setup and synchronization across tools
 
@@ -86,6 +94,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 - Deterministic validation of any single artifact completes in ≤ 3 seconds on a typical developer laptop. (Baseline: ~1s current; Target: v2.0)
 - 100% of `cpt-*` IDs defined in artifacts are resolvable via deterministic search without ambiguity. (Baseline: 100% current; Target: v2.0)
 - Agent integration files for all supported agents are generated in ≤ 10 seconds. (Baseline: ~5s current; Target: v2.0)
+- An OpenCode user can explicitly select Studio support, inspect its status, and receive the documented, verified capabilities for OpenCode v1.18.4 without losing user-managed configuration. (Baseline: not measured; Target: initial OpenCode release)
 - PR review workflow produces a structured review report within 2 minutes of invocation. (Baseline: not measured; Target: v2.0)
 
 **Capabilities**:
@@ -93,6 +102,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 - Execute deterministic validation and traceability scanning without LLM
 - Provide structured workflows for artifact creation, analysis, and code generation
 - Generate and maintain agent-specific entry points for all supported AI assistants
+- Offer OpenCode as a first-class, explicitly selected agent target with documented capabilities limited to verified behavior
 - Review and assess GitHub PRs with configurable prompts and checklists
 - Manage project configuration through a structured config directory edited only by the tool
 
@@ -111,6 +121,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 | Traceability | Linking design elements to code via unique identifiers and code tags |
 | System Prompt | Project-specific context file (tech-stack, conventions, domain model) loaded by workflows conditionally |
 | Agent Entry Point | Agent-specific file (workflow proxy, skill shim, or rule file) generated in the agent's native format |
+| OpenCode Support | First-class Studio agent integration for OpenCode, initially compatible with OpenCode v1.18.4 and available only when the user explicitly selects it. |
 
 ---
 
@@ -130,7 +141,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 
 **ID**: `cpt-studio-actor-ai-agent`
 
-**Role**: Executes Studio workflows (generate, analyze, PR review) by following SKILL.md instructions, loading rules and templates, and producing structured output. Supported agents: Windsurf, Cursor, Claude, Copilot, OpenAI.
+**Role**: Executes Studio workflows (generate, analyze, PR review) by following Studio instructions, loading rules and templates, and producing structured output. Supported agents: Windsurf, Cursor, Claude, Copilot, OpenAI, and OpenCode.
 
 #### CI/CD Pipeline
 
@@ -167,7 +178,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 - Kit files — all user-editable, preserved via interactive diff on update
 - Deterministic skill engine with machine-readable output for all commands
 - Structured workflows for write and read operations with execution protocol
-- Multi-agent integration (Windsurf, Cursor, Claude, Copilot, OpenAI)
+- Multi-agent integration (Windsurf, Cursor, Claude, Copilot, OpenAI, OpenCode), including explicitly selected OpenCode support for OpenCode v1.18.4
 - Extensible kit system with GitHub-based installation, registration, extension, and custom kit creation
 - ID and traceability system with code tags, search, and validation
 - CDSL behavioral specification language
@@ -185,6 +196,9 @@ Domain-specific value is delivered by independently installable kits. The recomm
 - GUI or web interface for Studio management
 - Non-GitHub VCS platform support for PR review (GitLab, Bitbucket) in initial release
 - Real-time collaboration or multi-user synchronization
+- Default all-agent generation that includes OpenCode in the initial release
+- A promise that OpenCode provides every capability available in other agent hosts
+- Automatic compatibility upgrades to later OpenCode versions
 
 ---
 
@@ -212,7 +226,7 @@ The system MUST provide a global CLI tool installable with a single command. The
 The system MUST provide an interactive project initialization command that bootstraps Studio in a project. The command MUST:
 
 1. Check for existing installation and refuse to overwrite — propose updating instead.
-2. Ask for: installation directory, which agents to support (default: all), and per-kit config output directory.
+2. Ask for: installation directory, which agents to support, and per-kit config output directory. The existing default agent selection MUST remain unchanged during the initial release and until compatibility validation is complete; OpenCode MUST require explicit user selection.
 3. Enable all available kits by default.
 4. Set up the project directory structure.
 5. Define a **root system** — deriving the project name and slug from the project directory name.
@@ -276,7 +290,22 @@ The system MUST provide a plan workflow that decomposes large agent tasks into s
 
 - [x] `p1` - **ID**: `cpt-studio-fr-core-agents`
 
-The system MUST provide two commands for agent integration: `cfs generate-agents` generates integration files for all supported AI coding assistants so each agent can access Studio workflows — it always fully regenerates integration files on each invocation, and supports regenerating for a specific agent or all agents at once; `cfs agents` is a read-only listing command that shows the currently generated integration files without writing anything. Supported agents MUST include Windsurf, Cursor, Claude, Copilot, and OpenAI.
+The system MUST provide two commands for agent integration: `cfs generate-agents` generates or refreshes Studio integration for supported AI coding assistants so each selected agent can access Studio workflows, and supports targeting a specific agent or all selected agents; `cfs agents` is a read-only listing command that shows the currently generated integration without writing anything. Supported agents MUST include Windsurf, Cursor, Claude, Copilot, OpenAI, and OpenCode.
+
+**Actors**:
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`, `cpt-studio-actor-studio-cli`
+
+#### OpenCode Integration
+
+- [ ] `p1` - **ID**: `cpt-studio-fr-core-opencode`
+
+The system MUST provide OpenCode as a first-class supported agent target, distinct from other supported agents rather than a compatibility alias. The initial release MUST:
+
+1. Require the user to explicitly select OpenCode before Studio generates or refreshes OpenCode integration; existing default target selection MUST remain unchanged during the initial release and until compatibility validation is complete.
+2. Allow `cfs agents` to inspect the current OpenCode integration state without modifying the project.
+3. Preserve user-managed OpenCode configuration; Studio MUST NOT overwrite user-owned OpenCode content.
+4. Support the verified OpenCode v1.18.4 compatibility target. Capability claims for OpenCode MUST be limited to behavior verified for that version and MUST NOT imply full parity with other hosts.
+5. Provide user-facing documentation that states the supported OpenCode version, verified capabilities, selection behavior, and known limits.
 
 **Actors**:
 `cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`, `cpt-studio-actor-studio-cli`
@@ -1174,6 +1203,11 @@ The plugin MUST delegate all validation logic to the installed Studio CLI to ens
 - [ ] Project initialization completes interactive setup and creates a working install directory in ≤ 5 minutes
 - [ ] Deterministic validation output is actionable (clear file/line/pointer for every issue)
 - [ ] All supported agents receive correct integration files after agent generation
+- [ ] A user can explicitly select OpenCode for OpenCode v1.18.4; initial default agent selection does not select OpenCode.
+- [ ] `cfs agents` reports OpenCode integration state without writing to the project.
+- [ ] OpenCode integration preserves user-managed OpenCode configuration and does not overwrite user-owned content.
+- [ ] Deterministic compatibility validation confirms the documented OpenCode behavior for v1.18.4 before release.
+- [ ] User-facing support documentation states the OpenCode v1.18.4 boundary, verified capabilities, selection behavior, and initial-release limits.
 - [ ] Environment diagnostics reports environment health with pass/fail per check
 - [ ] Config is never manually edited — all changes go through the CLI tool
 - [ ] PR review workflow produces a structured report matching the template format
@@ -1196,6 +1230,7 @@ The plugin MUST delegate all validation logic to the installed Studio CLI to ens
 ## 11. Assumptions
 
 - AI coding assistants (Windsurf, Cursor, Claude, Copilot) can follow structured markdown workflows with embedded instructions.
+- OpenCode v1.18.4 can support the OpenCode behavior documented and deterministically validated for the initial release.
 - Developers have the required runtime platform available.
 - Projects use Git for version control (project detection relies on `.git` directory).
 - Teams are willing to maintain design artifacts as part of their development workflow.
@@ -1215,3 +1250,4 @@ No open questions remain at this time — all architectural questions (config di
 | Kit rigidity | Templates don't fit all project types | Kit extension system allows custom overrides; custom kits can be created from scratch |
 | Version fragmentation | Different team members have different skill versions | Version detection on every invocation; config migration ensures backward compatibility |
 | Network dependency for updates | Network required for installation and updates | Tool is installed once and works offline; updates are optional and explicit |
+| OpenCode compatibility drift | Later OpenCode releases may change behavior outside the verified initial target | Limit initial support to v1.18.4, document the boundary, and require deterministic compatibility validation before broadening support |

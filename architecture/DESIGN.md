@@ -1,3 +1,11 @@
+---
+version: 1.1.0
+significant_changes:
+  - version: 1.1.0
+    date: 2026-07-23
+    summary: Added first-class, explicitly selected OpenCode support with a v1.18.4 fixture-backed compatibility boundary.
+---
+
 # Technical Design — Constructor Studio
 
 
@@ -103,7 +111,13 @@ Accepted delegated execution extends this model by allowing Studio-authored plan
 
 - [x] `p1` - `cpt-studio-fr-core-agents`
 
-**Design Response**: Agent Generator component produces entry points in each agent's native format — workflow proxies in tool-native directories and shared skill stubs in `.agents/skills/`. Workflow proxies: `.windsurf/workflows/` (Windsurf), `.cursor/commands/` (Cursor), `.claude/commands/` (Claude), `.github/prompts/` (Copilot). Workflow proxies and shared skill stubs reference the core SKILL.md. OpenAI agents use shared `.agents/skills/` only. The `generate-agents` command fully overwrites entry points on each invocation; `agents` is read-only listing (shows generated files without writing). Executor delegation is intentionally separate from this agent-entry-point surface: host-tool shims stay chat-facing integrations, while ralphex is exposed only through a dedicated delegation skill and exported plan artifacts.
+**Design Response**: Agent Generator component produces entry points in each agent's native format — workflow proxies in tool-native directories and shared skill stubs in `.agents/skills/`. Workflow proxies: `.windsurf/workflows/` (Windsurf), `.cursor/commands/` (Cursor), `.claude/commands/` (Claude), `.github/prompts/` (Copilot). Workflow proxies and shared skill stubs reference the core SKILL.md. OpenAI agents use shared `.agents/skills/` only. OpenCode is a distinct, opt-in host target for verified v1.18.4 behavior: it reuses native `.agents/skills` discovery and produces only Studio-owned native subagents in `.opencode/agents/cf-*.md`; it creates no `.opencode/commands` surface. The `generate-agents` command fully overwrites only generator-owned entry points whose ownership has been proven; it never authorizes overwriting user-owned host content. `agents` is read-only listing (shows generated files without writing). Executor delegation is intentionally separate from this agent-entry-point surface: host-tool shims stay chat-facing integrations, while ralphex is exposed only through a dedicated delegation skill and exported plan artifacts.
+
+##### OpenCode Integration
+
+- [ ] `p1` - `cpt-studio-fr-core-opencode`
+
+**Design Response**: OpenCode is a first-class host, not an OpenAI/Codex alias, with an initial compatibility target of OpenCode v1.18.4. Selection is explicit through `--agent opencode` or the convenience `--opencode`; it is excluded from the current default target selection. The initial implementation translates only the current `agents.toml` generator path and defers v2 manifest translation. Generated OpenCode agent files declare native subagent behavior but set no model or provider default. Studio does not manage root `AGENTS.md`, user `opencode.json`, OpenCode installation or execution, runtime model/provider defaults, or `.opencode/commands` in this rollout.
 
 ##### Extensible Kit System
 
@@ -276,7 +290,7 @@ Version output distinguishes package metadata from installed state. `--version` 
 | `cpt-studio-nfr-validation-performance` | Single artifact validation ≤ 3s | `cpt-studio-component-validator` | Single-pass scanning, no external calls, in-memory processing, no LLM dependency | Benchmark test with largest project artifact |
 | `cpt-studio-nfr-security-integrity` | No untrusted code execution, deterministic results, no secrets in config | `cpt-studio-component-config-manager`, `cpt-studio-component-validator` | Validator reads files as text only — no eval/exec. Config Manager rejects files containing known secret patterns. All commands are pure functions of input state | Determinism test: same repo state → same validation output |
 | `cpt-studio-nfr-reliability-recoverability` | Actionable failure guidance, no settings loss on migration | `cpt-studio-component-config-manager`, `cpt-studio-component-skill-engine` | Config migration creates backup before applying changes. All error messages include file path, line number, and remediation steps | Migration test: upgrade config across 3 versions, verify no settings lost |
-| `cpt-studio-nfr-adoption-usability` | ≤ 5 decisions in init, ≤ 3 clarifying questions per workflow | `cpt-studio-component-cli-proxy`, `cpt-studio-component-skill-engine` | Init uses sensible defaults (all agents, all kits). CLI provides `--help` with usage examples for every command | Count decisions in init flow; count agent questions per workflow |
+| `cpt-studio-nfr-adoption-usability` | ≤ 5 decisions in init, ≤ 3 clarifying questions per workflow | `cpt-studio-component-cli-proxy`, `cpt-studio-component-skill-engine` | Init uses sensible defaults for the existing target set and all kits; OpenCode requires explicit selection. CLI provides `--help` with usage examples for every command | Count decisions in init flow; count agent questions per workflow |
 | `cpt-studio-nfr-dry` | Every rule configured in exactly one place; no duplication | `cpt-studio-component-config-manager`, `cpt-studio-component-kit-manager` | Config is the single source of truth; kit constraints reference config, never duplicate it. Kit files are user-editable originals, not copies | Review config + constraints for duplicate rule definitions |
 | `cpt-studio-nfr-simplicity` | No unnecessary abstractions; minimal dependencies | All components | Python stdlib-only (see `cpt-studio-adr-python-stdlib-only`). Each component has a single responsibility. New abstractions require explicit justification | Dependency audit; component responsibility review |
 | `cpt-studio-nfr-ci-automation-first` | CLI tool usable in CI without human interaction; deterministic operations | `cpt-studio-component-skill-engine`, `cpt-studio-component-validator` | All validation and scanning commands are deterministic pure functions. Exit codes follow convention (0=PASS, 2=FAIL). Machine-readable output for all commands | CI integration test: run validation in non-interactive mode |
@@ -314,7 +328,7 @@ The following architecture decision records (ADRs) drive the design:
 
 The architecture is organized into five layers stacked top-to-bottom, where each layer depends only on the layer directly below it.
 
-At the top sits the **AI Agent layer** — external coding assistants (Windsurf, Cursor, Claude Code, GitHub Copilot, OpenAI Codex) that read SKILL.md as their entry point and invoke Studio commands. Immediately below is the **Agent Entry Points layer**: generated files in agent-native directories (`.windsurf/`, `.cursor/`, `.claude/`, `.github/`) that contain workflow proxies and skill shims translating agent-specific formats into Studio CLI calls. Optional autonomous executors such as ralphex remain outside this generated entry-point surface and are reached only through explicit delegation contracts compiled by Studio.
+At the top sits the **AI Agent layer** — external coding assistants (Windsurf, Cursor, Claude Code, GitHub Copilot, OpenAI Codex, and OpenCode) that read their native Studio entry points and invoke Studio commands. Immediately below is the **Agent Entry Points layer**: generated files in agent-native directories (`.windsurf/`, `.cursor/`, `.claude/`, `.github/`, and the narrowly owned OpenCode `.opencode/agents/`) that contain workflow proxies, skill shims, or native subagents translating host formats into Studio CLI calls. OpenCode reuses `.agents/skills` discovery rather than receiving a Studio command surface. Optional autonomous executors such as ralphex remain outside this generated entry-point surface and are reached only through explicit delegation contracts compiled by Studio.
 
 The **Global CLI Proxy layer** (`cfs` (with `studio` / `cpt` as aliases), installed via pipx) is a thin stateless shell. It resolves the target skill — either from the project's local install directory or from the global cache (`~/.cf-studio/cache/`) — and forwards the invocation. The proxy contains zero skill logic.
 
@@ -442,6 +456,12 @@ CLI proxy and skill engine must work natively on Linux, Windows, and macOS witho
 
 Validation rules cannot be bypassed or weakened in STRICT mode. The deterministic gate must pass before semantic review proceeds. This constraint ensures that the quality floor is maintained — agents cannot skip validation steps or downgrade severity of issues.
 
+#### OpenCode Generated-Output Ownership
+
+- [ ] `p1` - **ID**: `cpt-studio-constraint-opencode-owned-output`
+
+OpenCode generation MAY create or rebuild only Studio-owned `.opencode/agents/cf-*.md` files. Ownership requires both the Studio `.opencode/.cf-studio-installed` marker and a Studio marker in the individual file. Detection and rebuild inspect only those marker-owned entries; unmarked OpenCode files, user configuration, root `AGENTS.md`, and `opencode.json` are out of scope for mutation. An unmarked `cf-*.md` collision produces an explicit partial result and preserves the file without replacement or deletion.
+
 ## 3. Technical Architecture
 
 ### 3.1 Domain Model
@@ -482,6 +502,7 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 | Identifier | A `cpt-*` ID with kind, slug, definition location (file + line), and references | Scanned from artifact Markdown |
 | Config | Structured TOML in `config/` directory — core.toml + per-kit configs | Filesystem |
 | AgentEntryPoint | Generated file in an agent's native format (workflow proxy, skill shim, or rule file) | Generated into `.windsurf/`, `.cursor/`, etc. |
+| OpenCodeIntegration | Explicitly selected, fixture-validated OpenCode target state, including marker-owned generated subagents and collision status | `.opencode/.cf-studio-installed`, `.opencode/agents/cf-*.md`, `cfs agents` |
 | Blueprint | DEPRECATED per `cpt-studio-adr-remove-blueprint-system` — removed from architecture. Kit resources are now maintained as direct files. | N/A |
 | Constraint | Kit-wide rules for ID kinds, headings, and cross-artifact references | `{cf-studio-path}/config/kits/<slug>/constraints.toml` |
 | Workflow | A Markdown file with frontmatter, phases, and validation criteria | `{cf-studio-path}/.core/workflows/` |
@@ -549,6 +570,7 @@ graph TD
         ART["artifacts/<br/><i>Markdown files</i>"]
         CFG["config/<br/><i>core.toml · kits/&lt;slug&gt;/</i>"]
         AGENTS[".windsurf/ · .cursor/<br/>.claude/ · .github/"]
+        OC[".opencode/agents/<br/><i>marker-owned cf-*.md only</i>"]
     end
 
     CLI -->|proxies to| SE
@@ -568,6 +590,7 @@ graph TD
     TE -->|scans| ART
     CM -->|reads/writes| CFG
     AG -->|generates| AGENTS
+    AG -->|explicit OpenCode only| OC
     SDLC -->|owns| CFG
 ```
 
@@ -763,14 +786,15 @@ Bridges the gap between Studio's unified skill system and the diverse file forma
 - Generate shared skill stubs in `.agents/skills/{id}/SKILL.md` for all non-Claude agents, referencing the core SKILL.md
 - Compose SKILL.md: collect kit SKILL.md extensions and assemble them into the main SKILL.md alongside core commands
 - Generate skill shims that reference the composed SKILL.md
-- Support 5 agents: Windsurf (`.windsurf/workflows/` + `.agents/skills/`), Cursor (`.cursor/commands/` + `.agents/skills/`), Claude (`.claude/commands/` + `.claude/agents/`), Copilot (`.github/prompts/` + `.github/agents/` + `.agents/skills/`), OpenAI (`.agents/skills/` only)
-- Full overwrite on each invocation for generator-owned `cf-*` outputs (no merge with existing files)
+- Support 6 agents: Windsurf (`.windsurf/workflows/` + `.agents/skills/`), Cursor (`.cursor/commands/` + `.agents/skills/`), Claude (`.claude/commands/` + `.claude/agents/`), Copilot (`.github/prompts/` + `.github/agents/` + `.agents/skills/`), OpenAI (`.agents/skills/` only), and explicitly selected OpenCode (`.agents/skills` discovery plus `.opencode/agents/cf-*.md` native subagents)
+- For OpenCode v1.18.4, translate the current `agents.toml` registry profiles into native subagent files without adding model/provider defaults or `.opencode/commands`; defer v2 manifest translation
+- Full overwrite on each invocation applies only to generator-owned `cf-*` outputs whose ownership is proven (no merge with existing files). For OpenCode, proof requires `.opencode/.cf-studio-installed` and the per-file Studio marker; an unmarked `cf-*` name collision is preserved and reported as partial
 - Normalize generated agent output names so new files use a `cf-` prefix or a dedicated Studio-owned path; migrate legacy non-prefixed generated storytelling files only when ownership checks prove they are generated, and preserve user-edited files
-- Support `--agent` flag for single-agent regeneration
+- Support `--agent` flag for single-agent regeneration; OpenCode is selected only by canonical `--agent opencode` or convenience `--opencode`, never by the initial default target set
 
 ##### Responsibility boundaries
 
-Does NOT maintain agent-specific state. Does NOT define SKILL extension content — collects from kit files. Does NOT persist agent selection in config.
+Does NOT maintain agent-specific state. Does NOT define SKILL extension content — collects from kit files. Does NOT persist agent selection in config. In the OpenCode rollout it does NOT manage root `AGENTS.md`, user `opencode.json`, OpenCode installation or execution, runtime model/provider defaults, or user-owned `.opencode` content.
 
 ##### Related components (by ID)
 
@@ -833,8 +857,8 @@ The following kits are external packages that can be installed and managed by th
 | `where-used --id <id>` | Find where an ID is referenced | 0 |
 | `get-content --id <id>` | Get content block for an ID | 0=found, 2=not found |
 | `info` | Show adapter status, registry, and resolved resource variables per kit | 0 |
-| `agents [--agent A]` | Show generated agent integration files (read-only listing; no files written) | 0 |
-| `generate-agents [--agent A] [--dry-run]` | Generate or update agent integration files (full overwrite on each invocation) | 0 |
+| `agents [--agent A]` | Show generated agent integration files without writing; for OpenCode, report selected/generated/partial/collision state | 0 |
+| `generate-agents [--agent A] [--opencode] [--dry-run]` | Generate or update agent integration files; `--agent opencode` is canonical and `--opencode` is its convenience form. OpenCode is excluded from default selection; overwrite is limited to proven Studio-owned outputs | 0 |
 | `doctor` | Environment health check | 0=healthy, 2=issues |
 | `init` | Initialize project | 0 |
 | `update` | Update project skill to cached version | 0 |
@@ -951,7 +975,7 @@ sequenceDiagram
     else new project
         Skill Engine->>User: "Install directory?" (default: studio)
         User-->>Skill Engine: confirms
-        Skill Engine->>User: "Which agents?" (default: all)
+        Skill Engine->>User: "Which agents?" (default: existing target set; OpenCode requires explicit selection)
         User-->>Skill Engine: selects agents
         Skill Engine->>User: "Track editable kit files in git?" (default: yes)
         User-->>Skill Engine: selects kit-tracking policy
@@ -1010,6 +1034,33 @@ cf-studio-path = ".bootstrap"
 The block is inserted at the **beginning** of each file. If a file does not exist, it is created. The managed content is a TOML fence that declares only `cf-studio-path`, and the path reflects the actual install directory. Content between the `<!-- @cf:root-agents -->` and `<!-- /@cf:root-agents -->` comment markers is fully managed by Studio, so manual edits inside the block are discarded when a setup or repair flow rewrites it.
 
 **Integrity invariant**: project-skill routing depends on the root managed block, but ordinary read-only commands do not silently rewrite root files. Repair of missing or stale root blocks belongs to explicit setup flows such as `init`, repeat `init` repair mode, `update`, and legacy migration.
+
+#### OpenCode Agent Generation
+
+**ID**: `cpt-studio-seq-opencode-generation`
+
+**Requirement**: `cpt-studio-fr-core-opencode`
+
+**Actors**: `cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
+
+```mermaid
+flowchart TD
+    A[User invokes generate-agents] --> B{Explicit OpenCode selection?}
+    B -- no --> C[Skip OpenCode; default targets unchanged]
+    B -- --agent opencode or --opencode --> D[Read current agents.toml registry profiles]
+    D --> E[Inspect .opencode markers and cf-*.md entries]
+    E --> F{Unmarked cf-* collision?}
+    F -- yes --> G[Preserve user file; return partial collision state]
+    F -- no --> H{Directory and file markers prove ownership?}
+    H -- yes --> I[Rebuild marker-owned cf-*.md only]
+    H -- no --> J[Create Studio marker and new native cf-*.md files]
+    I --> K[Report selected/generated state]
+    J --> K
+    G --> L[cfs agents reports partial/collision read-only]
+    K --> L
+```
+
+**Description**: The OpenCode path is opt-in and translates only current registry profiles. It reuses OpenCode's native `.agents/skills` discovery and creates no `.opencode/commands` surface. Generation writes only native Studio-owned subagent files under `.opencode/agents/`, each carrying the per-file Studio marker, and the directory marker is required for later detection or rebuild. A collision never changes the user file; the command returns a clearly attributable partial result. `cfs agents` performs the same state inspection without writing. This flow does not create or update root `AGENTS.md`, `opencode.json`, OpenCode installation state, execution state, or model/provider configuration.
 
 #### Artifact Validation
 
@@ -1346,6 +1397,7 @@ Not applicable — Studio does not use a database. All persistent state is store
 - **Project `.gitignore` managed block** — exact project-relative ignore entries for `.core/`, `.gen/`, generated agent outputs, and each concrete kit path whose `kits.<slug>.tracking = "ignored"`; entries are overwriteable generated surfaces
 - **`{cf-studio-path}/config/kits/<slug>/`** — per-kit files (conf.toml, SKILL.md, constraints.toml, artifacts/, codebase/, workflows/, scripts/) — tracked/user-editable by default and preserved via interactive diff; generated/ephemeral only when that kit's `tracking = "ignored"`
 - **`{cf-studio-path}/.gen/`** — top-level auto-generated files only (AGENTS.md, SKILL.md, README.md)
+- **`.opencode/.cf-studio-installed` and `.opencode/agents/cf-*.md`** — OpenCode-only generated surface. The directory marker and a per-file Studio marker jointly prove ownership; generated files are native subagents and no user OpenCode configuration is stored or changed here
 - **`~/.cf-studio/cache/`** — global skill bundle cache
 - **Markdown artifacts** — source of truth for design (PRD.md, DESIGN.md, etc.)
 
@@ -1478,8 +1530,9 @@ Component-level tests use fixture artifacts (synthetic Markdown files and TOML c
 - **CLI integration tests**: invoke the skill engine as a subprocess with fixture projects; verify JSON output and exit codes
 - **Kit plugin tests**: use fixture kit directories; verify resource generation, CLI subcommand registration, and migration scripts
 - **PR review tests**: mock `gh` CLI subprocess calls; verify prompt loading and report structure
+- **OpenCode compatibility tests**: use the network-free fixture at `tests/fixtures/opencode/v1.18.4/`; its attribution-preserving `compatibility.json` records the source tag/commit and evidence used by the fixture. Tests assert deterministic OpenCode agent output, marker ownership, read-only status reporting, and the partial collision result without installing or running OpenCode
 
-Test data strategy: all test fixtures are self-contained in `tests/` — no dependency on the live `architecture/` or `config/` directories. Tests verify determinism by running the same input twice and asserting identical output.
+Test data strategy: all test fixtures are self-contained in `tests/` — no dependency on the live `architecture/` or `config/` directories. Tests verify determinism by running the same input twice and asserting identical output. The OpenCode fixture is refreshed only through a deliberate update to a named OpenCode tag or commit; CI never follows `dev` automatically. Initial CI validates the fixture contract and deterministic generated output only, not a runtime OpenCode installation or execution.
 
 ### Non-Applicable Design Domains
 
@@ -1497,6 +1550,7 @@ The following design domains do not require dedicated architecture sections. Eac
 ## 5. Traceability
 
 - **PRD**: [PRD.md](./PRD.md)
+- **OpenCode requirement**: `cpt-studio-fr-core-opencode` is realized by the OpenCode design response, `cpt-studio-component-agent-generator`, `cpt-studio-constraint-opencode-owned-output`, and `cpt-studio-seq-opencode-generation`.
 - **ADRs**: [ADR/](./ADR/):
   - `cpt-studio-adr-remove-blueprint-system` — replace blueprint system with direct file package model
   - `cpt-studio-adr-python-stdlib-only` — Python 3.11+ with standard library only
@@ -1519,7 +1573,7 @@ The following design domains do not require dedicated architecture sections. Eac
 
 | Spec | File | Drives |
 |------|------|--------|
-| CLI Interface | [specs/cli.md](./specs/cli.md) | `cpt-studio-interface-cli-json`, `cpt-studio-fr-core-installer`, `cpt-studio-fr-core-init`, `cpt-studio-fr-core-cli-config` |
+| CLI Interface | [specs/cli.md](./specs/cli.md) | `cpt-studio-interface-cli-json`, `cpt-studio-fr-core-installer`, `cpt-studio-fr-core-init`, `cpt-studio-fr-core-cli-config`, `cpt-studio-fr-core-opencode` |
 | Kit Specification | [specs/kit/](./specs/kit/) | `cpt-studio-fr-core-kits`, `cpt-studio-fr-core-kit-manifest`, `cpt-studio-component-kit-manager`, `cpt-studio-component-validator` |
 | Identifiers & Traceability | [specs/traceability.md](./specs/traceability.md) | `cpt-studio-fr-core-traceability`, `cpt-studio-component-traceability-engine` |
 | CDSL | [specs/CDSL.md](./specs/CDSL.md) | `cpt-studio-fr-core-cdsl` |
