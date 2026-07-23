@@ -4,9 +4,13 @@ on:
   push:
 jobs:
   code-ranker:
-    uses: ffedoroff/code-ranker-ci/.github/workflows/report.yml@v1
+    # Pinned to an immutable commit SHA (supply-chain hardening); the trailing
+    # '# v1' comment lets Dependabot bump it and marks the tracked version.
+    uses: code-ranker-com/actions/.github/workflows/report.yml@306007e6a69049b20a125d1af15decf9713b6c5c  # v1
     permissions:
       id-token: write
       contents: read
-      pull-requests: write
+      # No pull-requests: write here — the code-ranker GitHub App posts (and
+      # updates in place) the report comment using its own installation
+      # token, not this workflow's GITHUB_TOKEN.
       security-events: write
