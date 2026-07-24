@@ -32,6 +32,7 @@ DO:
   CONTINUE CodingCiEntry WHEN KIT_WORK_DOMAIN == coding
 RULES:
   ALWAYS keep this workflow deterministic-validation-only
+  ALWAYS inherit the specialist CI workflow report_outputs contract after routing
   ALWAYS route manifest or kit-configuration validation requests to cf-kit rather than this thin prompt/doc/code CI family
   NEVER treat kit-ci as permission to author or semantically review kit assets
 ```

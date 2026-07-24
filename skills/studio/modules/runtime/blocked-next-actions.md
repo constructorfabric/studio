@@ -23,6 +23,7 @@ DO:
 RULES:
   ALWAYS derive menu options from the current blocked payload rather than workflow-local guesses
   ALWAYS preserve declaration order for missing_artifacts and suggested_next_skills when rendering menu choices
+  ALWAYS treat suggested_next_skills as an ordered list of skill IDs, with the first entry as the primary suggestion
 ```
 
 ```pdsl
@@ -39,17 +40,19 @@ RULES:
   ALWAYS include a back option
   ALWAYS include a stop option
   NEVER hide override behind prose when override is legal
-  ALWAYS assign each suggested_next_skills entry its own top-level integer option number (2, 3, 4, ...); override, back, and stop always occupy the last slots after all skill entries
+  ALWAYS assign each suggested_next_skills entry its own top-level integer option number starting at 2 in the rendered menu; override, back, and stop always occupy the next concrete integer slots after all skill entries
   ALWAYS mark the first suggested_next_skills entry as (suggested) unless a higher-priority producer is identified from missing_artifacts context
 MENU BlockedNextActionsMenu
 TITLE: This skill is blocked. Choose the next step. Reply with a number.
 OPTIONS:
   1 provide-inputs -> WAIT for the user to provide the missing artifact references, paths, or descriptors called out in missing_artifacts, then STOP_TURN
-  2..N <skill-name> (suggested for first entry) — resolves <artifact types> -> each suggested_next_skills entry occupies its own numbered option starting at 2; the rendered menu expands one entry per line in declaration order, marks the first (suggested), and the numbers continue sequentially
-  N+1 override -> WAIT for explicit override approval naming the missing artifacts to bypass, then STOP_TURN WHEN BLOCKED_NEXT_ACTION_OVERRIDE_AVAILABLE == true
-  N+2 back -> STOP_TURN and return to the nearest previous workflow-owned decision point when one exists, otherwise STOP_TURN as a safe terminal return
-  N+3 stop -> STOP_TURN
+  suggested-next-skills -> when suggested_next_skills is non-empty, render each entry as its own concrete decimal option starting at 2 in declaration order, mark the first entry as (suggested), and continue numbering sequentially before override, back, and stop
+  override -> assign the next concrete decimal option after the final suggested-next-skills entry, then WAIT for explicit override approval naming the missing artifacts or gates to bypass, plus any caller-required assumptions or manual scope, then STOP_TURN WHEN BLOCKED_NEXT_ACTION_OVERRIDE_AVAILABLE == true
+  back -> assign the next concrete decimal option after override when present, otherwise after the final suggested-next-skills entry or provide-inputs, then STOP_TURN and return to the nearest previous workflow-owned decision point when one exists, otherwise STOP_TURN as a safe terminal return
+  stop -> assign the final concrete decimal option after back, then STOP_TURN
   INVALID -> EMIT_MENU BlockedNextActionsMenu
 NOTES:
-  The option numbers 2..N are dynamic: each suggested_next_skills entry gets its own slot. override, back, and stop always follow the last skill slot. The minimum menu (no skills) is: 1 provide-inputs, 2 override (if available), 3 back, 4 stop. The OPTIONS block above uses N notation as a template; runtime must expand to concrete integers.
+  The source menu keeps only the stable `1 provide-inputs` anchor. Runtime expands `suggested-next-skills` into concrete numbered lines, then assigns concrete decimal numbers to override, back, and stop in order so every emitted option is numeric.
+  Example with two suggested skills and override available: 1 provide-inputs, 2 first suggested skill (suggested), 3 second suggested skill, 4 override, 5 back, 6 stop.
+  Example with no suggested skills and no override: 1 provide-inputs, 2 back, 3 stop.
 ```

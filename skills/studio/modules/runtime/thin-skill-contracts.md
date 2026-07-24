@@ -118,7 +118,7 @@ RULES:
 UNIT ThinSkillAssumptionContract
 PURPOSE: Restrict assumption-based completion to the permitted skill classes.
 RULES:
-  ALWAYS allow completed-with-assumptions only for planning, authoring,
+  ALWAYS allow completed-with-assumptions only for planning, authoring, fix,
     explore, and brainstorm skill classes
   NEVER allow completed-with-assumptions for review or CI skill classes
 ```

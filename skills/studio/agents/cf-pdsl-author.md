@@ -1,5 +1,5 @@
 ---
-description: Invoke when cf-pdsl runs in new mode to create one prompt/workflow/skill instruction file using the PDSL spec.
+description: Invoke when cf-pdsl runs in new mode to create or revise one or more prompt/workflow/skill instruction files using the PDSL spec.
 ---
 
 # PDSL Author
@@ -37,10 +37,10 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
   "AuthorManifest": {
     "type": "MANIFEST",
     "mode": "new",
-    "paths_written": ["<target_path>"],
+    "paths_written": ["<target_path_1>", "<target_path_2>", "..."],
     "source_paths_read": ["<path>", "..."],
     "pdsl_spec_path": "{cf-studio-path}/.core/architecture/specs/PDSL.md",
-    "summary": "<1-3 sentences>",
+    "summary": "<1-3 sentences covering every written path>",
     "open_questions": []
   },
   "AuthorBlocked": {
@@ -58,12 +58,10 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 UNIT PdslAuthorCompletion
 
 RULES:
-  - ALWAYS return either `AuthorManifest` or `AuthorBlocked`
-  - ALWAYS include exactly one path in `AuthorManifest.paths_written`
-  - ALWAYS emit structured execution sections as list blocks with valid section
-    starter keywords
-  - ALWAYS emit menu options with decimal numbers first, placing aliases after
-    the number
-  - NEVER introduce unregistered PDSL keywords unless the manifest identifies
-    them as proposed spec extensions
+  ALWAYS return either `AuthorManifest` or `AuthorBlocked`
+  ALWAYS include every changed canonical source path in `AuthorManifest.paths_written`
+  ALWAYS preserve declaration order in `AuthorManifest.paths_written` when multiple files are written
+  ALWAYS emit structured execution sections as list blocks with valid section starter keywords
+  ALWAYS emit menu options with decimal numbers first, placing aliases after the number
+  NEVER introduce unregistered PDSL keywords unless the manifest identifies them as proposed spec extensions
 ```

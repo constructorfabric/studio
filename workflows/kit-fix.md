@@ -35,9 +35,9 @@ DO:
   LOAD {cf-studio-path}/.core/workflows/coding-fix.md as the controlling kit code-fix workflow WHEN KIT_WORK_DOMAIN == coding
   CONTINUE CodingFixBootstrap WHEN KIT_WORK_DOMAIN == coding
 RULES:
-  - ALWAYS require explicit review findings before applying fixes
-  - ALWAYS route fixes to the prompt, document, or code specialist workflow that matches the kit asset type
-  - ALWAYS route manifest or kit-configuration fix requests to cf-kit rather than this thin prompt/doc/code fix family
-  - ALWAYS block mixed-domain fix requests until the user scopes them or route them through cf-kit-planning
-  - NEVER run semantic review from kit-fix
+  ALWAYS inherit the specialist fix workflow prerequisite and override behavior after routing
+  ALWAYS route fixes to the prompt, document, or code specialist workflow that matches the kit asset type
+  ALWAYS route manifest or kit-configuration fix requests to cf-kit rather than this thin prompt/doc/code fix family
+  ALWAYS block mixed-domain fix requests until the user scopes them or route them through cf-kit-planning
+  NEVER run semantic review from kit-fix
 ```

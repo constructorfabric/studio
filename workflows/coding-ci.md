@@ -10,7 +10,7 @@ purpose: Run deterministic validation for code changes without owning authoring 
 # cf-coding-ci
 
 This workflow is a thin entrypoint for deterministic code validation. It
-produces deterministic-report or ci-findings outputs.
+always produces deterministic-report and ci-findings report outputs.
 
 ```pdsl
 UNIT CodingCiEntry
@@ -21,6 +21,11 @@ STATE:
   SET GATE_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
   SET CI_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
+  SET FINDINGS_REPORT_TYPE: review-findings | ci-findings | other | unset (default unset, scope workflow_run)
+  SET FINDINGS_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
+  SET FINDINGS: list | unset (default unset, scope workflow_run)
+  SET FINDINGS_REPORT_REF: ref | unset (default unset, scope workflow_run)
+  SET report_outputs: list | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   RUN WorkflowBootstrapRouterPrelude
@@ -42,10 +47,20 @@ DO:
   SET GATE_STATUS = fail WHEN any gate reports failures or errors
   SET GATE_STATUS = pass WHEN every applicable gate passes
   SET GATE_STATUS = not-run WHEN no applicable gate commands were resolved or executed
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/findings-render.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/ci-report-render.md
   SET CI_RESULT_STATUS = completed WHEN GATE_STATUS == pass
   SET CI_RESULT_STATUS = failed WHEN GATE_STATUS == fail
   SET CI_RESULT_STATUS = blocked WHEN GATE_STATUS == not-run
+  SET FINDINGS_REPORT_TYPE = ci-findings
+  SET FINDINGS_RESULT_STATUS = completed WHEN CI_RESULT_STATUS == completed
+  SET FINDINGS_RESULT_STATUS = failed WHEN CI_RESULT_STATUS == failed
+  SET FINDINGS_RESULT_STATUS = blocked WHEN CI_RESULT_STATUS == blocked
+  SET FINDINGS = normalized CI findings from the executed gate results
+  SET FINDINGS = [] WHEN FINDINGS == unset
+  SET FINDINGS_REPORT_REF = a stable ci-findings report ref derived from the current deterministic gate run
+  RUN FindingsRenderContract
+  SET report_outputs = deterministic-report describing the executed or skipped deterministic gate plus report_outputs from FINDINGS_REPORT
   RUN CiReportRenderContract
   EMIT the gate results
   RUN NextActionsOffer
