@@ -17,7 +17,7 @@ UNIT AssumptionOverrideEligibilityContract
 PURPOSE: Restrict override eligibility to the allowed thin-skill classes.
 RULES:
   ALWAYS require SKILL_CLASS and OVERRIDE_ALLOWED to be known before an override path is offered or accepted
-  ALWAYS allow override eligibility only when SKILL_CLASS is planning, authoring, explore, or brainstorm and OVERRIDE_ALLOWED == true
+  ALWAYS allow override eligibility only when SKILL_CLASS is planning, authoring, fix, explore, or brainstorm and OVERRIDE_ALLOWED == true
   ALWAYS reject override eligibility when SKILL_CLASS is review or ci
   NEVER advertise a hidden or implicit override path for an ineligible skill class
 ```
@@ -37,7 +37,7 @@ UNIT AssumptionOverrideCompletionContract
 PURPOSE: Bind explicit override usage to canonical completion semantics.
 RULES:
   ALWAYS use status = completed-with-assumptions when degraded execution completes under an active override
-  ALWAYS record each assumption with summary and risk
+  ALWAYS record each assumption with artifact_or_gate, summary, and risk
   ALWAYS keep missing_artifacts visible or otherwise traceable until the skill produces replacement artifacts or exits
   NEVER emit status = completed when degraded execution materially depended on unresolved assumptions
 ```

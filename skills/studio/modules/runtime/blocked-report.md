@@ -6,6 +6,7 @@ PURPOSE: Define the canonical blocked result envelope for thin standalone skills
 DO:
   RUN BlockedReportEnvelopeContract
   RUN BlockedReportSuggestedNextSkillsContract
+  EMIT a blocked SKILL_RESULT envelope with type = SKILL_RESULT, skill = the active standalone skill, status = blocked, produced_artifacts = [], report_outputs = [], missing_artifacts = missing_artifacts when present otherwise [], assumptions = [], and suggested_next_skills = suggested_next_skills when present otherwise []
   RUN BlockedReportNextActionsContract
   STOP_TURN
 RULES:
@@ -20,8 +21,10 @@ RULES:
   ALWAYS emit type = SKILL_RESULT, skill, and status = blocked
   ALWAYS emit produced_artifacts = [], report_outputs = [], and assumptions = [] in a blocked result unless another canonical contract explicitly supplies non-empty collections
   ALWAYS emit missing_artifacts as a list of entries containing artifact_type, why_needed, accepted_shapes, suggested_producers, override_allowed, and override_summary when present
-  ALWAYS emit suggested_next_skills as a top-level list even when it is empty
+  ALWAYS treat missing_artifacts[].artifact_type as the canonical artifact_or_gate alias for blocked prerequisite entries
+  ALWAYS emit suggested_next_skills as a top-level ordered list of skill IDs even when it is empty
   ALWAYS keep override_allowed explicit for every missing_artifacts entry
+  ALWAYS keep blocked prerequisites machine-readable so a later explicit override can name the exact artifact_or_gate entries being bypassed
   NEVER omit missing_artifacts or suggested_next_skills from a blocked result envelope
 ```
 
@@ -29,8 +32,10 @@ RULES:
 UNIT BlockedReportSuggestedNextSkillsContract
 PURPOSE: Keep blocked next-step suggestions visible and machine-readable.
 RULES:
-  ALWAYS derive suggested_next_skills from the explicit next-step list chosen by the caller or from the union of missing_artifacts[].suggested_producers
+  ALWAYS preserve the caller's explicit suggested_next_skills list exactly, including order and primary recommendation, WHEN the caller supplied suggested_next_skills
+  ALWAYS derive suggested_next_skills as an ordered list of skill IDs from the union of missing_artifacts[].suggested_producers only WHEN the caller did not supply suggested_next_skills
   ALWAYS keep suggested_next_skills separate from missing_artifacts[].suggested_producers so callers can offer a curated subset when needed
+  ALWAYS treat the first suggested_next_skills entry as the primary recommendation
   ALWAYS treat suggested_next_skills as suggestions only
   NEVER auto-route or auto-run a suggested next skill from blocked-report
 ```
@@ -44,5 +49,6 @@ DO:
 RULES:
   ALWAYS pair blocked envelopes with a clear next-actions menu when the blocked result is being returned to the user
   NEVER leave blocked recovery paths implied only by prose
-  ALWAYS derive a primary_suggested_producer as the single top-level recommendation from the union of missing_artifacts[].suggested_producers that most efficiently resolves the most missing artifacts in one step; surface it as the first item in suggested_next_skills with a one-line description
+  ALWAYS treat the first suggested_next_skills entry as the primary recommendation when the caller supplied an explicit ordered list with at least one entry
+  ALWAYS derive a primary_suggested_producer as the single top-level recommendation from the union of missing_artifacts[].suggested_producers that most efficiently resolves the most missing artifacts in one step only when the caller did not supply suggested_next_skills; surface it as the first derived skill ID
 ```

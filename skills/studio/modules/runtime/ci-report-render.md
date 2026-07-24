@@ -43,7 +43,9 @@ PURPOSE: Define the machine-readable CI report_outputs payload.
 RULES:
   ALWAYS represent each report_outputs entry with report_type, ref, and summary
   ALWAYS allow report_type values deterministic-report and ci-findings in this contract
-  ALWAYS require at least one report_outputs entry when CI_RESULT_STATUS is completed or failed
+  ALWAYS require both deterministic-report and ci-findings report_outputs entries when CI_RESULT_STATUS is completed, failed, or blocked
+  ALWAYS require the ci-findings entry even when it is an empty zero-count report
   ALWAYS keep report_outputs deterministic with respect to the supplied command results and report refs
+  NEVER accept a terminal CI result that omits deterministic-report or ci-findings
   NEVER require a specific executor, validator, or workflow path to populate report_outputs
 ```

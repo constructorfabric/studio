@@ -21,6 +21,10 @@ STATE:
   SET GATE_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
   SET VALIDATION_STATUS: pass | fail | not-run | unset (default unset, scope workflow_run)
   SET CI_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
+  SET FINDINGS_REPORT_TYPE: review-findings | ci-findings | other | unset (default unset, scope workflow_run)
+  SET FINDINGS_RESULT_STATUS: completed | failed | blocked | unset (default unset, scope workflow_run)
+  SET FINDINGS: list | unset (default unset, scope workflow_run)
+  SET FINDINGS_REPORT_REF: ref | unset (default unset, scope workflow_run)
   SET report_outputs: list | unset (default unset, scope workflow_run)
   SET NEXT_ACTION_PINNED_SKILL: cf-skill-name | unset (default unset, scope workflow_run)
   SET NEXT_ACTION_PAYLOAD: object | unset (default unset, scope workflow_run)
@@ -46,11 +50,20 @@ DO:
   SET VALIDATION_STATUS = pass WHEN GATE_STATUS == pass
   SET VALIDATION_STATUS = fail WHEN GATE_STATUS == fail
   SET VALIDATION_STATUS = not-run WHEN GATE_STATUS == not-run
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/findings-render.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/ci-report-render.md
   SET CI_RESULT_STATUS = completed WHEN GATE_STATUS == pass
   SET CI_RESULT_STATUS = failed WHEN GATE_STATUS == fail
   SET CI_RESULT_STATUS = blocked WHEN GATE_STATUS == not-run
-  SET report_outputs = deterministic-report and ci-findings entries for the PDSL validation command, REVIEW_TARGET_PATHS, error count, warning count, and GATE_STATUS WHEN CI_RESULT_STATUS == completed OR CI_RESULT_STATUS == failed
+  SET FINDINGS_REPORT_TYPE = ci-findings
+  SET FINDINGS_RESULT_STATUS = completed WHEN CI_RESULT_STATUS == completed
+  SET FINDINGS_RESULT_STATUS = failed WHEN CI_RESULT_STATUS == failed
+  SET FINDINGS_RESULT_STATUS = blocked WHEN CI_RESULT_STATUS == blocked
+  SET FINDINGS = normalized CI findings from the executed validation results
+  SET FINDINGS = [] WHEN FINDINGS == unset
+  SET FINDINGS_REPORT_REF = a stable ci-findings report ref derived from the current deterministic validation run
+  RUN FindingsRenderContract
+  SET report_outputs = one entry with report_type = deterministic-report, ref = a stable deterministic-report ref derived from the current deterministic validation run, and summary = a deterministic summary of the executed or skipped PDSL validation gate, plus the current top-level report_outputs after FindingsRenderContract
   RUN CiReportRenderContract
   EMIT the validation findings
   SET NEXT_ACTION_PINNED_SKILL = cf-prompting-review
