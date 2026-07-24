@@ -1,7 +1,7 @@
 # Constructor Studio pinned cfs version
 [cfs]
-version = "v1.6.1"
-requested_ref = "v1.6.1"
+version = "v1.6.2"
+requested_ref = "v1.6.2"
 source_type = "github"
 canonical_source = "https://api.github.com/repos/constructorfabric/studio"
 effective_source = "https://api.github.com/repos/constructorfabric/studio"
