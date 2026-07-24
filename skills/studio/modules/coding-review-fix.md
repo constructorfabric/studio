@@ -40,10 +40,11 @@ WHEN:
   REQUIRE edits have been applied to the code OR REVIEW_LOOP_REQUESTED == true
 DO:
   RUN verify the returned fix manifest accounts for every APPROVED_REVIEW_FINDING_IDS entry as applied or not-fixable; SET REVIEW_FIXES_APPLIED = true WHEN one or more approved fixes changed code; SET REVIEW_FIXES_APPLIED = false WHEN no code changed; SET REVIEW_FINDINGS_REMAINING = count of findings not yet resolved after this fix iteration from the returned fix manifest or an explicit post-fix resolution payload
-  CONTINUE CodingReviewFixOutcomeRemainingFindings WHEN REVIEW_FINDINGS_REMAINING != 0
+  CONTINUE CodingReviewFixOutcomeRemainingFindings WHEN REVIEW_FINDINGS_REMAINING != unset AND REVIEW_FINDINGS_REMAINING != 0
   CONTINUE CodingReviewFixOutcomeDeterministicBlockers WHEN REVIEW_FINDINGS_REMAINING == 0 AND GATE_STATUS == fail
   CONTINUE CodingReviewFixOutcomeManualVerification WHEN REVIEW_FINDINGS_REMAINING == 0 AND (GATE_STATUS == unset OR GATE_STATUS == not-run)
   CONTINUE CodingReviewOrFixComplete WHEN REVIEW_FINDINGS_REMAINING == 0 AND GATE_STATUS == pass
+  CONTINUE CodingReviewFixOutcomeManualVerification WHEN REVIEW_FINDINGS_REMAINING == unset
 RULES:
   NEVER re-loop the review after an iteration with no applied fixes
   ALWAYS run NextActionsOffer before returning control to the user on any non-continuation path
@@ -71,10 +72,10 @@ DO:
 
 ```pdsl
 UNIT CodingReviewFixOutcomeManualVerification
-PURPOSE: Return control when no findings remain but no deterministic gate ran.
+PURPOSE: Return control when remaining findings or deterministic validation could not be verified.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
-  EMIT "No findings remain, but deterministic validation did not produce a passing gate result. Manual verification recommended."
+  EMIT "Remaining findings or deterministic validation could not be verified. Manual verification recommended."
   RUN NextActionsOffer with cf-coding-ci marked (suggested)
   STOP_TURN
 ```
