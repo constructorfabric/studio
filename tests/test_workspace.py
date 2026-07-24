@@ -16,7 +16,7 @@ import argparse
 import json
 import pytest
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
@@ -69,7 +69,9 @@ from studio.commands.workspace_init import (
     _scan_nested_repos,
     _write_standalone,
     _write_inline,
+    _write_workspace_config,
     _check_existing_workspace,
+    _workspace_hint_path,
     _human_workspace_init,
     cmd_workspace_init,
 )
@@ -2198,6 +2200,7 @@ class TestCmdWorkspaceInitConflictGuard:
         with TemporaryDirectory() as tmpdir:
             mock_ws = MagicMock()
             mock_ws.is_inline = is_inline
+            mock_ws.is_legacy_fallback = False
             mock_ws.workspace_file = Path(tmpdir) / ".cf-constructor-workspace.toml"
             root = Path(tmpdir)
             with patch("studio.utils.files.find_project_root", return_value=root):
@@ -2765,6 +2768,81 @@ class TestWorkspaceAddHelpers:
         assert err is None
         assert ws["version"] == "1.0"
         assert ws["sources"] == {}
+
+
+class TestWorkspaceInitHints:
+    def test_workspace_hint_path_uses_forward_slashes_for_windows_relative_paths(self):
+        project_root = PureWindowsPath("C:/repo")
+        output_path = PureWindowsPath("C:/repo/generated/custom-workspace.toml")
+
+        hint_path = _workspace_hint_path(project_root, output_path)
+
+        assert hint_path == "generated/custom-workspace.toml"
+        assert "\\" not in hint_path
+        parsed = toml_utils.loads(f'workspace = "{hint_path}"\n')
+        assert parsed["workspace"] == hint_path
+
+    def test_write_workspace_config_keeps_legacy_marker_for_different_scan_root_default_output(self):
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir) / "project-root"
+            scan_root = project_root / "nested"
+            project_root.mkdir(parents=True, exist_ok=True)
+            scan_root.mkdir(parents=True, exist_ok=True)
+            legacy_path = project_root / ".studio-workspace.toml"
+            legacy_path.write_text('version = "1.0"\n[sources]\n', encoding="utf-8")
+            existing_ws = WorkspaceConfig(
+                workspace_file=legacy_path.resolve(),
+                is_legacy_fallback=True,
+            )
+
+            exit_code, data = _write_workspace_config(
+                False,
+                None,
+                project_root,
+                scan_root,
+                {"version": "1.0", "sources": {}},
+                existing_ws,
+            )
+
+            assert exit_code == 0
+            assert data["status"] == "CREATED"
+            assert legacy_path.is_file()
+            assert (scan_root / ".cf-workspace.toml").is_file()
+
+    def test_write_workspace_config_rolls_back_canonical_when_legacy_cleanup_fails(self):
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            legacy_path = project_root / ".studio-workspace.toml"
+            canonical_path = project_root / ".cf-workspace.toml"
+            legacy_path.write_text('version = "1.0"\n[sources]\n', encoding="utf-8")
+            existing_ws = WorkspaceConfig(
+                workspace_file=legacy_path.resolve(),
+                is_legacy_fallback=True,
+            )
+            original_unlink = Path.unlink
+
+            with patch.object(Path, "unlink", autospec=True) as unlink_mock:
+                def _unlink_side_effect(path_obj):
+                    if path_obj == legacy_path.resolve():
+                        raise OSError("legacy locked")
+                    return original_unlink(path_obj)
+
+                unlink_mock.side_effect = _unlink_side_effect
+                exit_code, data = _write_workspace_config(
+                    False,
+                    str(canonical_path),
+                    project_root,
+                    project_root,
+                    {"version": "1.0", "sources": {}},
+                    existing_ws,
+                )
+
+            assert exit_code == 1
+            assert data["status"] == "ERROR"
+            assert "legacy locked" in data["message"]
+            assert "rolled back" in data["message"]
+            assert legacy_path.is_file()
+            assert not canonical_path.exists()
 
     def test_resolve_inline_workspace_rejects_malformed_workspace_type(self):
         ws, err = _resolve_inline_workspace({"workspace": []})

@@ -8,10 +8,13 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ..utils.stderr_logging import emit_stderr_message
 from ..utils.ui import ui
+
+if TYPE_CHECKING:
+    from ..utils.workspace import WorkspaceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -287,37 +290,91 @@ def _resolve_output_dir(args: argparse.Namespace, scan_root: Path, project_root:
     return scan_root
 
 
-def _check_existing_workspace(project_root: Path, *, inline: bool, force: bool) -> Optional[str]:
-    """Check for existing workspace config conflicts. Returns error message or None."""
+def _check_existing_workspace(
+    project_root: Path, *, inline: bool, force: bool
+) -> Tuple[Optional["WorkspaceConfig"], Optional[str]]:
+    """Check for existing workspace config conflicts. Returns (workspace_config, error)."""
     from ..utils.workspace import find_workspace_config as _find_ws
 
     existing_ws, ws_err = _find_ws(project_root)
     if existing_ws is None:
         if ws_err:
-            return f"Existing workspace config is broken: {ws_err}. Fix or remove it before reinitializing."
-        return None
+            return None, (
+                f"Existing workspace config is broken: {ws_err}. "
+                "Fix or remove it before reinitializing."
+            )
+        return None, None
 
     if existing_ws.is_legacy_fallback:
         _emit_stderr(f"WARNING: {_LEGACY_WORKSPACE_WARNING}\n")
 
     if inline and not existing_ws.is_inline:
-        return (
+        return existing_ws, (
             f"Standalone workspace already exists at {existing_ws.workspace_file}. "
             "Cannot create inline workspace — this would create parallel configs. "
             "Delete the standalone file first, then retry with --inline."
         )
     if not inline and existing_ws.is_inline:
-        return (
+        return existing_ws, (
             "Inline workspace already exists in core.toml. "
             "Cannot create standalone workspace — this would create parallel configs. "
             "Remove the [workspace] section from core.toml first, then retry."
         )
     if not force:
         config_loc = "core.toml" if existing_ws.is_inline else str(existing_ws.workspace_file)
-        return (
+        return existing_ws, (
             f"Workspace already exists ({config_loc}). "
             "Use --force to reinitialize (this will overwrite existing workspace config)."
         )
+    return existing_ws, None
+
+
+def _workspace_hint_path(project_root: Path, output_path: Path) -> str:
+    """Format a workspace path for the config/core.toml workspace hint."""
+    rel = output_path.relative_to(project_root) if output_path.is_relative_to(project_root) else output_path
+    return rel.as_posix()
+
+
+def _replace_legacy_workspace_marker(
+    canonical_path: Path,
+    workspace_data: dict,
+    existing_ws: Optional["WorkspaceConfig"],
+    canonical_filename: str,
+) -> Optional[dict]:
+    """Replace automatic legacy fallback marker when writing its canonical sibling."""
+    if (
+        existing_ws is None
+        or not existing_ws.is_legacy_fallback
+        or existing_ws.workspace_file is None
+    ):
+        return None
+    legacy_path = existing_ws.workspace_file.resolve()
+    if canonical_path != legacy_path.with_name(canonical_filename):
+        return None
+    try:
+        legacy_path.unlink()
+    except OSError as exc:
+        rollback_exc = None
+        try:
+            canonical_path.unlink()
+        except OSError as rollback_error:
+            rollback_exc = rollback_error
+        rollback_suffix = (
+            f" Rollback also failed for {canonical_path}: {rollback_exc}."
+            if rollback_exc is not None
+            else f" The new canonical marker at {canonical_path} was rolled back."
+        )
+        return {
+            "status": "ERROR",
+            "message": (
+                f"Failed to replace legacy automatic fallback marker {legacy_path}: {exc}."
+                f"{rollback_suffix} Resolve the marker collision before retrying."
+            ),
+            "config_path": str(canonical_path),
+            "workspace": workspace_data,
+            "sources_count": len(workspace_data.get("sources", {})),
+            "sources": list(workspace_data.get("sources", {}).keys()),
+        }
     return None
 
 # @cpt-flow:cpt-studio-flow-workspace-init:p1
@@ -352,6 +409,7 @@ def _write_workspace_config(
     project_root: Path,
     scan_root: Path,
     workspace_data: dict,
+    existing_ws: Optional["WorkspaceConfig"] = None,
 ) -> tuple:
     """Execute workspace write (inline or standalone). Returns (exit_code, data)."""
     from ..constants import WORKSPACE_CONFIG_FILENAME
@@ -368,11 +426,21 @@ def _write_workspace_config(
     # @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-reinit-standalone
     output_path = Path(output_arg).resolve() if output_arg else (scan_root / WORKSPACE_CONFIG_FILENAME)
     exit_code, data = _write_standalone(output_path, workspace_data)
-    if output_arg and not exit_code:
-        rel = output_path.relative_to(project_root) if output_path.is_relative_to(project_root) else output_path
+    canonical_path = output_path.resolve()
+    if not exit_code:
+        replace_error = _replace_legacy_workspace_marker(
+            canonical_path,
+            workspace_data,
+            existing_ws,
+            WORKSPACE_CONFIG_FILENAME,
+        )
+        if replace_error is not None:
+            return 1, replace_error
+    project_root_canonical_path = (project_root / WORKSPACE_CONFIG_FILENAME).resolve()
+    if output_arg and not exit_code and canonical_path != project_root_canonical_path:
         data["hint"] = (
             "Custom output path used. Automatic discovery requires "
-            f'workspace = "{rel}" in config/core.toml.'
+            f'workspace = "{_workspace_hint_path(project_root, output_path)}" in config/core.toml.'
         )
     # @cpt-end:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-reinit-standalone
     # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-else-standalone
@@ -475,14 +543,14 @@ def cmd_workspace_init(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-if-existing-ws
     # Check for existing workspace — prevent parallel configs and accidental overwrites
-    conflict_err = _check_existing_workspace(project_root, inline=args.inline, force=args.force)
+    existing_ws, conflict_err = _check_existing_workspace(project_root, inline=args.inline, force=args.force)
     if conflict_err:
         ui.result({"status": "ERROR", "message": conflict_err})
         return 1
     # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-if-existing-ws
 
     exit_code, data = _write_workspace_config(
-        args.inline, args.output, project_root, scan_root, workspace_data,
+        args.inline, args.output, project_root, scan_root, workspace_data, existing_ws,
     )
 
     # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-return-init-ok
