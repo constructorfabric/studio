@@ -24,6 +24,7 @@ STATE:
   SET REVIEW_FIX_APPROVED: true | false | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
   SET REVIEW_TARGET_SLICES: list | unset (default unset, scope workflow_run)
+  SET GATE_STATUS: pass | fail | not-run | unset (default unset, scope workflow_run)
   SET SKILL_CLASS: planning | authoring | fix | explore | brainstorm | review | ci | unset (default unset, scope workflow_run)
   SET OVERRIDE_ALLOWED: true | false | unset (default unset, scope workflow_run)
   SET OVERRIDE_REQUESTED: explicit-user-approval | unset (default unset, scope workflow_run)
@@ -47,6 +48,7 @@ DO:
   SET REVIEW_FIX_APPROVED = REVIEW_FIX_APPROVED from NEXT_ACTION_PAYLOAD WHEN REVIEW_FIX_APPROVED == unset AND NEXT_ACTION_PAYLOAD contains REVIEW_FIX_APPROVED
   SET REVIEW_TARGET_PATHS = REVIEW_TARGET_PATHS from NEXT_ACTION_PAYLOAD WHEN REVIEW_TARGET_PATHS == unset AND NEXT_ACTION_PAYLOAD contains REVIEW_TARGET_PATHS
   SET REVIEW_TARGET_SLICES = REVIEW_TARGET_SLICES from NEXT_ACTION_PAYLOAD WHEN REVIEW_TARGET_SLICES == unset AND NEXT_ACTION_PAYLOAD contains REVIEW_TARGET_SLICES
+  SET GATE_STATUS = GATE_STATUS from NEXT_ACTION_PAYLOAD WHEN GATE_STATUS == unset AND NEXT_ACTION_PAYLOAD contains GATE_STATUS
   SET OVERRIDE_REQUESTED = OVERRIDE_REQUESTED from NEXT_ACTION_PAYLOAD WHEN OVERRIDE_REQUESTED == unset AND NEXT_ACTION_PAYLOAD contains OVERRIDE_REQUESTED
   SET ASSUMPTIONS = ASSUMPTIONS from NEXT_ACTION_PAYLOAD WHEN ASSUMPTIONS == unset AND NEXT_ACTION_PAYLOAD contains ASSUMPTIONS
   SET REVIEW_TARGET_SLICES = full-file slices for every REVIEW_TARGET_PATHS entry WHEN REVIEW_TARGET_PATHS != unset AND REVIEW_TARGET_SLICES == unset
@@ -56,8 +58,8 @@ DO:
   SET REVIEW_FINDINGS_REPORT_STATE = supported WHEN ReviewFindingsReport contains findings AND ReviewFindingsReport.findings is a list AND REVIEW_FINDINGS_REMAINING != unset
   SET REVIEW_FINDINGS_REPORT_STATE = supported WHEN ReviewFindingsReport is a list AND REVIEW_FINDINGS_REMAINING != unset
   SET REVIEW_FINDINGS_REPORT_STATE = unsupported WHEN ReviewFindingsReport != unset AND REVIEW_FINDINGS_REPORT_STATE == unset
-  SET missing_artifacts = review-findings with why_needed "A findings report keeps code-fix scope reviewable; override only when you are explicitly accepting manual degraded fix scope", accepted_shapes findings-report or findings-list, suggested_producers cf-coding-review, override_allowed true, override_summary "Explicit user approval may bypass the missing or unsupported findings report for a manually scoped degraded fix run"; relevant-files-map with why_needed "Concrete target paths are required to keep code edits bounded", accepted_shapes path-map or path-list, suggested_producers cf-coding-review and cf-explore, override_allowed false WHEN (REVIEW_FINDINGS_REPORT_STATE == missing OR REVIEW_FINDINGS_REPORT_STATE == unsupported OR REVIEW_FINDINGS_REMAINING == 0) AND REVIEW_TARGET_PATHS == unset
-  SET missing_artifacts = review-findings with why_needed "A findings report keeps code-fix scope reviewable; override only when you are explicitly accepting manual degraded fix scope", accepted_shapes findings-report or findings-list, suggested_producers cf-coding-review, override_allowed true, override_summary "Explicit user approval may bypass the missing or unsupported findings report for a manually scoped degraded fix run" WHEN (REVIEW_FINDINGS_REPORT_STATE == missing OR REVIEW_FINDINGS_REPORT_STATE == unsupported OR REVIEW_FINDINGS_REMAINING == 0) AND REVIEW_TARGET_PATHS != unset
+  SET missing_artifacts = review-findings with why_needed "A findings report keeps code-fix scope reviewable; override only when you are explicitly accepting manual degraded fix scope", accepted_shapes findings-report or findings-list, suggested_producers cf-coding-review, override_allowed true, override_summary "Explicit user approval may bypass the missing or unsupported findings report for a manually scoped degraded fix run"; relevant-files-map with why_needed "Concrete target paths are required to keep code edits bounded", accepted_shapes path-map or path-list, suggested_producers cf-coding-review and cf-explore, override_allowed false WHEN (REVIEW_FINDINGS_REPORT_STATE == missing OR REVIEW_FINDINGS_REPORT_STATE == unsupported) AND REVIEW_TARGET_PATHS == unset
+  SET missing_artifacts = review-findings with why_needed "A findings report keeps code-fix scope reviewable; override only when you are explicitly accepting manual degraded fix scope", accepted_shapes findings-report or findings-list, suggested_producers cf-coding-review, override_allowed true, override_summary "Explicit user approval may bypass the missing or unsupported findings report for a manually scoped degraded fix run" WHEN (REVIEW_FINDINGS_REPORT_STATE == missing OR REVIEW_FINDINGS_REPORT_STATE == unsupported) AND REVIEW_TARGET_PATHS != unset
   SET missing_artifacts = relevant-files-map with why_needed "Concrete target paths are required to keep code edits bounded", accepted_shapes path-map or path-list, suggested_producers cf-coding-review and cf-explore, override_allowed false WHEN REVIEW_TARGET_PATHS == unset AND REVIEW_FINDINGS_REPORT_STATE == supported AND REVIEW_FINDINGS_REMAINING != 0
   SET OVERRIDE_ALLOWED = true WHEN missing_artifacts != unset AND one or more missing_artifacts entries declare override_allowed == true
   SET OVERRIDE_ALLOWED = false WHEN OVERRIDE_ALLOWED == unset
@@ -73,6 +75,7 @@ DO:
 RULES:
   ALWAYS require explicit review findings before applying code fixes unless the user explicitly approved a degraded override for the missing or unsupported findings gate
   ALWAYS hydrate ReviewFindingsReport, approved finding IDs, fix scope, approval state, target paths, and target slices from NEXT_ACTION_PAYLOAD before checking for missing findings or missing target scope
+  ALWAYS keep GATE_STATUS explicit when a prior deterministic validation handoff supplied it, and NEVER treat an unset or not-run gate as equivalent to pass
   ALWAYS classify ReviewFindingsReport as supported, unsupported, or missing before deciding whether degraded override is legal
   NEVER run semantic review from coding-fix
   ALWAYS block missing target paths through the shared blocked-report contract

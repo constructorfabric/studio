@@ -63,7 +63,7 @@ DO:
   SET FINDINGS = [] WHEN FINDINGS == unset
   SET FINDINGS_REPORT_REF = a stable ci-findings report ref derived from the current deterministic validation run
   RUN FindingsRenderContract
-  SET report_outputs = deterministic-report describing the executed or skipped PDSL validation gate plus report_outputs from FINDINGS_REPORT
+  SET report_outputs = one entry with report_type = deterministic-report, ref = a stable deterministic-report ref derived from the current deterministic validation run, and summary = a deterministic summary of the executed or skipped PDSL validation gate, plus the current top-level report_outputs after FindingsRenderContract
   RUN CiReportRenderContract
   EMIT the validation findings
   SET NEXT_ACTION_PINNED_SKILL = cf-prompting-review

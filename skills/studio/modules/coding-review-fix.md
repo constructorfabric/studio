@@ -35,15 +35,15 @@ UNIT CodingReviewFixOutcome
 PURPOSE: Verify fix application, prevent no-spin loops, and route to validation or completion.
 STATE:
   SET REVIEW_FIXES_APPLIED: true | false | unset (default unset, scope workflow_run)
+  SET REVIEW_FINDINGS_REMAINING: integer | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE edits have been applied to the code OR REVIEW_LOOP_REQUESTED == true
 DO:
-  RUN verify the returned fix manifest accounts for every APPROVED_REVIEW_FINDING_IDS entry as applied or not-fixable; SET REVIEW_FIXES_APPLIED = true WHEN one or more approved fixes changed code; SET REVIEW_FIXES_APPLIED = false WHEN no code changed
-  CONTINUE CodingReviewOrFixComplete WHEN REVIEW_FIXES_APPLIED == true
-  CONTINUE CodingReviewFixOutcomeRemainingFindings WHEN REVIEW_FIXES_APPLIED == false AND REVIEW_FINDINGS_REMAINING != 0
+  RUN verify the returned fix manifest accounts for every APPROVED_REVIEW_FINDING_IDS entry as applied or not-fixable; SET REVIEW_FIXES_APPLIED = true WHEN one or more approved fixes changed code; SET REVIEW_FIXES_APPLIED = false WHEN no code changed; SET REVIEW_FINDINGS_REMAINING = count of findings not yet resolved after this fix iteration from the returned fix manifest or an explicit post-fix resolution payload
+  CONTINUE CodingReviewFixOutcomeRemainingFindings WHEN REVIEW_FINDINGS_REMAINING != 0
   CONTINUE CodingReviewFixOutcomeDeterministicBlockers WHEN REVIEW_FINDINGS_REMAINING == 0 AND GATE_STATUS == fail
-  CONTINUE CodingReviewOrFixComplete WHEN no review findings remain AND GATE_STATUS != fail AND (REVIEW_LOOP_REQUESTED == true OR GATE_STATUS == pass)
-  CONTINUE CodingReviewFixOutcomeManualVerification WHEN REVIEW_FIXES_APPLIED == false AND REVIEW_FINDINGS_REMAINING == 0 AND GATE_STATUS == unset
+  CONTINUE CodingReviewFixOutcomeManualVerification WHEN REVIEW_FINDINGS_REMAINING == 0 AND (GATE_STATUS == unset OR GATE_STATUS == not-run)
+  CONTINUE CodingReviewOrFixComplete WHEN REVIEW_FINDINGS_REMAINING == 0 AND GATE_STATUS == pass
 RULES:
   NEVER re-loop the review after an iteration with no applied fixes
   ALWAYS run NextActionsOffer before returning control to the user on any non-continuation path
@@ -74,14 +74,17 @@ UNIT CodingReviewFixOutcomeManualVerification
 PURPOSE: Return control when no findings remain but no deterministic gate ran.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
-  EMIT "No findings remain and no gate ran - manual verification recommended."
+  EMIT "No findings remain, but deterministic validation did not produce a passing gate result. Manual verification recommended."
   RUN NextActionsOffer with cf-coding-ci marked (suggested)
   STOP_TURN
 ```
 
 ```pdsl
 UNIT CodingReviewOrFixComplete
-PURPOSE: Shared terminal unit for the code review and code fix completion paths.
+PURPOSE: Shared terminal unit for the code review and code fix completion paths after deterministic validation passes.
+WHEN:
+  REQUIRE REVIEW_FINDINGS_REMAINING == 0
+  REQUIRE GATE_STATUS == pass
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded
   EMIT a completed-with-assumptions code-fix result with remaining findings count, applied-fix scope, and ASSUMPTIONS WHEN FIX_PREREQUISITE_OVERRIDE_ACTIVE == true

@@ -60,7 +60,7 @@ DO:
   SET FINDINGS = [] WHEN FINDINGS == unset
   SET FINDINGS_REPORT_REF = a stable ci-findings report ref derived from the current deterministic gate run
   RUN FindingsRenderContract
-  SET report_outputs = deterministic-report describing the executed or skipped deterministic gate plus report_outputs from FINDINGS_REPORT
+  SET report_outputs = one entry with report_type = deterministic-report, ref = a stable deterministic-report ref derived from the current deterministic gate run, and summary = a deterministic summary of the executed or skipped deterministic gate, plus the current top-level report_outputs after FindingsRenderContract
   RUN CiReportRenderContract
   EMIT the gate results
   RUN NextActionsOffer

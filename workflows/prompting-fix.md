@@ -39,9 +39,7 @@ DO:
   SET SKILL_CLASS = fix WHEN SKILL_CLASS == unset
   SET REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset
   SET ReviewFindingsReport = ReviewFindingsReport from NEXT_ACTION_PAYLOAD WHEN ReviewFindingsReport == unset AND NEXT_ACTION_PAYLOAD contains ReviewFindingsReport
-  SET REVIEW_FINDINGS_REMAINING = ReviewFindingsReport.total_count WHEN REVIEW_FINDINGS_REMAINING == unset AND ReviewFindingsReport contains total_count
-  SET REVIEW_FINDINGS_REMAINING = number of entries in ReviewFindingsReport.findings WHEN REVIEW_FINDINGS_REMAINING == unset AND ReviewFindingsReport contains findings AND ReviewFindingsReport.findings is a list
-  SET REVIEW_FINDINGS_REMAINING = number of entries in ReviewFindingsReport WHEN REVIEW_FINDINGS_REMAINING == unset AND ReviewFindingsReport is a list
+  SET REVIEW_FINDINGS_REMAINING = ReviewFindingsReport.total_count WHEN REVIEW_FINDINGS_REMAINING == unset AND ReviewFindingsReport.report_type == review-findings AND ReviewFindingsReport contains total_count
   SET APPROVED_REVIEW_FINDING_IDS = APPROVED_REVIEW_FINDING_IDS from NEXT_ACTION_PAYLOAD WHEN APPROVED_REVIEW_FINDING_IDS == unset AND NEXT_ACTION_PAYLOAD contains APPROVED_REVIEW_FINDING_IDS
   SET REVIEW_FIX_SCOPE = REVIEW_FIX_SCOPE from NEXT_ACTION_PAYLOAD WHEN REVIEW_FIX_SCOPE == unset AND NEXT_ACTION_PAYLOAD contains REVIEW_FIX_SCOPE
   SET REVIEW_FIX_APPROVED = REVIEW_FIX_APPROVED from NEXT_ACTION_PAYLOAD WHEN REVIEW_FIX_APPROVED == unset AND NEXT_ACTION_PAYLOAD contains REVIEW_FIX_APPROVED
@@ -52,20 +50,19 @@ DO:
   SET REVIEW_TARGET_SLICES = full-file slices for every REVIEW_TARGET_PATHS entry WHEN REVIEW_TARGET_PATHS != unset AND REVIEW_TARGET_SLICES == unset
   SET suggested_next_skills = [cf-prompting-review]
   SET REVIEW_FINDINGS_REPORT_STATE = missing WHEN ReviewFindingsReport == unset
-  SET REVIEW_FINDINGS_REPORT_STATE = supported WHEN ReviewFindingsReport.report_type == review-findings AND ReviewFindingsReport contains findings AND ReviewFindingsReport.findings is a list AND REVIEW_FINDINGS_REMAINING != unset
-  SET REVIEW_FINDINGS_REPORT_STATE = supported WHEN ReviewFindingsReport contains findings AND ReviewFindingsReport.findings is a list AND REVIEW_FINDINGS_REMAINING != unset
-  SET REVIEW_FINDINGS_REPORT_STATE = supported WHEN ReviewFindingsReport is a list AND REVIEW_FINDINGS_REMAINING != unset
+  SET REVIEW_FINDINGS_REPORT_STATE = supported WHEN ReviewFindingsReport.report_type == review-findings AND ReviewFindingsReport contains findings AND ReviewFindingsReport.findings is a list AND ReviewFindingsReport contains total_count AND REVIEW_FINDINGS_REMAINING != unset
   SET REVIEW_FINDINGS_REPORT_STATE = unsupported WHEN ReviewFindingsReport != unset AND REVIEW_FINDINGS_REPORT_STATE == unset
-  SET missing_artifacts = review-findings with why_needed "A findings report keeps prompt fixes bounded to reviewed issues; override only for an explicitly accepted manual degraded fix scope", accepted_shapes findings-report or findings-list, suggested_producers cf-prompting-review, override_allowed true, override_summary "Explicit user approval may bypass the missing or unsupported findings report for a manually scoped degraded prompt fix run"; relevant-files-map with why_needed "Concrete target paths are required to keep prompt edits bounded", accepted_shapes path-map or path-list, suggested_producers cf-prompting-review and cf-explore, override_allowed false WHEN (REVIEW_FINDINGS_REPORT_STATE == missing OR REVIEW_FINDINGS_REPORT_STATE == unsupported OR REVIEW_FINDINGS_REMAINING == 0) AND REVIEW_TARGET_PATHS == unset
-  SET missing_artifacts = review-findings with why_needed "A findings report keeps prompt fixes bounded to reviewed issues; override only for an explicitly accepted manual degraded fix scope", accepted_shapes findings-report or findings-list, suggested_producers cf-prompting-review, override_allowed true, override_summary "Explicit user approval may bypass the missing or unsupported findings report for a manually scoped degraded prompt fix run" WHEN (REVIEW_FINDINGS_REPORT_STATE == missing OR REVIEW_FINDINGS_REPORT_STATE == unsupported OR REVIEW_FINDINGS_REMAINING == 0) AND REVIEW_TARGET_PATHS != unset
-  SET missing_artifacts = relevant-files-map with why_needed "Concrete target paths are required to keep prompt edits bounded", accepted_shapes path-map or path-list, suggested_producers cf-prompting-review and cf-explore, override_allowed false WHEN REVIEW_TARGET_PATHS == unset AND REVIEW_FINDINGS_REPORT_STATE == supported AND REVIEW_FINDINGS_REMAINING != 0
+  SET missing_artifacts = review-findings with why_needed "A findings report keeps prompt fixes bounded to reviewed issues; override only for an explicitly accepted manual degraded fix scope", accepted_shapes findings-report, suggested_producers cf-prompting-review, override_allowed true, override_summary "Explicit user approval may bypass only a missing or unsupported canonical review findings report for a manually scoped degraded prompt fix run"; relevant-files-map with why_needed "Concrete target paths are required to keep prompt edits bounded", accepted_shapes path-map or path-list, suggested_producers cf-prompting-review and cf-explore, override_allowed false WHEN (REVIEW_FINDINGS_REPORT_STATE == missing OR REVIEW_FINDINGS_REPORT_STATE == unsupported) AND REVIEW_TARGET_PATHS == unset
+  SET missing_artifacts = review-findings with why_needed "A findings report keeps prompt fixes bounded to reviewed issues; override only for an explicitly accepted manual degraded fix scope", accepted_shapes findings-report, suggested_producers cf-prompting-review, override_allowed true, override_summary "Explicit user approval may bypass only a missing or unsupported canonical review findings report for a manually scoped degraded prompt fix run" WHEN (REVIEW_FINDINGS_REPORT_STATE == missing OR REVIEW_FINDINGS_REPORT_STATE == unsupported) AND REVIEW_TARGET_PATHS != unset
+  SET missing_artifacts = relevant-files-map with why_needed "Concrete target paths are required to keep prompt edits bounded", accepted_shapes path-map or path-list, suggested_producers cf-prompting-review and cf-explore, override_allowed false WHEN REVIEW_TARGET_PATHS == unset AND REVIEW_FINDINGS_REPORT_STATE == supported
   SET OVERRIDE_ALLOWED = true WHEN missing_artifacts != unset AND one or more missing_artifacts entries declare override_allowed == true
   SET OVERRIDE_ALLOWED = false WHEN OVERRIDE_ALLOWED == unset
-  SET FIX_PREREQUISITE_OVERRIDE_ACTIVE = true WHEN OVERRIDE_REQUESTED == explicit-user-approval AND missing_artifacts != unset AND every missing_artifacts entry declares override_allowed == true
+  SET FIX_PREREQUISITE_OVERRIDE_ACTIVE = true WHEN OVERRIDE_REQUESTED == explicit-user-approval AND REVIEW_TARGET_PATHS != unset AND missing_artifacts != unset AND every missing_artifacts entry declares override_allowed == true
   SET REVIEW_FIX_APPROVED = true WHEN FIX_PREREQUISITE_OVERRIDE_ACTIVE == true AND REVIEW_FIX_APPROVED == unset
   SET REVIEW_FIX_SCOPE = all WHEN FIX_PREREQUISITE_OVERRIDE_ACTIVE == true AND REVIEW_FIX_SCOPE == unset
   SET APPROVED_REVIEW_FINDING_IDS = empty WHEN FIX_PREREQUISITE_OVERRIDE_ACTIVE == true AND APPROVED_REVIEW_FINDING_IDS == unset
   SET ASSUMPTIONS = one entry with artifact_or_gate = review-findings, summary = "Proceed from explicit user-approved degraded prompt-fix scope without a canonical review findings report", risk = "The prompt fix can drift beyond independently reviewed findings and may miss routing or validation regressions" WHEN FIX_PREREQUISITE_OVERRIDE_ACTIVE == true AND ASSUMPTIONS == unset
+  SET ASSUMPTIONS = ASSUMPTIONS plus one entry with artifact_or_gate = review-findings, summary = "Proceed from explicit user-approved degraded prompt-fix scope without a canonical review findings report", risk = "The prompt fix can drift beyond independently reviewed findings and may miss routing or validation regressions" WHEN FIX_PREREQUISITE_OVERRIDE_ACTIVE == true AND ASSUMPTIONS != unset
   RUN AssumptionOverrideContract WHEN FIX_PREREQUISITE_OVERRIDE_ACTIVE == true
   RUN BlockedReportContract WHEN missing_artifacts != unset AND FIX_PREREQUISITE_OVERRIDE_ACTIVE != true
   CONTINUE WriteSkillsFixDispatch WHEN FIX_PREREQUISITE_OVERRIDE_ACTIVE == true
@@ -109,7 +106,7 @@ DO:
   SET FINDINGS = [] WHEN FINDINGS == unset
   SET FINDINGS_REPORT_REF = a stable ci-findings report ref derived from the current deterministic validation run
   RUN FindingsRenderContract
-  SET report_outputs = deterministic-report describing the executed PDSL validation gate plus report_outputs from FINDINGS_REPORT
+  SET report_outputs = one entry with report_type = deterministic-report, ref = a stable deterministic-report ref derived from the current deterministic validation run, and summary = a deterministic summary of the executed PDSL validation gate, plus the current top-level report_outputs after FindingsRenderContract
   RUN CiReportRenderContract
   CONTINUE WriteSkillsFixOutcomeDeterministicBlocker WHEN VALIDATION_STATUS == fail
   CONTINUE WriteSkillsFixOutcomeNoChanges WHEN VALIDATION_STATUS == pass AND REVIEW_FINDINGS_REMAINING != 0
