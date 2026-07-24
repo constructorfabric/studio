@@ -41,7 +41,7 @@ The orchestrator loads the shared Studio runtime first, then dispatches scanner,
 **Step 6. E2 — Planner (read-only).** Approve the planner dispatch when prompted. `cf-migrate-planner` groups findings into three categories:
 - **A** — auto-fixable (unambiguous string substitutions);
 - **B** — needs-review (context-sensitive);
-- **C** — cascade (rename to `.studio-workspace.toml`, cascade migration into workspace member repos, regenerate IDE integrations via `cfs generate-agents`).
+- **C** — cascade (review legacy workspace markers and, when desired, rename them to canonical `.cf-workspace.toml`; cascade migration into workspace member repos, regenerate IDE integrations via `cfs generate-agents`). Legacy `.studio-workspace.toml` remains a discovery fallback.
 
 **Step 7. E3 — Migrator (write).** The orchestrator prints the full plan, then offers a menu:
 - `1` — apply category A only;
@@ -50,7 +50,7 @@ The orchestrator loads the shared Studio runtime first, then dispatches scanner,
 - `4` — pick specific items;
 - `N` — skip.
 
-A safe starting choice is `1`. The migrator writes using Constructor Studio target identifiers: `.studio-workspace.toml`, `skills/studio/`, CLI `cfs`, cache `~/.cf-studio/cache/`, registry `constructorfabric/studio`.
+A safe starting choice is `1`. The migrator writes using Constructor Studio target identifiers: canonical `.cf-workspace.toml`, `skills/studio/`, CLI `cfs`, cache `~/.cf-studio/cache/`, registry `constructorfabric/studio`. Legacy `.studio-workspace.toml` remains a discovery fallback.
 
 Before the write-capable migrator runs, Studio resolves the session git write policy. Choose `commit`, `stage`, or `none`. The migration can still inspect git state in `none` mode, but it must not stage or commit unless the selected policy permits it and the workflow asks for that action.
 

@@ -9,8 +9,24 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..utils.git_utils import _redact_url, peek_git_source_path
+from ..utils.stderr_logging import emit_stderr_message
 from ..utils.ui import ui
 from ..utils.workspace import ResolveConfig, WorkspaceConfig
+
+
+_LEGACY_WORKSPACE_WARNING = (
+    "Legacy .studio-workspace.toml was discovered automatically; rename it to "
+    ".cf-workspace.toml or configure workspace = \"<path>\" in config/core.toml."
+)
+
+
+def _warn_legacy_workspace_fallback(ws_cfg: WorkspaceConfig) -> None:
+    """Emit the migration warning only for automatic legacy-file discovery."""
+    if ws_cfg.is_legacy_fallback:
+        emit_stderr_message(
+            f"WARNING: {_LEGACY_WORKSPACE_WARNING}\n",
+            logger_name=f"{__name__}.stderr",
+        )
 
 
 def _source_warning_for_result(info: dict) -> Optional[str]:
@@ -215,6 +231,7 @@ def cmd_workspace_info(argv: List[str]) -> int:
     project_root, ws_cfg = _load_workspace_info_context()
     if project_root is None or ws_cfg is None:
         return 1
+    _warn_legacy_workspace_fallback(ws_cfg)
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-foreach-source
     sources_info = [_build_source_info(ws_cfg, name) for name in ws_cfg.sources]

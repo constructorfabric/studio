@@ -81,7 +81,7 @@ The following renames are applied across all architecture docs, source code, and
 | Cache directory | `~/.cf-constructor/cache/` | `~/.cf-studio/cache/` |
 | Default GitHub repo | `cyberfabric/cyber-constructor` | `constructorfabric/studio` |
 | Default kit-sdlc repo | `cyberfabric/cyber-pilot-kit-sdlc` / `cyberfabric/cyber-constructor-kit-sdlc` | `constructorfabric/studio-kit-sdlc` |
-| Workspace marker file | `.cypilot-workspace.toml` | `.studio-workspace.toml` |
+| Workspace marker file | `.cypilot-workspace.toml` | `.cf-workspace.toml` (canonical; `.studio-workspace.toml` is legacy fallback) |
 | VS Code workspace file | `Cypilot.code-workspace` | `Studio.code-workspace` |
 | Skill name (canonical) | `cf-constructor` | `cf` (alias `cf-studio`) |
 | Skill directory | `skills/cypilot/` | `skills/studio/` |
@@ -137,7 +137,7 @@ Confirmed when:
 - `cfs generate-agents` produces host integration files under agent-specific locations such as `.agents/skills/cf/` and `.claude/skills/cf/`; canonical source files remain under `skills/studio/`
 - `cfs mirror override github.com/constructorfabric/studio github.com/myorg/studio` writes to XDG path on fresh install
 - `cfs mirror list` shows merged set with correct source path for each entry
-- Migrating a cypilot 3.9.0 project writes `.studio-workspace.toml` directly (no intermediate Cyber Constructor form)
+- Migrating a cypilot 3.9.0 project writes canonical `.cf-workspace.toml` directly (no intermediate Cyber Constructor form); `.studio-workspace.toml` remains a legacy discovery fallback
 - All `cpt-cypilot-*` ID references in migrated projects are rewritten to `cpt-studio-*`
 
 ## Pros and Cons of the Options

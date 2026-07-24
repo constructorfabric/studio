@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/constructor-studio/workspace.schema.json",
-  "title": "Constructor Studio Workspace Configuration (.studio-workspace.toml)",
-  "description": "Federation layer for multi-repo workspace support. Maps named sources (repos) to local paths with roles. Standalone file uses TOML format.",
+  "title": "Constructor Studio Workspace Configuration (.cf-workspace.toml)",
+  "description": "Federation layer for multi-repo workspace support. Maps named sources (repos) to local paths with roles. The canonical standalone filename is .cf-workspace.toml; .studio-workspace.toml remains supported as a legacy automatic discovery fallback and when supplied explicitly through workspace = \"<path>\" in config/core.toml.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "sources"],
