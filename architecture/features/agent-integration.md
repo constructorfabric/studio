@@ -1,6 +1,9 @@
 ---
-version: 1.1.1
+version: 1.1.2
 significant_changes:
+  - version: 1.1.2
+    date: 2026-07-27
+    summary: Marked the implemented OpenCode v1.18.4 integration complete and defined its path-only collision-exclusion metadata for ownership-unproven outputs.
   - version: 1.1.1
     date: 2026-07-23
     summary: Clarified pending OpenCode collision recovery and documentation obligations.
@@ -43,7 +46,7 @@ significant_changes:
 
 <!-- /toc -->
 
-- [ ] `p1` - **ID**: `cpt-studio-featstatus-agent-integration`
+- [x] `p1` - **ID**: `cpt-studio-featstatus-agent-integration`
 
 ## 1. Feature Context
 
@@ -57,7 +60,7 @@ Bridges Studio's unified skill system to diverse AI coding assistants by generat
 
 ### 2. Purpose
 
-Without this feature, users would need to manually create and maintain agent-specific files for each AI assistant. Addresses PRD requirements for multi-agent support (`cpt-studio-fr-core-agents`), the pending explicit OpenCode path (`cpt-studio-fr-core-opencode`), and generic workflows (`cpt-studio-fr-core-workflows`).
+Without this feature, users would need to manually create and maintain agent-specific files for each AI assistant. Addresses PRD requirements for multi-agent support (`cpt-studio-fr-core-agents`), the implemented explicit OpenCode v1.18.4 path (`cpt-studio-fr-core-opencode`), and generic workflows (`cpt-studio-fr-core-workflows`).
 
 ### 3. Actors
 
@@ -97,7 +100,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 4. [x] - `p1` - Discover all workflow files from `.core/workflows/` and `.gen/kits/*/workflows/` - `inst-discover-workflows`
 5. [x] - `p1` - Collect `@cpt:skill` content from `.gen/kits/*/SKILL.md` - `inst-collect-skill`
 6. [x] - `p1` - Collect `@cpt:system-prompt` content from `.gen/AGENTS.md` - `inst-collect-sysprompt`
-7. [x] - `p1` - **FOR EACH** agent in the current default selected set (or filtered by `--agent`), excluding the separately pending explicit OpenCode path - `inst-for-each-agent`
+7. [x] - `p1` - **FOR EACH** agent in the current default selected set (or filtered by `--agent`), excluding the separately implemented explicit OpenCode path - `inst-for-each-agent`
    1. [x] - `p1` - Generate agent-native entry points (skill shims, workflow proxies, rules) - `inst-generate-entry-points`
    2. [x] - `p1` - Write files to agent directory (e.g., `.windsurf/workflows/`, `.cursor/commands/`) - `inst-write-files`
 8. [x] - `p1` - Compose and write main SKILL.md from collected skill sections - `inst-compose-skill`
@@ -110,36 +113,36 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### Generate Explicit OpenCode Entry Points
 
-- [ ] `p1` - **ID**: `cpt-studio-flow-agent-integration-generate-opencode`
+- [x] `p1` - **ID**: `cpt-studio-flow-agent-integration-generate-opencode`
 
 **Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- User runs `cfs generate-agents --agent opencode` or `cfs generate-agents --opencode` → only the pending OpenCode target is selected; the default selected set remains unchanged
-- Studio reuses native `.agents/skills` discovery and writes only marker-owned `.opencode/agents/cf-*.md` files plus `.opencode/.cf-studio-installed`
+- User runs `cfs generate-agents --agent opencode` or `cfs generate-agents --opencode` → only the OpenCode v1.18.4 target is selected; the default selected set remains unchanged
+- Studio reuses native `.agents/skills` discovery and writes only marker-owned `.opencode/agents/cf-*.md` files plus `.opencode/.cf-studio-installed` and, only after a collision, its path-only exclusion record
 
 **Error Scenarios**:
-- An unmarked `.opencode/agents/cf-*.md` exists → generation returns an explicit partial result and preserves the file
+- An ownership-unproven `.opencode/agents/cf-*.md` target exists → generation returns an explicit partial result, preserves the file, and records its path as an exclusion for later reruns
 
 **Steps**:
-1. [ ] - `p1` - User invokes `cfs generate-agents --agent opencode` or `cfs generate-agents --opencode` - `inst-opencode-explicit-select`
-2. [ ] - `p1` - Resolve the OpenCode v1.18.4 compatibility boundary and native `.agents/skills` inputs - `inst-opencode-resolve-compatibility`
-3. [ ] - `p1` - **IF** the command did not explicitly select OpenCode, **RETURN** without adding OpenCode to the default target set - `inst-opencode-if-explicit-selection`
-4. [ ] - `p1` - Inspect `.opencode/.cf-studio-installed` and the per-file ownership marker before rebuilding any `.opencode/agents/cf-*.md` output - `inst-opencode-inspect-ownership`
-5. [ ] - `p1` - **IF** an unmarked `cf-*` target collides, preserve the user file and **RETURN** an explicit partial result without overwrite or deletion - `inst-opencode-if-unmarked-collision`
-6. [ ] - `p1` - Rebuild only marker-owned OpenCode subagent files and the directory sentinel; preserve all other `.opencode/` content - `inst-opencode-rebuild-owned`
-7. [ ] - `p1` - **RETURN** selected, generated, partial, and collision state without generating `.opencode/commands` or modifying root `AGENTS.md`, `opencode.json`, installation, runtime execution, or model/provider defaults - `inst-opencode-return-generation`
+1. [x] - `p1` - User invokes `cfs generate-agents --agent opencode` or `cfs generate-agents --opencode` - `inst-opencode-explicit-select`
+2. [x] - `p1` - Resolve the OpenCode v1.18.4 compatibility boundary and native `.agents/skills` inputs - `inst-opencode-resolve-compatibility`
+3. [x] - `p1` - **IF** the command did not explicitly select OpenCode, **RETURN** without adding OpenCode to the default target set - `inst-opencode-if-explicit-selection`
+4. [x] - `p1` - Inspect `.opencode/.cf-studio-installed`, the per-file ownership marker, and recorded exclusions before rebuilding any `.opencode/agents/cf-*.md` output - `inst-opencode-inspect-ownership`
+5. [x] - `p1` - **IF** a `cf-*` target is ownership-unproven, preserve the user file and **RETURN** an explicit partial result without overwrite or deletion; persist only its project-relative path in Studio-owned, managed/ignored `.opencode/.cf-studio-unowned-outputs.json` so later reruns cannot claim it - `inst-opencode-preserve-ownership-unproven-collision`
+6. [x] - `p1` - Rebuild only marker-owned OpenCode subagent files and the directory sentinel; preserve all other `.opencode/` content as user-owned - `inst-opencode-rebuild-owned`
+7. [x] - `p1` - **RETURN** selected, generated, partial, and collision state without generating `.opencode/commands` or modifying root `AGENTS.md`, `opencode.json`, installation, runtime execution, or model/provider defaults - `inst-opencode-return-generation`
 
 ### Inspect OpenCode Integration State
 
-- [ ] `p1` - **ID**: `cpt-studio-flow-agent-integration-inspect-opencode`
+- [x] `p1` - **ID**: `cpt-studio-flow-agent-integration-inspect-opencode`
 
 **Actor**: `cpt-studio-actor-user`
 
 **Steps**:
-1. [ ] - `p1` - User invokes `cfs agents --agent opencode` - `inst-opencode-status-invoke`
-2. [ ] - `p1` - Read the OpenCode sentinel, owned-file markers, and collision evidence without changing any project file - `inst-opencode-status-read-only`
-3. [ ] - `p1` - **RETURN** selected, generated, partial, and collision state in a read-only report - `inst-opencode-status-return`
+1. [x] - `p1` - User invokes `cfs agents --agent opencode` - `inst-opencode-status-invoke`
+2. [x] - `p1` - Read the OpenCode sentinel, owned-file markers, and collision-exclusion evidence without changing any project file - `inst-opencode-status-read-only`
+3. [x] - `p1` - **RETURN** selected, generated, partial, and collision state in a read-only report - `inst-opencode-status-return`
 
 ### Execute Generic Workflow
 
@@ -194,7 +197,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 - [x] `p1` - **ID**: `cpt-studio-algo-agent-integration-discover-agents`
 
-1. [x] - `p1` - Define the current default registry: windsurf, cursor, claude, copilot, openai. OpenCode is a first-class sixth host only through the separately pending explicit-selection path; it is not an OpenAI/Codex alias or a default target. Detection uses Constructor Studio-specific generated files per default agent (e.g. `.claude/skills/cf/SKILL.md`, `.windsurf/workflows/cf.md`, `.cursor/commands/cf.md`, `.github/.constructor-studio-installed` or legacy Studio-managed `copilot-instructions.md` for Copilot, `.codex/.cf-installed` or `.codex/agents/` with content or legacy `.agents/skills/cf/SKILL.md` for OpenAI) — not generic tool directories. The shared OpenAI fallback is valid only when no other agent's primary or legacy Studio marker is present. User-authored files are never overwritten, and legacy manifest skill files are removed only when they are provably generated copies or pure generated stubs. - `inst-define-registry`
+1. [x] - `p1` - Define the current default registry: windsurf, cursor, claude, copilot, openai. OpenCode is a first-class sixth host only through the separately implemented explicit-selection path; it is not an OpenAI/Codex alias or a default target. Detection uses Constructor Studio-specific generated files per default agent (e.g. `.claude/skills/cf/SKILL.md`, `.windsurf/workflows/cf.md`, `.cursor/commands/cf.md`, `.github/.constructor-studio-installed` or legacy Studio-managed `copilot-instructions.md` for Copilot, `.codex/.cf-installed` or `.codex/agents/` with content or legacy `.agents/skills/cf/SKILL.md` for OpenAI) — not generic tool directories. The shared OpenAI fallback is valid only when no other agent's primary or legacy Studio marker is present. User-authored files are never overwritten, and legacy manifest skill files are removed only when they are provably generated copies or pure generated stubs. - `inst-define-registry`
 2. - `p1` - **IF** `--agent` flag provided, filter to a single default agent; explicit OpenCode selection follows `cpt-studio-flow-agent-integration-generate-opencode` - `inst-if-filter`
 3. - `p1` - **RETURN** list of agents to generate for - `inst-return-agents`
 4. [x] - `p1` - Resolve config/kits/ directory and registered kit dirs from core.toml for workflow/skill discovery - `inst-resolve-kits`
@@ -274,19 +277,19 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### Generate OpenCode-Owned Subagents
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-agent-integration-generate-opencode`
+- [x] `p1` - **ID**: `cpt-studio-algo-agent-integration-generate-opencode`
 
-1. [ ] - `p1` - Accept OpenCode only from canonical `--agent opencode` or convenience `--opencode`; leave the default selected set unchanged - `inst-opencode-accept-explicit-target`
-2. [ ] - `p1` - Reuse native `.agents/skills` discovery and translate only the current `agents.toml` generator path for the verified v1.18.4 boundary - `inst-opencode-reuse-native-skills`
-3. [ ] - `p1` - Generate only `.opencode/agents/cf-*.md` files with a per-file Studio ownership marker and native subagent behavior; emit no model or provider default - `inst-opencode-render-subagents`
-4. [ ] - `p1` - Create or refresh `.opencode/.cf-studio-installed` only as the Studio directory sentinel - `inst-opencode-write-sentinel`
-5. [ ] - `p1` - **IF** an existing `cf-*` file lacks the ownership marker, preserve it and **RETURN** partial with its collision recorded - `inst-opencode-preserve-unmarked-collision`
-6. [ ] - `p1` - Rebuild or remove only marker-owned OpenCode subagent files; preserve unmarked files and all other OpenCode configuration - `inst-opencode-owned-rebuild-only`
-7. [ ] - `p1` - **RETURN** deterministic selected, generated, partial, and collision results; v2 manifest translation, fixture refresh outside a deliberate named tag/commit update, and live runtime execution remain deferred - `inst-opencode-return-deterministic-result`
+1. [x] - `p1` - Accept OpenCode only from canonical `--agent opencode` or convenience `--opencode`; leave the default selected set unchanged - `inst-opencode-accept-explicit-target`
+2. [x] - `p1` - Reuse native `.agents/skills` discovery and translate only the current `agents.toml` generator path for the verified v1.18.4 boundary - `inst-opencode-reuse-native-skills`
+3. [x] - `p1` - Generate only `.opencode/agents/cf-*.md` files with a per-file Studio ownership marker and native subagent behavior; emit no model or provider default - `inst-opencode-render-subagents`
+4. [x] - `p1` - Create or refresh `.opencode/.cf-studio-installed` only as the Studio directory sentinel - `inst-opencode-write-sentinel`
+5. [x] - `p1` - **IF** an existing `cf-*` target is ownership-unproven, preserve it and **RETURN** partial with its collision recorded as a path-only Studio exclusion; never record user file contents - `inst-opencode-preserve-ownership-unproven-collision`
+6. [x] - `p1` - Rebuild or remove only marker-owned OpenCode subagent files; preserve ownership-unproven files and all other OpenCode configuration as user-owned - `inst-opencode-owned-rebuild-only`
+7. [x] - `p1` - **RETURN** deterministic selected, generated, partial, and collision results; v2 manifest translation, fixture refresh outside a deliberate named tag/commit update, and live runtime execution remain deferred - `inst-opencode-return-deterministic-result`
 
 **Supporting**:
-- [ ] - `p1` - The compatibility fixture resides at `tests/fixtures/opencode/v1.18.4/` and its attribution-preserving `compatibility.json` identifies the source tag or commit and evidence - `inst-opencode-fixture-boundary`
-- [ ] - `p1` - Initial checks use only deterministic, network-free fixture inputs and never install or execute OpenCode - `inst-opencode-network-free-checks`
+- [x] - `p1` - The compatibility fixture resides at `tests/fixtures/opencode/v1.18.4/` and its attribution-preserving `compatibility.json` identifies the source tag or commit and evidence - `inst-opencode-fixture-boundary`
+- [x] - `p1` - Initial checks use only deterministic, network-free fixture inputs and never install or execute OpenCode - `inst-opencode-network-free-checks`
 
 ### List Workflow Files
 
@@ -313,22 +316,22 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### OpenCode Integration State
 
-- [ ] `p1` - **ID**: `cpt-studio-state-agent-integration-opencode`
+- [x] `p1` - **ID**: `cpt-studio-state-agent-integration-opencode`
 
 ```mermaid
 stateDiagram-v2
     [*] --> NotSelected
     NotSelected --> Selected: --agent opencode or --opencode
     Selected --> Generated: owned targets generated
-    Selected --> Partial: unmarked cf-* collision
+    Selected --> Partial: ownership-unproven cf-* collision
     Generated --> Generated: rebuild marker-owned targets
-    Generated --> Partial: unmarked cf-* collision
+    Generated --> Partial: ownership-unproven cf-* collision
     Partial --> Partial: preserve collision
-    Partial --> Generated: user resolves or removes unmarked collision and reruns explicit OpenCode selection; Studio never resolves it
+    Partial --> Generated: user resolves or removes ownership-unproven collision and reruns explicit OpenCode selection; Studio never resolves it
 ```
 
-The `Partial` state is a successful preservation outcome with an explicit collision report; it never authorizes overwrite or deletion of unmarked OpenCode content.
-Recovery from `Partial` to `Generated` occurs only after the user resolves or removes the unmarked collision and reruns an explicit OpenCode selection; Studio never resolves or removes the collision.
+The `Partial` state is a successful preservation outcome with an explicit collision report; it never authorizes overwrite or deletion of ownership-unproven OpenCode content. Its path-only Studio-owned collision-exclusion record keeps the output unclaimed across reruns and contains no user file content.
+Recovery from `Partial` to `Generated` occurs only after the user resolves or removes the ownership-unproven collision and reruns an explicit OpenCode selection; Studio never resolves or removes the collision.
 
 ## 5. Definitions of Done
 
@@ -340,7 +343,7 @@ Recovery from `Partial` to `Generated` occurs only after the user resolves or re
 - [x] - `p1` - `cfs generate-agents --agent windsurf` generates only Windsurf entry points
 - [x] - `p1` - `cfs agents` lists generated files without writing or updating anything
 - [x] - `p1` - Generated files use `@/` project-root-relative paths
-- [x] - `p1` - Existing-host regeneration overwrites only outputs established as generator-owned; the pending OpenCode path has its own marker-only ownership rule
+- [x] - `p1` - Existing-host regeneration overwrites only outputs established as generator-owned; the implemented OpenCode path has its own marker-and-exclusion ownership rule
 - [x] - `p1` - `--dry-run` flag shows what would be generated without writing
 
 ### Skill Entrypoint Generation
@@ -364,16 +367,16 @@ Recovery from `Partial` to `Generated` occurs only after the user resolves or re
 
 ### OpenCode Integration
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-agent-integration-opencode`
+- [x] `p1` - **ID**: `cpt-studio-dod-agent-integration-opencode`
 
-- [ ] - `p1` - OpenCode is selectable only with `--agent opencode` or `--opencode`, and the default selected set remains the established five hosts
-- [ ] - `p1` - `cfs agents --agent opencode` is read-only and reports selected, generated, partial, and collision state
-- [ ] - `p1` - The OpenCode path reuses `.agents/skills` and generates only marker-owned `.opencode/agents/cf-*.md` plus `.opencode/.cf-studio-installed`
-- [ ] - `p1` - An unmarked OpenCode `cf-*` collision yields explicit partial status without overwrite or deletion; unmarked user contents remain preserved
-- [ ] - `p1` - OpenCode generation creates no `.opencode/commands`, root `AGENTS.md`, `opencode.json`, installation/runtime execution, or model/provider defaults
-- [ ] - `p1` - Fixture-backed checks are deterministic and network-free at `tests/fixtures/opencode/v1.18.4/`; `compatibility.json` preserves source attribution, and refreshes occur only through a deliberate named tag or commit update
-- [ ] - `p1` - v2 manifest translation and live OpenCode runtime execution remain deferred
-- [ ] - `p1` - `guides/AGENT-TOOLS.md` documents the pending v1.18.4 OpenCode boundary: opt-in selection and default exclusion, verified capabilities and limits, Studio ownership and collision reporting, and the absence of live-runtime or v2 claims
+- [x] - `p1` - OpenCode is selectable only with `--agent opencode` or `--opencode`, and the default selected set remains the established five hosts
+- [x] - `p1` - `cfs agents --agent opencode` is read-only and reports selected, generated, partial, and collision state
+- [x] - `p1` - The OpenCode path reuses `.agents/skills` and generates only marker-owned `.opencode/agents/cf-*.md` plus `.opencode/.cf-studio-installed` and its path-only collision-exclusion record when needed
+- [x] - `p1` - An ownership-unproven OpenCode `cf-*` collision yields explicit partial status without overwrite or deletion; the path-only exclusion keeps user contents preserved across reruns
+- [x] - `p1` - OpenCode generation creates no `.opencode/commands`, root `AGENTS.md`, `opencode.json`, installation/runtime execution, or model/provider defaults
+- [x] - `p1` - Fixture-backed checks are deterministic and network-free at `tests/fixtures/opencode/v1.18.4/`; `compatibility.json` preserves source attribution, and refreshes occur only through a deliberate named tag or commit update
+- [x] - `p1` - v2 manifest translation and live OpenCode runtime execution remain deferred
+- [x] - `p1` - `guides/AGENT-TOOLS.md` documents the implemented v1.18.4 OpenCode boundary: opt-in selection and default exclusion, verified capabilities and limits, Studio ownership/collision reporting, and the absence of live-runtime or v2 claims
 
 ## 6. Implementation Modules
 
@@ -391,10 +394,10 @@ Recovery from `Partial` to `Generated` occurs only after the user resolves or re
   installed-kit shortcut examples
 - [x] `--dry-run` mode shows planned output without writing files
 - [x] Re-running `cfs generate-agents` after kit install produces updated entry points
-- [ ] OpenCode is a pending sixth first-class host available only through `--agent opencode` or `--opencode`; it is not included in default generation
-- [ ] `cfs agents --agent opencode` read-only reports selected, generated, partial, and collision state
-- [ ] Pending OpenCode generation reuses `.agents/skills`, writes only marker-owned `.opencode/agents/cf-*.md` and `.opencode/.cf-studio-installed`, and preserves all unmarked user content
-- [ ] An unmarked `cf-*` collision returns an explicit partial result without overwrite or deletion
-- [ ] Pending OpenCode support makes no `.opencode/commands`, root `AGENTS.md`, `opencode.json`, installation/runtime, or model/provider-default claim
-- [ ] Deterministic, network-free checks use the attribution-preserving v1.18.4 fixture; v2 manifest translation and live runtime execution are deferred
-- [ ] `guides/AGENT-TOOLS.md` documents the pending v1.18.4 OpenCode boundary, including opt-in/default exclusion, verified capabilities and limits, Studio ownership/collision reporting, and no live-runtime or v2 claims
+- [x] OpenCode is an implemented sixth first-class host available only through `--agent opencode` or `--opencode`; it is not included in default generation
+- [x] `cfs agents --agent opencode` read-only reports selected, generated, partial, and collision state
+- [x] OpenCode generation reuses `.agents/skills`, writes only marker-owned `.opencode/agents/cf-*.md` and `.opencode/.cf-studio-installed`, and preserves all other `.opencode/` content as user-owned
+- [x] An ownership-unproven `cf-*` collision returns an explicit partial result without overwrite or deletion and records only its path for rerun-safe exclusion
+- [x] OpenCode support makes no `.opencode/commands`, root `AGENTS.md`, `opencode.json`, installation/runtime, or model/provider-default claim
+- [x] Deterministic, network-free checks use the attribution-preserving v1.18.4 fixture; v2 manifest translation and live runtime execution are deferred
+- [x] `guides/AGENT-TOOLS.md` documents the implemented v1.18.4 OpenCode boundary, including opt-in/default exclusion, verified capabilities and limits, Studio ownership/collision reporting, and no live-runtime or v2 claims

@@ -1,6 +1,9 @@
 ---
-version: 1.1.0
+version: 1.1.1
 significant_changes:
+  - version: 1.1.1
+    date: 2026-07-27
+    summary: Documented the implemented OpenCode v1.18.4 collision-exclusion record and ownership-unproven rerun behavior.
   - version: 1.1.0
     date: 2026-07-23
     summary: Added first-class, explicitly selected OpenCode support with a v1.18.4 fixture-backed compatibility boundary.
@@ -115,9 +118,9 @@ Accepted delegated execution extends this model by allowing Studio-authored plan
 
 ##### OpenCode Integration
 
-- [ ] `p1` - `cpt-studio-fr-core-opencode`
+- [x] `p1` - `cpt-studio-fr-core-opencode`
 
-**Design Response**: OpenCode is a first-class host, not an OpenAI/Codex alias, with an initial compatibility target of OpenCode v1.18.4. Selection is explicit through `--agent opencode` or the convenience `--opencode`; it is excluded from the current default target selection. The initial implementation translates only the current `agents.toml` generator path and defers v2 manifest translation. Generated OpenCode agent files declare native subagent behavior but set no model or provider default. Studio does not manage root `AGENTS.md`, user `opencode.json`, OpenCode installation or execution, runtime model/provider defaults, or `.opencode/commands` in this rollout.
+**Design Response**: OpenCode is a first-class host, not an OpenAI/Codex alias, with an implemented compatibility target of OpenCode v1.18.4. Selection is explicit through `--agent opencode` or the convenience `--opencode`; it is excluded from the current default target selection. The implementation translates only the current `agents.toml` generator path and defers v2 manifest translation. Generated OpenCode agent files declare native subagent behavior but set no model or provider default. Studio does not manage root `AGENTS.md`, user `opencode.json`, OpenCode installation or execution, runtime model/provider defaults, or `.opencode/commands` in this rollout.
 
 ##### Extensible Kit System
 
@@ -458,9 +461,9 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 
 #### OpenCode Generated-Output Ownership
 
-- [ ] `p1` - **ID**: `cpt-studio-constraint-opencode-owned-output`
+- [x] `p1` - **ID**: `cpt-studio-constraint-opencode-owned-output`
 
-OpenCode generation MAY create or rebuild only Studio-owned `.opencode/agents/cf-*.md` files. Ownership requires both the Studio `.opencode/.cf-studio-installed` marker and a Studio marker in the individual file. Detection and rebuild inspect only those marker-owned entries; unmarked OpenCode files, user configuration, root `AGENTS.md`, and `opencode.json` are out of scope for mutation. An unmarked `cf-*.md` collision produces an explicit partial result and preserves the file without replacement or deletion.
+OpenCode generation MAY create or rebuild only Studio-owned `.opencode/agents/cf-*.md` files. Ownership requires both the Studio `.opencode/.cf-studio-installed` marker and a Studio marker in the individual file. Detection and rebuild inspect only those marker-owned entries; user configuration, root `AGENTS.md`, `opencode.json`, and all other `.opencode/` content are out of scope for mutation and remain user-owned. On the first ownership-unproven `cf-*.md` collision, Studio returns an explicit partial result, preserves the file, and writes its path—but never its contents—to the Studio-owned, managed/ignored `.opencode/.cf-studio-unowned-outputs.json` collision-exclusion record. The record prevents a later sentinel or marker from claiming that path on reruns.
 
 ## 3. Technical Architecture
 
@@ -502,7 +505,7 @@ OpenCode generation MAY create or rebuild only Studio-owned `.opencode/agents/cf
 | Identifier | A `cpt-*` ID with kind, slug, definition location (file + line), and references | Scanned from artifact Markdown |
 | Config | Structured TOML in `config/` directory — core.toml + per-kit configs | Filesystem |
 | AgentEntryPoint | Generated file in an agent's native format (workflow proxy, skill shim, or rule file) | Generated into `.windsurf/`, `.cursor/`, etc. |
-| OpenCodeIntegration | Explicitly selected, fixture-validated OpenCode target state, including marker-owned generated subagents and collision status | `.opencode/.cf-studio-installed`, `.opencode/agents/cf-*.md`, `cfs agents` |
+| OpenCodeIntegration | Explicitly selected, fixture-validated OpenCode v1.18.4 target state, including marker-owned generated subagents, path-only collision exclusions, and collision status | `.opencode/.cf-studio-installed`, `.opencode/.cf-studio-unowned-outputs.json`, `.opencode/agents/cf-*.md`, `cfs agents` |
 | Blueprint | DEPRECATED per `cpt-studio-adr-remove-blueprint-system` — removed from architecture. Kit resources are now maintained as direct files. | N/A |
 | Constraint | Kit-wide rules for ID kinds, headings, and cross-artifact references | `{cf-studio-path}/config/kits/<slug>/constraints.toml` |
 | Workflow | A Markdown file with frontmatter, phases, and validation criteria | `{cf-studio-path}/.core/workflows/` |
@@ -788,7 +791,7 @@ Bridges the gap between Studio's unified skill system and the diverse file forma
 - Generate skill shims that reference the composed SKILL.md
 - Support 6 agents: Windsurf (`.windsurf/workflows/` + `.agents/skills/`), Cursor (`.cursor/commands/` + `.agents/skills/`), Claude (`.claude/commands/` + `.claude/agents/`), Copilot (`.github/prompts/` + `.github/agents/` + `.agents/skills/`), OpenAI (`.agents/skills/` only), and explicitly selected OpenCode (`.agents/skills` discovery plus `.opencode/agents/cf-*.md` native subagents)
 - For OpenCode v1.18.4, translate the current `agents.toml` registry profiles into native subagent files without adding model/provider defaults or `.opencode/commands`; defer v2 manifest translation
-- Full overwrite on each invocation applies only to generator-owned `cf-*` outputs whose ownership is proven (no merge with existing files). For OpenCode, proof requires `.opencode/.cf-studio-installed` and the per-file Studio marker; an unmarked `cf-*` name collision is preserved and reported as partial
+- Full overwrite on each invocation applies only to generator-owned `cf-*` outputs whose ownership is proven (no merge with existing files). For OpenCode, proof requires `.opencode/.cf-studio-installed` and the per-file Studio marker; an ownership-unproven `cf-*` name collision is preserved, path-recorded as an exclusion, and reported as partial
 - Normalize generated agent output names so new files use a `cf-` prefix or a dedicated Studio-owned path; migrate legacy non-prefixed generated storytelling files only when ownership checks prove they are generated, and preserve user-edited files
 - Support `--agent` flag for single-agent regeneration; OpenCode is selected only by canonical `--agent opencode` or convenience `--opencode`, never by the initial default target set
 
@@ -1049,8 +1052,8 @@ flowchart TD
     B -- no --> C[Skip OpenCode; default targets unchanged]
     B -- --agent opencode or --opencode --> D[Read current agents.toml registry profiles]
     D --> E[Inspect .opencode markers and cf-*.md entries]
-    E --> F{Unmarked cf-* collision?}
-    F -- yes --> G[Preserve user file; return partial collision state]
+    E --> F{Ownership-unproven cf-* collision?}
+    F -- yes --> G[Preserve user file; record path-only exclusion; return partial state]
     F -- no --> H{Directory and file markers prove ownership?}
     H -- yes --> I[Rebuild marker-owned cf-*.md only]
     H -- no --> J[Create Studio marker and new native cf-*.md files]
@@ -1060,7 +1063,7 @@ flowchart TD
     K --> L
 ```
 
-**Description**: The OpenCode path is opt-in and translates only current registry profiles. It reuses OpenCode's native `.agents/skills` discovery and creates no `.opencode/commands` surface. Generation writes only native Studio-owned subagent files under `.opencode/agents/`, each carrying the per-file Studio marker, and the directory marker is required for later detection or rebuild. A collision never changes the user file; the command returns a clearly attributable partial result. `cfs agents` performs the same state inspection without writing. This flow does not create or update root `AGENTS.md`, `opencode.json`, OpenCode installation state, execution state, or model/provider configuration.
+**Description**: The implemented OpenCode v1.18.4 path is opt-in and translates only current registry profiles. It reuses OpenCode's native `.agents/skills` discovery and creates no `.opencode/commands` surface. Generation writes only native Studio-owned subagent files under `.opencode/agents/`, each carrying the per-file Studio marker, and the directory marker is required for later detection or rebuild. An ownership-unproven collision never changes the user file: Studio records only its project-relative path in managed/ignored `.opencode/.cf-studio-unowned-outputs.json`, which prevents later runs from claiming the path. The record never stores user content; every other `.opencode/` path remains user-owned. The command returns a clearly attributable partial result. `cfs agents` performs the same state inspection without writing. This flow does not create or update root `AGENTS.md`, `opencode.json`, OpenCode installation state, execution state, or model/provider configuration.
 
 #### Artifact Validation
 
@@ -1397,7 +1400,7 @@ Not applicable — Studio does not use a database. All persistent state is store
 - **Project `.gitignore` managed block** — exact project-relative ignore entries for `.core/`, `.gen/`, generated agent outputs, and each concrete kit path whose `kits.<slug>.tracking = "ignored"`; entries are overwriteable generated surfaces
 - **`{cf-studio-path}/config/kits/<slug>/`** — per-kit files (conf.toml, SKILL.md, constraints.toml, artifacts/, codebase/, workflows/, scripts/) — tracked/user-editable by default and preserved via interactive diff; generated/ephemeral only when that kit's `tracking = "ignored"`
 - **`{cf-studio-path}/.gen/`** — top-level auto-generated files only (AGENTS.md, SKILL.md, README.md)
-- **`.opencode/.cf-studio-installed` and `.opencode/agents/cf-*.md`** — OpenCode-only generated surface. The directory marker and a per-file Studio marker jointly prove ownership; generated files are native subagents and no user OpenCode configuration is stored or changed here
+- **`.opencode/.cf-studio-installed`, `.opencode/.cf-studio-unowned-outputs.json`, and `.opencode/agents/cf-*.md`** — OpenCode-only Studio-managed surface. The directory marker and a per-file Studio marker jointly prove an agent-file's ownership. The JSON record contains only paths proved unowned on collision and keeps them excluded across reruns; it contains no user file content and is managed/ignored. Generated files are native subagents; all other `.opencode/` content is user-owned and unchanged
 - **`~/.cf-studio/cache/`** — global skill bundle cache
 - **Markdown artifacts** — source of truth for design (PRD.md, DESIGN.md, etc.)
 
@@ -1530,7 +1533,7 @@ Component-level tests use fixture artifacts (synthetic Markdown files and TOML c
 - **CLI integration tests**: invoke the skill engine as a subprocess with fixture projects; verify JSON output and exit codes
 - **Kit plugin tests**: use fixture kit directories; verify resource generation, CLI subcommand registration, and migration scripts
 - **PR review tests**: mock `gh` CLI subprocess calls; verify prompt loading and report structure
-- **OpenCode compatibility tests**: use the network-free fixture at `tests/fixtures/opencode/v1.18.4/`; its attribution-preserving `compatibility.json` records the source tag/commit and evidence used by the fixture. Tests assert deterministic OpenCode agent output, marker ownership, read-only status reporting, and the partial collision result without installing or running OpenCode
+- **OpenCode compatibility tests**: use the network-free fixture at `tests/fixtures/opencode/v1.18.4/`; its attribution-preserving `compatibility.json` records the source tag/commit and evidence used by the fixture. Tests assert deterministic OpenCode agent output, marker ownership, read-only status reporting, partial collision results, and path-only collision exclusions that preserve ownership-unproven outputs across reruns, without installing or running OpenCode
 
 Test data strategy: all test fixtures are self-contained in `tests/` — no dependency on the live `architecture/` or `config/` directories. Tests verify determinism by running the same input twice and asserting identical output. The OpenCode fixture is refreshed only through a deliberate update to a named OpenCode tag or commit; CI never follows `dev` automatically. Initial CI validates the fixture contract and deterministic generated output only, not a runtime OpenCode installation or execution.
 

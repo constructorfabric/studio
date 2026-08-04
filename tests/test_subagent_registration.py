@@ -6,6 +6,7 @@ functions, and subagent generation integration via _process_single_agent()
 for all supported tools.
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
 from studio.commands.agents import (
+    _GENERATED_MARKER,
     _agent_template_claude,
     _agent_template_copilot,
     _agent_template_cursor,
@@ -46,6 +48,14 @@ isolation = false
 model = "fast"
 """
 
+_OPENCODE_COMPATIBILITY_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "opencode" / "v1.18.4" / "compatibility.json"
+)
+
+
+def _load_opencode_compatibility_fixture() -> dict:
+    return json.loads(_OPENCODE_COMPATIBILITY_FIXTURE.read_text(encoding="utf-8"))
+
 
 def _make_kit(kit_dir: Path) -> None:
     """Create a minimal SDLC kit with agents.toml and agent prompt files."""
@@ -58,6 +68,21 @@ def _make_kit(kit_dir: Path) -> None:
     )
     (agents_dir / "cypilot-pr-review.md").write_text(
         "You are a Cypilot PR review agent.\n", encoding="utf-8",
+    )
+
+
+def _make_opencode_kit(kit_dir: Path) -> None:
+    """Create the minimal cf-namespaced registry used by OpenCode tests."""
+    kit_dir.mkdir(parents=True, exist_ok=True)
+    agents_toml = _AGENTS_TOML.replace("cypilot-", "cf-")
+    (kit_dir / "agents.toml").write_text(agents_toml, encoding="utf-8")
+    agents_dir = kit_dir / "agents"
+    agents_dir.mkdir(exist_ok=True)
+    (agents_dir / "cf-codegen.md").write_text(
+        "You are a Constructor Studio code generation agent.\n", encoding="utf-8",
+    )
+    (agents_dir / "cf-pr-review.md").write_text(
+        "You are a Constructor Studio PR review agent.\n", encoding="utf-8",
     )
 
 
@@ -359,8 +384,11 @@ class TestToolTemplates(unittest.TestCase):
             text = "\n".join(fn(agent))
             self.assertIn("{target_agent_path}", text, f"{fn.__name__} missing target_agent_path")
 
-    def test_tool_config_has_four_tools(self):
-        self.assertEqual(set(_TOOL_AGENT_CONFIG.keys()), {"claude", "cursor", "copilot", "openai"})
+    def test_tool_config_has_five_tools_including_opencode(self):
+        self.assertEqual(
+            set(_TOOL_AGENT_CONFIG.keys()),
+            {"claude", "cursor", "copilot", "openai", "opencode"},
+        )
 
     def test_openai_config_has_toml_format(self):
         self.assertEqual(_TOOL_AGENT_CONFIG["openai"].get("format"), "toml")
@@ -449,6 +477,21 @@ class TestSubagentIntegration(unittest.TestCase):
             "---\nname: cypilot-generate\ndescription: Generate things\n---\n\nContent.\n",
             encoding="utf-8",
         )
+        (cypilot / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+        return cypilot
+
+    def _setup_opencode_tree(self, root: Path) -> Path:
+        """Create a minimal current-registry source with cf-named agents."""
+        cypilot = root / "cypilot_src"
+        skill_dir = cypilot / "skills" / "cypilot"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: cypilot\ndescription: test\n---\n\nContent.\n",
+            encoding="utf-8",
+        )
+        _make_opencode_kit(cypilot / "skills" / "studio")
+        (cypilot / "config" / "kits").mkdir(parents=True)
+        (cypilot / "workflows").mkdir()
         (cypilot / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
         return cypilot
 
@@ -544,6 +587,238 @@ class TestSubagentIntegration(unittest.TestCase):
                 self.assertNotIn("ALWAYS open and follow", content)
                 self.assertNotIn("[agents.", content,
                     f"{toml_path.name} must use top-level fields, not [agents.*] sections")
+
+    def test_opencode_generates_only_marker_owned_native_subagents(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cypilot = self._setup_opencode_tree(root)
+            compatibility = _load_opencode_compatibility_fixture()
+            shared_skill = root / compatibility["skills"]["project_agent_compatible_path"].format(
+                name="user-owned",
+            )
+            shared_skill.parent.mkdir(parents=True)
+            shared_skill_content = "---\nname: user-owned\ndescription: User owned\n---\n\nKeep me.\n"
+            shared_skill.write_text(shared_skill_content, encoding="utf-8")
+
+            result = self._run_agents(root, cypilot, "opencode")
+
+            self.assertEqual(result["status"], "PASS")
+            opencode_dir = root / ".opencode"
+            agents_dir = opencode_dir / "agents"
+            self.assertTrue((opencode_dir / ".cf-studio-installed").is_file())
+            generated_agents = sorted(agents_dir.glob("cf-*.md"))
+            self.assertEqual(
+                [path.name for path in generated_agents],
+                ["cf-codegen.md", "cf-pr-review.md"],
+            )
+            for agent_path in generated_agents:
+                content = agent_path.read_text(encoding="utf-8")
+                self.assertIn(_GENERATED_MARKER, content)
+                for required_field in compatibility["agents"]["required_frontmatter"]:
+                    self.assertIn(required_field, content)
+                self.assertNotIn("model:", content)
+                self.assertNotIn("provider:", content)
+            self.assertEqual(shared_skill.read_text(encoding="utf-8"), shared_skill_content)
+            self.assertFalse((opencode_dir / "commands").exists())
+            self.assertFalse((root / "AGENTS.md").exists())
+            self.assertFalse((root / "opencode.json").exists())
+
+    def test_opencode_preserves_unmarked_cf_agent_collision_as_partial(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cypilot = self._setup_opencode_tree(root)
+            collision_path = root / ".opencode" / "agents" / "cf-codegen.md"
+            collision_path.parent.mkdir(parents=True)
+            collision_content = "# User-owned OpenCode agent\n"
+            collision_path.write_text(collision_content, encoding="utf-8")
+
+            result = self._run_agents(root, cypilot, "opencode")
+
+            self.assertEqual(result["status"], "PARTIAL")
+            self.assertEqual(collision_path.read_text(encoding="utf-8"), collision_content)
+            self.assertTrue((collision_path.parent / "cf-pr-review.md").is_file())
+            self.assertIn(
+                {"path": ".opencode/agents/cf-codegen.md", "action": "preserved"},
+                [
+                    {"path": output["path"], "action": output["action"]}
+                    for output in result["subagents"]["outputs"]
+                    if output.get("path") == ".opencode/agents/cf-codegen.md"
+                ],
+            )
+
+    def test_v2_opencode_collision_only_executes_and_records_unowned_output(self):
+        """A v2 collision-only preview remains partial and records the unowned path."""
+        from studio.commands.agents import (
+            _PreparedV2Generation,
+            _V2GenerateContext,
+            _V2GenerateRequest,
+            _preview_v2_generation,
+            _run_v2_generate_path,
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cypilot = self._setup_opencode_tree(root)
+            collision_path = root / ".opencode" / "agents" / "cf-codegen.md"
+            initial_result = _process_single_agent(
+                "opencode",
+                root,
+                cypilot,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+            self.assertEqual(initial_result["status"], "PASS")
+            collision_content = "# User-owned OpenCode agent\n"
+            collision_path.write_text(collision_content, encoding="utf-8")
+            args = type("Args", (), {"dry_run": False, "yes": True})()
+            ctx = _V2GenerateContext(
+                args=args,
+                agents_to_process=["opencode"],
+                project_root=root,
+                studio_root=cypilot,
+                cfg=_default_agents_config(),
+                cfg_path=None,
+                remove_cypilot=False,
+                variables={},
+            )
+            merged = type("Merged", (), {"agents": {}, "skills": {}})()
+            with patch("studio.commands.agents._refresh_managed_gitignore", return_value=None):
+                preview = _preview_v2_generation(merged, ctx, None)
+            self.assertEqual(preview["create"], 0)
+            self.assertEqual(preview["update"], 0)
+            self.assertEqual(preview["delete"], 0)
+            self.assertEqual(preview["preserved"], 1)
+            prepared = _PreparedV2Generation(
+                discover_created_path=None,
+                resolved_layers=[],
+                merged=merged,
+                ctx=ctx,
+                preview=preview,
+            )
+            emitted = {}
+
+            def capture_result(result, **_kwargs):
+                emitted.update(result)
+
+            request = _V2GenerateRequest(ctx=ctx, copy_report=None, layers=[])
+            with (
+                patch("studio.commands.agents._prepare_v2_generation", return_value=prepared),
+                patch("studio.commands.agents._refresh_managed_gitignore", return_value=None),
+                patch("studio.commands.agents.ui.result", side_effect=capture_result),
+            ):
+                rc = _run_v2_generate_path(request)
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(emitted["status"], "PARTIAL")
+            self.assertEqual(collision_path.read_text(encoding="utf-8"), collision_content)
+            subagents = emitted["results"]["opencode"]["subagents"]
+            self.assertEqual(subagents["created"], [])
+            self.assertEqual(subagents["updated"], [])
+            self.assertEqual(subagents["deleted"], [])
+            self.assertIn(
+                {"path": ".opencode/agents/cf-codegen.md", "action": "preserved"},
+                [
+                    {"path": output["path"], "action": output["action"]}
+                    for output in emitted["results"]["opencode"]["subagents"]["outputs"]
+                    if output.get("path") == ".opencode/agents/cf-codegen.md"
+                ],
+            )
+            unowned_record = json.loads(
+                (root / ".opencode" / ".cf-studio-unowned-outputs.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertIn(".opencode/agents/cf-codegen.md", unowned_record["paths"])
+
+    def test_opencode_preserves_marked_modified_collision_across_runs(self):
+        """A first-run collision remains unowned after Studio creates its sentinel."""
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cypilot = self._setup_opencode_tree(root)
+            collision_path = root / ".opencode" / "agents" / "cf-codegen.md"
+            collision_path.parent.mkdir(parents=True)
+            collision_content = f"{_GENERATED_MARKER}\n# User modification\n"
+            collision_path.write_text(collision_content, encoding="utf-8")
+
+            first_result = self._run_agents(root, cypilot, "opencode")
+            second_result = self._run_agents(root, cypilot, "opencode")
+
+            self.assertEqual(first_result["status"], "PARTIAL")
+            self.assertEqual(second_result["status"], "PARTIAL")
+            self.assertEqual(collision_path.read_text(encoding="utf-8"), collision_content)
+            self.assertTrue((root / ".opencode" / ".cf-studio-installed").is_file())
+            self.assertTrue((collision_path.parent / "cf-pr-review.md").is_file())
+            self.assertFalse(first_result["errors"])
+            self.assertFalse(second_result["errors"])
+
+    def test_opencode_preserves_marked_modified_stale_agent_across_runs(self):
+        """A first-run stale file remains unowned after Studio creates its sentinel."""
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cypilot = self._setup_opencode_tree(root)
+            stale_path = root / ".opencode" / "agents" / "cf-stale.md"
+            stale_path.parent.mkdir(parents=True)
+            stale_content = f"{_GENERATED_MARKER}\n# User modification\n"
+            stale_path.write_text(stale_content, encoding="utf-8")
+
+            first_result = self._run_agents(root, cypilot, "opencode")
+            second_result = self._run_agents(root, cypilot, "opencode")
+
+            self.assertEqual(first_result["status"], "PARTIAL")
+            self.assertEqual(second_result["status"], "PARTIAL")
+            self.assertEqual(stale_path.read_text(encoding="utf-8"), stale_content)
+            self.assertTrue((root / ".opencode" / ".cf-studio-installed").is_file())
+            self.assertIn(
+                {"path": ".opencode/agents/cf-stale.md", "reason": "opencode_stale_unowned"},
+                [
+                    {"path": output["path"], "reason": output["reason"]}
+                    for output in second_result["subagents"]["outputs"]
+                    if output.get("path") == ".opencode/agents/cf-stale.md"
+                ],
+            )
+
+    def test_opencode_reconciles_only_dual_marker_owned_stale_agents(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cypilot = self._setup_opencode_tree(root)
+            compatibility = _load_opencode_compatibility_fixture()
+            agents_dir = root / compatibility["agents"]["project_path"].format(name="placeholder")
+            agents_dir = agents_dir.parent
+            agents_dir.mkdir(parents=True)
+            marker = root / ".opencode" / ".cf-studio-installed"
+            marker.write_text("Constructor Studio marker\n", encoding="utf-8")
+            owned_stale = agents_dir / "cf-stale.md"
+            owned_stale.write_text(f"{_GENERATED_MARKER}\n", encoding="utf-8")
+            user_stale = agents_dir / "cf-user.md"
+            user_stale_content = "# User-owned OpenCode agent\n"
+            user_stale.write_text(user_stale_content, encoding="utf-8")
+
+            result = self._run_agents(root, cypilot, "opencode")
+
+            self.assertEqual(result["status"], "PARTIAL")
+            self.assertFalse(owned_stale.exists())
+            self.assertEqual(user_stale.read_text(encoding="utf-8"), user_stale_content)
+            self.assertIn(
+                {"path": ".opencode/agents/cf-stale.md", "action": "deleted"},
+                [
+                    {"path": output["path"], "action": output["action"]}
+                    for output in result["subagents"]["outputs"]
+                    if output.get("path") == ".opencode/agents/cf-stale.md"
+                ],
+            )
+
+    def test_opencode_compatibility_fixture_preserves_source_attribution(self):
+        compatibility = _load_opencode_compatibility_fixture()
+
+        self.assertEqual(compatibility["opencode_version"], "1.18.4")
+        self.assertEqual(
+            compatibility["skills"]["adapter_behavior"],
+            "consume_without_generating_or_overwriting",
+        )
+        for source in compatibility["attribution"].values():
+            self.assertTrue(source["title"])
+            self.assertTrue(source["url"].startswith("https://"))
 
     def test_windsurf_skips_subagent_generation(self):
         with TemporaryDirectory() as tmpdir:

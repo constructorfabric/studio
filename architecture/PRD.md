@@ -1,6 +1,9 @@
 ---
-version: 1.1.0
+version: 1.1.1
 significant_changes:
+  - version: 1.1.1
+    date: 2026-07-27
+    summary: Recorded the implemented OpenCode v1.18.4 integration, including Studio-owned collision-exclusion metadata that preserves ownership-unproven outputs across reruns.
   - version: 1.1.0
     date: 2026-07-23
     summary: Added first-class, explicitly selected OpenCode support with an initial OpenCode v1.18.4 compatibility boundary.
@@ -121,7 +124,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 | Traceability | Linking design elements to code via unique identifiers and code tags |
 | System Prompt | Project-specific context file (tech-stack, conventions, domain model) loaded by workflows conditionally |
 | Agent Entry Point | Agent-specific file (workflow proxy, skill shim, or rule file) generated in the agent's native format |
-| OpenCode Support | First-class Studio agent integration for OpenCode, initially compatible with OpenCode v1.18.4 and available only when the user explicitly selects it. |
+| OpenCode Support | First-class Studio agent integration for OpenCode v1.18.4, available only when the user explicitly selects it. Studio-owned collision-exclusion metadata preserves ownership-unproven `cf-*` outputs across reruns without storing user content. |
 
 ---
 
@@ -297,13 +300,13 @@ The system MUST provide two commands for agent integration: `cfs generate-agents
 
 #### OpenCode Integration
 
-- [ ] `p1` - **ID**: `cpt-studio-fr-core-opencode`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-opencode`
 
 The system MUST provide OpenCode as a first-class supported agent target, distinct from other supported agents rather than a compatibility alias. The initial release MUST:
 
 1. Require the user to explicitly select OpenCode before Studio generates or refreshes OpenCode integration; existing default target selection MUST remain unchanged during the initial release and until compatibility validation is complete.
 2. Allow `cfs agents` to inspect the current OpenCode integration state without modifying the project.
-3. Preserve user-managed OpenCode configuration; Studio MUST NOT overwrite user-owned OpenCode content.
+3. Preserve user-managed OpenCode configuration; Studio MUST NOT overwrite user-owned OpenCode content. On the first ownership-unproven `cf-*` collision, Studio persists only that project-relative path in its managed, ignored `.opencode/.cf-studio-unowned-outputs.json` collision-exclusion record, so a later sentinel cannot claim the file. The record never contains user file content; all other `.opencode/` content remains user-owned.
 4. Support the verified OpenCode v1.18.4 compatibility target. Capability claims for OpenCode MUST be limited to behavior verified for that version and MUST NOT imply full parity with other hosts.
 5. Provide user-facing documentation that states the supported OpenCode version, verified capabilities, selection behavior, and known limits.
 
@@ -1203,11 +1206,11 @@ The plugin MUST delegate all validation logic to the installed Studio CLI to ens
 - [ ] Project initialization completes interactive setup and creates a working install directory in ≤ 5 minutes
 - [ ] Deterministic validation output is actionable (clear file/line/pointer for every issue)
 - [ ] All supported agents receive correct integration files after agent generation
-- [ ] A user can explicitly select OpenCode for OpenCode v1.18.4; initial default agent selection does not select OpenCode.
-- [ ] `cfs agents` reports OpenCode integration state without writing to the project.
-- [ ] OpenCode integration preserves user-managed OpenCode configuration and does not overwrite user-owned content.
-- [ ] Deterministic compatibility validation confirms the documented OpenCode behavior for v1.18.4 before release.
-- [ ] User-facing support documentation states the OpenCode v1.18.4 boundary, verified capabilities, selection behavior, and initial-release limits.
+- [x] A user can explicitly select OpenCode for OpenCode v1.18.4; initial default agent selection does not select OpenCode.
+- [x] `cfs agents` reports OpenCode integration state without writing to the project.
+- [x] OpenCode integration preserves user-managed OpenCode configuration and does not overwrite user-owned content. Ownership-unproven `cf-*` collisions are recorded as path-only Studio metadata so they remain excluded on rerun.
+- [x] Deterministic compatibility tests confirm the documented OpenCode behavior for v1.18.4.
+- [x] User-facing support documentation states the implemented OpenCode v1.18.4 boundary, verified capabilities, selection behavior, and initial-release limits.
 - [ ] Environment diagnostics reports environment health with pass/fail per check
 - [ ] Config is never manually edited — all changes go through the CLI tool
 - [ ] PR review workflow produces a structured report matching the template format

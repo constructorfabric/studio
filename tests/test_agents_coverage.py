@@ -568,6 +568,103 @@ class TestGenerateAgentsNoChangePreview(unittest.TestCase):
 
             self.assertEqual(rc, 0)
 
+    def test_v2_layers_keep_opencode_in_pipeline(self):
+        """OpenCode must use its legacy branch without disabling v2 for the run."""
+        from studio.commands.agents import cmd_generate_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            args = SimpleNamespace(
+                dry_run=False,
+                remove_cypilot="no",
+                discover=False,
+                show_layers=False,
+                yes=True,
+            )
+            layer = SimpleNamespace(scope="kit")
+
+            with (
+                patch(
+                    "studio.commands.agents._resolve_agents_context",
+                    return_value=(args, ["opencode"], root, studio_root, {}, None, {}),
+                ),
+                patch("studio.commands.agents._discover_layers", return_value=[layer]),
+                patch("studio.commands.agents._layers_have_v2_manifests", return_value=True),
+                patch("studio.commands.agents._run_v2_generate_path", return_value=0) as run_v2,
+            ):
+                rc = cmd_generate_agents([])
+
+            self.assertEqual(rc, 0)
+            request = run_v2.call_args.args[0]
+            self.assertEqual(request.ctx.agents_to_process, ["opencode"])
+
+    def test_v2_pipeline_bypasses_opencode_manifest_translation(self):
+        """OpenCode never reaches manifest translators or a .opencode/skills path."""
+        from studio.commands.agents import (
+            _V2GenerateContext,
+            _build_v2_dry_results,
+            _preview_v2_generation,
+            _run_v2_pipeline,
+        )
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            root.mkdir()
+            studio_root.mkdir()
+            ctx = _V2GenerateContext(
+                args=SimpleNamespace(dry_run=False),
+                agents_to_process=["opencode", "claude"],
+                project_root=root,
+                studio_root=studio_root,
+                cfg={},
+                cfg_path=None,
+                remove_cypilot=False,
+                variables={},
+            )
+            merged = SimpleNamespace(agents={}, skills={})
+            manifest_result = {
+                "created": [], "updated": [], "unchanged": [],
+                "deleted": [], "outputs": [],
+            }
+
+            def legacy_result(agent, *_args, **_kwargs):
+                return {
+                    "status": "PASS",
+                    "agent": agent,
+                    "workflows": {},
+                    "skills": {},
+                    "subagents": {},
+                    "rules": {},
+                    "errors": None,
+                }
+
+            with (
+                patch("studio.commands.agents.generate_manifest_agents", return_value=manifest_result) as generate_agents,
+                patch("studio.commands.agents.generate_manifest_skills", return_value=manifest_result) as generate_skills,
+                patch("studio.commands.agents._process_single_agent", side_effect=legacy_result),
+                patch("studio.commands.agents._refresh_managed_gitignore", return_value=None),
+            ):
+                preview = _preview_v2_generation(merged, ctx, None)
+                dry_results = _build_v2_dry_results(merged, ctx.agents_to_process, preview)
+                results, has_errors = _run_v2_pipeline(ctx, merged)
+
+            self.assertFalse(has_errors)
+            self.assertNotIn("opencode", preview["agents"])
+            self.assertNotIn("opencode", preview["skills"])
+            self.assertNotIn("v2_agents", dry_results["opencode"])
+            self.assertNotIn("manifest_v2", results["opencode"])
+            self.assertEqual(
+                [call.args[1] for call in generate_agents.call_args_list],
+                ["claude", "claude"],
+            )
+            self.assertEqual(
+                [call.args[1] for call in generate_skills.call_args_list],
+                ["claude", "claude"],
+            )
+
     def test_legacy_discover_writes_manifest_before_preview(self):
         from studio.commands.agents import cmd_generate_agents
 
