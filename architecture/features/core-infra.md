@@ -32,6 +32,7 @@
   - [Registry Parsing](#registry-parsing)
   - [Context Loading](#context-loading)
   - [Mirror Override](#mirror-override)
+  - [Decision Log](#decision-log)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Project Installation State](#project-installation-state)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -692,6 +693,22 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - `_load_overrides`: merge XDG and brand-home entries; brand-home wins on duplicate `from` - `inst-mirror-merge-overrides`
 - [x] - `p1` - `apply_override`: apply all registered overrides as substring replacements to a URL - `inst-mirror-apply-override`
 
+### Decision Log
+
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-decision-log`
+
+**Input**: A decision event (type + payload) emitted by an engine command
+
+**Output**: One appended JSONL line in the local decision log, or a silent no-op
+
+1. [x] - `p1` - Generate a decision id used to chain the events of one decision - `inst-log-id`
+2. [x] - `p1` - Resolve the log location (env override, else project `.cache/decisions.jsonl`, else no-op) and the persistent opt-out sentinel path - `inst-log-locate`
+3. [x] - `p1` - Report whether logging is enabled — an env off-value or the sentinel file disables it - `inst-log-enabled`
+4. [x] - `p1` - Redact `$HOME` to `~` recursively so no username is recorded - `inst-log-redact`
+5. [x] - `p1` - Append one schema-versioned event (run_id, decision_id, event, command, payload); never raise into the caller; rotate by size; show a one-time notice - `inst-log-record`
+6. [x] - `p1` - Typed record helpers — routing, dispatch, validation, review, escalation, and command invocation (exit code, duration, arg-shape) — that call the writer - `inst-log-api`
+7. [x] - `p1` - Read events back oldest-first (skipping unparseable lines) and summarise counts by event and run - `inst-log-read`
+
 ## 4. States (CDSL)
 
 ### Project Installation State
@@ -932,6 +949,7 @@ See ADR-0020 (`architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-
 | TOML Utilities | `skills/.../utils/toml_utils.py` | TOML reading/writing, markdown TOML extraction |
 | Artifacts Meta | `skills/.../utils/artifacts_meta.py` | Artifacts registry parsing, autodetect expansion |
 | Mirror Override | `src/studio_proxy/mirrors.py` | URL override load/apply/set/remove/list; dual-location config; canonicalization |
+| Decision Log | `skills/.../utils/decision_log.py` | Local-only JSONL decision/outcome log: locate/opt-out, redact, append (never fatal), rotate, read/summarize |
 
 ## 7. Acceptance Criteria
 

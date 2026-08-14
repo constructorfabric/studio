@@ -564,6 +564,11 @@ coverage.xml
 .cypilot/
 **/.cache/explain/
 
+# Local decision/outcome log (decision_log.py) — per-user runtime state, never committed
+**/.cache/decisions.jsonl
+**/.cache/decisions.jsonl.1
+**/.cache/decisions.jsonl.lock
+
 # Superpowers brainstorming/planning specs (local-only)
 docs/superpowers/
 

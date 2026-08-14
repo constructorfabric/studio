@@ -39,3 +39,29 @@ from studio.commands.map.categorize import OverrideCategory  # noqa: E402
 MAX_ROW_W  # documented packing cap, retained for future tuning
 _oc = OverrideCategory(name="", paths=[], color=None, background=None)
 _oc.background  # set by md-map.toml [categories.<name>.style] entries
+
+# decision_log public API — the recorder entrypoints, correlation id, and read view.
+# Wired by the forthcoming command instrumentation (dispatch wrapper) and called by
+# log consumers; not yet reached from production paths. Exercised by tests.
+# See skills/studio/scripts/studio/utils/decision_log.py.
+from studio.utils.decision_log import (  # noqa: E402
+    EVENTS,
+    new_decision_id,
+    record_routing,
+    record_dispatch,
+    record_validation,
+    record_review,
+    record_escalation,
+    record_invocation,
+    summarize,
+)
+
+EVENTS  # noqa: B018
+new_decision_id  # noqa: B018
+record_routing  # noqa: B018
+record_dispatch  # noqa: B018
+record_validation  # noqa: B018
+record_review  # noqa: B018
+record_escalation  # noqa: B018
+record_invocation  # noqa: B018
+summarize  # noqa: B018
