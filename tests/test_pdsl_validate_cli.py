@@ -266,3 +266,124 @@ RULES:
     assert any("STATE item must start with one of: SET; got LOAD" in msg for msg in messages)
     assert any("WHEN item must start with one of:" in msg and "got SET" in msg for msg in messages)
     assert any("RULES item must start with one of:" in msg and "got RUN" in msg for msg in messages)
+
+
+def test_pdsl_validate_starter_keyword_check_applies_to_dashless_items() -> None:
+    """TK-02: PDSL200 (starter keyword validation) applies to dashless items too."""
+    text = """UNIT DashlessStarters
+DO:
+      RUN deeply indented ignored
+  RUN a valid action
+STATE:
+  LOAD invalid state starter
+WHEN:
+  SET invalid when starter
+RULES:
+  RUN invalid rule starter
+"""
+
+    result = validate_source(PdslSource("dashless-starters.md", text))
+
+    assert result.status == "FAIL"
+    messages = [finding.message for finding in result.findings]
+    assert any("STATE item must start with one of: SET; got LOAD" in msg for msg in messages)
+    assert any("WHEN item must start with one of:" in msg and "got SET" in msg for msg in messages)
+    assert any("RULES item must start with one of:" in msg and "got RUN" in msg for msg in messages)
+
+
+def _do_unit(action_count: int) -> str:
+    actions = "\n".join(f"  - SET STEP_{i} = true" for i in range(1, action_count + 1))
+    return f"UNIT DoCapUnit\nDO:\n{actions}\n"
+
+
+def _rules_unit(rule_count: int) -> str:
+    rules = "\n".join(f"  - ALWAYS rule {i}" for i in range(1, rule_count + 1))
+    return f"UNIT RulesCapUnit\nRULES:\n{rules}\n"
+
+
+def test_pdsl_validate_enforces_do_and_rules_caps() -> None:
+    at_cap = validate_source(PdslSource("do-7.md", _do_unit(7)))
+    over_cap = validate_source(PdslSource("do-9.md", _do_unit(9)))
+    rules_at_cap = validate_source(PdslSource("rules-5.md", _rules_unit(5)))
+    rules_over_cap = validate_source(PdslSource("rules-6.md", _rules_unit(6)))
+
+    assert at_cap.status == "PASS"
+    assert over_cap.status == "FAIL"
+    assert [f.rule_id for f in over_cap.findings] == ["PDSL600"]
+    assert "exceeds the 7-action DO cap" in over_cap.findings[0].message
+    assert over_cap.findings[0].line == 10  # the 8th action line, where the cap is first crossed
+
+    assert rules_at_cap.status == "PASS"
+    assert rules_over_cap.status == "FAIL"
+    assert [f.rule_id for f in rules_over_cap.findings] == ["PDSL601"]
+    assert "exceeds the 5-rule cap" in rules_over_cap.findings[0].message
+
+
+def test_pdsl_validate_do_cap_applies_to_dashless_units() -> None:
+    """TK-02: the DO cap applies uniformly whether or not actions use a leading `- `."""
+    at_cap = """UNIT NoDashAtCap
+DO:
+  SET STEP_1 = true
+  SET STEP_2 = true
+  SET STEP_3 = true
+  SET STEP_4 = true
+  SET STEP_5 = true
+  SET STEP_6 = true
+  SET STEP_7 = true
+"""
+    over_cap = """UNIT NoDashOverCap
+DO:
+  SET STEP_1 = true
+  SET STEP_2 = true
+  SET STEP_3 = true
+  SET STEP_4 = true
+  SET STEP_5 = true
+  SET STEP_6 = true
+  SET STEP_7 = true
+  SET STEP_8 = true
+  SET STEP_9 = true
+"""
+
+    at_cap_result = validate_source(PdslSource("dashless-at-cap.md", at_cap))
+    over_cap_result = validate_source(PdslSource("dashless-over-cap.md", over_cap))
+
+    assert at_cap_result.status == "PASS"
+    assert over_cap_result.status == "FAIL"
+    assert [f.rule_id for f in over_cap_result.findings] == ["PDSL600"]
+    assert "exceeds the 7-action DO cap" in over_cap_result.findings[0].message
+
+
+def test_pdsl_validate_do_cap_ignores_continuation_lines_dashed_and_dashless() -> None:
+    """Continuation lines never count toward the cap, regardless of dash usage."""
+    continuation = """UNIT ContinuationUnit
+DO:
+  - RUN one action
+    with a continuation line that must not be counted
+    and another one
+  - RUN second action
+"""
+    dashless_continuation = """UNIT DashlessContinuationUnit
+DO:
+  RUN one action
+    with a continuation line that must not be counted
+    and another one
+  RUN second action
+"""
+
+    continuation_result = validate_source(PdslSource("continuation.md", continuation))
+    dashless_continuation_result = validate_source(PdslSource("dashless-continuation.md", dashless_continuation))
+
+    assert continuation_result.status == "PASS"
+    assert dashless_continuation_result.status == "PASS"
+
+
+def test_pdsl_validate_do_cap_does_not_misread_capitalized_prose_as_an_action() -> None:
+    """A capitalized continuation line that isn't a known DO keyword must not count."""
+    text = """UNIT ProseContinuationUnit
+DO:
+  - RUN one action
+    Important: this note starts with a capital letter but is not a new action
+  - RUN second action
+"""
+    result = validate_source(PdslSource("prose-continuation.md", text))
+    assert result.status == "PASS"
