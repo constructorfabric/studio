@@ -252,7 +252,12 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
    1. [x] - `p1` - **IF** all children checked AND parent unchecked, emit error - `inst-if-all-done-parent-not`
    2. [x] - `p1` - **IF** parent checked AND any child unchecked, emit error - `inst-if-parent-done-child-not`
 7. [x] - `p1` - Validate ID format and heading scoping per constraints - `inst-validate-id-format`
-8. [x] - `p1` - **RETURN** accumulated errors and warnings - `inst-return-structure`
+8. [x] - `p1` - **FOR EACH** CDSL step candidate line (numbered/dash item carrying a checkbox, phase token, or inst-id token) - `inst-foreach-cdsl-candidate`
+   1. [x] - `p1` - **IF** the checkbox, phase token, or inst-id token is missing, emit missing-token errors (CDSL.md S.3/S.4/S.5) and an incomplete-step-line error (CO.4) - `inst-if-cdsl-missing-token`
+   2. [x] - `p1` - **IF** the step's description reads like code rather than plain English, emit the matching CDSL.md rule errors (S.6/CL.3, S.7, CL.2, CL.1/CL.4) - `inst-if-cdsl-prohibited-syntax`
+   3. [x] - `p1` - **IF** an `inst-{id}` repeats under the same parent ID, emit duplicate-instruction-id error (CO.5) - `inst-if-cdsl-duplicate-inst`
+   4. [x] - `p1` - **IF** the step contains an unresolved placeholder marker, emit placeholder error (CO.6) - `inst-if-cdsl-placeholder`
+9. [x] - `p1` - **RETURN** accumulated errors and warnings - `inst-return-structure`
 
 **Supporting**:
 - [x] - `p1` - Imports, dataclasses (ReferenceRule, HeadingConstraint, IdConstraint, ArtifactKindConstraints, KitConstraints, ArtifactRecord, ParsedStudioId), error factory, and optional-bool parser - `inst-structure-datamodel`
@@ -272,6 +277,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - `validate_id_format` kind-extractor: parse kind token from ID slug for constraint lookup - `inst-validate-id-extract-kind`
 - [x] - `p1` - `validate_id_format` definitions loop: iterate all scanned ID definitions and dispatch per-ID checks - `inst-validate-id-defs-loop`
 - [x] - `p1` - `validate_id_format` required-check: emit MISSING_REQUIRED_KIND error for required kinds absent from artifact - `inst-validate-id-required-check`
+- [x] - `p1` - `_validate_cdsl_structure`: detect CDSL step candidates, classify missing tokens, prohibited syntax, duplicate inst-ids, and placeholders per CDSL.md's FAIL rules - `inst-validate-cdsl-structure`
 
 ### Cross-Validate Artifacts
 

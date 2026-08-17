@@ -116,4 +116,18 @@ FILE_LOAD_ERROR = "file-load-error"
 # Content language validation
 # ---------------------------------------------------------------------------
 CONTENT_LANGUAGE_VIOLATION = "LANG001"
+
+# ---------------------------------------------------------------------------
+# CDSL structure — CDSL.md FAIL rules (S.3-7, CL.1-4, CO.4-6)
+# ---------------------------------------------------------------------------
+CDSL_MISSING_CHECKBOX = "cdsl-missing-checkbox"
+CDSL_MISSING_PHASE_TOKEN = "cdsl-missing-phase-token"
+CDSL_MISSING_INST_ID = "cdsl-missing-inst-id"
+CDSL_INCOMPLETE_STEP_LINE = "cdsl-incomplete-step-line"
+CDSL_CODE_SYNTAX = "cdsl-code-syntax"
+CDSL_TYPE_ANNOTATION = "cdsl-type-annotation"
+CDSL_LANGUAGE_OPERATOR = "cdsl-language-operator"
+CDSL_NOT_PLAIN_ENGLISH = "cdsl-not-plain-english"
+CDSL_DUPLICATE_INST_ID = "cdsl-duplicate-inst-id"
+CDSL_PLACEHOLDER = "cdsl-placeholder"
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
