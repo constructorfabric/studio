@@ -653,6 +653,44 @@ def _code_paths_for_entry(code_path: Path, extensions: List[str]) -> List[Path]:
     return files
 
 
+def _is_ignored_code_file(file_path: Path, ctx) -> bool:
+    """Return whether *file_path* is registry-ignored and should be skipped."""
+    try:
+        rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
+    except (OSError, ValueError) as exc:
+        _warn_codebase(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
+        return False
+    return ctx.meta.is_ignored(rel)
+
+
+def _code_reference_hit(ref: CodeReference, file_path: Path) -> Dict[str, object]:
+    """Build a list-ids/where-used hit dict from one parsed code reference."""
+    hit: Dict[str, object] = {
+        "id": ref.id,
+        "kind": ref.kind or "code",
+        "type": "code_reference",
+        "artifact_type": "CODE",
+        "line": ref.line,
+        "artifact": str(file_path),
+        "marker_type": ref.marker_type,
+    }
+    if ref.phase is not None:
+        hit["phase"] = ref.phase
+    if ref.inst:
+        hit["inst"] = ref.inst
+    return hit
+
+
+def _scan_code_file_references(file_path: Path, ctx) -> Optional[List[Dict[str, object]]]:
+    """Parse one code file for marker references, or None if skipped/unparsable."""
+    if _is_ignored_code_file(file_path, ctx):
+        return None
+    cf, errs = CodeFile.from_path(file_path)
+    if errs or cf is None:
+        return None
+    return [_code_reference_hit(ref, file_path) for ref in cf.references]
+
+
 def scan_registered_codebase_references(ctx) -> Tuple[List[Dict[str, object]], int]:
     """Scan registered codebase entries for Studio marker references.
 
@@ -664,34 +702,11 @@ def scan_registered_codebase_references(ctx) -> Tuple[List[Dict[str, object]], i
     for cb_entry, _system_node in ctx.meta.iter_all_codebase():
         code_path = (ctx.project_root / cb_entry.path).resolve()
         for file_path in _code_paths_for_entry(code_path, cb_entry.extensions or [".py"]):
-            try:
-                rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
-            except (OSError, ValueError) as exc:
-                _warn_codebase(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
-                rel = None
-            if rel and ctx.meta.is_ignored(rel):
+            file_hits = _scan_code_file_references(file_path, ctx)
+            if file_hits is None:
                 continue
-
-            cf, errs = CodeFile.from_path(file_path)
-            if errs or cf is None:
-                continue
-
             code_files_scanned += 1
-            for ref in cf.references:
-                hit: Dict[str, object] = {
-                    "id": ref.id,
-                    "kind": ref.kind or "code",
-                    "type": "code_reference",
-                    "artifact_type": "CODE",
-                    "line": ref.line,
-                    "artifact": str(file_path),
-                    "marker_type": ref.marker_type,
-                }
-                if ref.phase is not None:
-                    hit["phase"] = ref.phase
-                if ref.inst:
-                    hit["inst"] = ref.inst
-                hits.append(hit)
+            hits.extend(file_hits)
     return hits, code_files_scanned
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 
