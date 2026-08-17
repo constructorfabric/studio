@@ -13,12 +13,19 @@ IDs in code that don't exist in artifacts = validation FAIL.
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-datamodel
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from . import error_codes as EC
+
+logger = logging.getLogger(__name__)
+
+
+def _warn_codebase(message: str) -> None:
+    logger.warning("codebase: %s", message)
 
 # Scope marker: @cpt-{kind}:{full-id}:p{N}
 # {kind} is kit-defined; parser accepts any lowercase slug.
@@ -630,6 +637,63 @@ def validate_code_file(code_path: Path) -> Dict[str, List[Dict[str, object]]]:
             "warnings": [],
         }
     return cf.validate()
+# @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
+def _code_paths_for_entry(code_path: Path, extensions: List[str]) -> List[Path]:
+    """Return code files covered by one registry codebase entry."""
+    if not code_path.exists():
+        return []
+    if code_path.is_file():
+        return [code_path]
+
+    files: List[Path] = []
+    for ext in extensions:
+        files.extend(code_path.rglob(f"*{ext}"))
+    return files
+
+
+def scan_registered_codebase_references(ctx) -> Tuple[List[Dict[str, object]], int]:
+    """Scan registered codebase entries for Studio marker references.
+
+    Shared by `list-ids --include-code` and `where-used --include-code` so
+    both commands see the same code-marker parser.
+    """
+    hits: List[Dict[str, object]] = []
+    code_files_scanned = 0
+    for cb_entry, _system_node in ctx.meta.iter_all_codebase():
+        code_path = (ctx.project_root / cb_entry.path).resolve()
+        for file_path in _code_paths_for_entry(code_path, cb_entry.extensions or [".py"]):
+            try:
+                rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
+            except (OSError, ValueError) as exc:
+                _warn_codebase(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
+                rel = None
+            if rel and ctx.meta.is_ignored(rel):
+                continue
+
+            cf, errs = CodeFile.from_path(file_path)
+            if errs or cf is None:
+                continue
+
+            code_files_scanned += 1
+            for ref in cf.references:
+                hit: Dict[str, object] = {
+                    "id": ref.id,
+                    "kind": ref.kind or "code",
+                    "type": "code_reference",
+                    "artifact_type": "CODE",
+                    "line": ref.line,
+                    "artifact": str(file_path),
+                    "marker_type": ref.marker_type,
+                }
+                if ref.phase is not None:
+                    hit["phase"] = ref.phase
+                if ref.inst:
+                    hit["inst"] = ref.inst
+                hits.append(hit)
+    return hits, code_files_scanned
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 
 __all__ = [
     "CodeFile",
@@ -639,5 +703,5 @@ __all__ = [
     "load_code_file",
     "validate_code_file",
     "cross_validate_code",
+    "scan_registered_codebase_references",
 ]
-# @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers

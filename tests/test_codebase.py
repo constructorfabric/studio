@@ -12,7 +12,56 @@ from studio.utils.codebase import (
     load_code_file,
     validate_code_file,
     cross_validate_code,
+    scan_registered_codebase_references,
 )
+
+
+class _FakeCodebaseEntry:
+    def __init__(self, path, extensions):
+        self.path = path
+        self.extensions = extensions
+
+
+class _FakeMeta:
+    def __init__(self, entries):
+        self._entries = entries
+
+    def iter_all_codebase(self):
+        return iter((entry, None) for entry in self._entries)
+
+    def is_ignored(self, rel_path: str) -> bool:
+        return False
+
+
+class _FakeCtx:
+    def __init__(self, project_root: Path, entries):
+        self.project_root = project_root
+        self.meta = _FakeMeta(entries)
+
+
+class TestScanRegisteredCodebaseReferences:
+    """Shared marker-scan helper used by both `list-ids` and `where-used` (OLE-42)."""
+
+    def test_finds_block_marker_references(self, tmp_path: Path):
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        (code_dir / "auth.py").write_text(
+            dedent("""
+                # @cpt-begin:cpt-myapp-feature-auth-flow-login:p1:inst-check-creds
+                def login():
+                    pass
+                # @cpt-end:cpt-myapp-feature-auth-flow-login:p1:inst-check-creds
+            """)
+        )
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(code_dir, [".py"])])
+
+        hits, code_files_scanned = scan_registered_codebase_references(ctx)
+
+        assert code_files_scanned == 1
+        assert len(hits) == 1
+        assert hits[0]["id"] == "cpt-myapp-feature-auth-flow-login"
+        assert hits[0]["artifact_type"] == "CODE"
+        assert hits[0]["inst"] == "check-creds"
 
 
 class TestScopeMarkerParsing:

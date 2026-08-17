@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..utils.codebase import CodeFile
+from ..utils.codebase import scan_registered_codebase_references
 from ..utils.document import scan_cpt_ids
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
@@ -39,57 +39,6 @@ def _collect_workspace_source_artifacts(ctx, source_name: str) -> List[Tuple[Pat
             if art_path.exists():
                 artifacts.append((art_path, str(art.kind)))
     return artifacts
-
-
-def _code_paths_for_entry(code_path: Path, extensions: List[str]) -> List[Path]:
-    """Return code files covered by one registry codebase entry."""
-    if not code_path.exists():
-        return []
-    if code_path.is_file():
-        return [code_path]
-
-    files: List[Path] = []
-    for ext in extensions:
-        files.extend(code_path.rglob(f"*{ext}"))
-    return files
-
-
-def _scan_code_references(ctx) -> Tuple[List[Dict[str, object]], int]:
-    """Scan registered codebase entries for Studio marker references."""
-    hits: List[Dict[str, object]] = []
-    code_files_scanned = 0
-    for cb_entry, _system_node in ctx.meta.iter_all_codebase():
-        code_path = (ctx.project_root / cb_entry.path).resolve()
-        for file_path in _code_paths_for_entry(code_path, cb_entry.extensions or [".py"]):
-            try:
-                rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
-            except (OSError, ValueError) as exc:
-                _warn_list_ids(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
-                rel = None
-            if rel and ctx.meta.is_ignored(rel):
-                continue
-
-            cf, errs = CodeFile.from_path(file_path)
-            if errs or cf is None:
-                continue
-
-            code_files_scanned += 1
-            for ref in cf.references:
-                hit: Dict[str, object] = {
-                    "id": ref.id,
-                    "kind": ref.kind or "code",
-                    "type": "code_reference",
-                    "artifact_type": "CODE",
-                    "line": ref.line,
-                    "artifact": str(file_path),
-                    "marker_type": ref.marker_type,
-                }
-                if ref.phase is not None:
-                    hit["phase"] = ref.phase
-                if ref.inst:
-                    hit["inst"] = ref.inst
-                hits.append(hit)
-    return hits, code_files_scanned
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 
 
@@ -377,7 +326,7 @@ def cmd_list_ids(argv: List[str]) -> int:
     # Scan code files if requested
     code_files_scanned = 0
     if args.include_code and not args.artifact and ctx:
-        code_hits, code_files_scanned = _scan_code_references(ctx)
+        code_hits, code_files_scanned = scan_registered_codebase_references(ctx)
         hits.extend(code_hits)
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-list-code
 
