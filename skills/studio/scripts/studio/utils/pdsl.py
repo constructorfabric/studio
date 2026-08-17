@@ -116,6 +116,8 @@ class _BlockValidationState:
     section: Optional[str] = None
     menu_expected: Optional[int] = None
     in_menu: bool = False
+    do_count: int = 0
+    rules_count: int = 0
 
 
 FENCE_RE = re.compile(r"^```(?P<lang>[A-Za-z0-9_-]+)?\s*$")
@@ -123,7 +125,7 @@ UNIT_OR_MENU_RE = re.compile(r"^(UNIT|MENU)\s+(?P<name>[A-Za-z][A-Za-z0-9_-]*)\b
 PATTERN_DEF_RE = re.compile(r"^\s{2}(?P<name>[A-Za-z][A-Za-z0-9_-]*)\s*:\s*/")
 MATCHES_RE = re.compile(r"\bmatches\(\s*[^,]+,\s*(?P<quote>['\"]?)(?P<name>[A-Za-z][A-Za-z0-9_-]*)\1\s*\)")
 SECTION_HEAD_RE = re.compile(r"^(?P<section>[A-Z][A-Z0-9_-]*):")
-ACTION_HEAD_RE = re.compile(r"^-\s+(?P<token>[A-Z][A-Z0-9_-]*)(?=\b|\s|$)")
+ACTION_HEAD_RE = re.compile(r"^(?:-\s+)?(?P<token>[A-Z][A-Z0-9_-]*)(?=\b|\s|$)")
 MENU_OPTION_RE = re.compile(r"^(?:-\s+)?(?P<number>\d+)\b.*->")
 
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-load-rule-registry
@@ -161,6 +163,10 @@ DO_KEYWORDS = {
 }
 RULE_KEYWORDS = {"ALWAYS", "NEVER"}
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-load-rule-registry
+
+# PDSL.md Authoring Rules #6/#7: max 7 top-level DO actions per UNIT, max 5 RULES per block.
+DO_ACTION_CAP = 7
+RULES_CAP = 5
 
 
 def read_source_file(path: Path) -> Tuple[Optional[str], Optional[PdslError]]:
@@ -416,6 +422,7 @@ def _validate_block(block: PdslBlock) -> List[PdslFinding]:
             continue
 
         findings.extend(_validate_section_item(block, state.section, state.menu_expected, line_no, raw_line))
+        findings.extend(_check_section_cap(block, state, line_no, raw_line))
         _advance_menu_option_counter(stripped, state)
 
         _append_missing_match_pattern_findings(
@@ -455,6 +462,8 @@ def _handle_unit_or_menu_line(
     state.section = None
     state.menu_expected = None
     state.in_menu = kind == "MENU"
+    state.do_count = 0
+    state.rules_count = 0
     return True
 
 
@@ -475,6 +484,10 @@ def _handle_section_header_line(
         return True
     state.section = section_name
     state.menu_expected = 1 if state.in_menu and section_name == "OPTIONS" else None
+    if section_name == "DO":
+        state.do_count = 0
+    elif section_name == "RULES":
+        state.rules_count = 0
     return True
 
 
@@ -501,6 +514,43 @@ def _handle_pattern_line(
         else:
             local_patterns[pattern_name] = line_no
     return True
+
+
+def _check_section_cap(
+    block: PdslBlock,
+    state: _BlockValidationState,
+    line_no: int,
+    raw_line: str,
+) -> List[PdslFinding]:
+    """Flag the point where top-level DO actions or RULES items exceed the spec's compactness cap.
+
+    Applies uniformly regardless of dash usage — a dashless top-level action
+    or rule (see _is_top_level_item_start) counts toward the cap exactly like
+    a dash-prefixed one.
+    """
+    stripped = raw_line.strip()
+    if not _is_top_level_item_start(stripped, state.section):
+        return []
+    indent_len = len(raw_line) - len(raw_line.lstrip(" "))
+    if indent_len > 2:
+        return []
+    if state.section == "DO":
+        state.do_count += 1
+        if state.do_count == DO_ACTION_CAP + 1:
+            return [_finding(
+                block, "PDSL600", line_no, raw_line,
+                f"UNIT exceeds the {DO_ACTION_CAP}-action DO cap ({state.do_count} top-level actions so far)",
+                hint="Refactor into narrower UNITs, or move reusable behavior into a RUN target.",
+            )]
+    elif state.section == "RULES":
+        state.rules_count += 1
+        if state.rules_count == RULES_CAP + 1:
+            return [_finding(
+                block, "PDSL601", line_no, raw_line,
+                f"RULES block exceeds the {RULES_CAP}-rule cap ({state.rules_count} rules so far)",
+                hint="Refactor into narrower units, or elevate cross-cutting constraints to INVARIANTS.",
+            )]
+    return []
 
 
 def _advance_menu_option_counter(
@@ -598,13 +648,37 @@ def _validate_menu_option_item(
     return []
 
 
+# Sections whose top-level items are single KEYWORD-led lines (PDSL.md's own
+# "allowed starter keywords" taxonomy). OPTIONS uses a distinct numbered-item
+# grammar (handled separately below); free-form sections (PURPOSE, NOTES, ...)
+# have no item concept at all — dashless recognition must not reach into them.
+_DASHLESS_ITEM_SECTIONS = {"STATE", "WHEN", "DO", "RULES", "INVARIANTS"}
+
+
+def _is_top_level_item_start(stripped: str, section: Optional[str]) -> bool:
+    """Return whether *stripped* starts a new top-level PDSL item, dash or dashless.
+
+    Dash-prefixed items are always recognized (PDSL.md's documented form). A
+    dashless item is recognized by a bare `KEYWORD`-shaped leading token, but
+    only within a section that actually has keyword-led items — whether that
+    keyword is *valid* for the section is PDSL200's job (_validate_starter),
+    not this check's. Indent depth, checked separately by callers, is what
+    tells a genuine top-level item apart from a deeper-indented continuation.
+    """
+    if stripped.startswith("- "):
+        return True
+    if section not in _DASHLESS_ITEM_SECTIONS:
+        return False
+    return bool(re.match(r"^[A-Z][A-Z0-9_-]*\b", stripped))
+
+
 def _is_valid_section_item_start(
     stripped: str,
     section: Optional[str],
     menu_expected: Optional[int],
 ) -> bool:
     """Return whether a line is eligible for section-item validation."""
-    if stripped.startswith("- "):
+    if _is_top_level_item_start(stripped, section):
         return True
     return bool(section == "OPTIONS" and menu_expected is not None and re.match(r"^\d+\b", stripped))
 

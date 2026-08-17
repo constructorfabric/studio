@@ -139,8 +139,28 @@ one of the section's allowed starter keywords:
 - `RULES` and `INVARIANTS`: `ALWAYS`, `NEVER`
 - `OPTIONS`: a decimal number such as `1`, `2`, `3`
 
+A top-level item may either lead with a dash (`- SET x = true`) or omit it
+(`SET x = true`), as long as it sits at the section's top-level indent. Both
+forms are validated identically — the same starter-keyword rule and the same
+compactness cap apply either way. For example, these two `DO` blocks are
+equivalent:
+
+```pdsl
+DO:
+  - RUN check input
+  - RETURN ok
+```
+
+```pdsl
+DO:
+  RUN check input
+  RETURN ok
+```
+
 Continuation lines and nested explanatory bullets may appear under a list item,
-but they do not introduce new PDSL actions or rules.
+but they do not introduce new PDSL actions or rules — regardless of dash usage,
+a continuation line is any line at that item's own indent or deeper that does
+not itself start with a top-level starter keyword.
 
 ---
 
