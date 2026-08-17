@@ -219,3 +219,32 @@ def test_prose_mentioning_phase_markers_is_not_scanned(tmp_path: Path) -> None:
     )
     errors, warnings = _run(tmp_path, text)
     assert errors == [] and warnings == []
+
+
+def test_trailing_prose_after_steps_block_is_not_folded_into_last_step(tmp_path: Path) -> None:
+    """A blank line closes the current step; trailing prose isn't a continuation."""
+    text = (
+        "**Steps**:\n"
+        "1. [x] - `p1` - Load entity - `inst-load-entity`\n"
+        "\n"
+        "Some trailing note that mentions TODO and == and -> in passing.\n"
+        "\n"
+        "## Next Section\n"
+    )
+    errors, warnings = _run(tmp_path, text)
+    assert errors == [] and warnings == []
+
+
+def test_duplicate_inst_id_in_supporting_block_is_not_flagged(tmp_path: Path) -> None:
+    """CO.5 only checks Steps:/Transitions: content — Supporting: reuse isn't in scope."""
+    text = (
+        "**ID**: `cpt-example-feature-x-algo-z`\n"
+        "\n"
+        "**Steps**:\n"
+        "1. [x] - `p1` - Load entity - `inst-load-entity`\n"
+        "\n"
+        "**Supporting**:\n"
+        "- [x] - `p1` - Some note - `inst-load-entity`\n"
+    )
+    errors, warnings = _run(tmp_path, text)
+    assert errors == [] and warnings == []

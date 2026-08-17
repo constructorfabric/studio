@@ -319,6 +319,25 @@ def test_pdsl_validate_enforces_do_and_rules_caps() -> None:
     assert "exceeds the 5-rule cap" in rules_over_cap.findings[0].message
 
 
+def test_pdsl_validate_do_cap_accumulates_across_multiple_do_sections() -> None:
+    """A UNIT must not bypass PDSL600 by splitting actions across two DO: sections."""
+    text = """UNIT SplitDoUnit
+DO:
+  - RUN action one
+  - RUN action two
+  - RUN action three
+  - RUN action four
+DO:
+  - RUN action five
+  - RUN action six
+  - RUN action seven
+  - RUN action eight
+"""
+    result = validate_source(PdslSource("split-do.md", text))
+    assert result.status == "FAIL"
+    assert [f.rule_id for f in result.findings] == ["PDSL600"]
+
+
 def test_pdsl_validate_do_cap_applies_to_dashless_units() -> None:
     """TK-02: the DO cap applies uniformly whether or not actions use a leading `- `."""
     at_cap = """UNIT NoDashAtCap

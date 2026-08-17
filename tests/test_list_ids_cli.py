@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import io
+import json
+import os
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -69,3 +73,57 @@ def test_dedupe_hits_prefers_first_definition_when_multiple_exist() -> None:
     assert len(deduped) == 1
     assert deduped[0]["type"] == "definition"
     assert deduped[0]["line"] == 5
+
+
+def test_list_ids_include_code_works_with_no_registered_artifacts() -> None:
+    """A codebase-only project (no registered artifacts) must still return code hits."""
+    from studio.cli import main
+    from studio.utils import toml_utils
+
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        (root / ".git").mkdir()
+        (root / "AGENTS.md").write_text(
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "adapter"\n```\n',
+            encoding="utf-8",
+        )
+        adapter = root / "adapter"
+        (adapter / "config").mkdir(parents=True)
+        (adapter / "config" / "AGENTS.md").write_text("# Test adapter\n", encoding="utf-8")
+
+        src = root / "src"
+        src.mkdir()
+        (src / "impl.py").write_text(
+            "# @cpt-begin:cpt-test-req-1:p1:inst-do-work\n"
+            "print('working')\n"
+            "# @cpt-end:cpt-test-req-1:p1:inst-do-work\n",
+            encoding="utf-8",
+        )
+
+        toml_utils.dump(
+            {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {},
+                "systems": [{
+                    "name": "Test", "slug": "test",
+                    "artifacts": [],
+                    "codebase": [{"path": "src", "extensions": [".py"]}],
+                }],
+            },
+            adapter / "config" / "artifacts.toml",
+        )
+
+        cwd = os.getcwd()
+        try:
+            os.chdir(root)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = main(["list-ids", "--include-code"])
+            assert rc == 0
+            out = json.loads(buf.getvalue())
+            code_hits = [h for h in out.get("ids", []) if h.get("type") == "code_reference"]
+            assert len(code_hits) == 1
+            assert code_hits[0]["id"] == "cpt-test-req-1"
+        finally:
+            os.chdir(cwd)

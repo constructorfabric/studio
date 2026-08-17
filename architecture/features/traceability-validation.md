@@ -252,10 +252,10 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
    1. [x] - `p1` - **IF** all children checked AND parent unchecked, emit error - `inst-if-all-done-parent-not`
    2. [x] - `p1` - **IF** parent checked AND any child unchecked, emit error - `inst-if-parent-done-child-not`
 7. [x] - `p1` - Validate ID format and heading scoping per constraints - `inst-validate-id-format`
-8. [x] - `p1` - **FOR EACH** CDSL step candidate line (numbered/dash item carrying a checkbox, phase token, or inst-id token) - `inst-foreach-cdsl-candidate`
-   1. [x] - `p1` - **IF** the checkbox, phase token, or inst-id token is missing, emit missing-token errors (CDSL.md S.3/S.4/S.5) and an incomplete-step-line error (CO.4) - `inst-if-cdsl-missing-token`
+8. [x] - `p1` - **FOR EACH** CDSL step candidate item (numbered/dash item inside a `**Steps**:` or `**Transitions**:` block, with continuation lines joined) - `inst-foreach-cdsl-candidate`
+   1. [x] - `p1` - **IF** the checkbox, phase token, or inst-id token is missing, emit missing-token warnings (CDSL.md S.3/S.4/S.5) and an incomplete-step-line warning (CO.4) - `inst-if-cdsl-missing-token`
    2. [x] - `p1` - **IF** the step's description reads like code rather than plain English, emit the matching CDSL.md rule errors (S.6/CL.3, S.7, CL.2, CL.1/CL.4) - `inst-if-cdsl-prohibited-syntax`
-   3. [x] - `p1` - **IF** an `inst-{id}` repeats under the same parent ID, emit duplicate-instruction-id error (CO.5) - `inst-if-cdsl-duplicate-inst`
+   3. [x] - `p1` - **IF** an `inst-{id}` repeats under the same parent ID within a `**Steps**:`/`**Transitions**:` block, emit duplicate-instruction-id error (CO.5) - `inst-if-cdsl-duplicate-inst`
    4. [x] - `p1` - **IF** the step contains an unresolved placeholder marker, emit placeholder error (CO.6) - `inst-if-cdsl-placeholder`
 9. [x] - `p1` - **RETURN** accumulated errors and warnings - `inst-return-structure`
 
