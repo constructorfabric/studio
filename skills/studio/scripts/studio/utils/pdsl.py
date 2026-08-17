@@ -665,7 +665,14 @@ def _is_top_level_item_start(stripped: str, section: Optional[str]) -> bool:
         return True
     if section not in _DASHLESS_ITEM_SECTIONS:
         return False
-    return bool(re.match(r"^[A-Z][A-Z0-9_-]*\b", stripped))
+    match = re.match(r"^[A-Z][A-Z0-9_-]*\b", stripped)
+    if not match:
+        return False
+    # UNIT/MENU are reserved block-starter keywords, never a valid action/rule
+    # keyword in any section. A line like "MENU <name>:" whose name doesn't
+    # parse as an identifier (e.g. a placeholder in illustrative docs) isn't
+    # a real MENU declaration, but it's still not a dashless DO/RULES item.
+    return match.group(0) not in ("UNIT", "MENU")
 
 
 def _is_valid_section_item_start(

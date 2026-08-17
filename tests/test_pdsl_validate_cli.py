@@ -291,6 +291,28 @@ RULES:
     assert any("RULES item must start with one of:" in msg and "got RUN" in msg for msg in messages)
 
 
+def test_pdsl_validate_dashless_menu_placeholder_is_not_a_do_item() -> None:
+    """A `MENU <name>:` illustrative placeholder inside DO must not be read as a dashless action.
+
+    Regression: PDSL.md's own "Core Shape" example shows an unrecognized (non-
+    identifier) `MENU <name>:` block nested under DO; UNIT/MENU are reserved
+    block-starter keywords and must never be misread as a DO/RULES/etc. item.
+    """
+    text = """UNIT <name>
+
+DO:
+  - RUN <ordered actions>
+
+MENU <name>:
+  TITLE: <menu title>
+  OPTIONS:
+    1 <choice> -> <actions>
+"""
+
+    result = validate_source(PdslSource("menu-placeholder.md", text))
+    assert result.status == "PASS"
+
+
 def _do_unit(action_count: int) -> str:
     actions = "\n".join(f"  - SET STEP_{i} = true" for i in range(1, action_count + 1))
     return f"UNIT DoCapUnit\nDO:\n{actions}\n"
