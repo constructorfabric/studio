@@ -424,7 +424,7 @@ The following quality domains are not applicable to this feature:
 4. [x] - `p1` - Run `git fetch --quiet origin [branch]` - `inst-sync-fetch`
 5. [x] - `p1` - **IF** fetch fails **RETURN** `{status: "failed", error}` - `inst-sync-if-fetch-fail`
 6. [x] - `p1` - Determine branch: source `branch` field if set, else `"HEAD"` - `inst-sync-determine-branch`
-7. [x] - `p1` - **IF** branch == "HEAD": run `git reset --hard FETCH_HEAD` - `inst-sync-if-head`
+7. [x] - `p1` - **IF** branch is `"HEAD"`: run `git reset --hard FETCH_HEAD` - `inst-sync-if-head`
 8. [x] - `p1` - **ELSE**: run `git checkout -B {branch} origin/{branch}` - `inst-sync-else-branch`
 9. [x] - `p1` - **IF** update fails, emit warning **RETURN** `{status: "failed", error}` - `inst-sync-if-update-fail`
 10. [x] - `p1` - **RETURN** `{status: "synced"}` - `inst-sync-return-ok`
