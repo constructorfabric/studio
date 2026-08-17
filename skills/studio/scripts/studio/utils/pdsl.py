@@ -484,10 +484,6 @@ def _handle_section_header_line(
         return True
     state.section = section_name
     state.menu_expected = 1 if state.in_menu and section_name == "OPTIONS" else None
-    if section_name == "DO":
-        state.do_count = 0
-    elif section_name == "RULES":
-        state.rules_count = 0
     return True
 
 

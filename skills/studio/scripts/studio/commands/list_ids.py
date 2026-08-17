@@ -310,7 +310,7 @@ def cmd_list_ids(argv: List[str]) -> int:
             if is_workspace:
                 artifacts_to_scan = _collect_workspace_source_artifacts(ctx, args.source)
 
-        if not artifacts_to_scan:
+        if not artifacts_to_scan and not args.include_code:
             ui.result({"count": 0, "artifacts_scanned": 0, "ids": []})
             return 0
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
