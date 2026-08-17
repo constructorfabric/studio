@@ -2823,7 +2823,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                 os.chdir(root)
                 buf = io.StringIO()
                 # Make CodeFile.from_path return errors
-                with patch("studio.commands.list_ids.CodeFile.from_path", return_value=(None, [{"error": "parse fail"}])):
+                with patch("studio.utils.codebase.CodeFile.from_path", return_value=(None, [{"error": "parse fail"}])):
                     with redirect_stdout(buf):
                         rc = cmd_list_ids(["--include-code"])
                 self.assertEqual(rc, 0)

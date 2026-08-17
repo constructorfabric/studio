@@ -58,6 +58,7 @@ from .codebase import (
     load_code_file,
     validate_code_file,
     cross_validate_code,
+    scan_registered_codebase_references,
 )
 
 from .context import (
