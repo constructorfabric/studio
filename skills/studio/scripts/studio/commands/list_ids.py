@@ -14,11 +14,6 @@ from ..utils.ui import ui
 
 logger = logging.getLogger(__name__)
 
-
-def _warn_list_ids(message: str) -> None:
-    logger.warning("list-ids: %s", message)
-
-
 ArtifactScanList = List[Tuple[Path, str]]
 
 
