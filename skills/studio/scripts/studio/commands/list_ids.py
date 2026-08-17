@@ -214,16 +214,22 @@ def _infer_primary_kind(
 
 
 def _dedupe_hits(hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    """Keep the first hit per ID while preserving input order."""
-    seen: Set[str] = set()
-    unique_hits: List[Dict[str, object]] = []
+    """Keep one hit per ID, preferring its definition record when one exists.
+
+    IDs with no definition anywhere in the scanned hits keep the first-seen
+    hit, preserving input order either way.
+    """
+    order: List[str] = []
+    first_seen: Dict[str, Dict[str, object]] = {}
+    definitions: Dict[str, Dict[str, object]] = {}
     for hit in hits:
         id_val = str(hit.get("id", ""))
-        if id_val in seen:
-            continue
-        seen.add(id_val)
-        unique_hits.append(hit)
-    return unique_hits
+        if id_val not in first_seen:
+            first_seen[id_val] = hit
+            order.append(id_val)
+        if hit.get("type") == "definition" and id_val not in definitions:
+            definitions[id_val] = hit
+    return [definitions.get(id_val, first_seen[id_val]) for id_val in order]
 
 
 def _collect_artifact_hits(
