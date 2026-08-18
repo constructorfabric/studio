@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from ..utils import decision_log
 from ..utils import error_codes as EC
 from ..utils.codebase import CodeFile, cross_validate_code
 from ..utils.constraints import (
@@ -1111,6 +1112,11 @@ def _emit_final_validate_report(session: _ValidateSession, results: _ValidateRes
                 {"artifact": item.get("artifact"), "error_count": item.get("error_count")}
                 for item in failed_artifacts
             ]
+    # Telemetry: record the authoritative final validation verdict. It inherits the
+    # run's decision id from the dispatcher, correlating to the invocation. record()
+    # is fail-safe (never raises into the caller), so no guard is needed here.
+    decision_log.record_validation(
+        "validate", overall_status, findings=len(results.all_errors))
     _emit_validate_output(
         report,
         output_path=session.args.output,

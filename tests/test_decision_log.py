@@ -8,6 +8,7 @@ decision_id correlation that chains one decision's events.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -113,6 +114,47 @@ def test_record_never_raises_on_bad_target(tmp_path: Path) -> None:
     bad = tmp_path / "adir"
     bad.mkdir()
     assert dl.record("routing", {}, path=bad) is False
+
+
+def test_write_failure_warns_once_then_stays_quiet(
+        log_path: Path, monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture) -> None:
+    # A real write failure is surfaced (fail-open, not fail-silent) exactly once, then
+    # telemetry latches off so a broken log can't spam every event or keep retrying.
+    monkeypatch.setattr(dl, "_FAILURE_WARNED", False)
+    home = str(Path.home())
+    calls = {"n": 0}
+
+    def boom(*_a, **_k):
+        calls["n"] += 1
+        # An OSError carries the absolute log path (home included).
+        raise OSError(f"[Errno 30] Read-only file system: '{home}/proj/.cache/d.jsonl'")
+
+    monkeypatch.setattr(dl, "_append_locked", boom)
+    with caplog.at_level(logging.WARNING):
+        assert dl.record("routing", {"a": 1}, path=log_path) is False
+        assert dl.record("routing", {"a": 2}, path=log_path) is False
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1                                   # surfaced once, not per event
+    assert calls["n"] == 1                                      # latched off — no retry
+    assert "could not write its decision log" in caplog.text
+    assert home not in caplog.text                              # $HOME redacted from the warning
+    assert "~/proj/.cache" in caplog.text
+
+
+def test_disabled_and_no_project_never_warn(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture) -> None:
+    # Expected no-op cases (opt-out, outside a project) must stay silent — no warning.
+    monkeypatch.setattr(dl, "_FAILURE_WARNED", False)
+    with caplog.at_level(logging.WARNING):
+        monkeypatch.setenv("CFS_DECISION_LOG", "off")
+        assert dl.record("routing", {}, path=tmp_path / "d.jsonl") is False   # opt-out
+        monkeypatch.delenv("CFS_DECISION_LOG")
+        monkeypatch.setattr("studio.utils.files.find_studio_directory",
+                            lambda *_a, **_k: None)
+        assert dl.record("routing", {}) is False                             # no project
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
 
 def test_record_opens_no_socket(log_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

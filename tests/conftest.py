@@ -31,3 +31,21 @@ def _enable_json_mode():
     set_json_mode(True)
     yield
     set_json_mode(False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_decision_log(tmp_path_factory, monkeypatch):
+    """Redirect decision-log telemetry (on by default) to a throwaway path.
+
+    The command dispatcher records an ``invocation`` event per run; without this,
+    that ``.cache/decisions.jsonl`` write pollutes tests that snapshot a project's
+    files. The first write also prints a one-time transparency notice to stderr,
+    suppressed here so it doesn't leak into ``stderr == ""`` assertions.
+    Telemetry-specific tests override ``CFS_DECISION_LOG`` themselves.
+    """
+    from studio.utils import decision_log
+    log = tmp_path_factory.mktemp("cfs_telemetry") / "decisions.jsonl"
+    monkeypatch.setenv("CFS_DECISION_LOG", str(log))
+    monkeypatch.setattr(decision_log, "_NOTICE_SHOWN", True)
+    monkeypatch.setattr(decision_log, "_FAILURE_WARNED", False)   # each test can observe the warning
+    decision_log.set_current_decision_id("")   # start each test with a clean correlation id

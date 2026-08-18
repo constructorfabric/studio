@@ -14,7 +14,10 @@ IMPORTANT: This module MUST NOT contain business logic.
 import sys
 import logging
 from pathlib import Path
+from time import perf_counter
 from typing import Callable, List, Optional
+
+from .utils import decision_log
 
 _CLI_STDERR_HANDLER_NAME = "studio-cli-stderr"
 
@@ -339,8 +342,36 @@ def _main_impl(argv_list: List[str]) -> int:
         return _report_unknown_command(cmd)
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
-    handler_result = handler(rest)
-    return handler_result
+    # Telemetry never changes command behaviour: new_decision_id / set_current /
+    # record_invocation are all non-raising (record() is fail-safe and surfaces a real
+    # write failure itself), so no guard is needed here. One decision id per run lets
+    # events recorded inside the handler (e.g. validation) correlate to this invocation.
+    decision_id = decision_log.new_decision_id()
+    decision_log.set_current_decision_id(decision_id)
+    started = perf_counter()
+    handler_result = 1
+    try:
+        handler_result = handler(rest)
+        return handler_result
+    except SystemExit as exc:
+        # argparse exits via SystemExit (--help, invalid args); record its real code.
+        if isinstance(exc.code, int):
+            handler_result = exc.code
+        else:
+            handler_result = 0 if exc.code is None else 1
+        raise
+    finally:
+        # Record on every exit — normal, SystemExit, or a raising handler — then scope
+        # the id to this run so a later event can't inherit it.
+        decision_log.record_invocation(
+            cmd,
+            exit_code=handler_result,
+            duration_ms=int((perf_counter() - started) * 1000),
+            args_shape={"argc": len(rest),
+                        "flags": sum(1 for arg in rest if arg.startswith("-"))},
+            decision_id=decision_id,
+        )
+        decision_log.set_current_decision_id("")
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
 
 

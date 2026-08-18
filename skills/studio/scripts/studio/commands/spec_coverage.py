@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 from typing import List
 
+from ..utils import decision_log
 from ..utils.coverage import (
     FileCoverage,
     calculate_metrics,
@@ -347,6 +348,10 @@ def cmd_spec_coverage(argv: List[str]) -> int:
     json_report, exit_code = _generate_spec_coverage_report(args, meta, project_root)
 
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-return-report
+    # Telemetry: authoritative final coverage verdict (the report's own status, so an
+    # input error isn't recorded as a coverage FAIL), correlated via the run's id.
+    decision_log.record_validation(
+        "spec-coverage", json_report.get("status") or ("FAIL" if exit_code else "PASS"))
     _output(json_report, args)
     return exit_code
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-return-report
