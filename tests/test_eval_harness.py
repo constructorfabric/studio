@@ -94,7 +94,7 @@ def test_load_run_non_string_file_does_not_crash(tmp_path: Path) -> None:
     assert run is not None
     assert run.phase_texts == {}
     result = eh.ReferencePresenceScorer().score(run, _scenario(tmp_path))
-    assert result.verdict == eh.VERDICT_PASS           # non-string file ignored, not a crash
+    assert result.verdict == eh.VERDICT_UNKNOWN        # no checkable file → UNKNOWN, not a crash
 
 
 def test_load_run_phase_file_traversal_is_blocked(tmp_path: Path) -> None:
@@ -152,6 +152,15 @@ def test_reference_scorer_ignores_fileless_phase(tmp_path: Path) -> None:
     assert result.verdict == eh.VERDICT_PASS
 
 
+def test_reference_scorer_unknown_when_no_checkable_file(tmp_path: Path) -> None:
+    # Every phase omits `file` → nothing verifiable → UNKNOWN, not a vacuous 100% pass.
+    (tmp_path / "plan.toml").write_text(
+        '[plan]\ntask = "t"\n[[phases]]\nnumber = 1\n[[phases]]\nnumber = 2\n')
+    result = eh.ReferencePresenceScorer().score(eh.load_run(tmp_path), _scenario(tmp_path))
+    assert result.verdict == eh.VERDICT_UNKNOWN
+    assert result.score_pct is None
+
+
 # --- load_scenarios --------------------------------------------------------
 
 def test_load_scenarios_discovers_fixture_suite() -> None:
@@ -166,6 +175,14 @@ def test_load_scenarios_skips_malformed_and_idless(tmp_path: Path) -> None:
     (tmp_path / "good").mkdir()
     (tmp_path / "good" / "scenario.toml").write_text('[scenario]\nid = "good"\n')
     assert [s.id for s in eh.load_scenarios(tmp_path)] == ["good"]
+
+
+def test_load_scenarios_skips_scalar_scenario_section(tmp_path: Path) -> None:
+    (tmp_path / "bad").mkdir()
+    (tmp_path / "bad" / "scenario.toml").write_text('scenario = "not a table"\n')
+    (tmp_path / "ok").mkdir()
+    (tmp_path / "ok" / "scenario.toml").write_text('[scenario]\nid = "ok"\n')
+    assert [s.id for s in eh.load_scenarios(tmp_path)] == ["ok"]
 
 
 def test_load_scenarios_reads_optional_gold_path(tmp_path: Path) -> None:
@@ -307,15 +324,35 @@ def test_diff_reports_flags_improvement_and_newly_scoreable() -> None:
     assert diff["has_regression"] is False
 
 
-def test_diff_reports_became_unscoreable_is_a_regression(tmp_path: Path) -> None:
+def test_diff_reports_broke_scenario_is_a_regression(tmp_path: Path) -> None:
+    # A scenario still in the suite but whose run no longer scores (broke) IS a regression.
     (tmp_path / "x").mkdir()
     (tmp_path / "x" / "scenario.toml").write_text('[scenario]\nid = "x"\n')   # no run → UNKNOWN
     report = eh.run_suite(tmp_path, [eh.ReferencePresenceScorer()])
     baseline = {"summary": {"structural_compliance": 1.0},
                 "per_scenario": [{"scenario": "x", "compliance": 1.0}]}
     diff = eh.diff_reports(report, baseline)
-    assert [r["scenario"] for r in diff["no_longer_scoreable"]] == ["x"]
-    assert diff["has_regression"]
+    assert [r["scenario"] for r in diff["regressed"]] == ["x"]
+    assert diff["has_regression"] is True
+
+
+def test_diff_reports_ignores_non_numeric_baseline_compliance(tmp_path: Path) -> None:
+    # A hand-corrupted baseline (string compliance) must not crash diff_reports.
+    report = eh.run_suite(FIXTURES, [eh.ReferencePresenceScorer()])
+    baseline = {"summary": {}, "per_scenario": [
+        {"scenario": "compliant-run", "compliance": "0.9"},   # non-numeric → no comparison
+        {"scenario": "non-compliant-run"}]}                   # missing key → no comparison
+    diff = eh.diff_reports(report, baseline)
+    assert diff["has_regression"] is False
+    assert diff["regressed"] == []
+
+
+def test_diff_reports_robust_to_bad_baseline_shape() -> None:
+    # diff_reports is a public util; a wrong-shaped baseline must not crash it.
+    report = eh.run_suite(FIXTURES, [eh.ReferencePresenceScorer()])
+    diff = eh.diff_reports(report, {"per_scenario": "nope", "summary": "nope"})
+    assert diff["has_regression"] is False
+    assert diff["aggregate_before"] is None
 
 
 def test_diff_reports_identical_has_no_regression() -> None:

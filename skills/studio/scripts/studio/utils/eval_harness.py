@@ -129,7 +129,7 @@ class ReferencePresenceScorer:  # pylint: disable=too-few-public-methods
 
     def score(self, run: Optional[RunArtifacts],
               scenario: Scenario) -> ScorerResult:  # pylint: disable=unused-argument
-        """PASS if every declared phase is present, FAIL if any missing, UNKNOWN if unloadable."""
+        """PASS if every checkable phase file is present, FAIL if any missing, else UNKNOWN."""
         if run is None:
             return ScorerResult(
                 self.name, self.kind, VERDICT_UNKNOWN, None,
@@ -138,22 +138,23 @@ class ReferencePresenceScorer:  # pylint: disable=too-few-public-methods
             return ScorerResult(
                 self.name, self.kind, VERDICT_UNKNOWN, None,
                 ["run declares no phases"], "unscoreable: nothing to assess")
-        # phases are normalised to dicts by load_run; a phase with no file is a benign
-        # skip (matching load_run), not a missing file.
-        missing = [
-            phase["file"]
-            for phase in run.phases
-            if isinstance(phase.get("file"), str) and phase["file"]
-            and phase["file"] not in run.phase_texts
-        ]
+        # Only phases that declare a file are checkable. A run whose phases declare no
+        # verifiable file is unscoreable by this scorer, not a vacuous 100% pass.
+        checkable = [phase["file"] for phase in run.phases
+                     if isinstance(phase.get("file"), str) and phase["file"]]
+        if not checkable:
+            return ScorerResult(
+                self.name, self.kind, VERDICT_UNKNOWN, None,
+                ["no phase declares a checkable file"], "unscoreable: nothing to verify")
+        missing = [name for name in checkable if name not in run.phase_texts]
         if missing:
             return ScorerResult(
                 self.name, self.kind, VERDICT_FAIL, 0.0,
                 [f"declared phase file missing: {name}" for name in missing],
-                f"{len(run.phases)} declared phases")
+                f"{len(checkable)} checkable phase file(s)")
         return ScorerResult(
             self.name, self.kind, VERDICT_PASS, 100.0, [],
-            f"{len(run.phases)} declared phases, all present")
+            f"{len(checkable)} checkable phase file(s), all present")
 # @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-reference-scorer
 
 
@@ -174,6 +175,9 @@ def load_scenarios(root: Path) -> List[Scenario]:
             logger.warning("eval: skipping unreadable scenario descriptor %s: %s", descriptor, exc)
             continue
         section = data.get("scenario", {})
+        if not isinstance(section, dict):
+            logger.warning("eval: [scenario] is not a table, skipping: %s", descriptor)
+            continue
         scenario_id = section.get("id")
         if not scenario_id:
             logger.warning("eval: scenario descriptor missing [scenario].id: %s", descriptor)
@@ -332,6 +336,8 @@ def report_to_dict(report: EvalReport) -> Dict[str, object]:
     UNKNOWN-aware, coverage-stating summary."""
     scored = 0
     unknown = 0
+    agg_passed = 0                             # accumulate the aggregate here to avoid a 2nd pass
+    agg_total = 0
     scorers_seen: Dict[str, str] = {}          # name -> kind, so coverage reflects what ran
     failing: Dict[str, int] = {}               # deterministic FAILs per scorer (histogram)
     per_scenario: List[Dict[str, object]] = []
@@ -354,6 +360,8 @@ def report_to_dict(report: EvalReport) -> Dict[str, object]:
                 "coverage": result.coverage,
             })
         scenario_passed, scenario_total, scenario_compliance = _scenario_compliance(scenario_result)
+        agg_passed += scenario_passed
+        agg_total += scenario_total
         per_scenario.append({
             "scenario": scenario_result.scenario_id,
             "workflow": scenario_result.workflow,
@@ -372,7 +380,7 @@ def report_to_dict(report: EvalReport) -> Dict[str, object]:
             "results": scored + unknown,   # scored/unknown count scorer-results, not scenarios
             "scored": scored,
             "unknown": unknown,
-            "structural_compliance": structural_compliance(report),
+            "structural_compliance": round(agg_passed / agg_total, 4) if agg_total else None,
             "coverage": coverage,
         },
         "failing_checks": dict(sorted(failing.items(), key=lambda item: item[1], reverse=True)),
@@ -385,12 +393,18 @@ def report_to_dict(report: EvalReport) -> Dict[str, object]:
 def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, object]:
     """Per-scenario compliance change vs a baseline report, bucketed.
 
-    Distinguishes improvements from regressions (unlike a flat verdict diff): a scenario
-    dropping out of scoring, or its compliance falling, is a regression; a scenario
-    scoring for the first time or rising is not. ``has_regression`` is the gate-worthy bit.
+    A scenario whose compliance falls, **or which was scoreable in the baseline and is now
+    unscoreable while still in the suite (its run broke)**, is a regression and gates
+    ``--check``. One that scores for the first time or rises is not. A scenario that is
+    gone from the suite entirely is surfaced in ``no_longer_scoreable`` but is **not** a
+    regression — removing an obsolete scenario should not fail a build. A baseline whose
+    per-scenario compliance is missing or non-numeric is treated as "no prior value" (no
+    comparison), never a crash. ``has_regression`` reflects only ``regressed``.
     """
-    prev = {row.get("scenario"): row.get("compliance")
-            for row in baseline.get("per_scenario", [])}
+    rows = baseline.get("per_scenario", [])
+    prev = ({row.get("scenario"): row.get("compliance")
+             for row in rows if isinstance(row, dict)}
+            if isinstance(rows, list) else {})
     regressed: List[Dict[str, object]] = []
     improved: List[Dict[str, object]] = []
     newly_scoreable: List[Dict[str, object]] = []
@@ -401,25 +415,31 @@ def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, o
         seen.add(scenario_id)
         _, _, now = _scenario_compliance(scenario_result)
         before = prev.get(scenario_id)
-        if scenario_id not in prev or before is None:
+        if not isinstance(before, (int, float)):   # missing/non-numeric baseline → no comparison
+            before = None
+        if before is None:
             if now is not None:
                 newly_scoreable.append({"scenario": scenario_id, "to": now})
         elif now is None:
-            no_longer_scoreable.append({"scenario": scenario_id, "from": before})
+            # still in the suite but no longer scoreable (its run broke) — a regression.
+            regressed.append({"scenario": scenario_id, "from": before, "to": None})
         elif now < before:
             regressed.append({"scenario": scenario_id, "from": before, "to": now})
         elif now > before:
             improved.append({"scenario": scenario_id, "from": before, "to": now})
     for scenario_id, before in prev.items():
-        if scenario_id not in seen and before is not None:
+        if scenario_id not in seen and isinstance(before, (int, float)):
+            # gone from the suite entirely — surfaced, but not a gate-worthy regression.
             no_longer_scoreable.append({"scenario": scenario_id, "from": before})
+    baseline_summary = baseline.get("summary", {})
     return {
         "regressed": regressed,
         "improved": improved,
         "newly_scoreable": newly_scoreable,
         "no_longer_scoreable": no_longer_scoreable,
-        "aggregate_before": baseline.get("summary", {}).get("structural_compliance"),
+        "aggregate_before": (baseline_summary.get("structural_compliance")
+                             if isinstance(baseline_summary, dict) else None),
         "aggregate_after": structural_compliance(report),
-        "has_regression": bool(regressed or no_longer_scoreable),
+        "has_regression": bool(regressed),   # removals are surfaced, not gated
     }
 # @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-diff-reports

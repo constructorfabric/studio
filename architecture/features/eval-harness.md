@@ -67,13 +67,15 @@ advisory verdict can never gate a build.
 **Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- User runs `cfs eval` → every scenario under `<project>/eval` is scored, JSON report emitted, exit 0 when no deterministic scorer fails
+- User runs `cfs eval` → every scenario under `<project>/eval` is scored, JSON report emitted, exit 0 (gating is off by default — eval reports, it does not fail the build)
 - User runs `cfs eval --scenarios-dir DIR` → scenarios discovered under `DIR`
-- User runs `cfs eval --baseline report.json` → same, plus a per-scenario regression diff against the baseline
+- User runs `cfs eval --baseline report.json` → same, plus a per-scenario regression diff; the exit code is unchanged unless `--check` is also given
+- User runs `cfs eval --check [--min N]` → exit 2 when structural compliance is below `--min`, **or** when `--baseline` shows a per-scenario compliance regression
+- The JSON report always carries a `gate` field (`pass`/`fail`) matching the exit code, so a CI step can cross-check from `--json` alone
 
 **Error Scenarios**:
-- Constructor Studio not initialized → ERROR with hint to run `cfs init`, exit 1
-- A deterministic scorer returns FAIL for any scenario → exit 2
+- Constructor Studio not initialized, or the scenarios directory does not exist → ERROR, exit 1
+- With `--check`: structural compliance below `--min`, a baseline regression (a compliance drop or a scenario that broke), or a `--baseline` that cannot be loaded → exit 2 (a requested check that could not run is not a pass). A scenario removed from the suite entirely is surfaced (`no_longer_scoreable`) but does not gate.
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs eval [--scenarios-dir DIR] [--baseline FILE]` - `inst-user-eval`
@@ -144,7 +146,8 @@ yields a per-scenario regression diff without changing the exit code.
 
 ## 7. Acceptance Criteria
 
-- [x] `p1` - `cfs eval` scores every scenario under the resolved directory and emits a JSON report
+- [x] `p1` - `cfs eval` scores every scenario under the resolved directory and emits a JSON report with a `gate` field consistent with the exit code
 - [x] `p1` - Only deterministic scorer verdicts affect the exit code; an advisory FAIL never does
-- [x] `p1` - A run that cannot be loaded scores `UNKNOWN` with a `null` score, never `0`, and is counted separately in the summary
-- [x] `p1` - `--baseline` produces a per-scenario regression diff without changing the exit code
+- [x] `p1` - A run that cannot be loaded, or whose phases declare no checkable file, scores `UNKNOWN` with a `null` score, never `0`, and is counted separately in the summary
+- [x] `p1` - `--baseline` alone (without `--check`) produces a per-scenario regression diff without changing the exit code; a removed/unavailable scenario is surfaced but does not gate
+- [x] `p1` - When `--baseline` is given, the `regression` key is always present (a diff object, or an `error` object when the baseline is unusable)

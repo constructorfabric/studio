@@ -14,6 +14,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
+import os
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -25,6 +28,18 @@ logger = logging.getLogger(__name__)
 
 
 # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-build-parser
+def _compliance_arg(value: str) -> float:
+    """argparse type for --min: a finite number in [0.0, 1.0] (rejects nan/inf/out-of-range)."""
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid float value: {value!r}") from exc
+    if not math.isfinite(parsed) or not 0.0 <= parsed <= 1.0:
+        raise argparse.ArgumentTypeError(
+            f"--min must be a finite number in [0.0, 1.0], got {value!r}")
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cfs eval",
@@ -35,9 +50,10 @@ def _build_parser() -> argparse.ArgumentParser:
              "Defaults to <project>/eval.")
     parser.add_argument(
         "--check", action="store_true",
-        help="Exit 2 when structural compliance is below --min (gating is off by default).")
+        help="Exit 2 when structural compliance is below --min, or when --baseline shows "
+             "a per-scenario regression (gating is off by default).")
     parser.add_argument(
-        "--min", type=float, default=1.0,
+        "--min", type=_compliance_arg, default=1.0,
         help="Minimum structural compliance for --check (default 1.0).")
     parser.add_argument(
         "--baseline", default=None,
@@ -51,26 +67,50 @@ def _build_parser() -> argparse.ArgumentParser:
 
 # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-load-baseline
 def _load_baseline(path: Path) -> Optional[Dict[str, object]]:
-    """Read a baseline report JSON. Missing/malformed → warn and skip, never raise."""
+    """Read + shape-check a baseline report JSON. Missing/malformed/wrong-shape → warn and
+    return None (never raise); the shape guard keeps diff_reports from crashing on bad data."""
     try:
         with open(path, "r", encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("eval: baseline not usable, skipping regression diff (%s): %s", path, exc)
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        logger.warning("eval: baseline is not a report object, skipping regression diff: %s", path)
+        return None
+    per_scenario = data.get("per_scenario", [])
+    if not isinstance(per_scenario, list) or not all(isinstance(row, dict) for row in per_scenario):
+        logger.warning("eval: baseline per_scenario is malformed, skipping regression diff: %s", path)
+        return None
+    if not isinstance(data.get("summary", {}), dict):
+        logger.warning("eval: baseline summary is malformed, skipping regression diff: %s", path)
+        return None
+    return data
 # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-load-baseline
 
 
 # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-save-report
 def _save_report(payload: Dict[str, object], path: Path) -> Optional[str]:
-    """Write the report JSON so it can serve as a later baseline. Returns an error string
-    on failure, else None — a save failure must not change the eval outcome."""
+    """Atomically write the report JSON so it can serve as a later baseline: write a unique
+    temp file in the target directory then replace, so a crash mid-write can never corrupt
+    an existing baseline and no unrelated file is clobbered. Returns an error string on
+    failure, else None — a save failure must not change the eval outcome."""
+    tmp: Optional[Path] = None
     try:
-        with open(path, "w", encoding="utf-8") as handle:
+        handle_fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+        tmp = Path(tmp_name)
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
+        os.chmod(tmp, 0o644)   # mkstemp creates 0600; a report artifact should stay readable
+        tmp.replace(path)
     except OSError as exc:
         logger.warning("eval: could not save report to %s: %s", path, exc)
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError as cleanup_exc:  # pragma: no cover - best-effort cleanup
+                logger.debug("eval: could not remove temp save file %s: %s", tmp, cleanup_exc)
         return str(exc)
     return None
 # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-save-report
@@ -112,21 +152,28 @@ def cmd_eval(argv: List[str]) -> int:
     payload = eval_harness.report_to_dict(report)
     if args.baseline:
         baseline = _load_baseline(Path(args.baseline))
-        if baseline is not None:
-            payload["regression"] = eval_harness.diff_reports(report, baseline)
+        # Always set a stable-shaped regression field when --baseline is given — even when
+        # the baseline could not be loaded — so the JSON schema doesn't shift under callers.
+        payload["regression"] = (eval_harness.diff_reports(report, baseline) if baseline is not None
+                                 else {"error": f"baseline not usable: {args.baseline}"})
+    compliance = payload["summary"]["structural_compliance"]
+    exit_code = eval_harness.gate_exit_code(compliance, args.check, args.min)
+    regression = payload.get("regression")
+    if args.check and isinstance(regression, dict) and (
+            regression.get("has_regression") or "error" in regression):
+        # Under --check, a compliance drop / a broke scenario, OR a requested baseline that
+        # could not be loaded, fails the build: a regression check that could not run must
+        # not give a false green. A removed scenario is surfaced but does not gate.
+        exit_code = 2
+    # Redundant machine-readable gate signal, consistent with the exit code, so a CI step
+    # can cross-check from --json output even if a wrapper mangles the process exit code.
+    payload["gate"] = "fail" if exit_code == 2 else "pass"
     if args.save:
         error = _save_report(payload, Path(args.save))
         payload["saved"] = None if error else args.save
         if error:
             payload["save_error"] = error
     ui.result(payload, human_fn=_human_report)
-    compliance = payload["summary"]["structural_compliance"]
-    exit_code = eval_harness.gate_exit_code(compliance, args.check, args.min)
-    regression = payload.get("regression")
-    if args.check and isinstance(regression, dict) and regression.get("regressed"):
-        # A per-scenario compliance drop fails --check even above the floor. A scenario
-        # merely removed / unavailable is surfaced (no_longer_scoreable) but does not gate.
-        exit_code = 2
     return exit_code
     # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-run-and-report
 # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-user-eval

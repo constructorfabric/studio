@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from studio import cli
 from studio.commands.eval import cmd_eval
 from studio.utils import ui as ui_module
@@ -49,6 +51,24 @@ def test_cmd_eval_missing_scenarios_dir_errors(capsys, tmp_path: Path) -> None:
         rc = cmd_eval(["--scenarios-dir", str(tmp_path / "nope")])
     assert rc == 1
     assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-0.1", "1.5", "abc"])
+def test_cmd_eval_rejects_invalid_min(bad: str) -> None:
+    # argparse rejects a non-finite / out-of-range --min so a failing run can't slip past --check.
+    with pytest.raises(SystemExit):
+        cmd_eval(["--min", bad, "--scenarios-dir", "unused"])
+
+
+def test_cmd_eval_gate_field_matches_exit(capsys, tmp_path: Path) -> None:
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(FIXTURES), "--check"])   # 0.5 < 1.0 → fail
+    assert rc == 2
+    assert json.loads(capsys.readouterr().out)["gate"] == "fail"
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(FIXTURES)])              # report only → pass
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["gate"] == "pass"
 
 
 # --- reporting + opt-in gating ---------------------------------------------
@@ -101,7 +121,8 @@ def test_cmd_eval_baseline_reports_regression(capsys, tmp_path: Path) -> None:
     baseline_path = tmp_path / "baseline.json"
     baseline_path.write_text(json.dumps(baseline))
     with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
-        cmd_eval(["--scenarios-dir", str(FIXTURES), "--baseline", str(baseline_path)])
+        rc = cmd_eval(["--scenarios-dir", str(FIXTURES), "--baseline", str(baseline_path)])
+    assert rc == 0                          # AC#4: --baseline alone never changes the exit code
     regression = json.loads(capsys.readouterr().out)["regression"]
     assert regression["has_regression"] is True
     assert [r["scenario"] for r in regression["regressed"]] == ["non-compliant-run"]
@@ -120,6 +141,17 @@ def test_cmd_eval_check_gates_on_regression(capsys, tmp_path: Path) -> None:
     assert json.loads(capsys.readouterr().out)["regression"]["has_regression"] is True
 
 
+def test_cmd_eval_check_fails_closed_on_unusable_baseline(capsys, tmp_path: Path) -> None:
+    # --check with a baseline that can't be loaded must fail, not silently pass.
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(FIXTURES), "--check", "--min", "0.0",
+                       "--baseline", str(tmp_path / "missing.json")])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 2                                    # requested regression check could not run
+    assert "error" in out["regression"]
+    assert out["gate"] == "fail"
+
+
 def test_cmd_eval_check_does_not_gate_on_removed_scenario(capsys, tmp_path: Path) -> None:
     # A baseline scenario that no longer exists is surfaced but must not fail --check.
     baseline = {"summary": {"structural_compliance": 1.0}, "per_scenario": [
@@ -133,23 +165,43 @@ def test_cmd_eval_check_does_not_gate_on_removed_scenario(capsys, tmp_path: Path
                        "--baseline", str(baseline_path)])
     out = json.loads(capsys.readouterr().out)
     assert rc == 0                                    # a removal does not gate
+    assert out["regression"]["has_regression"] is False
     assert [r["scenario"] for r in out["regression"]["no_longer_scoreable"]] == ["gone"]
 
 
-def test_cmd_eval_malformed_baseline_skips_diff(capsys, tmp_path: Path) -> None:
+def test_cmd_eval_malformed_baseline_reports_error(capsys, tmp_path: Path) -> None:
+    # Schema stability: --baseline always yields a `regression` key, an error object here.
     bad = tmp_path / "bad.json"
     bad.write_text("{ not json")
     with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
         cmd_eval(["--scenarios-dir", str(FIXTURES), "--baseline", str(bad)])
-    assert "regression" not in json.loads(capsys.readouterr().out)
+    regression = json.loads(capsys.readouterr().out)["regression"]
+    assert "error" in regression
 
 
-def test_cmd_eval_non_dict_baseline_skips_diff(capsys, tmp_path: Path) -> None:
+def test_cmd_eval_non_dict_baseline_reports_error(capsys, tmp_path: Path) -> None:
     listy = tmp_path / "list.json"
     listy.write_text("[]")
     with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
         cmd_eval(["--scenarios-dir", str(FIXTURES), "--baseline", str(listy)])
-    assert "regression" not in json.loads(capsys.readouterr().out)
+    assert "error" in json.loads(capsys.readouterr().out)["regression"]
+
+
+def test_cmd_eval_malformed_shape_baseline_reports_error(capsys, tmp_path: Path) -> None:
+    # A dict whose per_scenario is not a list of objects must not reach diff_reports.
+    bad = tmp_path / "shape.json"
+    bad.write_text(json.dumps({"summary": {}, "per_scenario": "nope"}))
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        cmd_eval(["--scenarios-dir", str(FIXTURES), "--baseline", str(bad)])
+    assert "error" in json.loads(capsys.readouterr().out)["regression"]
+
+
+def test_cmd_eval_bad_summary_baseline_reports_error(capsys, tmp_path: Path) -> None:
+    bad = tmp_path / "sum.json"
+    bad.write_text(json.dumps({"summary": "not a dict", "per_scenario": []}))
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        cmd_eval(["--scenarios-dir", str(FIXTURES), "--baseline", str(bad)])
+    assert "error" in json.loads(capsys.readouterr().out)["regression"]
 
 
 def test_cmd_eval_save_writes_report(capsys, tmp_path: Path) -> None:
@@ -159,7 +211,18 @@ def test_cmd_eval_save_writes_report(capsys, tmp_path: Path) -> None:
     out = json.loads(capsys.readouterr().out)
     assert out["saved"] == str(saved)
     assert saved.is_file()
+    assert saved.stat().st_mode & 0o044                # readable by group/other, not owner-only
     assert json.loads(saved.read_text())["summary"]["structural_compliance"] == 0.5
+
+
+def test_cmd_eval_save_to_missing_dir_reports_error(capsys, tmp_path: Path) -> None:
+    # A --save path whose parent dir does not exist fails at temp creation, not with a crash.
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(FIXTURES), "--save", str(tmp_path / "nope" / "r.json")])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["saved"] is None
+    assert "save_error" in out
 
 
 def test_cmd_eval_save_error_is_reported_not_raised(capsys, tmp_path: Path) -> None:
