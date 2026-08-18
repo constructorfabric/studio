@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from studio import cli
-from studio.commands.eval import cmd_eval
+from studio.commands.eval import _build_parser, cmd_eval
 from studio.utils import ui as ui_module
 
 FIXTURES = Path(__file__).parent / "fixtures" / "eval"
@@ -69,6 +69,49 @@ def test_cmd_eval_gate_field_matches_exit(capsys, tmp_path: Path) -> None:
         rc = cmd_eval(["--scenarios-dir", str(FIXTURES)])              # report only → pass
     assert rc == 0
     assert json.loads(capsys.readouterr().out)["gate"] == "pass"
+
+
+def test_cmd_eval_gate_pass_under_check_when_compliant(capsys, tmp_path: Path) -> None:
+    scenarios = tmp_path / "scenarios"
+    scenarios.mkdir()
+    _write_compliant(scenarios)
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(scenarios), "--check"])
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["gate"] == "pass"
+
+
+def test_check_help_documents_baseline_regression() -> None:
+    assert "regression" in _build_parser().format_help()   # A2: full gate contract documented
+
+
+def test_cmd_eval_empty_suite_is_honest_zero(capsys, tmp_path: Path) -> None:
+    # An existing but empty scenarios dir scores nothing → honest exit 0, compliance null.
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(empty), "--check"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["summary"]["scenarios"] == 0
+    assert out["summary"]["structural_compliance"] is None
+
+
+def test_cmd_eval_check_gates_on_broke_scenario(capsys, tmp_path: Path) -> None:
+    # A scenario still in the suite whose run broke (UNKNOWN) fails --check vs a baseline.
+    scenarios = tmp_path / "scenarios"
+    (scenarios / "x").mkdir(parents=True)
+    (scenarios / "x" / "scenario.toml").write_text('[scenario]\nid = "x"\n')   # no run → UNKNOWN
+    baseline = {"summary": {"structural_compliance": 1.0},
+                "per_scenario": [{"scenario": "x", "compliance": 1.0}]}
+    baseline_path = tmp_path / "b.json"
+    baseline_path.write_text(json.dumps(baseline))
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(scenarios), "--check", "--min", "0.0",
+                       "--baseline", str(baseline_path)])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert out["regression"]["has_regression"] is True
 
 
 # --- reporting + opt-in gating ---------------------------------------------
