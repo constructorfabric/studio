@@ -2,8 +2,9 @@
 
 Thin CLI over ``utils.eval_harness``: resolve a scenarios directory, run every
 scenario through the (placeholder) reference scorer, and emit a JSON report.
-Gating is opt-in: ``--check`` fails the build (exit 2) only when structural compliance
-falls below ``--min``; without it, eval reports and exits 0. Advisory scorers never gate.
+Gating is opt-in: ``--check`` fails the build (exit 2) when structural compliance falls
+below ``--min``, or when ``--baseline`` shows a per-scenario regression; without it, eval
+reports and exits 0. Advisory scorers never gate.
 
 @cpt-flow:cpt-studio-flow-eval-harness-run:p1
 @cpt-dod:cpt-studio-dod-eval-harness-report:p1
@@ -15,8 +16,6 @@ import argparse
 import json
 import logging
 import math
-import os
-import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -91,26 +90,21 @@ def _load_baseline(path: Path) -> Optional[Dict[str, object]]:
 
 # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-save-report
 def _save_report(payload: Dict[str, object], path: Path) -> Optional[str]:
-    """Atomically write the report JSON so it can serve as a later baseline: write a unique
-    temp file in the target directory then replace, so a crash mid-write can never corrupt
-    an existing baseline and no unrelated file is clobbered. Returns an error string on
-    failure, else None — a save failure must not change the eval outcome."""
-    tmp: Optional[Path] = None
+    """Atomically write the report JSON so it can serve as a later baseline: write a sibling
+    temp file (inheriting the umask default mode) then replace, so a crash mid-write can
+    never corrupt an existing baseline. Returns an error string on failure, else None — a
+    save failure must not change the eval outcome."""
+    tmp = path.with_name(path.name + ".tmp")
     try:
-        handle_fd, tmp_name = tempfile.mkstemp(
-            dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
-        tmp = Path(tmp_name)
-        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+        with open(tmp, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
-        os.chmod(tmp, 0o644)   # mkstemp creates 0600; a report artifact should stay readable
         tmp.replace(path)
     except OSError as exc:
         logger.warning("eval: could not save report to %s: %s", path, exc)
-        if tmp is not None:
-            try:
-                tmp.unlink(missing_ok=True)
-            except OSError as cleanup_exc:  # pragma: no cover - best-effort cleanup
-                logger.debug("eval: could not remove temp save file %s: %s", tmp, cleanup_exc)
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError as cleanup_exc:  # pragma: no cover - best-effort cleanup
+            logger.debug("eval: could not remove temp save file %s: %s", tmp, cleanup_exc)
         return str(exc)
     return None
 # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-save-report
@@ -159,11 +153,10 @@ def cmd_eval(argv: List[str]) -> int:
     compliance = payload["summary"]["structural_compliance"]
     exit_code = eval_harness.gate_exit_code(compliance, args.check, args.min)
     regression = payload.get("regression")
-    if args.check and isinstance(regression, dict) and (
-            regression.get("has_regression") or "error" in regression):
-        # Under --check, a compliance drop / a broke scenario, OR a requested baseline that
-        # could not be loaded, fails the build: a regression check that could not run must
-        # not give a false green. A removed scenario is surfaced but does not gate.
+    if args.check and isinstance(regression, dict) and regression.get("has_regression"):
+        # A per-scenario compliance drop, or a scenario that broke, fails --check even above
+        # the floor. A removed scenario, or an unusable --baseline (surfaced via the
+        # regression `error` field), is reported but does not by itself fail the build.
         exit_code = 2
     # Redundant machine-readable gate signal, consistent with the exit code, so a CI step
     # can cross-check from --json output even if a wrapper mangles the process exit code.

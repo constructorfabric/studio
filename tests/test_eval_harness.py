@@ -347,6 +347,16 @@ def test_diff_reports_ignores_non_numeric_baseline_compliance(tmp_path: Path) ->
     assert diff["regressed"] == []
 
 
+def test_diff_reports_ignores_boolean_compliance() -> None:
+    # bool is a subclass of int; a baseline `true`/`false` must not be read as a score.
+    report = eh.run_suite(FIXTURES, [eh.ReferencePresenceScorer()])   # non-compliant-run = 0.0
+    baseline = {"summary": {}, "per_scenario": [
+        {"scenario": "non-compliant-run", "compliance": True}]}       # true → no comparison
+    diff = eh.diff_reports(report, baseline)
+    assert diff["has_regression"] is False
+    assert diff["regressed"] == []
+
+
 def test_diff_reports_robust_to_bad_baseline_shape() -> None:
     # diff_reports is a public util; a wrong-shaped baseline must not crash it.
     report = eh.run_suite(FIXTURES, [eh.ReferencePresenceScorer()])

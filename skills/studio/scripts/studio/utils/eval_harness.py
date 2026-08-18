@@ -415,7 +415,8 @@ def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, o
         seen.add(scenario_id)
         _, _, now = _scenario_compliance(scenario_result)
         before = prev.get(scenario_id)
-        if not isinstance(before, (int, float)):   # missing/non-numeric baseline → no comparison
+        # missing / non-numeric baseline → no comparison; exclude bool (a subclass of int).
+        if not isinstance(before, (int, float)) or isinstance(before, bool):
             before = None
         if before is None:
             if now is not None:
@@ -428,7 +429,8 @@ def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, o
         elif now > before:
             improved.append({"scenario": scenario_id, "from": before, "to": now})
     for scenario_id, before in prev.items():
-        if scenario_id not in seen and isinstance(before, (int, float)):
+        if (scenario_id not in seen and isinstance(before, (int, float))
+                and not isinstance(before, bool)):
             # gone from the suite entirely — surfaced, but not a gate-worthy regression.
             no_longer_scoreable.append({"scenario": scenario_id, "from": before})
     baseline_summary = baseline.get("summary", {})

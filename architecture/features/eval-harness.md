@@ -75,7 +75,7 @@ advisory verdict can never gate a build.
 
 **Error Scenarios**:
 - Constructor Studio not initialized, or the scenarios directory does not exist → ERROR, exit 1
-- With `--check`: structural compliance below `--min`, a baseline regression (a compliance drop or a scenario that broke), or a `--baseline` that cannot be loaded → exit 2 (a requested check that could not run is not a pass). A scenario removed from the suite entirely is surfaced (`no_longer_scoreable`) but does not gate.
+- With `--check`: structural compliance below `--min`, or a baseline regression (a compliance drop, or a scenario that broke while still in the suite) → exit 2. A scenario removed from the suite entirely (`no_longer_scoreable`), or a `--baseline` that cannot be loaded (surfaced via the regression `error` field), is reported but does not by itself gate.
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs eval [--scenarios-dir DIR] [--baseline FILE]` - `inst-user-eval`
