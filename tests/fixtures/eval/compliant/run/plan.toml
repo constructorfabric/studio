@@ -1,0 +1,6 @@
+[plan]
+task = "demo compliant run"
+
+[[phases]]
+number = 1
+file = "phase-1.md"

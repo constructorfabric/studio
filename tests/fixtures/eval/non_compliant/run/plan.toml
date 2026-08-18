@@ -1,0 +1,10 @@
+[plan]
+task = "demo non-compliant run"
+
+[[phases]]
+number = 1
+file = "phase-1.md"
+
+[[phases]]
+number = 2
+file = "phase-2.md"

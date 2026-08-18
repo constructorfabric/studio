@@ -23,6 +23,7 @@
   - [2.15 Project-Level Extensibility ⏳ HIGH](#215-project-level-extensibility--high)
   - [2.16 Dependency Mapping 🔶 HIGH](#216-dependency-mapping--high)
   - [2.17 Thin Skill Runtime ⏳ HIGH](#217-thin-skill-runtime--high)
+  - [2.18 Workflow Eval-Harness ⏳ HIGH](#218-workflow-eval-harness--high)
 - [3. Feature Dependencies](#3-feature-dependencies)
 
 <!-- /toc -->
@@ -911,6 +912,36 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - runtime contract modules under `skills/studio/modules/runtime/`
   - thin-skill runtime specification under
     `architecture/specs/thin-skill-runtime.md`
+
+
+### 2.18 [Workflow Eval-Harness](features/eval-harness.md) ⏳ HIGH
+
+- [x] `p1` - **ID**: `cpt-studio-feature-eval-harness`
+
+- **Purpose**: Score completed workflow runs for how faithfully they followed their plan. Provide the scaffold — a scenario format and a runner — that a deterministic structural scorer and an advisory LLM-judge plug into, keeping the honest-signal discipline (unscoreable reports UNKNOWN, advisory never gates).
+
+- **Depends On**: `cpt-studio-feature-traceability-validation`
+
+- **Scope**:
+  - Scenario format: a per-directory `scenario.toml` pointing at a completed run
+  - Runner: load scenarios, apply pluggable scorers, aggregate a JSON report
+  - Gate contract: only deterministic scorer verdicts affect the exit code
+  - Regression diff against a baseline report
+  - A placeholder reference scorer to exercise the seam
+
+- **Out of scope**:
+  - The real deterministic structural scorer (separate task)
+  - The LLM-judge and its gold set (separate task)
+
+- **Requirements Covered**:
+
+  - `p1` - `cpt-studio-fr-core-traceability`
+
+- **API**:
+  - `cfs eval [--scenarios-dir DIR] [--baseline FILE]`
+
+- **Data**:
+  - Scenario descriptors and completed-run artifacts under the scenarios directory
 
 
 ---

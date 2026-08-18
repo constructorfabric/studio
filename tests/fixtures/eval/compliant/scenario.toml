@@ -1,0 +1,5 @@
+[scenario]
+id = "compliant-run"
+workflow = "coding-gen"
+run_dir = "run"
+expect = "compliant"

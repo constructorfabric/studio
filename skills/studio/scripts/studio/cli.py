@@ -130,6 +130,10 @@ def _cmd_chunk_input(argv: List[str]) -> int:
     from .commands.chunk_input import cmd_chunk_input
     return cmd_chunk_input(argv)
 
+def _cmd_eval(argv: List[str]) -> int:
+    from .commands.eval import cmd_eval
+    return cmd_eval(argv)
+
 # =============================================================================
 # ADAPTER COMMAND
 # =============================================================================
@@ -220,6 +224,7 @@ _COMMAND_DESCRIPTIONS = {
     "delegate": "Compile and delegate a plan to ralphex",
     "doctor": "Run environment health checks",
     "map": "Build interactive markdown↔source dependency map via cpt identifiers",
+    "eval": "Run the workflow eval-harness over a suite of scenarios",
 }
 
 _COMMAND_SECTIONS = [
@@ -232,6 +237,7 @@ _COMMAND_SECTIONS = [
     ("Delegation", ["delegate"]),
     ("Diagnostics", ["doctor"]),
     ("Visualization", ["map"]),
+    ("Evaluation", ["eval"]),
 ]
 
 _COMMAND_HANDLERS: dict[str, str] = {
@@ -266,6 +272,7 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "check-language": "_cmd_check_language",
     "pdsl": "_cmd_pdsl",
     "map": "_cmd_map",
+    "eval": "_cmd_eval",
 }
 
 # Keep explicit references so dead-code scanners see dynamic dispatch targets.
@@ -298,6 +305,7 @@ _COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
     _cmd_check_language,
     _cmd_pdsl,
     _cmd_map,
+    _cmd_eval,
 )
 
 _ALL_COMMANDS = list(_COMMAND_HANDLERS)
