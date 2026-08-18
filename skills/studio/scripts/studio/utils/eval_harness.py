@@ -402,8 +402,11 @@ def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, o
     comparison), never a crash. ``has_regression`` reflects only ``regressed``.
     """
     rows = baseline.get("per_scenario", [])
-    prev = ({row.get("scenario"): row.get("compliance")
-             for row in rows if isinstance(row, dict)}
+    # Only string scenario ids: a non-string/unhashable id (e.g. a list) would raise when
+    # used as a dict key and never matches a real scenario anyway.
+    prev = ({row["scenario"]: row.get("compliance")
+             for row in rows
+             if isinstance(row, dict) and isinstance(row.get("scenario"), str)}
             if isinstance(rows, list) else {})
     regressed: List[Dict[str, object]] = []
     improved: List[Dict[str, object]] = []

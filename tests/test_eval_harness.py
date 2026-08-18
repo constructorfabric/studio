@@ -357,6 +357,16 @@ def test_diff_reports_ignores_boolean_compliance() -> None:
     assert diff["regressed"] == []
 
 
+def test_diff_reports_skips_non_string_scenario_id() -> None:
+    # A baseline row whose scenario id is unhashable/non-string must not crash diff_reports.
+    report = eh.run_suite(FIXTURES, [eh.ReferencePresenceScorer()])
+    baseline = {"summary": {}, "per_scenario": [
+        {"scenario": [], "compliance": 0.5},        # unhashable id
+        {"scenario": 123, "compliance": 0.5}]}      # non-string id
+    diff = eh.diff_reports(report, baseline)
+    assert diff["has_regression"] is False
+
+
 def test_diff_reports_robust_to_bad_baseline_shape() -> None:
     # diff_reports is a public util; a wrong-shaped baseline must not crash it.
     report = eh.run_suite(FIXTURES, [eh.ReferencePresenceScorer()])
