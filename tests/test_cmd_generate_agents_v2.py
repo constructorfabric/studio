@@ -810,7 +810,7 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
         confirm_args = []
         original_confirm = None
 
-        def _spy_confirm(args, preview_create, preview_update, preview_delete=0):
+        def _spy_confirm(args, preview_create, preview_update, preview_delete=0, **_kwargs):
             confirm_args.append((preview_create, preview_update, preview_delete))
             return True  # proceed
 

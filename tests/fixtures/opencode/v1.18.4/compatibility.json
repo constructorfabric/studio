@@ -1,0 +1,32 @@
+{
+  "fixture_schema_version": 1,
+  "opencode_version": "1.18.4",
+  "validated_on": "2026-07-24",
+  "attribution": {
+    "release": {
+      "title": "OpenCode v1.18.4 release",
+      "url": "https://github.com/anomalyco/opencode/releases/tag/v1.18.4"
+    },
+    "skills": {
+      "title": "OpenCode documentation: Agent Skills",
+      "url": "https://opencode.ai/docs/skills"
+    },
+    "agents": {
+      "title": "OpenCode documentation: Agents",
+      "url": "https://opencode.ai/docs/agents"
+    }
+  },
+  "skills": {
+    "project_agent_compatible_path": ".agents/skills/{name}/SKILL.md",
+    "adapter_behavior": "consume_without_generating_or_overwriting"
+  },
+  "agents": {
+    "project_path": ".opencode/agents/{name}.md",
+    "name_prefix": "cf-",
+    "required_frontmatter": [
+      "description",
+      "mode: subagent"
+    ],
+    "model_inheritance": "subagents inherit the invoking primary agent model when model is omitted"
+  }
+}

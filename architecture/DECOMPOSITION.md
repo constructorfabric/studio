@@ -6,23 +6,23 @@
 
 - [1. Overview](#1-overview)
 - [2. Entries](#2-entries)
-  - [2.1 Core Infrastructure ⏳ HIGH](#21-core-infrastructure--high)
-  - [2.2 Kit Management ⏳ HIGH](#22-kit-management--high)
-  - [2.3 Traceability & Validation ⏳ HIGH](#23-traceability--validation--high)
-  - [2.4 SDLC Kit & Artifact Pipeline (EXTRACTED) ⏳ HIGH](#24-sdlc-kit--artifact-pipeline-extracted--high)
+  - [2.1 Core Infrastructure IN PROGRESS HIGH](#21-core-infrastructure-in-progress-high)
+  - [2.2 Kit Management IN PROGRESS HIGH](#22-kit-management-in-progress-high)
+  - [2.3 Traceability & Validation IN PROGRESS HIGH](#23-traceability--validation-in-progress-high)
+  - [2.4 SDLC Kit & Artifact Pipeline (EXTRACTED) IN PROGRESS HIGH](#24-sdlc-kit--artifact-pipeline-extracted-in-progress-high)
   - [2.5 Agent Integration & Workflows ✅ DONE](#25-agent-integration--workflows--done)
-  - [2.6 PR Workflows (EXTRACTED) ⏳ MEDIUM](#26-pr-workflows-extracted--medium)
-  - [2.7 Version & Config Management ⏳ MEDIUM](#27-version--config-management--medium)
-  - [2.8 Developer Experience ⏳ LOW](#28-developer-experience--low)
-  - [2.9 Advanced SDLC Workflows (EXTRACTED) ⏳ LOW](#29-advanced-sdlc-workflows-extracted--low)
-  - [2.10 Spec Coverage ⏳ HIGH](#210-spec-coverage--high)
+  - [2.6 PR Workflows (EXTRACTED) IN PROGRESS MEDIUM](#26-pr-workflows-extracted-in-progress-medium)
+  - [2.7 Version & Config Management IN PROGRESS MEDIUM](#27-version--config-management-in-progress-medium)
+  - [2.8 Developer Experience IN PROGRESS LOW](#28-developer-experience-in-progress-low)
+  - [2.9 Advanced SDLC Workflows (EXTRACTED) IN PROGRESS LOW](#29-advanced-sdlc-workflows-extracted-in-progress-low)
+  - [2.10 Spec Coverage IN PROGRESS HIGH](#210-spec-coverage-in-progress-high)
   - [2.11 Execution Plans 🔶 HIGH](#211-execution-plans--high)
   - [2.12 Multi-Repo Workspace Federation ✅ DONE](#212-multi-repo-workspace-federation--done)
-  - [2.13 Subagent Registration ⏳ HIGH](#213-subagent-registration--high)
-  - [2.14 ralphex Delegation ⏳ HIGH](#214-ralphex-delegation--high)
-  - [2.15 Project-Level Extensibility ⏳ HIGH](#215-project-level-extensibility--high)
+  - [2.13 Subagent Registration IN PROGRESS HIGH](#213-subagent-registration-in-progress-high)
+  - [2.14 ralphex Delegation IN PROGRESS HIGH](#214-ralphex-delegation-in-progress-high)
+  - [2.15 Project-Level Extensibility IN PROGRESS HIGH](#215-project-level-extensibility-in-progress-high)
   - [2.16 Dependency Mapping 🔶 HIGH](#216-dependency-mapping--high)
-  - [2.17 Thin Skill Runtime ⏳ HIGH](#217-thin-skill-runtime--high)
+  - [2.17 Thin Skill Runtime IN PROGRESS HIGH](#217-thin-skill-runtime-in-progress-high)
 - [3. Feature Dependencies](#3-feature-dependencies)
 
 <!-- /toc -->
@@ -44,7 +44,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 - [ ] `p1` - **ID**: `cpt-studio-status-overall`
 
-### 2.1 [Core Infrastructure](features/core-infra.md) ⏳ HIGH
+### 2.1 [Core Infrastructure](features/core-infra.md) IN PROGRESS HIGH
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-core-infra`
 
@@ -112,7 +112,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `{cf-studio-path}/config/artifacts.toml` — artifact registry with autodetect rules
 
 
-### 2.2 [Kit Management](features/kit-management.md) ⏳ HIGH
+### 2.2 [Kit Management](features/kit-management.md) IN PROGRESS HIGH
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-kit-management`
 - [ ] `p1` - **ID**: `cpt-studio-feature-blueprint-system`
@@ -186,7 +186,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `{cf-studio-path}/config/core.toml` → `[kits.{slug}.resources]` — resolved resource identifier → path bindings (for manifest-driven kits)
 
 
-### 2.3 [Traceability & Validation](features/traceability-validation.md) ⏳ HIGH
+### 2.3 [Traceability & Validation](features/traceability-validation.md) IN PROGRESS HIGH
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-traceability-validation`
 
@@ -250,7 +250,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - In-memory ID index (definitions + references, built from filesystem scan)
 
 
-### 2.4 SDLC Kit & Artifact Pipeline (EXTRACTED) ⏳ HIGH
+### 2.4 SDLC Kit & Artifact Pipeline (EXTRACTED) IN PROGRESS HIGH
 
 > **EXTRACTED per `cpt-studio-adr-extract-sdlc-kit`**: This feature has been moved to the SDLC kit repository (`constructorfabric/studio-kit-sdlc`). All SDLC-specific scope, requirements, components, and data are now owned by the kit's own repository.
 
@@ -286,7 +286,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 - **Design Constraints Covered**:
 
-  None
+  - `p1` - `cpt-studio-constraint-opencode-owned-output`
 
 - **Domain Model Entities**:
   - AgentEntryPoint
@@ -309,12 +309,12 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - Agent-specific subagents: `.cursor/agents/`, `.claude/agents/`, `.github/agents/`, `.codex/agents/`
 
 
-### 2.6 PR Workflows (EXTRACTED) ⏳ MEDIUM
+### 2.6 PR Workflows (EXTRACTED) IN PROGRESS MEDIUM
 
 > **EXTRACTED per `cpt-studio-adr-extract-sdlc-kit`**: This feature has been moved to the SDLC kit repository (`constructorfabric/studio-kit-sdlc`). PR review and status workflows are now provided by the SDLC kit as kit workflows.
 
 
-### 2.7 [Version & Config Management](features/version-config.md) ⏳ MEDIUM
+### 2.7 [Version & Config Management](features/version-config.md) IN PROGRESS MEDIUM
 
 - [ ] `p2` - **ID**: `cpt-studio-feature-version-config`
 
@@ -370,7 +370,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `{cf-studio-path}/config/core.toml` — migrated config with version field
 
 
-### 2.8 [Developer Experience](features/developer-experience.md) ⏳ LOW
+### 2.8 [Developer Experience](features/developer-experience.md) IN PROGRESS LOW
 
 - [ ] `p2` - **ID**: `cpt-studio-feature-developer-experience`
 
@@ -428,12 +428,12 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   None
 
 
-### 2.9 Advanced SDLC Workflows (EXTRACTED) ⏳ LOW
+### 2.9 Advanced SDLC Workflows (EXTRACTED) IN PROGRESS LOW
 
 > **EXTRACTED per `cpt-studio-adr-extract-sdlc-kit`**: This feature has been moved to the SDLC kit repository (`constructorfabric/studio-kit-sdlc`). Code generation, brownfield support, feature lifecycle, PR config, and quickstart guides are now provided by the SDLC kit.
 
 
-### 2.10 [Spec Coverage](features/spec-coverage.md) ⏳ HIGH
+### 2.10 [Spec Coverage](features/spec-coverage.md) IN PROGRESS HIGH
 
 - [x] `p1` - **ID**: `cpt-studio-feature-spec-coverage`
 
@@ -622,7 +622,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `config/artifacts.toml` `source` fields — per-artifact source references
 
 
-### 2.13 [Subagent Registration](features/subagent-registration.md) ⏳ HIGH
+### 2.13 [Subagent Registration](features/subagent-registration.md) IN PROGRESS HIGH
 
 - [x] `p1` - **ID**: `cpt-studio-feature-subagent-registration`
 
@@ -644,7 +644,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `cfs generate-agents --agent <tool>`
 
 
-### 2.14 [ralphex Delegation](features/ralphex-delegation.md) ⏳ HIGH
+### 2.14 [ralphex Delegation](features/ralphex-delegation.md) IN PROGRESS HIGH
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-ralphex-delegation`
 
@@ -705,7 +705,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `core.toml` `[integrations.ralphex]` — persisted executable path
 
 
-### 2.15 [Project-Level Extensibility](features/project-extensibility.md) ⏳ HIGH
+### 2.15 [Project-Level Extensibility](features/project-extensibility.md) IN PROGRESS HIGH
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-project-extensibility`
 
@@ -844,7 +844,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `artifacts.toml` — read-only: codebase entries and artifact paths for registry categorization
 
 
-### 2.17 Thin Skill Runtime ⏳ HIGH
+### 2.17 Thin Skill Runtime IN PROGRESS HIGH
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-thin-skill-runtime`
 

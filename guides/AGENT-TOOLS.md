@@ -40,13 +40,18 @@
   - [Typical problems](#typical-problems-4)
   - [How to mitigate](#how-to-mitigate-4)
   - [Practical recommendation](#practical-recommendation-4)
-- [10. Common problems and fixes](#10-common-problems-and-fixes)
+- [10. OpenCode (implemented v1.18.4 boundary)](#10-opencode-implemented-v1184-boundary)
+  - [Current status and compatibility boundary](#current-status-and-compatibility-boundary)
+  - [Explicit selection and generated surface](#explicit-selection-and-generated-surface)
+  - [Ownership, collisions, and read-only inspection](#ownership-collisions-and-read-only-inspection)
+  - [Verification and deferred work](#verification-and-deferred-work)
+- [11. Common problems and fixes](#11-common-problems-and-fixes)
   - [Problem: subagents are not available where you expected them](#problem-subagents-are-not-available-where-you-expected-them)
   - [Problem: review quality is poor after a long generation session](#problem-review-quality-is-poor-after-a-long-generation-session)
   - [Problem: the host appears to support read-only review, but you still do not trust it fully](#problem-the-host-appears-to-support-read-only-review-but-you-still-do-not-trust-it-fully)
   - [Problem: one giant task keeps going off the rails](#problem-one-giant-task-keeps-going-off-the-rails)
   - [Problem: Windsurf feels worse than tools with subagents](#problem-windsurf-feels-worse-than-tools-with-subagents)
-- [11. How to think about subagents vs manual chat separation](#11-how-to-think-about-subagents-vs-manual-chat-separation)
+- [12. How to think about subagents vs manual chat separation](#12-how-to-think-about-subagents-vs-manual-chat-separation)
   - [If the host supports subagents](#if-the-host-supports-subagents)
   - [If the host does not support subagents](#if-the-host-does-not-support-subagents)
   - [Core rule](#core-rule)
@@ -91,6 +96,8 @@ Other tools receive the best adaptation their host format supports, with **grace
 
 Read-only inspection uses `cfs agents`, which reports the same surface model without writing files. Write-capable generation uses `cfs generate-agents`, which may return a partial result when some host-specific capabilities are skipped or some generated outputs are intentionally preserved.
 
+OpenCode is a first-class host target with an implemented **v1.18.4-only** integration. It is not an OpenAI/Codex alias, is never selected by default, and remains a bounded compatibility contract rather than host parity.
+
 Typical setup:
 
 🖥 **Terminal**:
@@ -101,6 +108,16 @@ cfs generate-agents --agent copilot
 cfs generate-agents --agent openai
 cfs generate-agents --agent windsurf
 ```
+
+The implemented OpenCode path is opt-in only:
+
+```bash
+cfs generate-agents --agent opencode
+# convenience form
+cfs generate-agents --opencode
+```
+
+Neither command changes the default selection: it remains Windsurf, Cursor, Claude, Copilot, and OpenAI.
 
 By default, `cfs generate-agents` preserves legacy Cypilot / Cyber Constructor artifacts. This avoids deleting old integration files during ordinary regeneration. Remove those legacy artifacts only when you mean to clean them up:
 
@@ -133,20 +150,23 @@ That is one of the most important practical differences when using Constructor S
 - **Windsurf**
   - Still usable with Constructor Studio workflows and skills, and its **multi-model** nature is a practical plus. But it does **not** support subagents, so treat it as a single-agent host and manually separate contexts.
 
+- **OpenCode (implemented v1.18.4 boundary)**
+  - A distinct, explicit-only target. Its intentionally narrow implemented surface is native skill discovery plus Studio-owned native subagents, with preservation-first collision reporting. It does not claim live runtime execution or parity with the established hosts.
+
 ---
 
 ## 3. Support matrix
 
-| Capability | Claude Code | Cursor | GitHub Copilot | OpenAI Codex | Windsurf |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Workflow / skill integration | Yes | Yes | Yes | Yes | Yes |
-| Host-native subagents | Yes | Yes | Yes | Yes | No |
-| Read-only review enforcement | Strong | Strong | Partial | Weaker / prompt-led | No host-native subagent enforcement |
-| Worktree isolation | Yes | No | No | No | No |
-| Model selection in generated subagents | Yes | Yes | No equivalent | Tool-dependent / less central | N/A |
-| Subagent-scoped hooks | Yes | No | Tool-specific / narrower current surface | No | No |
-| Multi-model host advantage | No | Yes | Yes | No | Yes |
-| Best use mode with Constructor Studio | Full orchestration | Strong daily-driver | Structured assistance | Bounded execution | Manual separation |
+| Capability | Claude Code | Cursor | GitHub Copilot | OpenAI Codex | Windsurf | OpenCode (v1.18.4) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Workflow / skill integration | Yes | Yes | Yes | Yes | Yes | Implemented v1.18.4 native-skill boundary |
+| Host-native subagents | Yes | Yes | Yes | Yes | No | Implemented `cf-*` native agents only |
+| Read-only review enforcement | Strong | Strong | Partial | Weaker / prompt-led | No host-native subagent enforcement | Implemented read-only state inspection |
+| Worktree isolation | Yes | No | No | No | No | No claim |
+| Model selection in generated subagents | Yes | Yes | No equivalent | Tool-dependent / less central | N/A | No model/provider defaults |
+| Subagent-scoped hooks | Yes | No | Tool-specific / narrower current surface | No | No | No claim |
+| Multi-model host advantage | No | Yes | Yes | No | Yes | No claim |
+| Best use mode with Constructor Studio | Full orchestration | Strong daily-driver | Structured assistance | Bounded execution | Manual separation | Explicit v1.18.4 compatibility path |
 
 **Important distinction**:
 
@@ -484,7 +504,57 @@ Its main practical upside is that it can still be valuable as a **multi-model ho
 
 ---
 
-## 10. Common problems and fixes
+## 10. OpenCode (implemented v1.18.4 boundary)
+
+### Current status and compatibility boundary
+
+OpenCode is a first-class Constructor Studio host target, distinct from OpenAI Codex and the other host integrations. Its deliberately narrow implemented compatibility boundary is **OpenCode v1.18.4 only**.
+
+This section records the implemented, fixture-backed contract. It does not imply support for versions other than v1.18.4, live runtime execution, or equivalence with the established host integrations.
+
+### Explicit selection and generated surface
+
+OpenCode must be selected explicitly. Use either:
+
+```bash
+cfs generate-agents --agent opencode
+# or
+cfs generate-agents --opencode
+```
+
+Plain `cfs generate-agents` keeps the established five-host default unchanged: Windsurf, Cursor, Claude, Copilot, and OpenAI. OpenCode is never added implicitly to that selection.
+
+For the v1.18.4 boundary, the generator reuses OpenCode's native `.agents/skills` discovery and translates only the current Studio agent registry into native subagents. Its Studio-managed output is limited to:
+
+- `.opencode/agents/cf-*.md`, each carrying a Studio ownership marker
+- `.opencode/.cf-studio-installed`, the Studio directory sentinel
+- `.opencode/.cf-studio-unowned-outputs.json`, a path-only collision-exclusion record
+
+The generator must not create `.opencode/commands`. It also must not create or modify root `AGENTS.md`, `opencode.json`, installation state, runtime execution state, or model/provider defaults.
+
+### Ownership, collisions, and read-only inspection
+
+OpenCode generation is preservation-first. Studio may rebuild or remove only `cf-*` files whose ownership is proved by both the directory sentinel and the per-file Studio marker. All other `.opencode/` content remains user-owned.
+
+If a `.opencode/agents/cf-*.md` target is ownership-unproven on its first collision, Studio preserves it without overwriting or deleting it. The generation result is explicitly **partial** and records the collision. Studio also persists only the project-relative path in `.opencode/.cf-studio-unowned-outputs.json`; the record is Studio-owned, managed/ignored metadata that never contains user file content. It prevents a sentinel created later in the same or a later run from claiming that path, preserving the user's file across reruns. Resolving the collision remains the user's action; after doing so, they can rerun an explicit OpenCode selection.
+
+Use the read-only inspection path to see the OpenCode state:
+
+```bash
+cfs agents --agent opencode
+```
+
+It reports **selected**, **generated**, **partial**, and **collision** state without changing project files. In particular, a partial collision is a successful preservation outcome, not permission to replace user content.
+
+### Verification and deferred work
+
+The implemented v1.18.4 compatibility contract is covered by deterministic, network-free fixtures at `tests/fixtures/opencode/v1.18.4/`. The fixture's `compatibility.json` retains source attribution for the named tag or commit. Checks verify generated output, ownership markers, read-only status reporting, partial collision handling, and the path-only collision-exclusion record; they do not install or execute OpenCode.
+
+Live OpenCode runtime execution and v2 manifest translation remain deferred. Do not infer broader OpenCode support or parity from this implemented v1.18.4-only boundary.
+
+---
+
+## 11. Common problems and fixes
 
 ### Problem: subagents are not available where you expected them
 
@@ -566,7 +636,7 @@ This partially simulates what a dedicated codegen or review subagent would have 
 
 ---
 
-## 11. How to think about subagents vs manual chat separation
+## 12. How to think about subagents vs manual chat separation
 
 ### If the host supports subagents
 
