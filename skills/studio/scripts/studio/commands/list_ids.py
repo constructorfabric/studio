@@ -161,19 +161,44 @@ def _dedupe_hits(hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
     """Keep one hit per ID, preferring its definition record when one exists.
 
     IDs with no definition anywhere in the scanned hits keep the first-seen
-    hit, preserving input order either way.
+    hit, preserving input order either way. A second (or later) conflicting
+    definition for the same ID is surfaced rather than silently dropped: it's
+    logged as a warning and recorded on the returned hit's
+    `duplicate_definitions` field.
     """
     order: List[str] = []
     first_seen: Dict[str, Dict[str, object]] = {}
     definitions: Dict[str, Dict[str, object]] = {}
+    conflicts: Dict[str, List[Dict[str, object]]] = {}
     for hit in hits:
         id_val = str(hit.get("id", ""))
         if id_val not in first_seen:
             first_seen[id_val] = hit
             order.append(id_val)
-        if hit.get("type") == "definition" and id_val not in definitions:
-            definitions[id_val] = hit
-    return [definitions.get(id_val, first_seen[id_val]) for id_val in order]
+        if hit.get("type") == "definition":
+            if id_val not in definitions:
+                definitions[id_val] = hit
+            elif hit is not definitions[id_val]:
+                conflicts.setdefault(id_val, []).append(hit)
+
+    result: List[Dict[str, object]] = []
+    for id_val in order:
+        chosen = definitions.get(id_val, first_seen[id_val])
+        extra_defs = conflicts.get(id_val)
+        if extra_defs:
+            logger.warning(
+                "duplicate definitions for %s: kept %s:%s, also defined at %s",
+                id_val,
+                chosen.get("artifact"),
+                chosen.get("line"),
+                ", ".join(f"{d.get('artifact')}:{d.get('line')}" for d in extra_defs),
+            )
+            chosen = dict(chosen)
+            chosen["duplicate_definitions"] = [
+                {"artifact": d.get("artifact"), "line": d.get("line")} for d in extra_defs
+            ]
+        result.append(chosen)
+    return result
 
 
 def _collect_artifact_hits(
@@ -248,7 +273,7 @@ def _render_kind_hits(kind_name: str, items: List[Dict[str, object]]) -> None:
 
 
 # @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
-def cmd_list_ids(argv: List[str]) -> int:
+def cmd_list_ids(argv: List[str]) -> int:  # pylint: disable=too-many-locals
     """List Studio IDs from artifacts.
 
     If no artifact is specified, scans all Studio-format artifacts from the adapter registry.
@@ -320,8 +345,9 @@ def cmd_list_ids(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-list-code
     # Scan code files if requested
     code_files_scanned = 0
+    code_files_skipped = 0
     if args.include_code and not args.artifact and ctx:
-        code_hits, code_files_scanned = scan_registered_codebase_references(ctx)
+        code_hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
         hits.extend(code_hits)
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-list-code
 
@@ -336,8 +362,10 @@ def cmd_list_ids(argv: List[str]) -> int:
         "artifacts_scanned": len(artifacts_to_scan),
         "ids": hits,
     }
-    if code_files_scanned > 0:
+    if args.include_code:
         result["code_files_scanned"] = code_files_scanned
+        if code_files_skipped:
+            result["code_files_skipped"] = code_files_skipped
 
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-list
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-return-query
@@ -350,11 +378,11 @@ def _human_list_ids(data: dict) -> None:
     count = data.get("count", 0)
     n_art = data.get("artifacts_scanned", 0)
     code_scanned = data.get("code_files_scanned")
+    code_skipped = data.get("code_files_skipped")
 
     ui.header("List IDs")
     ui.detail("Artifacts scanned", str(n_art))
-    if code_scanned is not None:
-        ui.detail("Code files scanned", str(code_scanned))
+    ui.code_scan_detail(code_scanned, code_skipped)
     ui.detail("IDs found", str(count))
 
     ids = data.get("ids", [])

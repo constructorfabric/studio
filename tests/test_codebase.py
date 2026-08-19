@@ -1,4 +1,5 @@
 """Tests for codebase.py - Constructor Studio code traceability marker parsing."""
+import os
 import pytest
 from pathlib import Path
 from textwrap import dedent
@@ -55,13 +56,131 @@ class TestScanRegisteredCodebaseReferences:
         )
         ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(code_dir, [".py"])])
 
-        hits, code_files_scanned = scan_registered_codebase_references(ctx)
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
 
         assert code_files_scanned == 1
+        assert code_files_skipped == 0
         assert len(hits) == 1
         assert hits[0]["id"] == "cpt-myapp-feature-auth-flow-login"
         assert hits[0]["artifact_type"] == "CODE"
         assert hits[0]["inst"] == "check-creds"
+
+    def test_default_ignored_directories_are_skipped_without_explicit_ignore(self, tmp_path: Path):
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        vendored = code_dir / "node_modules" / "pkg"
+        vendored.mkdir(parents=True)
+        (vendored / "lib.py").write_text(
+            "# @cpt-begin:cpt-vendored-thing:p1:inst-noop\npass\n# @cpt-end:cpt-vendored-thing:p1:inst-noop\n"
+        )
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(code_dir, [".py"])])
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+
+        assert code_files_scanned == 0
+        assert code_files_skipped == 0
+        assert hits == []
+
+    def test_oversized_file_is_skipped_not_read(self, tmp_path: Path, monkeypatch):
+        from studio.utils import codebase as codebase_module
+
+        monkeypatch.setattr(codebase_module, "_MAX_CODE_FILE_BYTES", 10)
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        (code_dir / "big.py").write_text(
+            "# @cpt-begin:cpt-big-thing:p1:inst-noop\npass\n# @cpt-end:cpt-big-thing:p1:inst-noop\n"
+        )
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(code_dir, [".py"])])
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+
+        assert code_files_scanned == 0
+        assert code_files_skipped == 1
+        assert hits == []
+
+    def test_codebase_entry_escaping_project_root_is_skipped(self, tmp_path: Path):
+        outside = tmp_path.parent / f"{tmp_path.name}-outside"
+        outside.mkdir(exist_ok=True)
+        (outside / "escape.py").write_text(
+            "# @cpt-begin:cpt-escape-thing:p1:inst-noop\npass\n# @cpt-end:cpt-escape-thing:p1:inst-noop\n"
+        )
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        try:
+            rel_escape = "../" + os.path.relpath(outside, project_root).replace(os.sep, "/")
+        except ValueError:
+            pytest.skip("cannot construct a relative escape path on this platform")
+        ctx = _FakeCtx(project_root, [_FakeCodebaseEntry(Path(rel_escape), [".py"])])
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+
+        assert code_files_scanned == 0
+        assert hits == []
+
+    def test_code_paths_for_entry_is_sorted_for_determinism(self, tmp_path: Path):
+        from studio.utils.codebase import _code_paths_for_entry
+
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        for name in ("zeta.py", "alpha.py", "mid.py"):
+            (code_dir / name).write_text("pass\n")
+
+        paths = _code_paths_for_entry(code_dir, [".py"])
+
+        assert [p.name for p in paths] == ["alpha.py", "mid.py", "zeta.py"]
+
+    def test_ignored_code_file_fails_closed_when_containment_cannot_be_established(self, tmp_path: Path):
+        from studio.utils.codebase import _is_ignored_code_file
+
+        unrelated = tmp_path.parent / f"{tmp_path.name}-unrelated" / "file.py"
+        unrelated.parent.mkdir(parents=True, exist_ok=True)
+        unrelated.write_text("pass\n")
+        ctx = _FakeCtx(tmp_path / "project-root-does-not-exist", [])
+
+        assert _is_ignored_code_file(unrelated, ctx) is True
+
+    def test_scan_fans_out_to_reachable_workspace_sources(self, tmp_path: Path):
+        from studio.utils.context import SourceContext, WorkspaceContext
+
+        primary_src = tmp_path / "primary" / "src"
+        primary_src.mkdir(parents=True)
+        (primary_src / "primary.py").write_text(
+            "# @cpt-begin:cpt-primary-thing:p1:inst-noop\npass\n# @cpt-end:cpt-primary-thing:p1:inst-noop\n"
+        )
+        primary_ctx = _FakeCtx(tmp_path / "primary", [_FakeCodebaseEntry(primary_src, [".py"])])
+
+        member_root = tmp_path / "member"
+        member_src = member_root / "src"
+        member_src.mkdir(parents=True)
+        (member_src / "member.py").write_text(
+            "# @cpt-begin:cpt-member-thing:p1:inst-noop\npass\n# @cpt-end:cpt-member-thing:p1:inst-noop\n"
+        )
+        member_meta = _FakeMeta([_FakeCodebaseEntry(member_src, [".py"])])
+
+        ws = WorkspaceContext(primary=primary_ctx)
+        ws.sources = {
+            "member": SourceContext(name="member", path=member_root, role="full", meta=member_meta),
+        }
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ws)
+
+        assert code_files_scanned == 2
+        ids = {h["id"] for h in hits}
+        assert ids == {"cpt-primary-thing", "cpt-member-thing"}
+
+    def test_scan_skips_unreachable_workspace_sources(self, tmp_path: Path):
+        from studio.utils.context import SourceContext, WorkspaceContext
+
+        primary_ctx = _FakeCtx(tmp_path, [])
+        ws = WorkspaceContext(primary=primary_ctx)
+        ws.sources = {
+            "member": SourceContext(name="member", path=None, role="full", reachable=False),
+        }
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ws)
+
+        assert hits == []
+        assert code_files_scanned == 0
 
 
 class TestScopeMarkerParsing:

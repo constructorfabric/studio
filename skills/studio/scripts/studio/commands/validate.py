@@ -653,15 +653,14 @@ def _run_initial_artifact_validation(session: _ValidateSession) -> Tuple[_Valida
     for artifact_entry in session.artifacts_to_validate:
         _validate_one_artifact(session, results, artifact_entry)
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-foreach-artifact
-    if not results.all_errors:
-        for language_error in _run_content_language_check(session.artifacts_to_validate, session.project_root):
-            results.all_errors.append(language_error)
-            _attach_issue_to_artifact_report(
-                language_error,
-                results=results,
-                verbose=bool(session.args.verbose),
-                is_error=True,
-            )
+    for language_error in _run_content_language_check(session.artifacts_to_validate, session.project_root):
+        results.all_errors.append(language_error)
+        _attach_issue_to_artifact_report(
+            language_error,
+            results=results,
+            verbose=bool(session.args.verbose),
+            is_error=True,
+        )
     if not results.all_errors:
         return results, None
     enrich_issues(results.all_errors, project_root=session.project_root)

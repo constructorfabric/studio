@@ -2721,7 +2721,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
 
     # ---- Lines 181-182: relative_to exception in code scanning ----
     def test_include_code_relative_to_exception(self):
-        """relative_to raises ValueError → rel=None → file not ignored → processed."""
+        """relative_to raises ValueError → containment can't be established → fails closed (skipped)."""
         from studio.cli import main
 
         with TemporaryDirectory() as tmpdir, TemporaryDirectory() as outsidedir:
@@ -2748,9 +2748,10 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                     rc = main(["list-ids", "--include-code", "--all"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
-                # resolve() follows symlink outside project root → relative_to raises → rel=None → not ignored
+                # resolve() follows symlink outside project root → relative_to raises → fail closed → skipped
                 code_hits = [h for h in out.get("ids", []) if h.get("type") == "code_reference"]
-                self.assertGreaterEqual(len(code_hits), 1, f"Expected code refs, got {out}")
+                self.assertEqual(len(code_hits), 0, f"Expected no code refs (fail-closed), got {out}")
+                self.assertEqual(out.get("code_files_skipped", 0), 1)
             finally:
                 os.chdir(cwd)
 

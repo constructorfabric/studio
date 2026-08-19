@@ -638,6 +638,65 @@ class TestCodePrompts:
 
 
 # ---------------------------------------------------------------------------
+# CDSL structure — fixing prompts (OLE-03's 10 new error codes)
+# ---------------------------------------------------------------------------
+
+class TestCdslStructurePrompts:
+    """Every CDSL structure code from OLE-03 must produce a fixing_prompt."""
+
+    @pytest.mark.parametrize("code", [
+        EC.CDSL_MISSING_CHECKBOX,
+        EC.CDSL_MISSING_PHASE_TOKEN,
+        EC.CDSL_MISSING_INST_ID,
+        EC.CDSL_INCOMPLETE_STEP_LINE,
+        EC.CDSL_CODE_SYNTAX,
+        EC.CDSL_TYPE_ANNOTATION,
+        EC.CDSL_LANGUAGE_OPERATOR,
+        EC.CDSL_NOT_PLAIN_ENGLISH,
+        EC.CDSL_DUPLICATE_INST_ID,
+        EC.CDSL_PLACEHOLDER,
+    ])
+    def test_every_cdsl_code_gets_a_fixing_prompt_and_reasons(self, code):
+        issues = [_make_issue(
+            "CDSL structure finding",
+            code=code,
+            type="structure",
+            id="cpt-sys-fr-x",
+            inst="do-work",
+        )]
+        enrich_issues(issues, project_root=PROJECT_ROOT)
+        assert issues[0].get("fixing_prompt"), f"{code} produced no fixing_prompt"
+        assert issues[0].get("reasons"), f"{code} produced no reasons"
+
+    def test_missing_checkbox_prompt_mentions_checkbox(self):
+        issues = [_make_issue(
+            "CDSL step is missing its S.3 token",
+            code=EC.CDSL_MISSING_CHECKBOX,
+            type="structure",
+        )]
+        enrich_issues(issues, project_root=PROJECT_ROOT)
+        assert "checkbox" in issues[0]["fixing_prompt"]
+
+    def test_duplicate_inst_id_prompt_mentions_the_repeated_inst(self):
+        issues = [_make_issue(
+            "Duplicate instruction ID (CO.5) `inst-do-work` under `cpt-sys-fr-x`",
+            code=EC.CDSL_DUPLICATE_INST_ID,
+            type="structure", id="cpt-sys-fr-x", inst="do-work",
+        )]
+        enrich_issues(issues, project_root=PROJECT_ROOT)
+        assert "inst-do-work" in issues[0]["fixing_prompt"]
+
+    def test_placeholder_prompt_mentions_placeholder(self):
+        issues = [_make_issue(
+            "CDSL step contains a placeholder or TODO marker (CO.6)",
+            code=EC.CDSL_PLACEHOLDER,
+            type="structure",
+        )]
+        enrich_issues(issues, project_root=PROJECT_ROOT)
+        assert "placeholder" in issues[0]["fixing_prompt"]
+
+
+# ---------------------------------------------------------------------------
 # Warnings — fixing prompts
 # ---------------------------------------------------------------------------
 

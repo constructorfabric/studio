@@ -242,6 +242,46 @@ _REASONS: Dict[str, List[str]] = {
         "TOC was manually edited instead of being regenerated with `cfs toc`",
     ],
 
+    # CDSL structure — CDSL.md FAIL rules (S.3-7, CL.1-4, CO.4-6)
+    EC.CDSL_MISSING_CHECKBOX: [
+        "CDSL step line was written without a `[ ]`/`[x]` checkbox (S.3)",
+        "LLM copied a plain sentence into the Steps block instead of a CDSL step line",
+    ],
+    EC.CDSL_MISSING_PHASE_TOKEN: [
+        "CDSL step line is missing its backtick phase token, e.g. `` `p1` `` (S.4)",
+        "Phase token was dropped when the step line was edited",
+    ],
+    EC.CDSL_MISSING_INST_ID: [
+        "CDSL step line is missing its trailing `` `inst-{id}` `` token (S.5)",
+        "Step was authored before the inst-id convention and never retrofitted",
+    ],
+    EC.CDSL_INCOMPLETE_STEP_LINE: [
+        "CDSL step line is missing one or more required tokens (checkbox/phase/inst) (CO.4)",
+    ],
+    EC.CDSL_CODE_SYNTAX: [
+        "CDSL step description used code/function syntax "
+        "(`fn`, `function`, `async`, `def name(`) instead of plain English (S.6)",
+        "LLM described the step as pseudocode rather than a plain-English instruction",
+    ],
+    EC.CDSL_TYPE_ANNOTATION: [
+        "CDSL step description used a type annotation (`: string`, `<T>`, `-> Type`) instead of plain English (S.7)",
+    ],
+    EC.CDSL_LANGUAGE_OPERATOR: [
+        "CDSL step description used a language operator (`&&`, `||`, `=>`, `==`) instead of plain English (CL.2)",
+    ],
+    EC.CDSL_NOT_PLAIN_ENGLISH: [
+        "CDSL step description is not language-agnostic plain English (CL.1/CL.4) — "
+        "see the accompanying S.6/S.7/CL.2 finding for the specific trigger",
+    ],
+    EC.CDSL_DUPLICATE_INST_ID: [
+        "The same `inst-{inst}` token was reused under parent `{id}` for two different steps (CO.5)",
+        "Step was copy-pasted without updating its inst-id",
+    ],
+    EC.CDSL_PLACEHOLDER: [
+        "CDSL step still contains a placeholder marker (`TODO`/`FIXME`/`XXX`/`TBD`/`[PLACEHOLDER]`) (CO.6)",
+        "Step was drafted as a stub and never filled in",
+    ],
+
     # File errors
     EC.FILE_READ_ERROR: [
         "File could not be read — check encoding (must be UTF-8) or file permissions",
@@ -673,6 +713,40 @@ def _prompt_for_toc_and_warnings(ctx: _FixPromptContext) -> Optional[str]:
 # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-toc
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-cdsl-structure
+def _prompt_for_cdsl_structure(ctx: _FixPromptContext) -> Optional[str]:
+    if ctx.code == EC.CDSL_DUPLICATE_INST_ID:
+        inst = str(ctx.issue.get("inst") or "")
+        return f"Open `{ctx.loc}`: `inst-{inst}` under `{ctx.cpt_id}` is reused — give this step a unique inst-id."
+    prompt_map = {
+        EC.CDSL_MISSING_CHECKBOX: f"Open `{ctx.loc}`: add a `[ ]`/`[x]` checkbox to the CDSL step line.",
+        EC.CDSL_MISSING_PHASE_TOKEN: (
+            f"Open `{ctx.loc}`: add a backtick phase token (e.g. `` `p1` ``) to the CDSL step line."
+        ),
+        EC.CDSL_MISSING_INST_ID: f"Open `{ctx.loc}`: add a trailing `` `inst-{{id}}` `` token to the CDSL step line.",
+        EC.CDSL_INCOMPLETE_STEP_LINE: (
+            f"Open `{ctx.loc}`: this CDSL step line is missing required tokens — see the accompanying finding(s)."
+        ),
+        EC.CDSL_CODE_SYNTAX: (
+            f"Open `{ctx.loc}`: rewrite this CDSL step description in plain English, without function/code syntax."
+        ),
+        EC.CDSL_TYPE_ANNOTATION: (
+            f"Open `{ctx.loc}`: rewrite this CDSL step description in plain English, without a type annotation."
+        ),
+        EC.CDSL_LANGUAGE_OPERATOR: (
+            f"Open `{ctx.loc}`: rewrite this CDSL step description in plain English, without a language operator."
+        ),
+        EC.CDSL_NOT_PLAIN_ENGLISH: (
+            f"Open `{ctx.loc}`: rewrite this CDSL step description as language-agnostic plain English."
+        ),
+        EC.CDSL_PLACEHOLDER: (
+            f"Open `{ctx.loc}`: replace the placeholder/TODO marker with the actual CDSL step content."
+        ),
+    }
+    return prompt_map.get(ctx.code)
+# @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-cdsl-structure
+
+
 # ---------------------------------------------------------------------------
 # Prompt registry — keyed by error ``code`` (see error_codes.py).
 # ---------------------------------------------------------------------------
@@ -688,6 +762,7 @@ def _build_fixing_prompt(issue: Dict[str, object], project_root: Optional[Path] 
         _prompt_for_cross_ref_coverage,
         _prompt_for_code_traceability,
         _prompt_for_toc_and_warnings,
+        _prompt_for_cdsl_structure,
     ]
     for builder in builders:
         prompt = builder(ctx)

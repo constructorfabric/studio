@@ -135,6 +135,19 @@ def detail(key: str, value: str) -> None:
     sys.stdout.write(f"    {_c(_DIM, key + ':')} {value}\n")
 
 
+def code_scan_detail(code_scanned: Optional[int], code_skipped: Optional[int]) -> None:
+    """Print the shared 'Code files scanned/skipped' detail lines for `--include-code`.
+
+    Shared by `list-ids`/`where-used` human output so the two commands don't
+    drift; *code_scanned* of ``None`` means `--include-code` wasn't passed.
+    """
+    if code_scanned is None:
+        return
+    detail("Code files scanned", str(code_scanned))
+    if code_skipped:
+        detail("Code files skipped", str(code_skipped))
+
+
 def hint(msg: str) -> None:
     """Print a dim hint/suggestion."""
     if _JSON_MODE:
@@ -272,6 +285,7 @@ class _UI:  # pylint: disable=too-few-public-methods
     warn = staticmethod(warn)
     info = staticmethod(info)
     detail = staticmethod(detail)
+    code_scan_detail = staticmethod(code_scan_detail)
     hint = staticmethod(hint)
     blank = staticmethod(blank)
     divider = staticmethod(divider)
