@@ -1250,8 +1250,10 @@ _CDSL_TYPE_ANNOTATION_RE = re.compile(
 # Excludes runs of 3+ `=` (git conflict markers like `=======`), which aren't operators.
 _CDSL_OPERATOR_RE = re.compile(r"=>|&&|\|\||(?<!=)==(?!=)")
 _CDSL_PLACEHOLDER_RE = re.compile(r"\b(?:TODO|FIXME|XXX|TBD)\b|\[PLACEHOLDER\]", re.IGNORECASE)
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
 def _cdsl_missing_tokens(stripped: str) -> List[Tuple[str, str]]:
     """Return (error_code, spec_rule) pairs for tokens absent from a candidate step line."""
     missing: List[Tuple[str, str]] = []
@@ -1262,8 +1264,10 @@ def _cdsl_missing_tokens(stripped: str) -> List[Tuple[str, str]]:
     if not _CDSL_INST_TOKEN_RE.search(stripped):
         missing.append((EC.CDSL_MISSING_INST_ID, "S.5"))
     return missing
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
 def _append_cdsl_prohibited_syntax_errors(
     *,
     desc: str,
@@ -1273,8 +1277,9 @@ def _append_cdsl_prohibited_syntax_errors(
     errors: List[Dict[str, object]],
 ) -> None:
     """Flag function syntax, type annotations, and operators in a CDSL step description."""
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
     triggered = False
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
     if _CDSL_FUNCTION_SYNTAX_RE.search(desc):
         errors.append(error(
             "structure",
@@ -1284,6 +1289,8 @@ def _append_cdsl_prohibited_syntax_errors(
             line=line_no,
         ))
         triggered = True
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
     if _CDSL_TYPE_ANNOTATION_RE.search(desc):
         errors.append(error(
             "structure",
@@ -1293,6 +1300,8 @@ def _append_cdsl_prohibited_syntax_errors(
             line=line_no,
         ))
         triggered = True
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
     if _CDSL_OPERATOR_RE.search(desc):
         errors.append(error(
             "structure",
@@ -1302,6 +1311,8 @@ def _append_cdsl_prohibited_syntax_errors(
             line=line_no,
         ))
         triggered = True
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
     if triggered:
         errors.append(error(
             "structure",
@@ -1313,6 +1324,7 @@ def _append_cdsl_prohibited_syntax_errors(
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-missing-token
 def _validate_cdsl_step_candidate(
     *,
     line_no: int,
@@ -1328,7 +1340,6 @@ def _validate_cdsl_step_candidate(
     inst-id convention (see architecture/features/dependency-mapping.md).
     Promote these to `errors` once that backlog is retrofitted separately.
     """
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-missing-token
     missing = _cdsl_missing_tokens(step_text)
     for code, rule in missing:
         warnings.append(error(
@@ -1349,6 +1360,7 @@ def _validate_cdsl_step_candidate(
         return
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-missing-token
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
     full_match = _CDSL_STEP_DESC_RE.search(step_text)
     if not full_match:
         return
@@ -1359,8 +1371,10 @@ def _validate_cdsl_step_candidate(
         step_text=step_text,
         errors=errors,
     )
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
 def _validate_cdsl_duplicate_inst_ids(
     *,
     cdsl_hits: Sequence[Dict[str, object]],
@@ -1368,7 +1382,6 @@ def _validate_cdsl_duplicate_inst_ids(
     errors: List[Dict[str, object]],
 ) -> None:
     """Flag a repeated `inst-{id}` under the same parent ID (CO.5)."""
-    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
     seen: Dict[Tuple[str, str], int] = {}
     for hit in cdsl_hits:
         pid = str(hit.get("parent_id") or "").strip()
@@ -1391,6 +1404,7 @@ def _validate_cdsl_duplicate_inst_ids(
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
 def _iter_cdsl_block_lines(lines: List[str]):
     """Yield fenced-out lines inside a `**Steps**:`/`**Transitions**:` block.
 
@@ -1418,8 +1432,9 @@ def _iter_cdsl_block_lines(lines: List[str]):
             continue
         if in_scope:
             yield line_no0 + 1, raw_line, stripped
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
 
-
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-candidate
 def _iter_cdsl_step_candidates(lines: List[str]):
     """Group CDSL-block lines into logical step items, joining continuation lines.
 
@@ -1447,11 +1462,13 @@ def _iter_cdsl_step_candidates(lines: List[str]):
             current_parts.append(stripped)
     if current_line_no is not None:
         yield current_line_no, " ".join(current_parts)
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-candidate
 
-
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
 def _cdsl_block_line_numbers(lines: List[str]) -> Set[int]:
     """Return the 1-indexed line numbers that fall inside a CDSL Steps:/Transitions: block."""
     return {line_no for line_no, _raw_line, _stripped in _iter_cdsl_block_lines(lines)}
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
 
 
 def _validate_cdsl_structure(
@@ -1500,7 +1517,6 @@ def _validate_cdsl_structure(
     in_scope_lines = _cdsl_block_line_numbers(lines)
     scoped_hits = [hit for hit in cdsl_hits if int(hit.get("line", 0) or 0) in in_scope_lines]
     _validate_cdsl_duplicate_inst_ids(cdsl_hits=scoped_hits, artifact_path=artifact_path, errors=errors)
-# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
