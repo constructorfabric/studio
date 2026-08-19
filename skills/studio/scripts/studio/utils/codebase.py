@@ -640,8 +640,28 @@ def validate_code_file(code_path: Path) -> Dict[str, List[Dict[str, object]]]:
 # @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
+# Conventional non-source directories excluded from every scan, independent of
+# the project's own `artifacts.toml` `ignore` config.
+_DEFAULT_IGNORED_DIR_NAMES = frozenset(
+    {"node_modules", ".git", ".venv", "venv", "build", "dist", "vendor", ".tox", "__pycache__"}
+)
+
+# Files larger than this are skipped (with a warning) rather than fully read.
+_MAX_CODE_FILE_BYTES = 2_000_000
+
+
+def _is_in_default_ignored_dir(file_path: Path, root: Path) -> bool:
+    """Return whether *file_path* sits under a conventional non-source directory."""
+    try:
+        rel_parts = file_path.resolve().relative_to(root.resolve()).parts
+    except (OSError, ValueError) as exc:
+        _warn_codebase(f"failed to resolve {file_path} relative to {root}: {exc}")
+        return False
+    return any(part in _DEFAULT_IGNORED_DIR_NAMES for part in rel_parts[:-1])
+
+
 def _code_paths_for_entry(code_path: Path, extensions: List[str]) -> List[Path]:
-    """Return code files covered by one registry codebase entry."""
+    """Return code files covered by one registry codebase entry, sorted for determinism."""
     if not code_path.exists():
         return []
     if code_path.is_file():
@@ -649,17 +669,24 @@ def _code_paths_for_entry(code_path: Path, extensions: List[str]) -> List[Path]:
 
     files: List[Path] = []
     for ext in extensions:
-        files.extend(code_path.rglob(f"*{ext}"))
-    return files
+        for candidate in code_path.rglob(f"*{ext}"):
+            if _is_in_default_ignored_dir(candidate, code_path):
+                continue
+            files.append(candidate)
+    return sorted(files, key=str)
 
 
 def _is_ignored_code_file(file_path: Path, ctx) -> bool:
-    """Return whether *file_path* is registry-ignored and should be skipped."""
+    """Return whether *file_path* is registry-ignored and should be skipped.
+
+    Fails closed: when containment under the project root can't be
+    established, the file is treated as ignored rather than scanned.
+    """
     try:
         rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
     except (OSError, ValueError) as exc:
         _warn_codebase(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
-        return False
+        return True
     return ctx.meta.is_ignored(rel)
 
 
@@ -685,29 +712,88 @@ def _scan_code_file_references(file_path: Path, ctx) -> Optional[List[Dict[str, 
     """Parse one code file for marker references, or None if skipped/unparsable."""
     if _is_ignored_code_file(file_path, ctx):
         return None
+    try:
+        if file_path.stat().st_size > _MAX_CODE_FILE_BYTES:
+            _warn_codebase(f"skipping {file_path}: exceeds {_MAX_CODE_FILE_BYTES}-byte scan limit")
+            return None
+    except OSError as exc:
+        _warn_codebase(f"failed to stat {file_path}: {exc}")
+        return None
     cf, errs = CodeFile.from_path(file_path)
     if errs or cf is None:
         return None
     return [_code_reference_hit(ref, file_path) for ref in cf.references]
 
 
-def scan_registered_codebase_references(ctx) -> Tuple[List[Dict[str, object]], int]:
+@dataclass
+class _SourceScanContext:
+    """Minimal ctx shim exposing project_root/meta for a workspace source scan."""
+
+    project_root: Path
+    meta: object
+
+
+def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]:
+    """Scan all codebase entries reachable from *scan_ctx* (primary or a workspace source).
+
+    Returns (hits, files_scanned, files_skipped). A codebase entry whose
+    configured path resolves outside *scan_ctx.project_root* is skipped
+    entirely (fail closed on a misconfigured/escaping entry) rather than
+    walked.
+    """
+    hits: List[Dict[str, object]] = []
+    scanned = 0
+    skipped = 0
+    root = scan_ctx.project_root.resolve()
+    for cb_entry, _system_node in scan_ctx.meta.iter_all_codebase():
+        code_path = (root / cb_entry.path).resolve()
+        try:
+            code_path.relative_to(root)
+        except ValueError:
+            _warn_codebase(f"codebase entry {cb_entry.path!r} resolves outside {root}; skipping")
+            continue
+        for file_path in _code_paths_for_entry(code_path, cb_entry.extensions or [".py"]):
+            file_hits = _scan_code_file_references(file_path, scan_ctx)
+            if file_hits is None:
+                skipped += 1
+                continue
+            scanned += 1
+            hits.extend(file_hits)
+    return hits, scanned, skipped
+
+
+def scan_registered_codebase_references(ctx) -> Tuple[List[Dict[str, object]], int, int]:
     """Scan registered codebase entries for Studio marker references.
 
     Shared by `list-ids --include-code` and `where-used --include-code` so
-    both commands see the same code-marker parser.
+    both commands see the same code-marker parser. In a multi-repo workspace
+    with cross-repo resolution enabled, also fans out to each reachable
+    workspace source's own registered codebase entries, mirroring how
+    `collect_artifacts_to_scan` fans out artifact scanning.
+
+    Returns (hits, files_scanned, files_skipped) — *files_skipped* lets a
+    caller tell "no --include-code" apart from "--include-code found nothing
+    because every candidate file was ignored, oversized, or unparsable".
     """
-    hits: List[Dict[str, object]] = []
-    code_files_scanned = 0
-    for cb_entry, _system_node in ctx.meta.iter_all_codebase():
-        code_path = (ctx.project_root / cb_entry.path).resolve()
-        for file_path in _code_paths_for_entry(code_path, cb_entry.extensions or [".py"]):
-            file_hits = _scan_code_file_references(file_path, ctx)
-            if file_hits is None:
+    from .context import WorkspaceContext, get_expanded_meta
+
+    hits, code_files_scanned, code_files_skipped = _scan_codebase_entries(ctx)
+
+    if isinstance(ctx, WorkspaceContext) and ctx.cross_repo and ctx.resolve_remote_ids:
+        for sc in ctx.sources.values():
+            if not sc.reachable or sc.path is None or sc.role not in ("codebase", "full"):
                 continue
-            code_files_scanned += 1
-            hits.extend(file_hits)
-    return hits, code_files_scanned
+            meta = get_expanded_meta(sc)
+            if meta is None:
+                continue
+            source_hits, source_scanned, source_skipped = _scan_codebase_entries(
+                _SourceScanContext(project_root=sc.path, meta=meta)
+            )
+            hits.extend(source_hits)
+            code_files_scanned += source_scanned
+            code_files_skipped += source_skipped
+
+    return hits, code_files_scanned, code_files_skipped
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 
 __all__ = [

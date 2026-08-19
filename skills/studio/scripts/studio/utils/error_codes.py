@@ -121,7 +121,7 @@ CONTENT_LANGUAGE_VIOLATION = "LANG001"
 # CDSL structure — CDSL.md FAIL rules (S.3-7, CL.1-4, CO.4-6)
 # ---------------------------------------------------------------------------
 CDSL_MISSING_CHECKBOX = "cdsl-missing-checkbox"
-CDSL_MISSING_PHASE_TOKEN = "cdsl-missing-phase-token"
+CDSL_MISSING_PHASE_TOKEN = "cdsl-missing-phase-token"  # noqa: S105 -- error code, not a secret
 CDSL_MISSING_INST_ID = "cdsl-missing-inst-id"
 CDSL_INCOMPLETE_STEP_LINE = "cdsl-incomplete-step-line"
 CDSL_CODE_SYNTAX = "cdsl-code-syntax"

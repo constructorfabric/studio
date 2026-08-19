@@ -1220,9 +1220,15 @@ def _validate_unchecked_cdsl_steps(
 #
 # Line-shape alone can't tell a malformed CDSL step apart from ordinary content that
 # happens to reuse the same `pN` priority-tag shape (DoD checklists, component lists,
-# ADR prose). The one reliable signal is being physically inside a real CDSL block —
-# the numbered list following a `**Steps**:` or `**Transitions**:` label, up to the
-# next heading or bold label. Checks below only run on lines inside such a block.
+# ADR prose). Two signals open a section for validation:
+#   1. An explicit `**Steps**:`/`**Transitions**:` label, up to the next heading or
+#      bold label — the convention this repo's own FEATURE docs use.
+#   2. A heading section whose first real list item (skipping ID definitions/references
+#      and other bold labels) is already a *fully well-formed* CDSL line — this covers
+#      CDSL.md's own worked examples ("**Algorithm: Name**" / "**Flow: Name**" headers
+#      with no "Steps:" label at all) and the bundled SDLC kit's FEATURE example
+#      (a bare heading + ID line, straight into numbered steps).
+# Checks below only run on lines inside a section opened by one of these two signals.
 _CDSL_CANDIDATE_START_RE = re.compile(r"^(?:\d+\.\s+|-\s+)")
 _CDSL_HEADING_RE = re.compile(r"^#{1,6}\s")
 _CDSL_BOLD_LABEL_LINE_RE = re.compile(r"^\*\*[A-Za-z][A-Za-z0-9 /_-]*\*\*:\s*$")
@@ -1242,9 +1248,12 @@ _CDSL_FUNCTION_SYNTAX_RE = re.compile(r"\b(?:fn|function|async)\b|\bdef\s+\w+\s*
 # a colon) to avoid false positives on plain-English apposition like "list: enabled_entities".
 # Common English words that double as type names (set/map/list/object/array/any) are
 # deliberately excluded — "point: set up" and "resource: map X" are prose, not types.
+# The `<T>` generic form excludes SCREAMING_SNAKE_CASE (an underscore anywhere), since
+# this repo's own docs use `<ARTIFACT_KIND>`-style angle brackets for placeholder tokens,
+# not generics — a real generic type parameter is PascalCase or a single letter (`<T>`).
 _CDSL_TYPE_KEYWORDS = "string|str|int|integer|float|double|bool|boolean|void|optional|null|none|dict"
 _CDSL_TYPE_ANNOTATION_RE = re.compile(
-    rf"(?i:\b:\s*(?:{_CDSL_TYPE_KEYWORDS})\b)|(?:<[A-Z]\w*>)|(?:->\s*[A-Za-z_]\w*)"
+    rf"(?i:\b:\s*(?:{_CDSL_TYPE_KEYWORDS})\b)|(?:<[A-Z][A-Za-z0-9]*>)|(?:->\s*[A-Za-z_]\w*)"
 )
 # CL.2 — CDSL.md "Prohibited": language operators (`&&`, `||`, `=>`, `==`).
 # Excludes runs of 3+ `=` (git conflict markers like `=======`), which aren't operators.
@@ -1283,7 +1292,7 @@ def _append_cdsl_prohibited_syntax_errors(
     if _CDSL_FUNCTION_SYNTAX_RE.search(desc):
         errors.append(error(
             "structure",
-            f"CDSL step uses code/function syntax, not plain English: `{step_text}`",
+            f"CDSL step uses code/function syntax (S.6), not plain English: `{step_text}`",
             code=EC.CDSL_CODE_SYNTAX,
             path=artifact_path,
             line=line_no,
@@ -1294,7 +1303,7 @@ def _append_cdsl_prohibited_syntax_errors(
     if _CDSL_TYPE_ANNOTATION_RE.search(desc):
         errors.append(error(
             "structure",
-            f"CDSL step uses a type annotation, not plain English: `{step_text}`",
+            f"CDSL step uses a type annotation (S.7), not plain English: `{step_text}`",
             code=EC.CDSL_TYPE_ANNOTATION,
             path=artifact_path,
             line=line_no,
@@ -1305,7 +1314,7 @@ def _append_cdsl_prohibited_syntax_errors(
     if _CDSL_OPERATOR_RE.search(desc):
         errors.append(error(
             "structure",
-            f"CDSL step uses a language operator, not plain English: `{step_text}`",
+            f"CDSL step uses a language operator (CL.2), not plain English: `{step_text}`",
             code=EC.CDSL_LANGUAGE_OPERATOR,
             path=artifact_path,
             line=line_no,
@@ -1316,7 +1325,7 @@ def _append_cdsl_prohibited_syntax_errors(
     if triggered:
         errors.append(error(
             "structure",
-            f"CDSL step is not language-agnostic plain English: `{step_text}`",
+            f"CDSL step is not language-agnostic plain English (CL.1/CL.4): `{step_text}`",
             code=EC.CDSL_NOT_PLAIN_ENGLISH,
             path=artifact_path,
             line=line_no,
@@ -1338,7 +1347,9 @@ def _validate_cdsl_step_candidate(
     Missing-token findings (S.3/S.4/S.5/CO.4) are reported as warnings rather
     than errors: this repo has pre-existing FEATURE docs authored before the
     inst-id convention (see architecture/features/dependency-mapping.md).
-    Promote these to `errors` once that backlog is retrofitted separately.
+    Promote these to `errors` once that backlog is retrofitted — tracked in
+    issue #85, with the current offending files enumerated and enforced by
+    `tests/test_cdsl_structure_validate.py::test_cdsl_missing_token_warnings_match_known_backlog_allowlist`.
     """
     missing = _cdsl_missing_tokens(step_text)
     for code, rule in missing:
@@ -1392,7 +1403,7 @@ def _validate_cdsl_duplicate_inst_ids(
         if key in seen:
             errors.append(error(
                 "structure",
-                f"Duplicate instruction ID `inst-{inst_s}` under `{pid}` (first seen at line {seen[key]})",
+                f"Duplicate instruction ID (CO.5) `inst-{inst_s}` under `{pid}` (first seen at line {seen[key]})",
                 code=EC.CDSL_DUPLICATE_INST_ID,
                 path=artifact_path,
                 line=int(hit.get("line", 1) or 1),
@@ -1405,8 +1416,54 @@ def _validate_cdsl_duplicate_inst_ids(
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
-def _iter_cdsl_block_lines(lines: List[str]):
-    """Yield fenced-out lines inside a `**Steps**:`/`**Transitions**:` block.
+def _is_real_cdsl_item_start(stripped: str) -> bool:
+    """Return whether *stripped* starts a genuine CDSL list item.
+
+    Excludes ID definitions/references, which use the same dash-prefixed
+    shape but aren't CDSL steps.
+    """
+    from .document import _ID_DEF_RE, _ID_REF_RE, _normalize_reference_candidate
+
+    if not _CDSL_CANDIDATE_START_RE.match(stripped):
+        return False
+    return not (_ID_DEF_RE.match(stripped) or _ID_REF_RE.match(_normalize_reference_candidate(stripped)))
+
+
+def _section_starts_with_wellformed_cdsl_line(entries: List[Tuple[int, str, str]]) -> bool:
+    """Return whether a heading section's first real list item is fully well-formed CDSL.
+
+    Skips any non-list-item pre-amble — blank lines, bold labels/headers of any
+    shape (`**Steps**:`, `**Actors**:`, `**Algorithm: Name**`, ...), and plain
+    prose (`Input: ...`, `Actor: ...`) — while looking for the first genuine
+    CDSL-shaped list item. That item's *full* well-formedness (checkbox +
+    phase + inst, all present) is the signal, so ordinary checklists that
+    merely start with a numbered item (no inst-id at all) don't qualify. An
+    explicit `**Steps**:`/`**Transitions**:` label short-circuits to True.
+    """
+    from .document import _CDSL_LINE_RE
+
+    for _line_no0, _raw_line, stripped in entries:
+        if not stripped:
+            continue
+        if stripped in _CDSL_BLOCK_OPEN_LABELS:
+            return True
+        if not _CDSL_CANDIDATE_START_RE.match(stripped):
+            continue
+        if not _is_real_cdsl_item_start(stripped):
+            continue
+        return bool(_CDSL_LINE_RE.match(stripped))
+    return False
+
+
+def _iter_cdsl_block_lines(lines: List[str]):  # pylint: disable=too-many-locals,too-many-branches
+    """Yield fenced-out lines inside a recognized CDSL section.
+
+    A section (the lines between one heading and the next) is in scope when
+    either an explicit `**Steps**:`/`**Transitions**:` label opens it, or its
+    first real list item is already fully well-formed CDSL — see
+    `_section_starts_with_wellformed_cdsl_line`. Either way, a later bold
+    label that isn't a recognized opener (e.g. `**Supporting**:`) still ends
+    the scope early within the same section.
 
     Unlike `document._iter_non_fenced_lines`, blank lines are yielded too (as
     an empty `stripped`) rather than skipped — callers use them as an item
@@ -1415,23 +1472,44 @@ def _iter_cdsl_block_lines(lines: List[str]):
     """
     from .document import _CODE_FENCE_RE
 
+    entries: List[Tuple[int, str, str]] = []
     in_fence = False
-    in_scope = False
     for line_no0, raw_line in enumerate(lines):
         if _CODE_FENCE_RE.match(raw_line):
             in_fence = not in_fence
             continue
         if in_fence:
             continue
-        stripped = raw_line.strip()
+        entries.append((line_no0, raw_line, raw_line.strip()))
+
+    sections: List[Tuple[int, int]] = []
+    section_start = 0
+    for idx, (_line_no0, _raw_line, stripped) in enumerate(entries):
         if _CDSL_HEADING_RE.match(stripped):
-            in_scope = False
-            continue
-        if _CDSL_BOLD_LABEL_LINE_RE.match(stripped):
-            in_scope = stripped in _CDSL_BLOCK_OPEN_LABELS
-            continue
-        if in_scope:
-            yield line_no0 + 1, raw_line, stripped
+            if idx > section_start:
+                sections.append((section_start, idx))
+            section_start = idx + 1
+    sections.append((section_start, len(entries)))
+
+    for start, end in sections:
+        in_scope = _section_starts_with_wellformed_cdsl_line(entries[start:end])
+        seen_first_item = False
+        for idx in range(start, end):
+            line_no0, raw_line, stripped = entries[idx]
+            if _CDSL_BOLD_LABEL_LINE_RE.match(stripped):
+                if stripped in _CDSL_BLOCK_OPEN_LABELS:
+                    in_scope = True
+                    seen_first_item = True
+                elif seen_first_item:
+                    # A non-opening label (e.g. **Supporting**:) only closes scope
+                    # once real content has been seen — before that it's pre-amble
+                    # (**Actors**:, **Algorithm: Name**, ...), not a closing label.
+                    in_scope = False
+                continue
+            if _is_real_cdsl_item_start(stripped):
+                seen_first_item = True
+            if in_scope:
+                yield line_no0 + 1, raw_line, stripped
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-candidate
@@ -1496,7 +1574,7 @@ def _validate_cdsl_structure(
         if _CDSL_PLACEHOLDER_RE.search(joined_text):
             errors.append(error(
                 "structure",
-                f"CDSL step contains a placeholder or TODO marker: `{joined_text}`",
+                f"CDSL step contains a placeholder or TODO marker (CO.6): `{joined_text}`",
                 code=EC.CDSL_PLACEHOLDER,
                 path=artifact_path,
                 line=line_no,

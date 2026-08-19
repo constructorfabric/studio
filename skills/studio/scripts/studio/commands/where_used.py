@@ -40,9 +40,9 @@ def _collect_artifact_references(
     return references
 
 
-def _collect_code_references(ctx, target_id: str) -> Tuple[List[Dict[str, object]], int]:
+def _collect_code_references(ctx, target_id: str) -> Tuple[List[Dict[str, object]], int, int]:
     """Scan registered codebase entries for references to *target_id*."""
-    code_hits, code_files_scanned = scan_registered_codebase_references(ctx)
+    code_hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
     references = [
         {
             "artifact": str(hit.get("artifact", "")),
@@ -55,7 +55,7 @@ def _collect_code_references(ctx, target_id: str) -> Tuple[List[Dict[str, object
         for hit in code_hits
         if str(hit.get("id") or "") == target_id
     ]
-    return references, code_files_scanned
+    return references, code_files_scanned, code_files_skipped
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
 
 # @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
@@ -67,7 +67,14 @@ def cmd_where_used(argv: List[str]) -> int:
     p.add_argument("--id", default=None, help="Studio ID to find references for")
     p.add_argument("--artifact", default=None, help="Limit search to specific artifact (optional)")
     p.add_argument("--include-definitions", action="store_true", help="Include definitions in results")
-    p.add_argument("--include-code", action="store_true", help="Also scan code files for Studio marker references")
+    p.add_argument(
+        "--include-code",
+        action="store_true",
+        help=(
+            "Also scan code in Studio-registered codebase paths (not the whole repo) for marker "
+            "references; ignored when combined with --artifact"
+        ),
+    )
     args = p.parse_args(argv)
 
     target_id, ctx, artifacts_to_scan, path_to_source, err = resolve_target_and_artifacts(args)
@@ -86,8 +93,9 @@ def cmd_where_used(argv: List[str]) -> int:
     )
 
     code_files_scanned = 0
+    code_files_skipped = 0
     if args.include_code and not args.artifact and ctx:
-        code_references, code_files_scanned = _collect_code_references(ctx, target_id)
+        code_references, code_files_scanned, code_files_skipped = _collect_code_references(ctx, target_id)
         references.extend(code_references)
 
     references = sorted(references, key=lambda r: (str(r.get("artifact", "")), int(r.get("line", 0))))
@@ -99,20 +107,25 @@ def cmd_where_used(argv: List[str]) -> int:
         "count": len(references),
         "references": references,
     }
-    if code_files_scanned > 0:
+    if args.include_code and not args.artifact:
         result["code_files_scanned"] = code_files_scanned
+        if code_files_skipped:
+            result["code_files_skipped"] = code_files_skipped
     ui.result(result, human_fn=_human_where_used)
     return 0
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-format
-def _human_where_used(data: dict) -> None:
+def _human_where_used(data: dict) -> None:  # pylint: disable=too-many-locals
     target = data.get("id", "?")
     refs = data.get("references", [])
     n_art = data.get("artifacts_scanned", 0)
+    code_scanned = data.get("code_files_scanned")
+    code_skipped = data.get("code_files_skipped")
 
     ui.header("Where Used")
     ui.detail("ID", target)
     ui.detail("Artifacts scanned", str(n_art))
+    ui.code_scan_detail(code_scanned, code_skipped)
     ui.detail("References found", str(data.get("count", len(refs))))
 
     if not refs:

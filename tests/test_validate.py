@@ -554,6 +554,65 @@ class TestRunContentLanguageCheck(unittest.TestCase):
             self.assertIn("Cannot read file", str(results[0].get("message", "")))
 
 
+class TestContentLanguageCheckRunsAlongsideStructuralErrors(unittest.TestCase):
+    """LANG001 must not be masked by an unrelated structural error elsewhere in the run.
+
+    Regression test for a pre-existing gate (`if not results.all_errors:`)
+    that skipped the whole content-language pass for the run whenever any
+    artifact already had a structural error — silently dropping genuine
+    LANG001 violations on unrelated artifacts.
+    """
+
+    def test_lang_violation_and_structural_error_both_surface(self):
+        from unittest.mock import patch
+
+        from studio.commands.validate import _ValidateResults, _ValidateSession, _run_initial_artifact_validation
+
+        structural_error = {
+            "type": "structure",
+            "message": "simulated structural error",
+            "code": "cdsl-placeholder",
+            "path": "artifact_a.md",
+            "line": 1,
+        }
+        lang_violation = {
+            "type": "language",
+            "category": "language",
+            "message": "simulated LANG001 violation",
+            "code": "LANG001",
+            "path": "artifact_b.md",
+            "line": 1,
+        }
+
+        def _fake_validate_one_artifact(session, results, artifact_entry):
+            results.all_errors.append(structural_error)
+
+        session = _ValidateSession(
+            args=MagicMock(verbose=False, output=None),
+            ctx=MagicMock(),
+            ws_ctx=None,
+            meta=MagicMock(),
+            project_root=Path("/fake/root"),
+            registered_systems=set(),
+            known_kinds=set(),
+            ctx_errors=[],
+            artifacts_to_validate=[(Path("artifact_a.md"), Path("t"), "FEATURE", "FULL", "kit")],
+        )
+
+        with patch(
+            "studio.commands.validate._validate_one_artifact", side_effect=_fake_validate_one_artifact
+        ), patch(
+            "studio.commands.validate._maybe_emit_registry_failure", return_value=None
+        ), patch(
+            "studio.commands.validate._run_content_language_check", return_value=[lang_violation]
+        ):
+            results, exit_code = _run_initial_artifact_validation(session)
+
+        self.assertIn(structural_error, results.all_errors)
+        self.assertIn(lang_violation, results.all_errors)
+        self.assertEqual(exit_code, 2)
+
+
 class TestCmdValidateArtifactArg(unittest.TestCase):
     """Cover early-exit branches in cmd_validate driven by --artifact arg."""
 
