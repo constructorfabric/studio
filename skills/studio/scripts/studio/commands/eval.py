@@ -16,6 +16,8 @@ import argparse
 import json
 import logging
 import math
+import os
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -90,22 +92,27 @@ def _load_baseline(path: Path) -> Optional[Dict[str, object]]:
 
 # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-save-report
 def _save_report(payload: Dict[str, object], path: Path) -> Optional[str]:
-    """Atomically write the report JSON so it can serve as a later baseline: write a sibling
-    temp file then replace, so a crash mid-write can never corrupt an existing baseline.
-    Returns an error string on failure, else None — a save failure must not change the eval
-    outcome. (SonarCloud flags the user-supplied ``--save`` path here as S8707 path-traversal;
-    that is a false positive for a CLI file argument and is marked as such.)"""
-    tmp = path.with_name(path.name + ".tmp")
+    """Atomically write the report JSON so it can serve as a later baseline: write a *unique*
+    temp file in the target directory then replace, so a crash mid-write can never corrupt an
+    existing baseline and no unrelated file is clobbered by a concurrent save. Returns an error
+    string on failure, else None — a save failure must not change the eval outcome. (SonarCloud
+    flags the user-supplied ``--save`` path here as S8707 path-traversal; that is a false
+    positive for a CLI file argument and is marked as such.)"""
+    tmp: Optional[Path] = None
     try:
-        with open(tmp, "w", encoding="utf-8") as handle:
+        handle_fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+        tmp = Path(tmp_name)
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
         tmp.replace(path)
     except OSError as exc:
         logger.warning("eval: could not save report to %s: %s", path, exc)
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError as cleanup_exc:  # pragma: no cover - best-effort cleanup
-            logger.debug("eval: could not remove temp save file %s: %s", tmp, cleanup_exc)
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError as cleanup_exc:  # pragma: no cover - best-effort cleanup
+                logger.debug("eval: could not remove temp save file %s: %s", tmp, cleanup_exc)
         return str(exc)
     return None
 # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-save-report
