@@ -157,6 +157,7 @@ def _infer_primary_kind(
     return kind_tokens[0] if kind_tokens else None
 
 
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-scan-dedupe
 def _dedupe_hits(hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
     """Keep one hit per ID, preferring its definition record when one exists.
 
@@ -199,6 +200,7 @@ def _dedupe_hits(hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
             ]
         result.append(chosen)
     return result
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-scan-dedupe
 
 
 def _collect_artifact_hits(

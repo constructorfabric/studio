@@ -242,6 +242,7 @@ _REASONS: Dict[str, List[str]] = {
         "TOC was manually edited instead of being regenerated with `cfs toc`",
     ],
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-define-cdsl-reasons
     # CDSL structure — CDSL.md FAIL rules (S.3-7, CL.1-4, CO.4-6)
     EC.CDSL_MISSING_CHECKBOX: [
         "CDSL step line was written without a `[ ]`/`[x]` checkbox (S.3)",
@@ -281,6 +282,7 @@ _REASONS: Dict[str, List[str]] = {
         "CDSL step still contains a placeholder marker (`TODO`/`FIXME`/`XXX`/`TBD`/`[PLACEHOLDER]`) (CO.6)",
         "Step was drafted as a stub and never filled in",
     ],
+    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-define-cdsl-reasons
 
     # File errors
     EC.FILE_READ_ERROR: [
