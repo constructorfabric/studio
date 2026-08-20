@@ -1,6 +1,11 @@
 [plan]
 task = "demo compliant run"
+total_phases = 2
 
 [[phases]]
 number = 1
 file = "phase-1.md"
+
+[[phases]]
+number = 2
+file = "phase-2.md"

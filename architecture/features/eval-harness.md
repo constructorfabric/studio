@@ -11,6 +11,7 @@
   - [Run Eval Harness](#run-eval-harness)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Run Eval Suite](#run-eval-suite)
+  - [Score Structural Compliance](#score-structural-compliance)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Eval Report Lifecycle](#eval-report-lifecycle)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -80,7 +81,7 @@ advisory verdict can never gate a build.
 **Steps**:
 1. [x] - `p1` - User invokes `cfs eval [--scenarios-dir DIR] [--baseline FILE]` - `inst-user-eval`
 2. [x] - `p1` - Load project context; if absent, emit ERROR and exit 1 - `inst-load-context`
-3. [x] - `p1` - Resolve the scenarios directory, run the suite through the reference scorer, attach an optional regression diff, emit the JSON report, and return the harness exit code - `inst-run-and-report`
+3. [x] - `p1` - Resolve the scenarios directory, run the suite through the deterministic structural scorer, attach an optional regression diff, emit the JSON report, and return the harness exit code - `inst-run-and-report`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for the eval command - `inst-eval-imports`
@@ -113,6 +114,35 @@ under the gate contract (only deterministic verdicts affect the exit code).
 - [x] - `p1` - Scorer kinds, verdicts, the scorer protocol, and the result/scenario/report data model - `inst-eval-datamodel`
 - [x] - `p1` - A placeholder deterministic reference scorer that checks run presence, used to exercise the seam - `inst-reference-scorer`
 
+### Score Structural Compliance
+
+- [x] `p1` - **ID**: `cpt-studio-algo-eval-structural`
+
+The real deterministic scorer plugged into the `Scorer` seam. It reads a completed run's
+`plan.toml` manifest plus each phase file's `[phase]` frontmatter and runs a registry of
+independent structural checks (numbering, manifest agreement, dependency order, declared
+outputs, required sections). Verdict is `PASS` when every active check passes, `FAIL` when
+any fails, and `UNKNOWN` when the run cannot be loaded or no phase carries parseable
+frontmatter — "unscoreable is not zero". The scorer is pure over the in-memory run
+artifacts: it touches no filesystem.
+
+**Steps**:
+1. [x] - `p1` - Parse each phase file's `[phase]` frontmatter into a number-keyed table, recording files that re-declare a number as duplicates - `inst-structural-parse`
+2. [x] - `p1` - Run the phase-file validity and numbering-uniqueness checks over the parsed phases - `inst-structural-checks`
+3. [x] - `p1` - Run the manifest-agreement and numbering checks over the parsed phases - `inst-structural-checks-manifest`
+4. [x] - `p1` - Aggregate into a `ScorerResult`: compliance %, per-check findings, and the UNKNOWN discipline when nothing is scoreable - `inst-structural-scorer`
+
+**Supporting**:
+- [x] - `p1` - Module imports and the logger - `inst-structural-imports`
+- [x] - `p1` - The frontmatter pattern and the per-workflow required-sections configuration - `inst-structural-config`
+- [x] - `p1` - The `StructuralInput` data model the checks read from - `inst-structural-datamodel`
+- [x] - `p1` - Shared reducers over the manifest and phases (declared numbers, totals, capped detail formatting) that the checks build on - `inst-structural-check-helpers`
+- [x] - `p1` - Dependency-graph helpers: resolve/forward problems and misspelled-key detection - `inst-structural-deps`
+- [x] - `p1` - The per-phase checks — total consistency, dependency order, declared outputs - `inst-structural-checks-phase`
+- [x] - `p1` - Reduce a phase body to real Markdown prose (frontmatter and fenced code blocks removed) before heading detection - `inst-structural-prose`
+- [x] - `p1` - The required-body-sections check over that prose - `inst-structural-checks-sections`
+- [x] - `p1` - The check dataclass and the registry list binding each check name and tags to its predicate - `inst-structural-registry`
+
 ## 4. States (CDSL)
 
 ### Eval Report Lifecycle
@@ -143,6 +173,7 @@ yields a per-scenario regression diff without changing the exit code.
 |--------|------|----------------|
 | Eval Command | `skills/studio/scripts/studio/commands/eval.py` | CLI entry point, arg parsing, context, exit code |
 | Eval Harness | `skills/studio/scripts/studio/utils/eval_harness.py` | Scenario/run loading, scorer seam, runner, report, regression diff |
+| Structural Scorer | `skills/studio/scripts/studio/utils/eval_structural.py` | Deterministic structural checks over a run's manifest + phase frontmatter |
 
 ## 7. Acceptance Criteria
 
@@ -151,3 +182,5 @@ yields a per-scenario regression diff without changing the exit code.
 - [x] `p1` - A run that cannot be loaded, or whose phases declare no checkable file, scores `UNKNOWN` with a `null` score, never `0`, and is counted separately in the summary
 - [x] `p1` - `--baseline` alone (without `--check`) produces a per-scenario regression diff without changing the exit code; a removed/unavailable scenario is surfaced but does not gate
 - [x] `p1` - When `--baseline` is given, the `regression` key is always present (a diff object, or an `error` object when the baseline is unusable)
+- [x] `p1` - `cfs eval` scores structural compliance via a registry of deterministic checks over each run's manifest and phase frontmatter; any failing check makes the scenario verdict `FAIL` while the per-scenario `score_pct` still reports the fraction of checks passed
+- [x] `p1` - A run whose phase files carry no parseable `[phase]` frontmatter scores `UNKNOWN`, never 0; the scorer touches no filesystem and is a pure function of the in-memory run artifacts

@@ -12,7 +12,7 @@ from studio.commands.agents import _AgentEntry, _SkillEntry, _MergedComponents, 
 from studio.commands.kit import _read_conf_version
 from studio.commands.resolve_vars import assemble_component
 from studio.utils.context import LoadedKit
-from studio.utils.eval_harness import Scenario, ScorerKind
+from studio.utils.eval_harness import ReferencePresenceScorer, Scenario, ScorerKind
 from studio.utils.manifest import ManifestLayerState
 
 is_json = _UI.is_json  # staticmethod alias exposed on the ui singleton
@@ -33,6 +33,7 @@ assemble_component  # public API for future use
 _ = LoadedKit.constraints_paths  # public context field for multi-constraints consumers
 _ = Scenario.gold_path  # part of the scenario format; consumed by the advisory judge
 _ = ScorerKind.ADVISORY  # public gate-contract value used by the advisory judge
+ReferencePresenceScorer  # minimal seam example + gate-contract test fixture (see tests)
 INCLUDE_ERROR = ManifestLayerState.INCLUDE_ERROR  # valid enum value for future use
 
 # cfs map module — symbols retained for layout/configuration completeness.

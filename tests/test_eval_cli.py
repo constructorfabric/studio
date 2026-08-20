@@ -26,8 +26,14 @@ def _write_compliant(root: Path, sid: str = "ok") -> None:
     run.mkdir(parents=True)
     (root / sid / "scenario.toml").write_text(
         f'[scenario]\nid = "{sid}"\nworkflow = "w"\nrun_dir = "run"\nexpect = "compliant"\n')
-    (run / "plan.toml").write_text('[plan]\ntask = "t"\n[[phases]]\nnumber = 1\nfile = "p.md"\n')
-    (run / "p.md").write_text("# p\n")
+    (run / "plan.toml").write_text(
+        '[plan]\ntask = "t"\ntotal_phases = 1\n[[phases]]\nnumber = 1\nfile = "p.md"\n')
+    # A single, fully structurally-compliant phase: numbered 1 of 1, no forward deps, a
+    # declared output, and the default required sections — so StructuralScorer scores PASS.
+    (run / "p.md").write_text(
+        '```toml\n[phase]\nnumber = 1\ntotal = 1\ndepends_on = []\n'
+        'output_files = ["out.txt"]\n```\n\n'
+        "# P\n\n## Preamble\n\nContext.\n\n## What\n\nDo it.\n\n## Rules\n\nFollow them.\n")
 
 
 # --- wiring + errors -------------------------------------------------------
@@ -112,6 +118,24 @@ def test_cmd_eval_check_gates_on_broke_scenario(capsys, tmp_path: Path) -> None:
     out = json.loads(capsys.readouterr().out)
     assert rc == 2
     assert out["regression"]["has_regression"] is True
+
+
+def test_cmd_eval_zero_parseable_frontmatter_is_unknown_not_gated(capsys, tmp_path: Path) -> None:
+    # plan.toml loads, but every phase file lacks a parseable [phase] block → UNKNOWN, never a
+    # gate failure (the real-world "different workflow shape" path, exercised end-to-end).
+    scenarios = tmp_path / "scenarios"
+    run = scenarios / "z" / "run"
+    run.mkdir(parents=True)
+    (scenarios / "z" / "scenario.toml").write_text(
+        '[scenario]\nid = "z"\nworkflow = "coding-gen"\nrun_dir = "run"\nexpect = "unknown"\n')
+    (run / "plan.toml").write_text('[plan]\ntask = "t"\n[[phases]]\nnumber = 1\nfile = "p.md"\n')
+    (run / "p.md").write_text("# Phase 1\n\nno frontmatter block here\n")
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(scenarios), "--check", "--min", "0.0"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["summary"]["structural_compliance"] is None
+    assert out["summary"]["unknown"] >= 1
 
 
 # --- reporting + opt-in gating ---------------------------------------------

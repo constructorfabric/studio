@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..utils import eval_harness
+from ..utils.eval_structural import StructuralScorer
 from ..utils.ui import ui
 
 logger = logging.getLogger(__name__)
@@ -150,7 +151,7 @@ def cmd_eval(argv: List[str]) -> int:
         # A missing directory is an error, not a vacuous green pass.
         ui.result({"status": "ERROR", "message": f"Scenarios directory not found: {scenarios_dir}"})
         return 1
-    report = eval_harness.run_suite(scenarios_dir, [eval_harness.ReferencePresenceScorer()])
+    report = eval_harness.run_suite(scenarios_dir, [StructuralScorer()])
     payload = eval_harness.report_to_dict(report)
     if args.baseline:
         baseline = _load_baseline(Path(args.baseline))

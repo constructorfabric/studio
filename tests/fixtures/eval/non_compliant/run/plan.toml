@@ -1,5 +1,6 @@
 [plan]
 task = "demo non-compliant run"
+total_phases = 2
 
 [[phases]]
 number = 1
