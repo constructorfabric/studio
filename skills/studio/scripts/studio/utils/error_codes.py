@@ -99,6 +99,11 @@ CODE_INST_MISSING = "code-inst-missing"
 CODE_INST_ORPHAN = "code-inst-orphan"
 
 # ---------------------------------------------------------------------------
+# Codebase registration — what was in scope to check
+# ---------------------------------------------------------------------------
+CODEBASE_ENTRY_EMPTY = "codebase-entry-empty"
+
+# ---------------------------------------------------------------------------
 # TOC (Table of Contents) validation
 # ---------------------------------------------------------------------------
 TOC_MISSING = "toc-missing"

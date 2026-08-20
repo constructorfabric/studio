@@ -87,6 +87,9 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 - Template structure mismatch → FAIL with heading contract details
 - Cross-reference to undefined ID → FAIL with definition hint
 - Code marker references non-existent artifact ID → FAIL with orphan details
+- Codebase entry registered with FULL traceability but resolving to no files → WARN naming the entry, so a run that checked nothing says so
+- Checked `to_code = true` ID with no code marker anywhere → FAIL, independent of how many files the scan resolved
+- No checked `to_code = true` ID and no code → PASS; nothing is claimed, so nothing is owed
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs validate [--artifact <path>] [--skip-code] [--verbose]` - `inst-user-validate`
@@ -119,6 +122,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 - [x] - `p1` - Run cross-artifact validation and merge only issues that apply to the actively validated artifacts - `inst-validate-cross-run`
 - [x] - `p1` - Resolve code scan targets and collect code marker state from configured codebase entries - `inst-validate-code-scan`
 - [x] - `p1` - Execute recursive system code scanning and strict code cross-validation against artifact expectations - `inst-validate-code-run`
+- [x] - `p1` - Warn for each FULL codebase entry that is registered but resolves to no files, so a run that checked nothing says so - `inst-warn-empty-codebase-entry`
 - [x] - `p1` - Build traceability lookup indexes for artifact paths, FULL-traceability IDs, and reference coverage - `inst-validate-traceability-index`
 - [x] - `p1` - Apply fallback reference coverage rules for unconstrained artifact kinds - `inst-validate-reference-coverage`
 - [x] - `p1` - Load language-validation configuration from workspace settings - `inst-validate-language-config`

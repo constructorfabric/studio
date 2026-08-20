@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ..utils import decision_log
 from ..utils import error_codes as EC
-from ..utils.codebase import CodeFile, cross_validate_code
+from ..utils.codebase import CodeFile, cross_validate_code, error as code_issue
 from ..utils.constraints import (
     ArtifactRecord,
     cross_validate_artifacts,
@@ -57,6 +57,7 @@ class _ValidateResults:
     parsed_code_files_full: List[CodeFile] = field(default_factory=list)
     code_ids_found: Set[str] = field(default_factory=set)
     to_code_ids: Set[str] = field(default_factory=set)
+    empty_full_codebase_entries: List[Dict[str, str]] = field(default_factory=list)
 
 # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-validate-source-flag
 def _resolve_source_context(source_name: str, ws_ctx: Optional["WorkspaceContext"]) -> Optional["StudioContext"]:
@@ -754,7 +755,23 @@ def _scan_codebase_entry(
 ) -> None:
     """Scan one configured codebase entry and collect code traceability state."""
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
-    for file_path in _resolve_code_scan_targets(session, entry):
+    # Normalise before resolving. A raw mapping would otherwise lose its
+    # `source`: both this function and `resolve_artifact_path` read it by
+    # attribute, so a dict naming a workspace source would silently resolve
+    # against the local path instead — and the warning below would then name a
+    # source that was never consulted.
+    if isinstance(entry, dict):
+        from ..utils.artifacts_meta import CodebaseEntry
+
+        entry = CodebaseEntry.from_dict(entry)
+
+    scan_targets = list(_resolve_code_scan_targets(session, entry))
+    if traceability == "FULL" and not scan_targets:
+        results.empty_full_codebase_entries.append({
+            "path": _codebase_entry_path(entry),
+            "source": str(getattr(entry, "source", "") or ""),
+        })
+    for file_path in scan_targets:
         try:
             rel_path = file_path.resolve().relative_to(session.project_root).as_posix()
         except ValueError as exc:
@@ -790,6 +807,15 @@ def _scan_codebase_entry(
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
 
 
+def _codebase_entry_path(entry: object) -> str:
+    """Configured path of a codebase entry, which may be a record or a raw dict."""
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
+    if isinstance(entry, dict):
+        return str(entry.get("path", ""))
+    return str(getattr(entry, "path", ""))
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
+
+
 def _resolve_code_scan_targets(session: _ValidateSession, entry: object) -> List[Path]:
     """Resolve concrete files for one codebase entry."""
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
@@ -797,8 +823,7 @@ def _resolve_code_scan_targets(session: _ValidateSession, entry: object) -> List
     if src_name and session.ws_ctx is not None:
         code_path = session.ws_ctx.resolve_artifact_path(entry, session.project_root)
     else:
-        entry_path = getattr(entry, "path", "") if not isinstance(entry, dict) else entry.get("path", "")
-        code_path = (session.project_root / entry_path).resolve()
+        code_path = (session.project_root / _codebase_entry_path(entry)).resolve()
     if code_path is None or not code_path.exists():
         return []
     if code_path.is_file():
@@ -818,10 +843,23 @@ def _scan_system_codebase(
     session: _ValidateSession,
     results: _ValidateResults,
     strict_code_validation: bool,
+    inherited_traceability: str = "DOCS-ONLY",
 ) -> None:
-    """Recursively scan a system node's configured codebase entries."""
+    """Recursively scan a system node's configured codebase entries.
+
+    FULL traceability is inherited by descendants. A parent that owns the FULL
+    artifact makes the claim; the code backing it often lives in a child system
+    that has no artifact of its own. Deriving traceability from each node in
+    isolation left such code out of the FULL set, so its markers were never
+    cross-validated and a correctly marked implementation looked unmarked.
+    """
     # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
-    traceability = "FULL" if any(art.traceability == "FULL" for art in system_node.artifacts) else "DOCS-ONLY"
+    traceability = (
+        "FULL"
+        if inherited_traceability == "FULL"
+        or any(art.traceability == "FULL" for art in system_node.artifacts)
+        else "DOCS-ONLY"
+    )
     for codebase_entry in system_node.codebase:
         _scan_codebase_entry(
             entry=codebase_entry,
@@ -836,8 +874,45 @@ def _scan_system_codebase(
             session=session,
             results=results,
             strict_code_validation=strict_code_validation,
+            inherited_traceability=traceability,
         )
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
+
+
+def _build_empty_codebase_entry_warnings(entries: List[Dict[str, str]]) -> List[Dict[str, object]]:
+    """Warn for each FULL codebase entry that is registered but resolves to no files.
+
+    A registered entry matching nothing is a configuration mistake -- usually a
+    stale or misspelled path, or a workspace source that is not reachable -- and
+    it silently shrinks what the run was able to check. It is reported separately
+    from any unmet ID, because the subject is the registration rather than the
+    claim. The workspace source is named when there is one, so two entries that
+    share a path stay distinguishable and the reader knows whether to fix the
+    source or the path.
+    """
+    # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-warn-empty-codebase-entry
+    warnings: List[Dict[str, object]] = []
+    for entry in entries:
+        path = entry.get("path") or "<unset>"
+        source = entry.get("source") or ""
+        subject = f"`{source}:{path}`" if source else f"`{path}`"
+        cause = (
+            f"workspace source `{source}` did not resolve, or it resolved to an empty tree"
+            if source
+            else "the path does not exist, or it contains no files with the configured extensions"
+        )
+        warnings.append(
+            code_issue(
+                "structure",
+                f"codebase entry {subject} is registered with FULL traceability but "
+                f"resolved to 0 files — nothing from it was checked ({cause})",
+                code=EC.CODEBASE_ENTRY_EMPTY,
+                path=Path(path if path != "<unset>" else "."),
+                source=source or None,
+            )
+        )
+    return warnings
+    # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-warn-empty-codebase-entry
 
 
 def _run_code_validation(
@@ -871,7 +946,12 @@ def _run_code_validation(
             results=results,
             strict_code_validation=strict_code_validation,
         )
-    if not strict_code_validation or not results.parsed_code_files_full:
+    if not strict_code_validation:
+        return
+    results.all_warnings.extend(
+        _build_empty_codebase_entry_warnings(results.empty_full_codebase_entries)
+    )
+    if not results.parsed_code_files_full and not results.to_code_ids:
         return
     artifact_instances, artifact_instances_all = _collect_full_artifact_instances(
         all_artifacts_for_cross,
@@ -1092,6 +1172,13 @@ def _emit_final_validate_report(session: _ValidateSession, results: _ValidateRes
         report["code_ids_found"] = len(results.code_ids_found)
         if results.to_code_ids:
             report["coverage"] = f"{len(results.code_ids_found & results.to_code_ids)}/{len(results.to_code_ids)}"
+        # Named unconditionally: a passing run has to be able to say what it did
+        # not check, and warning bodies are omitted from a non-verbose report.
+        if results.empty_full_codebase_entries:
+            report["unscanned_codebase_entries"] = [
+                f"{entry['source']}:{entry['path']}" if entry.get("source") else entry["path"]
+                for entry in results.empty_full_codebase_entries
+            ]
     if overall_status == "PASS":
         report["next_step"] = (
             "Deterministic validation passed. Now perform semantic validation: "
@@ -1390,6 +1477,22 @@ def _run_content_language_check(
 # ---------------------------------------------------------------------------
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-format
+def _show_unscanned_codebase_entries(unscanned: List[str]) -> None:
+    """Name the registered entries that resolved to no files, if any."""
+    if not unscanned:
+        return
+    ui.blank()
+    ui.warn(
+        f"{len(unscanned)} registered codebase "
+        f"{'entry' if len(unscanned) == 1 else 'entries'} resolved to 0 files "
+        "— nothing from them was checked"
+    )
+    for entry in unscanned[:10]:
+        ui.substep(f"  {entry}")
+    if len(unscanned) > 10:
+        ui.substep(f"  ... and {len(unscanned) - 10} more")
+
+
 def _human_validate(data: dict) -> None:
     status = data.get("status", "")
     n_art = data.get("artifacts_validated", data.get("artifact_count", 0))
@@ -1405,6 +1508,8 @@ def _human_validate(data: dict) -> None:
         ui.detail("Code files", str(data["code_files_scanned"]))
     if data.get("coverage"):
         ui.detail("Code coverage", str(data["coverage"]))
+
+    _show_unscanned_codebase_entries(data.get("unscanned_codebase_entries", []))
 
     errors = data.get("errors", [])
     if errors:
