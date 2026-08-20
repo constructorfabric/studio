@@ -68,8 +68,8 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 - User runs `cfs spec-coverage --min-file-granularity 0.3` → same as above, exit code 2 if any covered file granularity below threshold
 
 **Error Scenarios**:
-- No codebase entries registered → ERROR with hint to configure artifacts.toml
-- No code files found → report with 0% coverage
+- No codebase entries registered → report with `applicable: false` and a hint to configure artifacts.toml; exit code 2 only if a positive threshold was demanded
+- No code files found → report with `applicable: false` naming how many registered entries resolved to no files, and 0% coverage
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose]` - `inst-user-spec-coverage`
@@ -79,7 +79,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 5. [x] - `p1` - Calculate coverage metrics using `cpt-studio-algo-spec-coverage-metrics` - `inst-calc-metrics`
 6. [x] - `p1` - Calculate granularity scores using `cpt-studio-algo-spec-coverage-granularity` - `inst-calc-granularity`
 7. [x] - `p1` - Generate report using `cpt-studio-algo-spec-coverage-report` - `inst-gen-report`
-8. [x] - `p1` - **IF** any threshold flag set AND metric below threshold → exit code 2 - `inst-if-threshold`
+8. [x] - `p1` - **IF** any positive threshold flag set AND (metric below threshold OR nothing was assessed) → exit code 2 - `inst-if-threshold`
 9. [x] - `p1` - **RETURN** JSON report (summary, per-file stats, uncovered files) - `inst-return-report`
 
 **Supporting**:
@@ -90,6 +90,8 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 - [x] - `p1` - Validate selected `--system` values and build unknown-system failure payloads - `inst-validate-systems`
 - [x] - `p1` - Filter ignored and out-of-root files before scanning - `inst-filter-ignored-files`
 - [x] - `p1` - Build empty coverage result when registry yields no code files - `inst-empty-report`
+- [x] - `p1` - Count codebase entries registered by the selected systems and recurse into child systems, including the default all-systems selection, so an unregistered registry is distinguishable from one that resolves to no files - `inst-count-registered-entries`
+- [x] - `p1` - Detect which threshold flags demand an enforceable guarantee, ignoring non-positive values that any scope satisfies - `inst-detect-requested-thresholds`
 - [x] - `p1` - Apply per-report threshold checks and accumulate failure messages - `inst-apply-thresholds`
 - [x] - `p1` - Resolve paths relative to project root for human-readable output - `inst-rel-path`
 - [x] - `p1` - Route JSON report to file or terminal UI - `inst-output-report`
@@ -215,7 +217,7 @@ The system **MUST** calculate instruction density per covered file: `min(1.0, bl
 
 - [x] `p1` - **ID**: `cpt-studio-dod-spec-coverage-report`
 
-The system **MUST** output a JSON report with: summary (total files, covered files, coverage %, granularity score), per-file statistics (path, total lines, covered lines, coverage %, granularity, uncovered line ranges), and list of completely uncovered files. The report format **MUST** mirror `coverage.py` JSON output structure. Exit code 0 when above thresholds, 2 when below.
+The system **MUST** output a JSON report with: summary (total files, covered files, coverage %, granularity score), per-file statistics (path, total lines, covered lines, coverage %, granularity, uncovered line ranges), and list of completely uncovered files. The report format **MUST** mirror `coverage.py` JSON output structure. The report **MUST** state whether there was anything to assess, so a scope that yielded no code files is distinguishable from a fully covered one. Exit code 0 when at or above thresholds, 2 when below or when a positive threshold was demanded over a scope that could not be assessed.
 
 **Implements**:
 - `cpt-studio-flow-spec-coverage-report`
@@ -251,4 +253,6 @@ The system **MUST** output a JSON report with: summary (total files, covered fil
 - [x] `--verbose` flag includes per-file marker details in report
 - [x] Report format mirrors `coverage.py` JSON structure (summary + per-file)
 - [x] Scanning completes in ≤ 5 seconds for typical repositories
-- [x] All output is valid JSON to stdout with exit codes 0/1/2
+- [x] An empty scope reports `applicable: false` and says why, on both the JSON and human surfaces
+- [x] A positive `--min-*` threshold over an empty scope exits 2; a non-positive one exits 0
+- [x] JSON mode emits valid JSON to stdout and human mode emits formatted text, with exit codes 0/1/2 on both

@@ -560,6 +560,97 @@ class TestHumanSpecCoverage(_HumanModeBase):
             _human_spec_coverage({"status": "PARTIAL", "summary": {}})
         self.assertIn("PARTIAL", buf.getvalue())
 
+    def _render(self, data):
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            from studio.commands.spec_coverage import _human_spec_coverage
+            _human_spec_coverage(data)
+        return buf.getvalue()
+
+    def test_an_unassessable_scope_does_not_claim_thresholds_were_met(self):
+        """PASS is honest -- nothing failed -- but no threshold was ever checked.
+
+        This is the surface a developer sees without ``--json``, so if the
+        applicability flag is not rendered here it is not rendered anywhere
+        they will look.
+        """
+        out = self._render({
+            "status": "PASS",
+            "applicable": False,
+            "summary": {"covered_files": 0, "total_files": 0,
+                        "coverage_pct": 0.0, "granularity_score": 0.0},
+            "message": "No codebase entries are registered, so no code files were scanned",
+        })
+
+        self.assertNotIn("thresholds met", out)
+        self.assertIn("No codebase entries are registered", out)
+
+    def test_the_disclaimer_precedes_the_zero_metrics(self):
+        """Order matters: the zeroes must be framed before they are read.
+
+        "Coverage: 0.0%" on its own line reads like a measured result. Printed
+        after the note that nothing was scanned, it reads as the denominator it
+        actually is. The metrics are kept rather than suppressed because a
+        verdict should still state what it measured -- 0 of 0 files is a
+        materially different statement from 63 of 261 lines.
+        """
+        out = self._render({
+            "status": "PASS",
+            "applicable": False,
+            "summary": {"covered_files": 0, "total_files": 0,
+                        "coverage_pct": 0.0, "granularity_score": 0.0},
+            "message": "No codebase entries are registered, so no code files were scanned",
+        })
+
+        # Anchor on the metric values, not the labels: the "Spec Coverage"
+        # header contains the word "Coverage" and would match ahead of both.
+        assert "No codebase entries are registered" in out
+        assert "0/0 covered" in out
+        self.assertLess(
+            out.index("No codebase entries are registered"),
+            min(out.index("0/0 covered"), out.index("0.0%"), out.index("0.0000")),
+        )
+
+    def test_an_unassessable_scope_with_a_demanded_threshold_still_reads_as_failed(self):
+        out = self._render({
+            "status": "FAIL",
+            "applicable": False,
+            "summary": {"covered_files": 0, "total_files": 0,
+                        "coverage_pct": 0.0, "granularity_score": 0.0},
+            "message": "No code files found: 1 registered codebase entry resolved to 0 files",
+            "threshold_failures": ["cannot assess --min-coverage: 0 files from 1 registered "
+                                   "codebase entry"],
+        })
+
+        self.assertIn("Threshold check failed", out)
+        self.assertIn("cannot assess --min-coverage", out)
+        self.assertIn("resolved to 0 files", out)
+
+    def test_the_two_empty_states_are_distinguishable_without_json(self):
+        """A missing registry and a wrong path are different mistakes to fix."""
+        base = {"status": "PASS", "applicable": False,
+                "summary": {"covered_files": 0, "total_files": 0,
+                            "coverage_pct": 0.0, "granularity_score": 0.0}}
+        unregistered = self._render(
+            {**base, "message": "No codebase entries are registered, so no code files were scanned"}
+        )
+        wrong_path = self._render(
+            {**base, "message": "No code files found: 1 registered codebase entry resolved to 0 files"}
+        )
+
+        self.assertNotEqual(unregistered, wrong_path)
+
+    def test_an_assessed_pass_still_says_so(self):
+        """Regression pin: the ordinary populated report is unchanged."""
+        out = self._render({
+            "status": "PASS",
+            "applicable": True,
+            "summary": {"covered_files": 8, "total_files": 10,
+                        "coverage_pct": 95.0, "granularity_score": 0.88},
+        })
+
+        self.assertIn("thresholds met", out)
+
 
 class TestHumanInfo(_HumanModeBase):
     """Test _human_info formatter."""

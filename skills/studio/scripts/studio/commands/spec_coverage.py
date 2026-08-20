@@ -41,25 +41,29 @@ def _build_spec_coverage_parser() -> argparse.ArgumentParser:
         "--min-coverage",
         type=float,
         default=None,
-        help="Minimum coverage percentage (0-100). Exit 2 if below.",
+        help="Minimum coverage percentage (0-100). Exit 2 if below; a positive value also "
+             "exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-file-coverage",
         type=float,
         default=None,
-        help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below.",
+        help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below; "
+             "a positive value also exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-granularity",
         type=float,
         default=None,
-        help="Minimum granularity score (0-1). Exit 2 if below.",
+        help="Minimum granularity score (0-1). Exit 2 if below; a positive value also "
+             "exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-file-granularity",
         type=float,
         default=None,
-        help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below.",
+        help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below; "
+             "a positive value also exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--system",
@@ -181,18 +185,88 @@ def _filter_ignored_files(code_files_to_scan: List[Path], project_root: Path, me
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-filter-ignored-files
 
 
-def _empty_coverage_result() -> dict:
+def _count_selected_codebase_entries(meta, system_slugs: set[str] | None) -> int:
+    """Count codebase entries registered by the selected systems.
+
+    Distinguishes "nothing is registered" from "what is registered resolves to
+    no files" -- two different mistakes that otherwise produce identical output.
+    """
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-count-registered-entries
+    def count_subtree(node: object) -> int:
+        """Entries registered by ``node`` and every descendant of it."""
+        return len(getattr(node, "codebase", None) or []) + sum(
+            count_subtree(child) for child in getattr(node, "children", [])
+        )
+
+    def visit(node: object) -> int:
+        """Count ``node``'s subtree once it is in scope, mirroring file collection."""
+        if system_slugs is None or getattr(node, "slug", "") in system_slugs:
+            return count_subtree(node)
+        return sum(visit(child) for child in getattr(node, "children", []))
+
+    return sum(visit(system_node) for system_node in meta.systems)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-count-registered-entries
+
+
+def _requested_thresholds(args) -> List[str]:
+    """Names of the thresholds whose satisfaction the caller actually demanded.
+
+    A non-positive threshold is met by any scope, empty or not, so it demands no
+    guarantee and is not counted as one. Without that, ``--min-coverage 0`` would
+    fail an empty scope while passing a populated one sitting at 0.0% -- and the
+    exit code has to keep answering a single question: was a guarantee demanded
+    that cannot be given?
+    """
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-detect-requested-thresholds
+    requested = []
+    for flag, attr in (
+        ("--min-coverage", "min_coverage"),
+        ("--min-file-coverage", "min_file_coverage"),
+        ("--min-granularity", "min_granularity"),
+        ("--min-file-granularity", "min_file_granularity"),
+    ):
+        value = getattr(args, attr, None)
+        if value is not None and value > 0:
+            requested.append(flag)
+    return requested
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-detect-requested-thresholds
+
+
+def _empty_coverage_result(registered_entries: int = 0, requested_thresholds=None) -> dict:
+    """Report for a scan that completed with nothing in scope.
+
+    The check ran and found nothing to cover, so nothing failed -- unless the
+    caller demanded a guarantee, which cannot be given over an empty scope.
+    Either way ``applicable`` records that there was nothing to assess, so an
+    empty result is no longer indistinguishable from a fully covered one.
+    """
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-empty-report
-    return {
-        "status": "PASS",
+    requested_thresholds = requested_thresholds or []
+    if registered_entries:
+        message = (
+            f"No code files found: {registered_entries} registered codebase "
+            f"{'entry' if registered_entries == 1 else 'entries'} resolved to 0 files"
+        )
+    else:
+        message = "No codebase entries are registered, so no code files were scanned"
+    result = {
+        "status": "FAIL" if requested_thresholds else "PASS",
+        "applicable": False,
         "summary": {
             "total_files": 0,
             "covered_files": 0,
             "coverage_pct": 0.0,
             "granularity_score": 0.0,
         },
-        "message": "No codebase files found in registry",
+        "message": message,
     }
+    if requested_thresholds:
+        result["threshold_failures"] = [
+            f"cannot assess {flag}: 0 files from {registered_entries} registered "
+            f"codebase {'entry' if registered_entries == 1 else 'entries'}"
+            for flag in requested_thresholds
+        ]
+    return result
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-empty-report
 
 
@@ -317,7 +391,11 @@ def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict
     )
     # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
     if not filtered_files:
-        return _empty_coverage_result(), 0
+        requested = _requested_thresholds(args)
+        empty = _empty_coverage_result(
+            _count_selected_codebase_entries(meta, system_slugs), requested
+        )
+        return empty, 2 if requested else 0
     # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
     file_coverages = _scan_file_coverages(filtered_files)
     report = calculate_metrics(file_coverages)
@@ -414,14 +492,15 @@ def _show_spec_coverage_files(files: dict) -> None:
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers
 
 
-def _show_spec_coverage_status(status: str, failures: list) -> None:
+def _show_spec_coverage_status(status: str, failures: list, assessed: bool = True) -> None:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers
     if failures:
         ui.blank()
         for failure in failures:
             ui.warn(failure)
     if status == "PASS":
-        ui.success("All thresholds met.")
+        if assessed:
+            ui.success("All thresholds met.")
     elif status == "FAIL":
         ui.error("Threshold check failed.")
     else:
@@ -441,6 +520,13 @@ def _human_spec_coverage(data: dict) -> None:
         ui.blank()
         return
 
+    # Say up front when nothing was assessed, so the zeroes below are read as the
+    # denominator they are and not as a measured result.
+    applicable = data.get("applicable", True)
+    if applicable is False:
+        ui.warn(data.get("message", "Nothing was assessed"))
+        ui.blank()
+
     summary = data.get("summary", {})
     ui.detail("Files", f"{summary.get('covered_files', 0)}/{summary.get('total_files', 0)} covered")
     ui.detail("Coverage", f"{summary.get('coverage_pct', 0):.1f}%")
@@ -453,6 +539,6 @@ def _human_spec_coverage(data: dict) -> None:
         _show_spec_coverage_files(files)
 
     failures = data.get("threshold_failures", [])
-    _show_spec_coverage_status(status, failures)
+    _show_spec_coverage_status(status, failures, assessed=applicable is not False)
     ui.blank()
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers
