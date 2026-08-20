@@ -1876,6 +1876,123 @@ def _maybe_install_default_kit_for_init(
     return kit_results, None
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-policy
+# Extensions that mark a directory as holding source of record. Deliberately a
+# fixed list: a registry entry decides what the traceability gates scan, so it
+# should be predictable rather than clever.
+_CODEBASE_EXTENSIONS = frozenset({
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".kt", ".kts",
+    ".rb", ".cs", ".php", ".sql", ".swift", ".scala", ".c", ".h", ".cc", ".cpp", ".hpp",
+})
+
+# Skipped at the top level only. These names conventionally hold something other
+# than product code when they sit beside it, while the same name nested inside a
+# package usually is product code -- `skills/studio/scripts` in this repository.
+_CODEBASE_SKIP_TOP_LEVEL = frozenset({
+    "tests", "test", "testing", "examples", "example", "samples", "docs", "doc",
+    "scripts", "tools", "benchmarks", "bench", "fixtures", "migrations",
+})
+
+# Never source of record, at any depth.
+_CODEBASE_SKIP_ANYWHERE = frozenset({
+    "__pycache__", "node_modules", "vendor", "third_party", "dist", "build",
+    "target", "out", "venv", "site-packages", "coverage",
+})
+
+# Bounds the search, so init cannot walk a pathological tree indefinitely.
+_CODEBASE_MAX_DEPTH = 6
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-policy
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-skips
+def _is_scannable_dir(child: Path, depth: int) -> bool:
+    """Whether the walk should descend into *child*, found at *depth*.
+
+    The skip policy lives here on its own because it is the part most likely to
+    need editing as conventions shift, and because the top-level-only rule is
+    easy to get wrong: a `scripts/` beside the source tree is tooling, while
+    `skills/studio/scripts` inside a package is the source itself.
+    """
+    if child.is_symlink() or not child.is_dir():
+        return False
+    name = child.name
+    if name.startswith(".") or name in _CODEBASE_SKIP_ANYWHERE:
+        return False
+    return bool(depth) or name not in _CODEBASE_SKIP_TOP_LEVEL
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-skips
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-roots
+def _detect_codebase_roots(project_root: Path, *, studio_dir: Optional[Path] = None) -> List[Dict[str, object]]:
+    """Find the shallowest directories under *project_root* that hold source files.
+
+    *studio_dir* is the Constructor Studio installation tree, excluded because it
+    is never the project's product code. The default install directory is hidden
+    and so already refused, but ``--install-dir`` accepts a visible name, and the
+    shipped kit carries `config/kits/sdlc/scripts/pr.py` -- nested far enough
+    that the top-level `scripts` rule does not apply. Registering it would point
+    every later gate at files Studio manages rather than at the project.
+
+    Every root found is returned, not just the first. A repository commonly keeps
+    more than one -- this one keeps a package and a CLI -- and a single-root rule
+    would silently drop the rest, leaving code unscanned while the registry looked
+    populated.
+
+    Only the extensions actually present in a directory are recorded for it, so a
+    registry entry states what it covers. Paths are relative to *project_root*, so
+    nothing about the machine that ran ``init`` reaches the file.
+
+    Unreadable directories are skipped rather than raised: a directory that cannot
+    be listed is a reason to register less, never a reason to fail initialisation.
+    """
+    found: Dict[str, set] = {}
+    excluded = studio_dir.resolve() if studio_dir is not None else None
+    stack: List[Tuple[Path, int]] = [(project_root, 0)]
+    while stack:
+        directory, depth = stack.pop()
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-read-dir
+        try:
+            children = sorted(directory.iterdir())
+        except OSError:
+            # WARNING, not INFO: the CLI configures this logger at WARNING, so an
+            # INFO record would leave an omitted subtree invisible -- silent
+            # under-registration is the failure this detection exists to prevent.
+            # It goes to the logger's stderr handler rather than `ui.warn`, which
+            # is suppressed under --json, and carries a relative label with no
+            # traceback because the log is as public as the registry.
+            logger.warning("init: skipping unreadable directory %s", directory.relative_to(project_root).as_posix())
+            continue
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-read-dir
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-extensions-present
+        extensions = {
+            child.suffix.lower()
+            for child in children
+            if not child.is_symlink() and child.is_file() and child.suffix.lower() in _CODEBASE_EXTENSIONS
+        }
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-extensions-present
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-record-root
+        # The project root itself is never a root: one stray script beside the
+        # tree would otherwise claim the whole repository.
+        if extensions and depth > 0:
+            found[directory.relative_to(project_root).as_posix()] = extensions
+            continue
+        if depth >= _CODEBASE_MAX_DEPTH:
+            continue
+        stack.extend(
+            (child, depth + 1)
+            for child in children
+            if _is_scannable_dir(child, depth) and child.resolve() != excluded
+        )
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-record-root
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-emit
+    return [
+        {"path": path, "extensions": sorted(found[path])}
+        for path in sorted(found)
+    ]
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-emit
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-roots
+
+
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-finalize-init-surfaces
 def _finalize_init_files(
     *,
@@ -1888,16 +2005,40 @@ def _finalize_init_files(
     from .kit import regenerate_gen_aggregates
 
     installed_kit_slug = next(iter(kit_results), "") if kit_results else ""
-    desired_registry = generate_default_registry(state.project_name, kit_slug=installed_kit_slug)
     registry_path = (layout.config_dir / "artifacts.toml").resolve()
     # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-write-artifacts-toml
     registry_existed_before = registry_path.is_file()
     if registry_existed_before and not args.force:
+        # An existing registration is the user's, and is never rewritten.
         actions["artifacts_registry"] = "unchanged"
     else:
+        detected = _detect_codebase_roots(state.project_root, studio_dir=layout.studio_dir)
+        desired_registry = generate_default_registry(
+            state.project_name, kit_slug=installed_kit_slug, codebase=detected
+        )
         if not args.dry_run:
             toml_utils.dump(desired_registry, registry_path, header_comment="Constructor Studio artifacts registry")
         actions["artifacts_registry"] = "updated" if registry_existed_before else "created"
+        # Say which roots were registered, or say plainly that none was found.
+        # An empty registry scans nothing, so silence here reads as success while
+        # every later gate has nothing to check.
+        if detected:
+            actions["codebase_registered"] = ", ".join(str(entry["path"]) for entry in detected)
+        else:
+            actions["codebase_registered"] = "none"
+            # Named relative to the project root, not the cwd: an absolute path
+            # here would carry the home directory and user name into output that
+            # gets pasted into issues and logs.
+            try:
+                registry_rel = registry_path.relative_to(state.project_root).as_posix()
+            except ValueError:
+                registry_rel = registry_path.name
+            ui.warn(
+                "No source directories were detected, so `codebase` is empty and "
+                "nothing will be scanned for traceability. Add a "
+                f"[[systems.codebase]] entry to `{registry_rel}` naming your "
+                "source directory."
+            )
     # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-write-artifacts-toml
     if not args.dry_run:
         actions.update(regenerate_gen_aggregates(layout.studio_dir))
@@ -2295,6 +2436,18 @@ def cmd_init(argv: List[str]) -> int:
 # Human-friendly formatters
 # ---------------------------------------------------------------------------
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-format-output
+def _registered_codebase_roots(data: Dict[str, object]) -> str:
+    """The registered roots from an init result, or "" when none was registered.
+
+    What got registered decides what every later gate scans, so the human
+    summary names it rather than leaving the user to open artifacts.toml. The
+    empty case already warns on its own, so "none" reads as nothing to name.
+    """
+    actions = data.get("actions")
+    registered = actions.get("codebase_registered") if isinstance(actions, dict) else None
+    return "" if not registered or registered == "none" else str(registered)
+
+
 def _human_init_ok(
     data: Dict[str, object],
     project_root: Path,
@@ -2323,6 +2476,10 @@ def _human_init_ok(
     ui.substep("artifacts.toml — artifact registry")
     ui.substep("AGENTS.md      — custom agent rules (edit freely)")
     ui.substep("SKILL.md       — custom skill extensions (edit freely)")
+
+    registered = _registered_codebase_roots(data)
+    if registered:
+        ui.step(f"Codebase roots registered: {registered}")
 
     if kit_results:
         ui.step("Kits installed:")
