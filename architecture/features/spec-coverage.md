@@ -96,6 +96,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 - [x] - `p1` - Resolve paths relative to project root for human-readable output - `inst-rel-path`
 - [x] - `p1` - Route JSON report to file or terminal UI - `inst-output-report`
 - [x] - `p1` - Format uncovered ranges and render human-friendly per-file/status sections - `inst-human-report-helpers`
+- [x] - `p1` - Name the files whose coverage rests on a whole-file scope marker, largest first, with their count and total claimed lines - `inst-human-report-claims`
 
 ## 3. Processes / Business Logic (CDSL)
 

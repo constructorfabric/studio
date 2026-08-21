@@ -501,6 +501,69 @@ class TestMinFileGranularity(TestCmdSpecCoverage):
             if parsed["status"] == "FAIL":
                 self.assertTrue(any("granularity" in f for f in parsed.get("threshold_failures", [])))
 
+    def test_scope_only_file_is_exempt_from_the_per_file_floor(self):
+        """A whole-file scope claim scores 0.0 by definition, not by measurement.
+
+        Reading that sentinel as a low score makes any positive floor reject
+        every re-export module and entry point, which is what made this
+        threshold unusable as a gate.
+        """
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            src = root / "src"
+            src.mkdir()
+            # Scope marker, no block markers: covered, granularity 0.0.
+            (src / "reexport.py").write_text(
+                "# @cpt-scope:cpt-my-algo:p1\nfrom .a import b\nfrom .c import d\n", encoding="utf-8"
+            )
+            ctx = self._make_context(root, systems=[
+                SystemNode(name="sys1", slug="sys1", kit="test",
+                           artifacts=[], children=[],
+                           codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
+            ])
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("sys.stdout", new_callable=StringIO) as mock_out:
+                    ret = cmd_spec_coverage(["--min-file-granularity", "0.5"])
+            parsed = json.loads(mock_out.getvalue())
+
+        failures = parsed.get("threshold_failures", [])
+        self.assertFalse(
+            [f for f in failures if "reexport.py" in f and "granularity" in f],
+            f"scope-only file must not be judged against the per-file floor: {failures}",
+        )
+        self.assertEqual(ret, 0)
+
+    def test_a_block_traced_file_is_still_judged(self):
+        """The exemption must not become a way past the floor for traced files."""
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            src = root / "src"
+            src.mkdir()
+            # One block over many lines: measured, and measured low.
+            body = "\n".join(f"x{n} = {n}" for n in range(60))
+            (src / "thin.py").write_text(
+                "# @cpt-begin:cpt-my-algo:p1:inst-one\n"
+                f"{body}\n"
+                "# @cpt-end:cpt-my-algo:p1:inst-one\n",
+                encoding="utf-8",
+            )
+            ctx = self._make_context(root, systems=[
+                SystemNode(name="sys1", slug="sys1", kit="test",
+                           artifacts=[], children=[],
+                           codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
+            ])
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("sys.stdout", new_callable=StringIO) as mock_out:
+                    ret = cmd_spec_coverage(["--min-file-granularity", "0.9"])
+            parsed = json.loads(mock_out.getvalue())
+
+        failures = parsed.get("threshold_failures", [])
+        self.assertTrue(
+            [f for f in failures if "thin.py" in f and "granularity" in f],
+            f"a block-traced file below the floor must still fail: {failures}",
+        )
+        self.assertEqual(ret, 2)
+
     def test_min_file_coverage_with_zero_total(self):
         """File with 0 total_lines is skipped in per-file coverage check."""
         with TemporaryDirectory() as d:

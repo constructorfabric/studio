@@ -335,6 +335,14 @@ def _check_min_file_granularity(
     for file_coverage in report.per_file:
         if not file_coverage.effective_lines or not file_coverage.covered_lines:
             continue
+        # A scope-only file scores 0.0 by definition rather than by measurement:
+        # the metric deliberately refuses to credit a whole-file claim. Reading
+        # that sentinel as a low score makes any positive floor reject every
+        # re-export module and entry point in the tree, which is why this
+        # threshold is currently unusable as a gate. Those files are reported
+        # under their own heading instead, so exempting them here hides nothing.
+        if file_coverage.has_scope_only:
+            continue
         if file_coverage.granularity >= args.min_file_granularity:
             continue
         failed = True
@@ -489,7 +497,33 @@ def _show_spec_coverage_files(files: dict) -> None:
         ui.step(f"Uncovered files ({len(uncovered)})")
         for path, entry in uncovered.items():
             ui.substep(f"  {path}  ({entry.get('total_lines', 0)} lines)")
+    _show_whole_file_claims(files)
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers
+
+
+def _show_whole_file_claims(files: dict) -> None:
+    """Name the files whose coverage rests on a whole-file scope marker.
+
+    These are counted as covered but carry no instruction block, so they raise
+    the coverage percentage without being traced to anything. Some are
+    structurally unmarkable -- an entry point, a re-export module -- and some are
+    implementations that were never traced, and the two are indistinguishable
+    from the summary line alone. Listing them by size puts the largest claims in
+    front of the reader instead of leaving them inside an average.
+    """
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-claims
+    claims = {
+        path: entry for path, entry in files.items()
+        if entry.get("scope_only") and entry.get("covered_lines", 0)
+    }
+    if not claims:
+        return
+    lines_claimed = sum(entry.get("total_lines", 0) for entry in claims.values())
+    ui.blank()
+    ui.step(f"Whole-file scope claims ({len(claims)} files, {lines_claimed} lines, no instruction tracing)")
+    for path, entry in sorted(claims.items(), key=lambda kv: -kv[1].get("total_lines", 0)):
+        ui.substep(f"  {path}  ({entry.get('total_lines', 0)} lines)")
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-claims
 
 
 def _show_spec_coverage_status(status: str, failures: list, assessed: bool = True) -> None:
