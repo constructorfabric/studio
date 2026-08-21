@@ -12,6 +12,7 @@
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Run Eval Suite](#run-eval-suite)
   - [Score Structural Compliance](#score-structural-compliance)
+  - [Score Rule Compliance (Advisory Judge)](#score-rule-compliance-advisory-judge)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Eval Report Lifecycle](#eval-report-lifecycle)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -89,6 +90,7 @@ advisory verdict can never gate a build.
 - [x] - `p1` - Load an optional baseline report JSON, degrading to no-diff on error - `inst-load-baseline`
 - [x] - `p1` - Save this run's report JSON to serve as a later baseline - `inst-save-report`
 - [x] - `p1` - Render a short human-readable summary when not in JSON mode - `inst-human-report`
+- [x] - `p1` - Under `--calibrate`, measure the reference judge over the gold-backed scenarios - `inst-judge-calibration`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -143,6 +145,32 @@ artifacts: it touches no filesystem.
 - [x] - `p1` - The required-body-sections check over that prose - `inst-structural-checks-sections`
 - [x] - `p1` - The check dataclass and the registry list binding each check name and tags to its predicate - `inst-structural-registry`
 
+### Score Rule Compliance (Advisory Judge)
+
+- [x] `p1` - **ID**: `cpt-studio-algo-eval-judge`
+
+The advisory LLM-judge plugged into the `Scorer` seam. It opines on whether a completed run
+followed its workflow's `RULES:`, the layer the deterministic scorer cannot measure. Its
+verdict is `ADVISORY` — the runner forbids it from touching the exit code — and it is built as
+a *seam, not a transport*: the harness owns the deterministic prompt and reply parsing, while
+the model call is supplied by the host/agent through a pluggable `judge_fn` (Studio stays
+stdlib-only, and with no `judge_fn` the judge is `UNKNOWN`). Trustworthiness is measured, not
+asserted: calibration reports accuracy against a human gold set and run-to-run consistency, and
+judge coverage is derived from which scenarios carry a gold set.
+
+**Steps**:
+1. [x] - `p1` - Extract the rules, evidence, and run summary from a phase run, splitting rule declarations from the work - `inst-judge-prompt`
+2. [x] - `p1` - Assemble the deterministic judge request (rules + evidence + prompt) and map replies to verdicts, with no model call - `inst-judge-request`
+3. [x] - `p1` - Score rule-compliance via the injected judge, returning an advisory result that can never gate - `inst-judge-scorer`
+4. [x] - `p1` - Calibrate the judge over gold-backed scenarios: accuracy vs the human label and run-to-run consistency - `inst-judge-calibrate-run`
+
+**Supporting**:
+- [x] - `p1` - Imports, the rules-section pattern, and the gold-label-to-verdict mapping - `inst-judge-imports`
+- [x] - `p1` - The judge data model: gold label, judge request/reply, and the `JudgeFn` seam - `inst-judge-datamodel`
+- [x] - `p1` - Load a scenario's `gold.toml` human label, degrading to unvalidated on absence - `inst-judge-gold`
+- [x] - `p1` - A deterministic reference-stub `JudgeFn` for tests and calibration wiring (not a model) - `inst-judge-stub`
+- [x] - `p1` - The `Calibration` result model (accuracy, consistency, coverage) - `inst-judge-calibrate`
+
 ## 4. States (CDSL)
 
 ### Eval Report Lifecycle
@@ -174,6 +202,7 @@ yields a per-scenario regression diff without changing the exit code.
 | Eval Command | `skills/studio/scripts/studio/commands/eval.py` | CLI entry point, arg parsing, context, exit code |
 | Eval Harness | `skills/studio/scripts/studio/utils/eval_harness.py` | Scenario/run loading, scorer seam, runner, report, regression diff |
 | Structural Scorer | `skills/studio/scripts/studio/utils/eval_structural.py` | Deterministic structural checks over a run's manifest + phase frontmatter |
+| Advisory Judge | `skills/studio/scripts/studio/utils/eval_judge.py` | Advisory rule-compliance judge (pluggable model seam) + gold-set calibration |
 
 ## 7. Acceptance Criteria
 
@@ -184,3 +213,5 @@ yields a per-scenario regression diff without changing the exit code.
 - [x] `p1` - When `--baseline` is given, the `regression` key is always present (a diff object, or an `error` object when the baseline is unusable)
 - [x] `p1` - `cfs eval` scores structural compliance via a registry of deterministic checks over each run's manifest and phase frontmatter; any failing check makes the scenario verdict `FAIL` while the per-scenario `score_pct` still reports the fraction of checks passed
 - [x] `p1` - A run whose phase files carry no parseable `[phase]` frontmatter scores `UNKNOWN`, never 0; the scorer touches no filesystem and is a pure function of the in-memory run artifacts
+- [x] `p1` - The advisory rule-judge is `ADVISORY` and never affects the exit code; with no injected `judge_fn` it scores `UNKNOWN`, so `cfs eval` runs and gates deterministically without a model
+- [x] `p1` - Judge calibration reports accuracy against a human gold set and run-to-run consistency, kept separate from structural compliance; judge coverage is derived from which scenarios carry a gold set

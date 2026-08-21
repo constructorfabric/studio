@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..utils import eval_harness
+from ..utils.eval_judge import AdvisoryJudge, calibrate, load_gold, reference_stub_judge
 from ..utils.eval_structural import StructuralScorer
 from ..utils.ui import ui
 
@@ -63,6 +64,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--save", default=None,
         help="Write this run's report JSON to a file, to become a later baseline.")
+    parser.add_argument(
+        "--calibrate", action="store_true",
+        help="Report reference-stub calibration over gold-backed scenarios: the built-in "
+             "reference stub's accuracy + consistency (wire a real judge_fn out-of-tree for "
+             "model-quality metrics).")
     return parser
 # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-build-parser
 
@@ -131,6 +137,32 @@ def _human_report(data: Dict[str, object]) -> None:
 # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-human-report
 
 
+# @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-judge-calibration
+def _judge_calibration(scenarios_dir: Path) -> Dict[str, object]:
+    """Calibrate the reference stub over gold-backed scenarios (coverage derived, not hardcoded).
+
+    The bare CLI has no model, so it measures the deterministic reference stub to exercise the
+    machinery; a real ``judge_fn`` supplied out-of-tree yields a real judge measurement.
+    """
+    cases = []
+    for scenario in eval_harness.load_scenarios(scenarios_dir):
+        gold = load_gold(scenario.gold_path)
+        if gold is not None:
+            cases.append((scenario, eval_harness.load_run(scenario.run_dir), gold))
+    result = calibrate(cases, reference_stub_judge)
+    return {
+        "judge": "reference-stub",
+        "gold_backed": result.covered,
+        "excluded_unscoreable": result.excluded,
+        "accuracy": result.accuracy,
+        "consistency": result.consistency,
+        "runs_per_scenario": result.runs_per_scenario,
+        "note": ("reference-stub calibration (cfs runs stdlib-only, no model); wire a real "
+                 "judge_fn out-of-tree for a real judge accuracy + consistency measurement"),
+    }
+# @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-judge-calibration
+
+
 # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-user-eval
 def cmd_eval(argv: List[str]) -> int:
     """Entry point for ``cfs eval``."""
@@ -151,8 +183,12 @@ def cmd_eval(argv: List[str]) -> int:
         # A missing directory is an error, not a vacuous green pass.
         ui.result({"status": "ERROR", "message": f"Scenarios directory not found: {scenarios_dir}"})
         return 1
-    report = eval_harness.run_suite(scenarios_dir, [StructuralScorer()])
+    # The advisory judge rides alongside the deterministic scorer. With no model wired it is
+    # UNKNOWN (never gates); a host/agent injects a real judge_fn out-of-tree.
+    report = eval_harness.run_suite(scenarios_dir, [StructuralScorer(), AdvisoryJudge()])
     payload = eval_harness.report_to_dict(report)
+    if args.calibrate:
+        payload["judge_calibration"] = _judge_calibration(scenarios_dir)
     if args.baseline:
         baseline = _load_baseline(Path(args.baseline))
         # Always set a stable-shaped regression field when --baseline is given — even when

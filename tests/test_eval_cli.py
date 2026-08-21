@@ -302,6 +302,42 @@ def test_cmd_eval_save_error_is_reported_not_raised(capsys, tmp_path: Path) -> N
     assert "save_error" in out
 
 
+# --- advisory judge + calibration ------------------------------------------
+
+def test_cmd_eval_calibrate_reports_judge_coverage(capsys, tmp_path: Path) -> None:
+    # --calibrate surfaces which scenarios carry a gold set; the fixtures carry none.
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        cmd_eval(["--scenarios-dir", str(FIXTURES), "--calibrate"])
+    cal = json.loads(capsys.readouterr().out)["judge_calibration"]
+    assert cal["gold_backed"] == []
+    assert cal["accuracy"] is None
+    assert cal["judge"] == "reference-stub"
+
+
+def test_cmd_eval_calibrate_measures_the_stub_on_a_gold_backed_scenario(capsys,
+                                                                        tmp_path: Path) -> None:
+    scenarios = tmp_path / "scenarios"
+    _write_compliant(scenarios, sid="g")
+    (scenarios / "g" / "scenario.toml").write_text(
+        '[scenario]\nid = "g"\nworkflow = "coding-gen"\nrun_dir = "run"\nexpect = "compliant"\n'
+        '[scenario.gold]\npath = "gold.toml"\n')
+    (scenarios / "g" / "gold.toml").write_text('[gold]\nverdict = "compliant"\n')
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        cmd_eval(["--scenarios-dir", str(scenarios), "--calibrate"])
+    cal = json.loads(capsys.readouterr().out)["judge_calibration"]
+    assert cal["gold_backed"] == ["g"]
+    assert cal["accuracy"] == 1.0            # stub agrees with the compliant label
+
+
+def test_cmd_eval_includes_advisory_judge_without_gating(capsys, tmp_path: Path) -> None:
+    # The advisory judge rides along (UNKNOWN, no model) but never moves compliance/exit.
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(FIXTURES), "--check", "--min", "0.4"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0                                   # advisory judge never gates
+    assert "rules-judge (advisory)" in out["summary"]["coverage"]
+
+
 # --- human report ----------------------------------------------------------
 
 def test_human_report_shows_compliance(capsys, tmp_path: Path) -> None:
