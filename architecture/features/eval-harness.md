@@ -12,10 +12,12 @@
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Run Eval Suite](#run-eval-suite)
   - [Score Structural Compliance](#score-structural-compliance)
+  - [Score Rule Compliance (Advisory Judge)](#score-rule-compliance-advisory-judge)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Eval Report Lifecycle](#eval-report-lifecycle)
 - [5. Definitions of Done](#5-definitions-of-done)
   - [Compliance Report](#compliance-report)
+  - [Conditional JSON report fields](#conditional-json-report-fields)
 - [6. Implementation Modules](#6-implementation-modules)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
 
@@ -72,6 +74,8 @@ advisory verdict can never gate a build.
 - User runs `cfs eval --scenarios-dir DIR` → scenarios discovered under `DIR`
 - User runs `cfs eval --baseline report.json` → same, plus a per-scenario regression diff; the exit code is unchanged unless `--check` is also given
 - User runs `cfs eval --check [--min N]` → exit 2 when structural compliance is below `--min`, **or** when `--baseline` shows a per-scenario compliance regression
+- User runs `cfs eval --calibrate` → the report gains a `judge_calibration` object (reference-stub accuracy/consistency over gold-backed scenarios); advisory only, the exit code is unchanged
+- User runs `cfs eval --save FILE` → the run's report JSON is written to `FILE` to serve as a later `--baseline`; the payload gains `saved` (the path, or `null` on failure) and, only on failure, `save_error`
 - The JSON report always carries a `gate` field (`pass`/`fail`) matching the exit code, so a CI step can cross-check from `--json` alone
 
 **Error Scenarios**:
@@ -79,7 +83,7 @@ advisory verdict can never gate a build.
 - With `--check`: structural compliance below `--min`, or a baseline regression (a compliance drop, or a scenario that broke while still in the suite) → exit 2. A scenario removed from the suite entirely (`no_longer_scoreable`), or a `--baseline` that cannot be loaded (surfaced via the regression `error` field), is reported but does not by itself gate.
 
 **Steps**:
-1. [x] - `p1` - User invokes `cfs eval [--scenarios-dir DIR] [--baseline FILE]` - `inst-user-eval`
+1. [x] - `p1` - User invokes `cfs eval [--scenarios-dir DIR] [--check] [--min N] [--baseline FILE] [--save FILE] [--calibrate]` - `inst-user-eval`
 2. [x] - `p1` - Load project context; if absent, emit ERROR and exit 1 - `inst-load-context`
 3. [x] - `p1` - Resolve the scenarios directory, run the suite through the deterministic structural scorer, attach an optional regression diff, emit the JSON report, and return the harness exit code - `inst-run-and-report`
 
@@ -89,6 +93,10 @@ advisory verdict can never gate a build.
 - [x] - `p1` - Load an optional baseline report JSON, degrading to no-diff on error - `inst-load-baseline`
 - [x] - `p1` - Save this run's report JSON to serve as a later baseline - `inst-save-report`
 - [x] - `p1` - Render a short human-readable summary when not in JSON mode - `inst-human-report`
+- [x] - `p1` - In the human summary, explain advisory-only UNKNOWNs (unwired judge, never gates) - `inst-human-advisory`
+- [x] - `p1` - In the human summary, print the calibration metrics and note under `--calibrate`, tolerating a malformed payload - `inst-human-calibration`
+- [x] - `p1` - In the human summary, render a `--baseline` regression (regressed scenarios, no-longer-scoreable count) and any save failure - `inst-human-regression`
+- [x] - `p1` - Under `--calibrate`, measure the reference judge over the gold-backed scenarios - `inst-judge-calibration`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -100,7 +108,7 @@ Loads scenarios and completed-run artifacts, applies scorers, and aggregates the
 under the gate contract (only deterministic verdicts affect the exit code).
 
 **Steps**:
-1. [x] - `p1` - Discover scenarios by globbing `*/scenario.toml` under the root, skipping malformed or escaping descriptors - `inst-load-scenarios`
+1. [x] - `p1` - Discover scenarios by globbing `*/scenario.toml` under the root, skipping malformed, escaping, or duplicate-id descriptors (ids stay unique so calibration identities are unambiguous) - `inst-load-scenarios`
 2. [x] - `p1` - Load a completed run's `plan.toml` and phase files, returning `None` (UNKNOWN) instead of raising on a missing or malformed plan - `inst-load-run`
 3. [x] - `p1` - Load one scenario's run and apply every scorer to it, isolating a raising scorer as UNKNOWN - `inst-run-scenario`
 4. [x] - `p1` - Run every scenario under the root through the scorers and aggregate into a report - `inst-run-suite`
@@ -111,6 +119,7 @@ under the gate contract (only deterministic verdicts affect the exit code).
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for the harness - `inst-harness-imports`
+- [x] - `p1` - Load every `(scenario, run)` once so the report and calibration share one disk snapshot - `inst-load-cases`
 - [x] - `p1` - Scorer kinds, verdicts, the scorer protocol, and the result/scenario/report data model - `inst-eval-datamodel`
 - [x] - `p1` - A placeholder deterministic reference scorer that checks run presence, used to exercise the seam - `inst-reference-scorer`
 
@@ -143,6 +152,63 @@ artifacts: it touches no filesystem.
 - [x] - `p1` - The required-body-sections check over that prose - `inst-structural-checks-sections`
 - [x] - `p1` - The check dataclass and the registry list binding each check name and tags to its predicate - `inst-structural-registry`
 
+### Score Rule Compliance (Advisory Judge)
+
+- [x] `p1` - **ID**: `cpt-studio-algo-eval-judge`
+
+The advisory LLM-judge plugged into the `Scorer` seam. It opines on whether a completed run
+followed its workflow's `RULES:`, the layer the deterministic scorer cannot measure. Its
+kind is `ADVISORY` — the runner forbids it from touching the exit code — and it is built as
+a *seam, not a transport*: the harness owns the deterministic prompt and reply parsing, while
+the model call is supplied by the host/agent through a pluggable `judge_fn` (Studio stays
+stdlib-only, and with no `judge_fn` the judge is `UNKNOWN`). Trustworthiness is measured, not
+asserted: calibration reports accuracy against a human gold set and run-to-run consistency, and
+judge coverage is derived from which scenarios carry a gold set.
+
+**Authoring a gold-backed scenario** — what `--calibrate` measures against. A scenario opts in by
+pointing at a gold file that carries the human verdict:
+
+```toml
+# <scenario-dir>/scenario.toml
+[scenario]
+id = "coding-happy-path"
+workflow = "coding"
+run_dir = "run"
+expect = "compliant"
+
+[scenario.gold]
+path = "gold.toml"
+```
+
+```toml
+# <scenario-dir>/gold.toml — the human label the judge is scored against
+[gold]
+verdict = "compliant"          # accepted values: compliant | non_compliant
+rationale = "every declared rule was followed"
+rules_assessed = [1, 3]        # optional, reserved: rule numbers this verdict applies to
+                               # (list of ints; schema not yet stable — future per-rule scoring)
+```
+
+A scenario with no gold file is still scored, but reported as *unvalidated advisory*; a malformed
+or unreadable gold file is *excluded* from calibration rather than counted as a judge mismatch.
+
+**Steps**:
+1. [x] - `p1` - Extract the `## Rules` declarations from each phase body, tracking fenced-code state so a rule heading inside an example is not mistaken for a real section - `inst-judge-prompt`
+2. [x] - `p1` - Assemble the deterministic judge request (rules + evidence + prompt) and map replies to verdicts, with no model call - `inst-judge-request`
+3. [x] - `p1` - Score rule-compliance via the injected judge, returning an advisory result that can never gate - `inst-judge-scorer`
+4. [x] - `p1` - Calibrate the judge over gold-backed scenarios: accuracy vs the human label and run-to-run consistency - `inst-judge-calibrate-run`
+
+**Supporting**:
+- [x] - `p1` - Imports, the rules-section pattern, and the gold-label-to-verdict mapping - `inst-judge-imports`
+- [x] - `p1` - Recognise a Markdown fenced-code delimiter (backtick or tilde, by character and length) so a `## Rules` inside a fenced example is not read as a heading - `inst-judge-fence`
+- [x] - `p1` - Order phase texts by the run manifest so rules, evidence, and the run summary present the same sequence - `inst-judge-order`
+- [x] - `p1` - The judge data model: gold label, judge request/reply, and the `JudgeFn` seam - `inst-judge-datamodel`
+- [x] - `p1` - Detect when the harness cannot present real evidence (empty, or whole phases omitted) so the run is UNKNOWN and excluded from calibration - `inst-judge-gap`
+- [x] - `p1` - Assemble the bounded run evidence (total-capped share per phase, omitted phases flagged) and the run summary - `inst-judge-evidence`
+- [x] - `p1` - Load a scenario's `gold.toml` human label, degrading to unvalidated on absence - `inst-judge-gold`
+- [x] - `p1` - A deterministic reference-stub `JudgeFn` for tests and calibration wiring (not a model) - `inst-judge-stub`
+- [x] - `p1` - The `Calibration` result model (accuracy, consistency, coverage) - `inst-judge-calibrate`
+
 ## 4. States (CDSL)
 
 ### Eval Report Lifecycle
@@ -167,6 +233,18 @@ yields a per-scenario regression diff without changing the exit code.
 - `cpt-studio-flow-eval-harness-run`
 - `cpt-studio-algo-eval-harness-run`
 
+### Conditional JSON report fields
+
+Beyond the always-present `schema_version`, `summary`, `failing_checks`, `per_scenario`, and
+`gate`, three top-level keys appear only under specific flags — a consumer must presence-check
+them (subscripting when the flag is absent raises `KeyError`):
+
+| Key | Present when | Shape |
+|-----|--------------|-------|
+| `regression` | `--baseline` given | object: `has_regression` (bool), `regressed[] {scenario, from, to}`, `improved[]`, `newly_scoreable[]`, `no_longer_scoreable[]`, `aggregate_before`, `aggregate_after`; or `{error}` when the baseline is unusable |
+| `judge_calibration` | `--calibrate` given | object: `judge`, `gold_backed[]`, `excluded_unscoreable[]`, `broken_gold[]`, `accuracy` (float\|null), `consistency` (float\|null), `runs_per_scenario`, `note` |
+| `saved` / `save_error` | `--save FILE` given | `saved`: the path, or `null` on failure. `save_error`: present **only** on failure, a message with the destination and reason |
+
 ## 6. Implementation Modules
 
 | Module | Path | Responsibility |
@@ -174,6 +252,7 @@ yields a per-scenario regression diff without changing the exit code.
 | Eval Command | `skills/studio/scripts/studio/commands/eval.py` | CLI entry point, arg parsing, context, exit code |
 | Eval Harness | `skills/studio/scripts/studio/utils/eval_harness.py` | Scenario/run loading, scorer seam, runner, report, regression diff |
 | Structural Scorer | `skills/studio/scripts/studio/utils/eval_structural.py` | Deterministic structural checks over a run's manifest + phase frontmatter |
+| Advisory Judge | `skills/studio/scripts/studio/utils/eval_judge.py` | Advisory rule-compliance judge (pluggable model seam) + gold-set calibration |
 
 ## 7. Acceptance Criteria
 
@@ -184,3 +263,7 @@ yields a per-scenario regression diff without changing the exit code.
 - [x] `p1` - When `--baseline` is given, the `regression` key is always present (a diff object, or an `error` object when the baseline is unusable)
 - [x] `p1` - `cfs eval` scores structural compliance via a registry of deterministic checks over each run's manifest and phase frontmatter; any failing check makes the scenario verdict `FAIL` while the per-scenario `score_pct` still reports the fraction of checks passed
 - [x] `p1` - A run whose phase files carry no parseable `[phase]` frontmatter scores `UNKNOWN`, never 0; the scorer touches no filesystem and is a pure function of the in-memory run artifacts
+- [x] `p1` - The advisory rule-judge is `ADVISORY` and never affects the exit code; with no injected `judge_fn` it scores `UNKNOWN`, so `cfs eval` runs and gates deterministically without a model
+- [x] `p1` - Judge calibration reports accuracy against a human gold set and run-to-run consistency, kept separate from structural compliance; judge coverage is derived from which scenarios carry a gold set
+- [x] `p1` - The run evidence is hard-capped: the total (headers, truncation markers, separators and the omission line included) never exceeds the evidence budget. A trimmed phase is still judged; when whole phases are omitted to fit, the request is marked incomplete and the judge returns `UNKNOWN` without a model call — a verdict is never certified from evidence with entire phases unseen
+- [x] `p1` - In default (non-JSON) mode the human summary prints the scorer coverage line, explains that advisory-only UNKNOWNs come from an unwired judge (never counted against the gate), and prints the calibration metrics under `--calibrate`; the JSON payload is unchanged

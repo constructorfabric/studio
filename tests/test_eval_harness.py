@@ -177,6 +177,17 @@ def test_load_scenarios_skips_malformed_and_idless(tmp_path: Path) -> None:
     assert [s.id for s in eh.load_scenarios(tmp_path)] == ["good"]
 
 
+def test_load_scenarios_skips_duplicate_ids(tmp_path: Path) -> None:
+    # Two descriptors claiming the same id would make calibration identities (covered/excluded/
+    # rows) ambiguous — the first by sorted path is kept, the later duplicate is skipped.
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "scenario.toml").write_text('[scenario]\nid = "dup"\n')
+    (tmp_path / "c").mkdir()
+    (tmp_path / "c" / "scenario.toml").write_text('[scenario]\nid = "unique"\n')
+    assert [s.id for s in eh.load_scenarios(tmp_path)] == ["dup", "unique"]   # one "dup", not two
+
+
 def test_load_scenarios_skips_scalar_scenario_section(tmp_path: Path) -> None:
     (tmp_path / "bad").mkdir()
     (tmp_path / "bad" / "scenario.toml").write_text('scenario = "not a table"\n')

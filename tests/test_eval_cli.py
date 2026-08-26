@@ -302,6 +302,42 @@ def test_cmd_eval_save_error_is_reported_not_raised(capsys, tmp_path: Path) -> N
     assert "save_error" in out
 
 
+# --- advisory judge + calibration ------------------------------------------
+
+def test_cmd_eval_calibrate_reports_judge_coverage(capsys, tmp_path: Path) -> None:
+    # --calibrate surfaces which scenarios carry a gold set; the fixtures carry none.
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        cmd_eval(["--scenarios-dir", str(FIXTURES), "--calibrate"])
+    cal = json.loads(capsys.readouterr().out)["judge_calibration"]
+    assert cal["gold_backed"] == []
+    assert cal["accuracy"] is None
+    assert cal["judge"] == "reference-stub"
+
+
+def test_cmd_eval_calibrate_measures_the_stub_on_a_gold_backed_scenario(capsys,
+                                                                        tmp_path: Path) -> None:
+    scenarios = tmp_path / "scenarios"
+    _write_compliant(scenarios, sid="g")
+    (scenarios / "g" / "scenario.toml").write_text(
+        '[scenario]\nid = "g"\nworkflow = "coding-gen"\nrun_dir = "run"\nexpect = "compliant"\n'
+        '[scenario.gold]\npath = "gold.toml"\n')
+    (scenarios / "g" / "gold.toml").write_text('[gold]\nverdict = "compliant"\n')
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        cmd_eval(["--scenarios-dir", str(scenarios), "--calibrate"])
+    cal = json.loads(capsys.readouterr().out)["judge_calibration"]
+    assert cal["gold_backed"] == ["g"]
+    assert cal["accuracy"] == 1.0            # stub agrees with the compliant label
+
+
+def test_cmd_eval_includes_advisory_judge_without_gating(capsys, tmp_path: Path) -> None:
+    # The advisory judge rides along (UNKNOWN, no model) but never moves compliance/exit.
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(FIXTURES), "--check", "--min", "0.4"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0                                   # advisory judge never gates
+    assert "rules-judge (advisory)" in out["summary"]["coverage"]
+
+
 # --- human report ----------------------------------------------------------
 
 def test_human_report_shows_compliance(capsys, tmp_path: Path) -> None:
@@ -314,3 +350,178 @@ def test_human_report_shows_compliance(capsys, tmp_path: Path) -> None:
     out = capsys.readouterr().out
     assert rc == 0
     assert "compliance" in out
+
+
+def test_human_report_explains_advisory_unknown(capsys, tmp_path: Path) -> None:
+    # A no-model run: the advisory judge is UNKNOWN for every scenario. Human mode must say so —
+    # those UNKNOWNs are the unwired judge (advisory), not structurally unscoreable runs.
+    ui_module.set_json_mode(False)
+    try:
+        with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+            rc = cmd_eval(["--scenarios-dir", str(FIXTURES)])
+    finally:
+        ui_module.set_json_mode(True)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "scorers:" in out
+    assert "advisory" in out
+    assert "does not affect the gate" in out
+
+
+def test_human_report_prints_calibration_under_flag(capsys, tmp_path: Path) -> None:
+    # Without this fix --calibrate was invisible outside --json; the metrics must now print.
+    ui_module.set_json_mode(False)
+    try:
+        with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+            rc = cmd_eval(["--scenarios-dir", str(FIXTURES), "--calibrate"])
+    finally:
+        ui_module.set_json_mode(True)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "calibrate" in out
+    assert "accuracy" in out
+    assert "calibrate note:" in out                # the note explaining the stub figure is printed
+
+
+def test_human_report_renders_regression(capsys) -> None:
+    # A --baseline regression must be visible in the terminal, not only in --json — otherwise a
+    # regressed run exits 2 with no explanation of what broke.
+    from studio.commands.eval import _report_regression  # noqa: PLC0415
+    ui_module.set_json_mode(False)
+    try:
+        _report_regression({"has_regression": True,
+                            "regressed": [{"scenario": "x", "from": 1.0, "to": 0.5}],
+                            "no_longer_scoreable": [{"scenario": "y"}]})
+        _report_regression({"has_regression": False, "regressed": []})   # clean vs baseline
+        _report_regression({"error": "baseline unreadable"})             # unusable baseline
+        _report_regression({"has_regression": True,                      # more than the cap
+                            "regressed": [{"scenario": f"s{i}", "from": 1.0, "to": 0.0}
+                                          for i in range(12)]})
+    finally:
+        ui_module.set_json_mode(True)
+    out = capsys.readouterr().out
+    assert "1 scenario(s) regressed" in out
+    assert "x: 1.0 -> 0.5" in out
+    assert "no longer scoreable" in out
+    assert "regression: none vs baseline" in out
+    assert "baseline not usable" in out
+    assert "more" in out                            # "(+2 more)" — 12 regressed, cap 10
+
+
+def test_human_report_warns_on_save_error(capsys) -> None:
+    from studio.commands.eval import _human_report  # noqa: PLC0415
+    ui_module.set_json_mode(False)
+    try:
+        _human_report({"summary": {"scored": 1, "unknown": 0, "results": 1, "scenarios": 1,
+                                   "structural_compliance": 1.0, "coverage": "structural (deterministic)"},
+                       "per_scenario": [], "save_error": "could not save report to /x: disk full"})
+    finally:
+        ui_module.set_json_mode(True)
+    assert "save failed" in capsys.readouterr().out
+
+
+def test_save_error_omits_the_internal_temp_path(capsys, tmp_path: Path) -> None:
+    # A failed --save reports the user-supplied destination and reason, never the mkstemp temp name.
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        cmd_eval(["--scenarios-dir", str(FIXTURES), "--save", str(tmp_path / "nope" / "r.json")])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["saved"] is None
+    assert "could not save report to" in payload["save_error"]
+    assert ".tmp" not in payload["save_error"]      # no internal temp-file name leaked
+
+
+def test_advisory_count_only_counts_the_unwired_judge() -> None:
+    # Only advisory UNKNOWNs caused by an unwired judge are counted. A structural UNKNOWN, a wired
+    # advisory verdict, and — the CodeRabbit case — an advisory UNKNOWN from an *unreadable run*
+    # (also advisory UNKNOWN, but not benign) must all be excluded, or the "no judge wired" note
+    # would misattribute a broken run.
+    from studio.commands.eval import _count_advisory_unknown  # noqa: PLC0415
+    data = {"per_scenario": [
+        {"results": [{"kind": "deterministic", "verdict": "UNKNOWN"},              # structural, not counted
+                     {"kind": "advisory", "verdict": "UNKNOWN",
+                      "coverage": "no judge_fn: model supplied out-of-tree; x"}]},  # counted
+        {"results": [{"kind": "advisory", "verdict": "UNKNOWN",
+                      "coverage": "unscoreable: no readable run; x"}]},             # broken run, NOT counted
+        {"results": [{"kind": "advisory", "verdict": "compliant",
+                      "coverage": "1 rule(s) assessed; x"}]}]}                      # wired judge, not unknown
+    assert _count_advisory_unknown(data) == 1
+
+
+@pytest.mark.parametrize("data", [
+    {},                                          # no per_scenario key
+    {"per_scenario": None},                      # wrong type
+    {"per_scenario": [123, "x"]},                # non-dict rows
+    {"per_scenario": [{"results": 5}]},          # non-list results
+    {"per_scenario": [{"results": ["x", 1]}]},   # non-dict results
+])
+def test_advisory_count_is_failsafe_on_malformed_payload(data: dict) -> None:
+    from studio.commands.eval import _count_advisory_unknown  # noqa: PLC0415
+    assert _count_advisory_unknown(data) == 0  # never raises, never a false count
+
+
+def test_no_note_or_calibration_line_when_absent(capsys) -> None:
+    # No advisory UNKNOWNs → no note; no judge_calibration → no calibrate line.
+    from studio.commands.eval import _human_report  # noqa: PLC0415
+    ui_module.set_json_mode(False)
+    try:
+        _human_report({"summary": {"scored": 1, "unknown": 0, "results": 1, "scenarios": 1,
+                                   "structural_compliance": 1.0, "coverage": "structural (deterministic)"},
+                       "per_scenario": [{"results": [{"kind": "deterministic", "verdict": "PASS"}]}]})
+    finally:
+        ui_module.set_json_mode(True)
+    out = capsys.readouterr().out
+    assert "advisory UNKNOWN" not in out
+    assert "calibrate" not in out
+
+
+def test_report_calibration_flags_malformed_vs_empty(capsys) -> None:
+    # A malformed payload (wrong field types) must be reported distinctly, not coerced to the same
+    # "0 gold-backed, 0 excluded" a *valid empty* calibration shows.
+    from studio.commands.eval import _report_calibration  # noqa: PLC0415
+    ui_module.set_json_mode(False)
+    try:
+        _report_calibration(None)                                    # not a dict → prints nothing
+        _report_calibration({"gold_backed": [], "excluded_unscoreable": []})   # valid empty
+        _report_calibration({"gold_backed": 7, "excluded_unscoreable": None})  # malformed (non-list)
+    finally:
+        ui_module.set_json_mode(True)
+    out = capsys.readouterr().out
+    # Exclusive: exactly one gold-backed line (the valid-empty call) and one malformed line — the
+    # malformed payload must NOT also be rendered as an empty calibration.
+    assert out.count("0 gold-backed, 0 excluded") == 1
+    assert out.count("malformed calibration payload") == 1
+
+
+def test_calibration_distinguishes_broken_gold_from_absent(capsys, tmp_path: Path) -> None:
+    # A configured-but-unloadable gold file (malformed here) is reported as broken_gold, distinct
+    # from a scenario that simply declares no gold at all.
+    scenarios = tmp_path / "s"
+    broke_run = scenarios / "broke" / "run"
+    broke_run.mkdir(parents=True)
+    (scenarios / "broke" / "scenario.toml").write_text(
+        '[scenario]\nid = "broke"\nworkflow = "w"\nrun_dir = "run"\n'
+        '[scenario.gold]\npath = "gold.toml"\n')
+    (scenarios / "broke" / "gold.toml").write_text("= = not valid toml")   # configured but broken
+    (broke_run / "plan.toml").write_text('[plan]\ntask = "t"\n')
+    (scenarios / "nogold").mkdir()
+    (scenarios / "nogold" / "scenario.toml").write_text('[scenario]\nid = "nogold"\nworkflow = "w"\n')
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        cmd_eval(["--scenarios-dir", str(scenarios), "--calibrate"])
+    cal = json.loads(capsys.readouterr().out)["judge_calibration"]
+    assert cal["broken_gold"] == ["broke"]             # the broken one only; "nogold" is absent, not broken
+
+
+def test_calibrate_never_affects_the_gate(capsys, tmp_path: Path) -> None:
+    # --calibrate is advisory reporting only: the exit code still comes solely from structural
+    # compliance (and baseline regression), never from calibration data.
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(FIXTURES), "--check", "--calibrate"])  # 0.5 < 1.0
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2                                      # structural gates; calibrate cannot change it
+    assert "judge_calibration" in payload              # yet calibration still ran and reported
+    scenarios = tmp_path / "s"
+    scenarios.mkdir()
+    _write_compliant(scenarios)
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(scenarios), "--check", "--calibrate"])
+    assert rc == 0                                      # compliant suite still passes with --calibrate
