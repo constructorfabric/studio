@@ -78,7 +78,11 @@ class TestScanRegisteredCodebaseReferences:
         hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
 
         assert code_files_scanned == 0
-        assert code_files_skipped == 0
+        # Counted, not silent. `skipped` means "ignored, oversized, or
+        # unparsable", and an excluded vendored file is the first of those --
+        # reporting 0 scanned and 0 skipped would say there was nothing here
+        # when in fact there was a file the policy declined to scan.
+        assert code_files_skipped == 1
         assert hits == []
 
     def test_oversized_file_is_skipped_not_read(self, tmp_path: Path, monkeypatch):
@@ -117,17 +121,18 @@ class TestScanRegisteredCodebaseReferences:
         assert code_files_scanned == 0
         assert hits == []
 
-    def test_code_paths_for_entry_is_sorted_for_determinism(self, tmp_path: Path):
-        from studio.utils.codebase import _code_paths_for_entry
+    def test_entry_code_files_are_sorted_for_determinism(self, tmp_path: Path):
+        from studio.utils.codebase import resolve_entry_code_files
 
         code_dir = tmp_path / "src"
         code_dir.mkdir()
         for name in ("zeta.py", "alpha.py", "mid.py"):
             (code_dir / name).write_text("pass\n")
 
-        paths = _code_paths_for_entry(code_dir, [".py"])
+        paths, excluded = resolve_entry_code_files(code_dir, [".py"], project_root=tmp_path)
 
         assert [p.name for p in paths] == ["alpha.py", "mid.py", "zeta.py"]
+        assert excluded == 0
 
     def test_ignored_code_file_fails_closed_when_containment_cannot_be_established(self, tmp_path: Path):
         from studio.utils.codebase import _is_ignored_code_file

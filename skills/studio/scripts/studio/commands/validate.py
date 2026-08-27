@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ..utils import decision_log
 from ..utils import error_codes as EC
-from ..utils.codebase import CodeFile, cross_validate_code, error as code_issue
+from ..utils.codebase import CodeFile, cross_validate_code, error as code_issue, resolve_entry_code_files
 from ..utils.constraints import (
     ArtifactRecord,
     cross_validate_artifacts,
@@ -42,6 +42,9 @@ class _ValidateSession:
     known_kinds: Set[str]
     ctx_errors: List[Dict[str, object]]
     artifacts_to_validate: List[Tuple[Path, Path, str, str, str]] = field(default_factory=list)
+    # Reported alongside the scanned count: a file total without the number
+    # excluded does not say whether the scope was what the reader assumed.
+    code_files_excluded: int = 0
 
 
 @dataclass
@@ -826,14 +829,21 @@ def _resolve_code_scan_targets(session: _ValidateSession, entry: object) -> List
         code_path = (session.project_root / _codebase_entry_path(entry)).resolve()
     if code_path is None or not code_path.exists():
         return []
-    if code_path.is_file():
-        return [code_path]
+    # No early return for a single file: that bypassed the shared resolver
+    # entirely, so a file entry was judged by this command and by the policy
+    # differently -- which is the disagreement this resolver exists to end.
     extensions = (
         getattr(entry, "extensions", None)
         if not isinstance(entry, dict)
         else entry.get("extensions", None)
     ) or [".py"]
-    return [candidate for ext in extensions for candidate in code_path.rglob(f"*{ext}")]
+    # Resolved through the shared policy rather than a bare rglob: a registered
+    # parent root otherwise re-admits the vendored and generated trees that
+    # registration itself refuses, and this command's file count then disagrees
+    # with every other consumer of the same entry.
+    files, excluded = resolve_entry_code_files(code_path, extensions, project_root=session.project_root)
+    session.code_files_excluded += excluded
+    return files
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-code-scan
 
 
@@ -1168,6 +1178,9 @@ def _emit_final_validate_report(session: _ValidateSession, results: _ValidateRes
     }
     if not session.args.skip_code and not session.args.artifact:
         report["code_files_scanned"] = len(results.code_files_scanned)
+        # A scanned total without the number excluded does not say whether
+        # the scope was the one the reader assumed.
+        report["code_files_excluded"] = session.code_files_excluded
         report["to_code_ids_total"] = len(results.to_code_ids)
         report["code_ids_found"] = len(results.code_ids_found)
         if results.to_code_ids:
@@ -1505,7 +1518,9 @@ def _human_validate(data: dict) -> None:
     ui.detail("Warnings", str(n_warn))
 
     if data.get("code_files_scanned") is not None:
-        ui.detail("Code files", str(data["code_files_scanned"]))
+        excluded = data.get("code_files_excluded") or 0
+        scanned = str(data["code_files_scanned"])
+        ui.detail("Code files", f"{scanned} ({excluded} excluded)" if excluded else scanned)
     if data.get("coverage"):
         ui.detail("Code coverage", str(data["coverage"]))
 

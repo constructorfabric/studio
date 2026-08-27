@@ -188,6 +188,8 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for query commands (list-ids, where-defined, where-used) - `inst-query-imports`
+- [x] - `p1` - Resolve the code files one registered codebase entry covers, applying the shared exclusion policy and returning how many candidates were excluded - `inst-query-resolve-entry-files`
+- [x] - `p1` - Refuse a candidate that is a symlink or resolves outside the project root, so a link cannot re-open an excluded tree - `inst-query-escapes-project`
 - [x] - `p1` - Argument parsing, context resolution, and artifact collection for query commands - `inst-query-resolve`
 - [x] - `p1` - Deduplicate scan hits per ID, preferring a definition record and surfacing conflicting duplicate definitions - `inst-scan-dedupe`
 - [x] - `p1` - Human-friendly formatters for list-ids, where-defined, and where-used output - `inst-query-format`

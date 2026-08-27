@@ -660,22 +660,100 @@ def _is_in_default_ignored_dir(file_path: Path, root: Path) -> bool:
     return any(part in _DEFAULT_IGNORED_DIR_NAMES for part in rel_parts[:-1])
 
 
-def _code_paths_for_entry(code_path: Path, extensions: List[str]) -> List[Path]:
-    """Return code files covered by one registry codebase entry, sorted for determinism."""
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve-entry-files
+def resolve_entry_code_files(
+    code_path: Path,
+    extensions: List[str],
+    *,
+    project_root: Path,
+) -> Tuple[List[Path], int]:
+    """Code files one registry codebase entry covers, and how many were excluded.
+
+    Every consumer of a codebase entry resolves it through here, so that a
+    directory the policy excludes cannot be skipped by one command and scanned
+    by another. Three rules apply:
+
+    * conventional non-source directory names, at any depth -- a registered
+      parent root otherwise re-admits the `vendor/` and `dist/` trees that
+      registration itself refuses;
+    * symlinked candidates, so one link cannot re-open an excluded tree or reach
+      outside the project under a name that looks local;
+    * resolved containment, because a symlinked *directory* escapes the project
+      by a different route than a symlinked file.
+
+    The excluded count is returned rather than logged so the caller can report
+    its own denominator: "scanned N, excluded M" is checkable where a bare file
+    count is not.
+    """
+    root = project_root.resolve()
     if not code_path.exists():
-        return []
+        return [], 0
+    # The entry itself is judged before anything is read, so a `../..` entry is
+    # refused rather than walked and then discarded file by file. Checking only
+    # the candidates meant an external tree was traversed first, and every file
+    # in it counted separately toward a total describing this project.
+    #
+    # This also covers the single-file case, which previously returned the path
+    # unconditionally: an entry resolving to a file outside the project was
+    # refused by `list-ids` and read by `validate` and `spec-coverage`.
+    if _escapes_project(code_path, root):
+        return [], 1
     if code_path.is_file():
-        return [code_path]
+        return [code_path], 0
 
-    files: List[Path] = []
+    # Candidates are collected before they are judged, so each one is decided
+    # once. Judging inside the extension loop counted a single excluded file
+    # once per matching extension, which made the excluded total disagree with
+    # the file list it is meant to be the denominator of.
+    candidates: Set[Path] = set()
     for ext in extensions:
-        for candidate in code_path.rglob(f"*{ext}"):
-            if _is_in_default_ignored_dir(candidate, code_path):
-                continue
-            files.append(candidate)
-    return sorted(files, key=str)
+        candidates.update(code_path.rglob(f"*{ext}"))
+
+    files: Set[Path] = set()
+    excluded = 0
+    for candidate in candidates:
+        if _is_in_default_ignored_dir(candidate, code_path):
+            excluded += 1
+            continue
+        if _escapes_project(candidate, root):
+            excluded += 1
+            continue
+        files.add(candidate)
+    return sorted(files, key=str), excluded
 
 
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve-entry-files
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-escapes-project
+def _escapes_project(candidate: Path, root: Path) -> bool:
+    """Whether *candidate* is a symlink or resolves outside *root*.
+
+    Checked on the resolved path: refusing symlinked files alone still lets a
+    symlinked directory inside a registered root carry the scan outside the
+    project.
+    """
+    try:
+        if candidate.is_symlink():
+            return True
+        resolved = candidate.resolve()
+    except OSError as exc:
+        _warn_codebase(f"failed to resolve {candidate}: {exc}")
+        return True
+    if resolved == root:
+        return False
+    return root not in resolved.parents
+
+
+
+
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-escapes-project
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 def _is_ignored_code_file(file_path: Path, ctx) -> bool:
     """Return whether *file_path* is registry-ignored and should be skipped.
 
@@ -752,7 +830,13 @@ def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]
         except ValueError:
             _warn_codebase(f"codebase entry {cb_entry.path!r} resolves outside {root}; skipping")
             continue
-        for file_path in _code_paths_for_entry(code_path, cb_entry.extensions or [".py"]):
+        entry_files, entry_excluded = resolve_entry_code_files(
+            code_path, cb_entry.extensions or [".py"], project_root=root
+        )
+        # Counted as skipped: that total already means "ignored, oversized, or
+        # unparsable", and a policy exclusion is the first of those.
+        skipped += entry_excluded
+        for file_path in entry_files:
             file_hits = _scan_code_file_references(file_path, scan_ctx)
             if file_hits is None:
                 skipped += 1

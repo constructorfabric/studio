@@ -11,9 +11,10 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 from ..utils import decision_log
+from ..utils.codebase import resolve_entry_code_files
 from ..utils.coverage import (
     FileCoverage,
     calculate_metrics,
@@ -104,7 +105,16 @@ def _collect_codebase_files(
     system_node: object,
     project_root: Path,
     code_files_to_scan: List[Path],
-) -> None:
+) -> int:
+    """Collect this node's code files, returning how many candidates were excluded.
+
+    The count is returned rather than dropped because switching to the shared
+    policy changes the population the coverage percentage is computed over: a
+    registered root holding a vendored subtree contributes fewer files than it
+    used to. A metric whose denominator moves has to say so, or a percentage
+    change looks like the code changed.
+    """
+    excluded = 0
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-collect-codebase-files
     for cb_entry in getattr(system_node, "codebase", []):
         path_str = (
@@ -118,17 +128,20 @@ def _collect_codebase_files(
             else cb_entry.get("extensions", None)
         ) or [".py"]
         code_path = _resolve_code_path(project_root, path_str)
-        if not code_path.exists():
-            continue
-        if code_path.is_file():
-            code_files_to_scan.append(code_path)
-            continue
-        for ext in extensions:
-            code_files_to_scan.extend(code_path.rglob(f"*{ext}"))
+        # Resolved through the shared policy rather than a bare rglob, so this
+        # command and `validate` cannot disagree about which files one entry
+        # covers -- and so a registered parent root does not re-admit the
+        # vendored trees that registration itself refuses.
+        entry_files, entry_excluded = resolve_entry_code_files(
+            code_path, extensions, project_root=project_root
+        )
+        excluded += entry_excluded
+        code_files_to_scan.extend(entry_files)
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-collect-codebase-files
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-collect-codebase-files
     for child in getattr(system_node, "children", []):
-        _collect_codebase_files(child, project_root, code_files_to_scan)
+        excluded += _collect_codebase_files(child, project_root, code_files_to_scan)
+    return excluded
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-collect-codebase-files
 
 
@@ -148,24 +161,29 @@ def _validate_selected_systems(args, meta) -> tuple[set[str] | None, dict | None
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-validate-systems
 
 
-def _collect_selected_system_files(meta, project_root: Path, system_slugs: set[str] | None) -> List[Path]:
+def _collect_selected_system_files(
+    meta, project_root: Path, system_slugs: set[str] | None
+) -> Tuple[List[Path], int]:
+    """Files the selected systems register, and how many candidates were excluded."""
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
     code_files_to_scan: List[Path] = []
+    excluded = 0
 
     def visit(node: object) -> None:
+        nonlocal excluded
         if system_slugs is None:
-            _collect_codebase_files(node, project_root, code_files_to_scan)
+            excluded += _collect_codebase_files(node, project_root, code_files_to_scan)
             return
         slug = getattr(node, "slug", "")
         if slug in system_slugs:
-            _collect_codebase_files(node, project_root, code_files_to_scan)
+            excluded += _collect_codebase_files(node, project_root, code_files_to_scan)
             return
         for child in getattr(node, "children", []):
             visit(child)
 
     for system_node in meta.systems:
         visit(system_node)
-    return code_files_to_scan
+    return code_files_to_scan, excluded
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
 
 
@@ -392,11 +410,10 @@ def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict
     if system_slugs == set():
         return {}, 2
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-validate-systems
-    filtered_files = _filter_ignored_files(
-        _collect_selected_system_files(meta, project_root, system_slugs),
-        project_root,
-        meta,
+    collected_files, files_excluded = _collect_selected_system_files(
+        meta, project_root, system_slugs
     )
+    filtered_files = _filter_ignored_files(collected_files, project_root, meta)
     # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
     if not filtered_files:
         requested = _requested_thresholds(args)
@@ -408,6 +425,9 @@ def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict
     file_coverages = _scan_file_coverages(filtered_files)
     report = calculate_metrics(file_coverages)
     json_report = generate_report(report, verbose=args.verbose, project_root=project_root)
+    # The population this percentage is computed over, so a shift in it is
+    # attributable rather than looking like a change in the code.
+    json_report["summary"]["files_excluded"] = files_excluded
     status = _apply_thresholds(report, args, project_root, json_report)
     # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-covered
     if status == "PASS" and report.covered_lines > 0:
@@ -562,7 +582,9 @@ def _human_spec_coverage(data: dict) -> None:
         ui.blank()
 
     summary = data.get("summary", {})
-    ui.detail("Files", f"{summary.get('covered_files', 0)}/{summary.get('total_files', 0)} covered")
+    files_line = f"{summary.get('covered_files', 0)}/{summary.get('total_files', 0)} covered"
+    excluded = summary.get("files_excluded") or 0
+    ui.detail("Files", f"{files_line} ({excluded} excluded)" if excluded else files_line)
     ui.detail("Coverage", f"{summary.get('coverage_pct', 0):.1f}%")
     ui.detail("Granularity", f"{summary.get('granularity_score', 0):.4f}")
 

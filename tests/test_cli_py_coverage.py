@@ -1388,10 +1388,14 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
                 return set()
 
         with TemporaryDirectory() as td1:
-            with TemporaryDirectory() as td2:
+            with TemporaryDirectory() as _td2:
                 root = Path(td1)
-                outside = Path(td2)
-                code_file = outside / "x.py"
+                # Inside the project: a codebase entry resolving outside the
+                # project root is now refused by the shared scan policy, so an
+                # external path would exercise the refusal rather than the
+                # code-scan failure branch this test is about.
+                (root / "src").mkdir(parents=True, exist_ok=True)
+                code_file = root / "src" / "x.py"
                 code_file.write_text("print('x')\n", encoding="utf-8")
 
                 (root / "kits" / "x" / "artifacts" / "REQ").mkdir(parents=True, exist_ok=True)
