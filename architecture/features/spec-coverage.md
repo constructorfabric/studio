@@ -65,7 +65,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 - User runs `cfs spec-coverage` → all registered codebase files scanned, coverage report generated with per-file and summary statistics
 - User runs `cfs spec-coverage --min-coverage 80` → same as above, exit code 2 if coverage below threshold
 - User runs `cfs spec-coverage --min-granularity 0.7` → same as above, exit code 2 if granularity below threshold
-- User runs `cfs spec-coverage --min-file-granularity 0.3` → same as above, exit code 2 if any covered file granularity below threshold
+- User runs `cfs spec-coverage --min-file-granularity 0.3` → same as above, exit code 2 if any **block-traced** file's granularity is below threshold. A file whose coverage rests on a whole-file scope marker scores 0.0 by definition rather than by measurement, so it is reported under its own heading instead of judged against this floor — judging it would make any positive floor reject every re-export module and entry point, which is what made this threshold unusable as a gate
 
 **Error Scenarios**:
 - No codebase entries registered → report with `applicable: false` and a hint to configure artifacts.toml; exit code 2 only if a positive threshold was demanded
@@ -96,6 +96,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 - [x] - `p1` - Resolve paths relative to project root for human-readable output - `inst-rel-path`
 - [x] - `p1` - Route JSON report to file or terminal UI - `inst-output-report`
 - [x] - `p1` - Format uncovered ranges and render human-friendly per-file/status sections - `inst-human-report-helpers`
+- [x] - `p1` - Name the files whose coverage rests on a whole-file scope marker, largest first, with their count and total claimed lines - `inst-human-report-claims`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -248,7 +249,8 @@ The system **MUST** output a JSON report with: summary (total files, covered fil
 - [x] Granularity metric correctly penalizes files with few instructions relative to their size
 - [x] `--min-coverage N` flag causes exit code 2 when coverage is below threshold
 - [x] `--min-granularity N` flag causes exit code 2 when granularity is below threshold
-- [x] `--min-file-granularity N` flag causes exit code 2 when any covered file's granularity is below threshold
+- [x] `--min-file-granularity N` flag causes exit code 2 when any block-traced file's granularity is below threshold; files whose coverage rests on a whole-file scope marker are outside this floor and are listed under "Whole-file scope claims" instead
+- [x] Whole-file scope claims are reported with their count, total claimed lines, and paths ordered largest first, so an untraced claim is visible rather than averaged away
 - [x] `--min-file-coverage N` flag causes exit code 2 when any file's coverage is below threshold
 - [x] `--verbose` flag includes per-file marker details in report
 - [x] Report format mirrors `coverage.py` JSON structure (summary + per-file)

@@ -3,6 +3,7 @@
 import json
 import sys
 import unittest
+from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -52,6 +53,28 @@ class TestCmdSpecCoverage(unittest.TestCase):
         ctx.meta = meta
         ctx.project_root = project_root
         return ctx
+
+    def _run_over_src(self, sources: dict, args: list) -> tuple:
+        """Write *sources* into `src/`, register it, run spec-coverage with *args*.
+
+        Returns (exit_code, parsed_json). Shared so a threshold case is one
+        fixture and one assertion rather than a repeated scaffold.
+        """
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            src = root / "src"
+            src.mkdir()
+            for name, body in sources.items():
+                (src / name).write_text(body, encoding="utf-8")
+            ctx = self._make_context(root, systems=[
+                SystemNode(name="sys1", slug="sys1", kit="test",
+                           artifacts=[], children=[],
+                           codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
+            ])
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("sys.stdout", new_callable=StringIO) as mock_out:
+                    ret = cmd_spec_coverage(args)
+            return ret, json.loads(mock_out.getvalue())
 
     def test_no_context(self):
         with patch("studio.utils.context.get_context", return_value=None):
@@ -478,6 +501,67 @@ class TestFormatRanges(unittest.TestCase):
         self.assertEqual(_format_ranges([]), "")
 
 
+class TestWholeFileClaimsAreReported(unittest.TestCase):
+    """The exemption is only defensible because the exempted files are named.
+
+    Without this, deleting the claims section would leave every other test
+    passing and the visibility this change advertises would regress silently.
+    """
+
+    def _render(self, files: dict) -> str:
+        from studio.commands.spec_coverage import _show_spec_coverage_files
+        from studio.utils.ui import is_json_mode, set_json_mode
+
+        saved = is_json_mode()
+        out = StringIO()
+        try:
+            set_json_mode(False)
+            with redirect_stdout(out):
+                _show_spec_coverage_files(files)
+        finally:
+            set_json_mode(saved)
+        return out.getvalue()
+
+    def test_claims_are_named_with_counts_and_largest_first(self):
+        output = self._render({
+            "pkg/small.py": {
+                "total_lines": 10, "covered_lines": 10, "coverage_pct": 100.0,
+                "granularity": 0.0, "scope_only": True,
+            },
+            "pkg/huge.py": {
+                "total_lines": 1154, "covered_lines": 1154, "coverage_pct": 100.0,
+                "granularity": 0.0, "scope_only": True,
+            },
+            "pkg/traced.py": {
+                "total_lines": 40, "covered_lines": 40, "coverage_pct": 100.0,
+                "granularity": 0.9, "scope_only": False,
+            },
+        })
+
+        assert "Whole-file scope claims" in output
+        assert "2 files" in output, "the count is part of the claim"
+        assert "1164 lines" in output, "claimed lines must be aggregated"
+        # Scoped to the claims section: both files also appear under "Covered
+        # files" above, so asserting order across the whole output passes
+        # whichever way the section is sorted.
+        claims = output.split("Whole-file scope claims")[1]
+        assert "pkg/huge.py" in claims and "pkg/small.py" in claims
+        assert "pkg/traced.py" not in claims, "a block-traced file is not a whole-file claim"
+        assert claims.index("pkg/huge.py") < claims.index("pkg/small.py"), (
+            "largest first, so the biggest untraced claim is read first"
+        )
+
+    def test_no_claims_section_when_there_are_none(self):
+        output = self._render({
+            "pkg/traced.py": {
+                "total_lines": 40, "covered_lines": 40, "coverage_pct": 100.0,
+                "granularity": 0.9, "scope_only": False,
+            },
+        })
+
+        assert "Whole-file scope claims" not in output
+
+
 class TestMinFileGranularity(TestCmdSpecCoverage):
     """Cover min_file_granularity threshold logic."""
 
@@ -500,6 +584,72 @@ class TestMinFileGranularity(TestCmdSpecCoverage):
             parsed = json.loads(mock_out.getvalue())
             if parsed["status"] == "FAIL":
                 self.assertTrue(any("granularity" in f for f in parsed.get("threshold_failures", [])))
+
+    def test_scope_only_file_is_exempt_from_the_per_file_floor(self):
+        """A whole-file scope claim scores 0.0 by definition, not by measurement.
+
+        Reading that sentinel as a low score makes any positive floor reject
+        every re-export module and entry point, which is what made this
+        threshold unusable as a gate.
+        """
+        ret, parsed = self._run_over_src(
+            {"reexport.py": "# @cpt-scope:cpt-my-algo:p1\nfrom .a import b\n"},
+            ["--min-file-granularity", "0.5"],
+        )
+
+        self.assertEqual(ret, 0, f"exit code must agree with status: {parsed}")
+        self.assertEqual(parsed["status"], "PASS")
+        self.assertEqual(parsed.get("threshold_failures", []), [])
+
+    def test_the_exemption_holds_with_per_file_coverage_also_requested(self):
+        """The narrowed floor must not be an accident of running one flag alone."""
+        ret, parsed = self._run_over_src(
+            {"reexport.py": "# @cpt-scope:cpt-my-algo:p1\nfrom .a import b\n"},
+            ["--min-file-granularity", "0.5", "--min-file-coverage", "50"],
+        )
+
+        self.assertEqual(ret, 0, f"exit code must agree with status: {parsed}")
+        self.assertEqual(parsed["status"], "PASS")
+
+    def test_a_scope_marker_with_malformed_block_tracing_is_not_exempt(self):
+        """Broken tracing must not inherit the deliberate claim's treatment.
+
+        An unmatched `@cpt-begin` closes no pair, so counting pairs alone made
+        this file look like a whole-file claim and handed it the exemption.
+        """
+        ret, parsed = self._run_over_src(
+            {"broken.py": (
+                "# @cpt-scope:cpt-my-algo:p1\n"
+                "# @cpt-begin:cpt-my-algo:p1:inst-unclosed\n"
+                "x = 1\n"
+            )},
+            ["--min-file-granularity", "0.5"],
+        )
+
+        self.assertFalse(
+            parsed["files"]["src/broken.py"].get("scope_only", False),
+            "malformed tracing is not a whole-file claim",
+        )
+        self.assertEqual(ret, 2, f"it must be judged against the floor: {parsed}")
+        self.assertTrue([f for f in parsed.get("threshold_failures", []) if "broken.py" in f])
+
+    def test_a_block_traced_file_is_still_judged(self):
+        """The exemption must not become a way past the floor for traced files."""
+        body = "\n".join(f"x{n} = {n}" for n in range(60))
+        ret, parsed = self._run_over_src(
+            {"thin.py": (
+                "# @cpt-begin:cpt-my-algo:p1:inst-one\n"
+                f"{body}\n"
+                "# @cpt-end:cpt-my-algo:p1:inst-one\n"
+            )},
+            ["--min-file-granularity", "0.9"],
+        )
+
+        self.assertTrue(
+            [f for f in parsed.get("threshold_failures", []) if "thin.py" in f],
+            f"a block-traced file below the floor must still fail: {parsed}",
+        )
+        self.assertEqual(ret, 2)
 
     def test_min_file_coverage_with_zero_total(self):
         """File with 0 total_lines is skipped in per-file coverage check."""
