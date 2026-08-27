@@ -8,10 +8,12 @@
 
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-helpers
 import argparse
+import errno
 import json
 import logging
 import re
 import shutil
+import stat
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1876,6 +1878,258 @@ def _maybe_install_default_kit_for_init(
     return kit_results, None
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-policy
+# Extensions that mark a directory as holding source of record. Deliberately a
+# fixed list: a registry entry decides what the traceability gates scan, so it
+# should be predictable rather than clever.
+_CODEBASE_EXTENSIONS = frozenset({
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".kt", ".kts",
+    ".rb", ".cs", ".php", ".sql", ".swift", ".scala", ".c", ".h", ".cc", ".cpp", ".hpp",
+})
+
+# Skipped at the top level only. These names conventionally hold something other
+# than product code when they sit beside it, while the same name nested inside a
+# package usually is product code -- `skills/studio/scripts` in this repository.
+_CODEBASE_SKIP_TOP_LEVEL = frozenset({
+    "tests", "test", "testing", "examples", "example", "samples", "docs", "doc",
+    "scripts", "tools", "benchmarks", "bench", "fixtures", "migrations",
+})
+
+# Never source of record, at any depth.
+_CODEBASE_SKIP_ANYWHERE = frozenset({
+    "__pycache__", "node_modules", "vendor", "third_party", "dist", "build",
+    "target", "out", "venv", "site-packages", "coverage",
+})
+
+# Bounds the search, so init cannot walk a pathological tree indefinitely.
+_CODEBASE_MAX_DEPTH = 6
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-policy
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-skips
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-error-policy
+# Errors that mean "this path is not available to look at" rather than "the
+# filesystem is failing". Permission is the intended fail-open case; the rest are
+# the races that happen when a tree is edited while it is being walked.
+#
+# Anything else -- EIO, EMFILE, ESTALE -- is systemic, and registering less
+# because of it would be exactly the silent under-registration this detection
+# exists to prevent: init would report success over an incomplete registry.
+_CODEBASE_SKIPPABLE_ERRNOS = frozenset({
+    errno.EACCES, errno.EPERM, errno.ENOENT, errno.ENOTDIR, errno.ELOOP,
+})
+
+
+class _CodebaseScanFailed(Exception):
+    """A filesystem failure that must not be read as "there is no source here"."""
+
+    def __init__(self, label: str, error: OSError) -> None:
+        self.label = label
+        self.errno_name = errno.errorcode.get(error.errno or 0, str(error.errno))
+        super().__init__(f"{label}: {self.errno_name}")
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-error-policy
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-relative-label
+def _project_relative_label(path: Path, project_root: Path) -> str:
+    """A project-relative label for *path*, never an absolute one.
+
+    Both sides are resolved before comparison. A project reached through a
+    symlinked prefix -- `/var` resolving to `/private/var` on macOS is the common
+    one -- otherwise makes `relative_to` raise, and the fallback discarded the
+    directory context that made the message actionable.
+    """
+    try:
+        return path.resolve().relative_to(project_root.resolve()).as_posix()
+    except ValueError:
+        return path.name
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-relative-label
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-list-children
+def _codebase_children(directory: Path, project_root: Path) -> List[Path]:
+    """List *directory*, or return nothing if it is legitimately unavailable.
+
+    Re-checks for a symlink immediately before listing: the caller refused one
+    when it queued this directory, but the path is mutable and could have been
+    replaced in between, which would walk outside the project under a name that
+    looks local.
+    """
+    label = _project_relative_label(directory, project_root)
+    try:
+        if stat.S_ISLNK(directory.lstat().st_mode):
+            logger.warning("init: skipping %s -- replaced by a symlink while scanning", label)
+            return []
+        return sorted(directory.iterdir())
+    except OSError as exc:
+        if exc.errno not in _CODEBASE_SKIPPABLE_ERRNOS:
+            raise _CodebaseScanFailed(label, exc) from exc
+        # WARNING, not INFO: the CLI configures this logger at WARNING, so an
+        # INFO record would leave an omitted subtree invisible. It goes to the
+        # logger's stderr handler rather than `ui.warn`, which is suppressed
+        # under --json, and carries a relative label with no traceback because
+        # the log is as public as the registry.
+        logger.warning("init: skipping unreadable directory %s", label)
+        return []
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-list-children
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-file-probe
+def _source_extensions(children: List[Path], project_root: Path) -> set:
+    """The source extensions of record held directly by *children*.
+
+    The suffix is recorded in the case it has on disk. Downstream scanning globs
+    the recorded extension, and that glob is case-sensitive where the filesystem
+    is, so normalising `main.PY` to `.py` registered an entry that resolved to no
+    file at all.
+
+    `lstat` is called explicitly rather than going through `is_file()`: pathlib
+    turns a metadata error into `False`, which would make an unreadable source
+    file indistinguishable from one that is not source at all.
+    """
+    extensions = set()
+    for child in children:
+        try:
+            mode = child.lstat().st_mode
+        except OSError as exc:
+            label = _project_relative_label(child, project_root)
+            if exc.errno not in _CODEBASE_SKIPPABLE_ERRNOS:
+                raise _CodebaseScanFailed(label, exc) from exc
+            logger.warning("init: skipping unreadable file %s", label)
+            continue
+        if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+            continue
+        if child.suffix.lower() in _CODEBASE_EXTENSIONS:
+            extensions.add(child.suffix)
+    return extensions
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-file-probe
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-subtree-extensions
+def _subtree_extensions(
+    root_dir: Path,
+    depth: int,
+    project_root: Path,
+    excluded: Optional[Path],
+) -> set:
+    """Every source extension beneath *root_dir*, under the same skip policy.
+
+    A registered entry names a directory and downstream scanning walks it
+    recursively, so recording only the extensions at its top level under-claims
+    what the entry covers: `src/main.py` beside `src/web/app.ts` would register
+    `.py` alone and leave the TypeScript unscanned while the registry looked
+    complete.
+    """
+    extensions: set = set()
+    stack: List[Tuple[Path, int]] = [(root_dir, depth)]
+    while stack:
+        current, current_depth = stack.pop()
+        children = _codebase_children(current, project_root)
+        extensions |= _source_extensions(children, project_root)
+        if current_depth >= _CODEBASE_MAX_DEPTH:
+            continue
+        stack.extend(
+            (child, current_depth + 1)
+            for child in children
+            if _is_scannable_dir(child, current_depth, project_root) and child.resolve() != excluded
+        )
+    return extensions
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-subtree-extensions
+
+
+def _is_scannable_dir(child: Path, depth: int, project_root: Path) -> bool:
+    """Whether the walk should descend into *child*, found at *depth*.
+
+    The skip policy lives here on its own because it is the part most likely to
+    need editing as conventions shift, and because the top-level-only rule is
+    easy to get wrong: a `scripts/` beside the source tree is tooling, while
+    `skills/studio/scripts` inside a package is the source itself.
+    """
+    name = child.name
+    if name.startswith(".") or name in _CODEBASE_SKIP_ANYWHERE:
+        return False
+    if not depth and name in _CODEBASE_SKIP_TOP_LEVEL:
+        return False
+    # Probed explicitly rather than through `is_dir()`/`is_symlink()`: pathlib
+    # ignores only ENOENT, ENOTDIR, EBADF and ELOOP, so a permission or I/O
+    # error propagates from those predicates as a bare traceback instead of
+    # being classified.
+    try:
+        mode = child.lstat().st_mode
+    except OSError as exc:
+        label = _project_relative_label(child, project_root)
+        if exc.errno not in _CODEBASE_SKIPPABLE_ERRNOS:
+            raise _CodebaseScanFailed(label, exc) from exc
+        logger.warning("init: skipping unreadable path %s", label)
+        return False
+    return not stat.S_ISLNK(mode) and stat.S_ISDIR(mode)
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-skips
+
+
+# @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-roots
+def _detect_codebase_roots(project_root: Path, *, studio_dir: Optional[Path] = None) -> List[Dict[str, object]]:
+    """Find the shallowest directories under *project_root* that hold source files.
+
+    *studio_dir* is the Constructor Studio installation tree, excluded because it
+    is never the project's product code. The default install directory is hidden
+    and so already refused, but ``--install-dir`` accepts a visible name, and the
+    shipped kit carries `config/kits/sdlc/scripts/pr.py` -- nested far enough
+    that the top-level `scripts` rule does not apply. Registering it would point
+    every later gate at files Studio manages rather than at the project.
+
+    Every root found is returned, not just the first. A repository commonly keeps
+    more than one -- this one keeps a package and a CLI -- and a single-root rule
+    would silently drop the rest, leaving code unscanned while the registry looked
+    populated.
+
+    Only the extensions actually present are recorded, so a registry entry states
+    what it covers -- and because the entry covers its whole subtree, the whole
+    subtree is what gets stated. Paths are relative to *project_root*, so nothing
+    about the machine that ran ``init`` reaches the file.
+
+    A directory that cannot be listed for an expected reason -- permission, or a
+    tree edited while it is walked -- is skipped and reported, because that is a
+    reason to register less rather than to fail initialisation. Any other
+    filesystem error raises ``_CodebaseScanFailed``: registering a partial tree on
+    the strength of an I/O failure would report success over an incomplete
+    registry, which is the state this detection exists to prevent.
+    """
+    found: Dict[str, set] = {}
+    excluded = studio_dir.resolve() if studio_dir is not None else None
+    stack: List[Tuple[Path, int]] = [(project_root, 0)]
+    while stack:
+        directory, depth = stack.pop()
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-read-dir
+        children = _codebase_children(directory, project_root)
+        extensions = _source_extensions(children, project_root)
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-read-dir
+        # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-record-root
+        # The project root itself is never a root: one stray script beside the
+        # tree would otherwise claim the whole repository.
+        if extensions and depth > 0:
+            # The entry covers the whole subtree, so it states the whole
+            # subtree's extensions rather than only this directory's.
+            found[_project_relative_label(directory, project_root)] = _subtree_extensions(
+                directory, depth, project_root, excluded
+            )
+            continue
+        if depth >= _CODEBASE_MAX_DEPTH:
+            continue
+        stack.extend(
+            (child, depth + 1)
+            for child in children
+            if _is_scannable_dir(child, depth, project_root) and child.resolve() != excluded
+        )
+        # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-record-root
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-emit
+    return [
+        {"path": path, "extensions": sorted(found[path])}
+        for path in sorted(found)
+    ]
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-emit
+# @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-detect-codebase-roots
+
+
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-finalize-init-surfaces
 def _finalize_init_files(
     *,
@@ -1888,16 +2142,53 @@ def _finalize_init_files(
     from .kit import regenerate_gen_aggregates
 
     installed_kit_slug = next(iter(kit_results), "") if kit_results else ""
-    desired_registry = generate_default_registry(state.project_name, kit_slug=installed_kit_slug)
     registry_path = (layout.config_dir / "artifacts.toml").resolve()
     # @cpt-begin:cpt-studio-algo-core-infra-create-config:p1:inst-write-artifacts-toml
     registry_existed_before = registry_path.is_file()
     if registry_existed_before and not args.force:
+        # An existing registration is the user's, and is never rewritten.
         actions["artifacts_registry"] = "unchanged"
     else:
+        scan_failure = None
+        try:
+            detected = _detect_codebase_roots(state.project_root, studio_dir=layout.studio_dir)
+        except _CodebaseScanFailed as exc:
+            # A partial registry written on the strength of an I/O failure would
+            # be indistinguishable from a complete one, so nothing is registered
+            # and the failure is named instead.
+            detected, scan_failure = [], exc
+        desired_registry = generate_default_registry(
+            state.project_name, kit_slug=installed_kit_slug, codebase=detected
+        )
         if not args.dry_run:
             toml_utils.dump(desired_registry, registry_path, header_comment="Constructor Studio artifacts registry")
         actions["artifacts_registry"] = "updated" if registry_existed_before else "created"
+        # Say which roots were registered, or say plainly that none was found.
+        # An empty registry scans nothing, so silence here reads as success while
+        # every later gate has nothing to check.
+        # Named relative to the project root, not the cwd: an absolute path here
+        # would carry the home directory and user name into output that gets
+        # pasted into issues and logs.
+        registry_rel = _project_relative_label(registry_path, state.project_root)
+        if scan_failure is not None:
+            actions["codebase_registered"] = "scan-failed"
+            ui.warn(
+                f"Scanning for source directories failed at `{scan_failure.label}` "
+                f"({scan_failure.errno_name}), so `codebase` was left empty rather "
+                "than registered from a partial scan. Fix the filesystem error and "
+                f"re-run with --force, or add a [[systems.codebase]] entry to "
+                f"`{registry_rel}` naming your source directory."
+            )
+        elif detected:
+            actions["codebase_registered"] = ", ".join(str(entry["path"]) for entry in detected)
+        else:
+            actions["codebase_registered"] = "none"
+            ui.warn(
+                "No source directories were detected, so `codebase` is empty and "
+                "nothing will be scanned for traceability. Add a "
+                f"[[systems.codebase]] entry to `{registry_rel}` naming your "
+                "source directory."
+            )
     # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-write-artifacts-toml
     if not args.dry_run:
         actions.update(regenerate_gen_aggregates(layout.studio_dir))
@@ -2295,6 +2586,27 @@ def cmd_init(argv: List[str]) -> int:
 # Human-friendly formatters
 # ---------------------------------------------------------------------------
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-format-output
+# Values of `actions["codebase_registered"]` that report on the scan instead of
+# listing roots. Enumerated rather than compared one at a time, so adding a new
+# outcome cannot silently print it as though it were a path.
+_CODEBASE_REGISTERED_SENTINELS = frozenset({"none", "scan-failed"})
+
+
+def _registered_codebase_roots(data: Dict[str, object]) -> str:
+    """The registered roots from an init result, or "" when none was registered.
+
+    What got registered decides what every later gate scans, so the human
+    summary names it rather than leaving the user to open artifacts.toml. The
+    outcomes that registered nothing already warn on their own, and naming one
+    here would contradict the warning printed directly above it.
+    """
+    actions = data.get("actions")
+    registered = actions.get("codebase_registered") if isinstance(actions, dict) else None
+    if not registered or str(registered) in _CODEBASE_REGISTERED_SENTINELS:
+        return ""
+    return str(registered)
+
+
 def _human_init_ok(
     data: Dict[str, object],
     project_root: Path,
@@ -2323,6 +2635,10 @@ def _human_init_ok(
     ui.substep("artifacts.toml — artifact registry")
     ui.substep("AGENTS.md      — custom agent rules (edit freely)")
     ui.substep("SKILL.md       — custom skill extensions (edit freely)")
+
+    registered = _registered_codebase_roots(data)
+    if registered:
+        ui.step(f"Codebase roots registered: {registered}")
 
     if kit_results:
         ui.step("Kits installed:")

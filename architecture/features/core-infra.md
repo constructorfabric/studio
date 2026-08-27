@@ -180,7 +180,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 11. [x] - `p1` - **ELSE**: skip kit installation, display install command for later use - `inst-skip-kit-declined`
 12. [x] - `p1` - Algorithm: inject root AGENTS.md using `cpt-studio-algo-core-infra-inject-root-agents` - `inst-inject-agents`
 13. [x] - `p1` - Algorithm: create config/AGENTS.md using `cpt-studio-algo-core-infra-create-config-agents` - `inst-create-config-agents`
-14. [x] - `p1` - **RETURN** JSON: `{status, install_dir, kits_installed, agents_configured, systems}` (exit 0) - `inst-return-init-ok`
+14. [x] - `p1` - **RETURN** JSON: `{status, project_root, studio_dir, core_toml, dry_run, actions, root_system, runtime_tracking, agent_tracking, kit_tracking}`, plus `backups` when any file was replaced (exit 0) - `inst-return-init-ok`
 15. [x] - `p1` - Helper functions: copy from cache, generate READMEs for .core/.gen/config dirs, default core.toml, path prompting, slug-to-PascalCase - `inst-init-helpers`
 16. [x] - `p1` - Detect existing Studio installation by reading AGENTS.md TOML block with `cf-studio-path` variable - `inst-init-detect-existing`
 17. [x] - `p1` - Inject/update CLAUDE.md managed block for Claude agent integration - `inst-init-inject-claude`
@@ -195,6 +195,17 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - Default SDLC kit install post-processing: merge returned actions/errors and downgrade non-pass statuses to warnings for human output - `inst-default-kit-actions`
 - [x] - `p1` - Build the summarized default-kit result payload from the installed artifacts directory - `inst-summarize-default-kit`
 - [x] - `p1` - Finalize init-managed surfaces: regenerate aggregates, ensure config extension files, persist install metadata, inject managed root files, and rewrite `.gitignore` - `inst-finalize-init-surfaces`
+- [x] - `p1` - Detect every source root under the project root for the default registry's `codebase`, excluding the Constructor Studio installation tree, recording only the extensions each one holds, and warn when none is found - `inst-detect-codebase-roots`
+- [x] - `p1` - Fix the detection policy: the source extensions of record, the directory names skipped at any depth or at the top level only, and the depth bound - `inst-detect-codebase-policy`
+- [x] - `p1` - Classify filesystem errors during detection: permission and walk-race errors register less and are reported, any other error refuses to register a partial tree - `inst-detect-codebase-error-policy`
+- [x] - `p1` - Label a path relative to the project root for output, resolving both sides so a symlinked path prefix does not discard the directory context - `inst-detect-codebase-relative-label`
+- [x] - `p1` - List a candidate directory, re-checking for a symlink immediately before listing, and classify any listing failure - `inst-detect-codebase-list-children`
+- [x] - `p1` - Probe each listed child's metadata explicitly, refusing symlinks and non-regular files, and record the suffix in the case it has on disk - `inst-detect-codebase-file-probe`
+- [x] - `p1` - Collect every source extension beneath an accepted root under the same skip and depth policy, because the entry covers the whole subtree - `inst-detect-codebase-subtree-extensions`
+- [x] - `p1` - Decide whether the walk descends into a given child: never a symlink or non-directory, never hidden or skipped-anywhere, and non-product names refused at the top level only - `inst-detect-codebase-skips`
+- [x] - `p1` - Read one candidate directory during the walk: list its children and collect the source extensions they hold - `inst-detect-codebase-read-dir`
+- [x] - `p1` - Record the shallowest directory holding source as a root, never the project root itself, and descend no further than the depth bound - `inst-detect-codebase-record-root`
+- [x] - `p1` - Emit the detected roots in a deterministic order with each entry's extensions sorted - `inst-detect-codebase-emit`
 - [x] - `p1` - Build the final init result payload with paths, tracking policy, actions, and optional backups - `inst-build-init-result`
 - [x] - `p1` - Emit the structured init error result with project/install paths, dry-run state, errors, and optional backups - `inst-init-error-result`
 
