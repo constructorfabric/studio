@@ -111,6 +111,12 @@ TOC_ANCHOR_BROKEN = "toc-anchor-broken"
 TOC_HEADING_NOT_IN_TOC = "toc-heading-not-in-toc"
 TOC_STALE = "toc-stale"
 
+# JIT-retrieval readiness signals (warning-only) — see constructorfabric/studio#104
+TOC_HEADING_DUPLICATE = "toc-heading-duplicate"
+TOC_HEADING_DEPTH_JUMP = "toc-heading-depth-jump"
+TOC_SECTION_TOO_LONG = "toc-section-too-long"
+TOC_MISSING_DESCRIPTION = "toc-missing-description"
+
 # ---------------------------------------------------------------------------
 # File errors
 # ---------------------------------------------------------------------------

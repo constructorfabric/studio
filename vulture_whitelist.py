@@ -12,6 +12,7 @@ from studio.commands.agents import _AgentEntry, _SkillEntry, _MergedComponents, 
 from studio.commands.kit import _read_conf_version
 from studio.commands.resolve_vars import assemble_component
 from studio.utils.context import LoadedKit
+from studio.utils.doc_index import annotate_section_summary
 from studio.utils.eval_harness import ReferencePresenceScorer, Scenario, ScorerKind, run_suite
 from studio.utils.eval_judge import Gold
 from studio.utils.manifest import ManifestLayerState
@@ -38,6 +39,12 @@ ReferencePresenceScorer  # minimal seam example + gate-contract test fixture (se
 run_suite  # public disk-loading convenience wrapper; cmd_eval uses run_suite_over, tests use this
 _ = Gold.rules_assessed  # part of the gold format; consumed by per-rule judge scoring (future)
 INCLUDE_ERROR = ManifestLayerState.INCLUDE_ERROR  # valid enum value for future use
+
+# doc-index summary annotation: written by an LLM caller during a one-time
+# enrichment pass over a cached index's sections; not yet reached from
+# production paths. Exercised by tests. See
+# skills/studio/scripts/studio/utils/doc_index.py.
+annotate_section_summary  # noqa: B018
 
 # cfs map module — symbols retained for layout/configuration completeness.
 from studio.commands.map.layout import MAX_ROW_W  # noqa: E402

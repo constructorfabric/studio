@@ -170,6 +170,43 @@ def parse_headings(
     return headings
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings-lines
+def parse_headings_with_lines(
+    lines: List[str],
+    *,
+    min_level: int = 1,
+    max_level: int = 6,
+) -> List[Tuple[int, str, int]]:
+    """Extract ``(level, text, line_number)`` triples from markdown lines.
+
+    Fence-aware like :func:`parse_headings`. ``line_number`` is 1-based.
+    Kept as a separate function (rather than adding a flag to
+    ``parse_headings``) so existing 2-tuple call sites are unaffected.
+    """
+    headings: List[Tuple[int, str, int]] = []
+    fence: Optional[Tuple[str, int]] = None
+
+    for idx, line in enumerate(lines):
+        new_fence = _fence_update(line, fence)
+        if new_fence != fence:
+            fence = new_fence
+            continue
+        if fence is not None:
+            continue
+
+        m = _HEADING_RE.match(line)
+        if not m:
+            continue
+
+        level = len(m.group(1))
+        if level < min_level or level > max_level:
+            continue
+
+        headings.append((level, m.group(2).strip(), idx + 1))
+
+    return headings
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings-lines
+
 # ---------------------------------------------------------------------------
 # TOC building
 # ---------------------------------------------------------------------------
@@ -687,6 +724,167 @@ def _record_missing_toc_error(
     ))
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-jit-readiness
+# ---------------------------------------------------------------------------
+# JIT-retrieval readiness — structural signals beyond TOC correctness
+# ---------------------------------------------------------------------------
+# These four checks are additive warnings only (never errors): they flag
+# structural properties that make a document harder to navigate via
+# heading-based just-in-time retrieval, without invalidating documents that
+# are otherwise fine. See constructorfabric/studio#104.
+
+DEFAULT_MAX_SECTION_LINES = 300
+# Below this size, a missing description is not worth flagging — the whole
+# point of a description is to let a caller pick the right *file* before
+# reading it, among many; a trivial file doesn't need that.
+MIN_LINES_FOR_DESCRIPTION_CHECK = 100
+
+
+def _check_duplicate_heading_titles(
+    headings_with_lines: List[Tuple[int, str, int]],
+    path: Path,
+) -> List[Dict[str, Any]]:
+    """Warn when the same heading text appears more than once.
+
+    Duplicate titles are tolerated by anchor-suffixing elsewhere (see
+    ``_unique_slug``) and are NOT errors, but they make it impossible to
+    unambiguously address a section by its heading text alone.
+    """
+    from . import error_codes as EC
+    from .constraints import error
+
+    seen: Dict[str, int] = {}
+    warnings: List[Dict[str, Any]] = []
+    for _level, text, line in headings_with_lines:
+        if text in seen:
+            warnings.append(error(
+                "toc",
+                f"Heading `{text}` duplicates an earlier heading (first seen at line {seen[text]})",
+                code=EC.TOC_HEADING_DUPLICATE,
+                path=path,
+                line=line,
+                heading_text=text,
+                first_seen_line=seen[text],
+            ))
+        else:
+            seen[text] = line
+    return warnings
+
+
+def _check_heading_depth_jumps(
+    headings_with_lines: List[Tuple[int, str, int]],
+    path: Path,
+) -> List[Dict[str, Any]]:
+    """Warn when heading depth increases by more than one level at once.
+
+    E.g. an H2 followed directly by an H4 skips H3 — this breaks the
+    "read from this heading to the next heading at the same or higher
+    level" boundary computation JIT retrieval relies on.
+    """
+    from . import error_codes as EC
+    from .constraints import error
+
+    warnings: List[Dict[str, Any]] = []
+    prev_level: Optional[int] = None
+    for level, text, line in headings_with_lines:
+        if prev_level is not None and level > prev_level + 1:
+            warnings.append(error(
+                "toc",
+                f"Heading `{text}` jumps from H{prev_level} to H{level}, skipping intermediate level(s)",
+                code=EC.TOC_HEADING_DEPTH_JUMP,
+                path=path,
+                line=line,
+                heading_text=text,
+                from_level=prev_level,
+                to_level=level,
+            ))
+        prev_level = level
+    return warnings
+
+
+def _check_section_lengths(
+    headings_with_lines: List[Tuple[int, str, int]],
+    total_lines: int,
+    path: Path,
+    max_section_lines: int,
+) -> List[Dict[str, Any]]:
+    """Warn when a section's body (up to the next heading, any level) is too long.
+
+    An oversized section with no sub-headings defeats heading-based JIT
+    retrieval: reading "one section" still means reading the whole thing.
+    """
+    from . import error_codes as EC
+    from .constraints import error
+
+    warnings: List[Dict[str, Any]] = []
+    for i, (_level, text, line) in enumerate(headings_with_lines):
+        next_line = (
+            headings_with_lines[i + 1][2]
+            if i + 1 < len(headings_with_lines)
+            else total_lines + 1
+        )
+        section_length = next_line - line
+        if section_length > max_section_lines:
+            warnings.append(error(
+                "toc",
+                f"Section `{text}` is {section_length} lines long (max recommended: {max_section_lines})",
+                code=EC.TOC_SECTION_TOO_LONG,
+                path=path,
+                line=line,
+                heading_text=text,
+                section_length=section_length,
+                max_section_lines=max_section_lines,
+            ))
+    return warnings
+
+
+_DESCRIPTION_FIELD_RE = re.compile(r"^description\s*:\s*\S")
+
+
+def _frontmatter_has_description(lines: List[str], frontmatter_end: int) -> bool:
+    """Check whether a YAML frontmatter block declares a non-empty ``description``.
+
+    ``frontmatter_end`` is the index returned by :func:`_find_frontmatter_end`
+    (one past the closing ``---``); the body being scanned is
+    ``lines[1:frontmatter_end - 1]``, excluding both delimiter lines.
+    """
+    return any(
+        _DESCRIPTION_FIELD_RE.match(line.strip())
+        for line in lines[1:frontmatter_end - 1]
+    )
+
+
+def _check_missing_description(
+    lines: List[str],
+    path: Path,
+) -> List[Dict[str, Any]]:
+    """Warn when a document has no frontmatter block with a real description.
+
+    A short description lets a caller pick the right *document* before
+    reading any of its headings — the same principle as heading
+    descriptiveness, one level up. Frontmatter that exists but carries no
+    ``description`` field (e.g. only a ``title``) does not satisfy this —
+    an empty promise is the same as no promise. Only checked above
+    ``MIN_LINES_FOR_DESCRIPTION_CHECK`` lines — a trivial file doesn't need
+    a description, and flagging every small file drowns the signal.
+    """
+    from . import error_codes as EC
+    from .constraints import error
+
+    if len(lines) < MIN_LINES_FOR_DESCRIPTION_CHECK:
+        return []
+    frontmatter_end = _find_frontmatter_end(lines)
+    if frontmatter_end > 0 and _frontmatter_has_description(lines, frontmatter_end):
+        return []
+    return [error(
+        "toc",
+        "Document has no frontmatter/description block at the top",
+        code=EC.TOC_MISSING_DESCRIPTION,
+        path=path,
+        line=1,
+    )]
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-jit-readiness
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-compare
 def _validate_toc_entries(
     toc_entries: List[Tuple[str, str, int]],
@@ -764,12 +962,38 @@ def _append_stale_toc_warning(
         ))
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-jit-readiness-collect
+def _collect_jit_readiness_warnings(
+    lines: List[str],
+    path: Path,
+    max_section_lines: int,
+) -> List[Dict[str, Any]]:
+    """Gather all four JIT-retrieval readiness warnings for a document.
+
+    Always parses *every* heading level, independent of whatever
+    ``max_heading_level`` the caller configured for TOC-completeness
+    checking above — these signals are about the document's real structure
+    (would a duplicate/depth-jump/oversized-section problem trip up
+    heading-based retrieval), not about which levels belong in a
+    human-authored TOC. Filtering by the TOC's level cap would hide real H4-H6
+    issues under a shallow default (e.g. the CLI's own ``--max-level 3``).
+    """
+    warnings: List[Dict[str, Any]] = []
+    warnings.extend(_check_missing_description(lines, path))
+    all_headings = parse_headings_with_lines(lines)
+    warnings.extend(_check_duplicate_heading_titles(all_headings, path))
+    warnings.extend(_check_heading_depth_jumps(all_headings, path))
+    warnings.extend(_check_section_lengths(all_headings, len(lines), path, max_section_lines))
+    return warnings
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-jit-readiness-collect
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate
 def validate_toc(
     content: str,
     *,
     artifact_path: Optional[Path] = None,
     max_heading_level: int = 6,
+    max_section_lines: int = DEFAULT_MAX_SECTION_LINES,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Validate the Table of Contents in a markdown document.
 
@@ -784,6 +1008,11 @@ def validate_toc(
     4. **Freshness** — if the TOC were regenerated, it would match the
        current content (catches reordering / renamed headings).
 
+    Plus four additive, warning-only JIT-retrieval readiness signals that
+    run regardless of TOC presence/errors above (see constructorfabric/studio#104):
+    duplicate heading titles, heading depth jumps, oversized sections, and a
+    missing top-of-file description/frontmatter block.
+
     Returns ``{"errors": [...], "warnings": [...]}`` in the same format
     as ``validate_artifact_file``.
     """
@@ -796,8 +1025,12 @@ def validate_toc(
         max_heading_level,
     )
 
+    # JIT-retrieval readiness signals (warning-only, run regardless of
+    # TOC presence below — independent of the TOC-filtered `headings`).
+    warnings.extend(_collect_jit_readiness_warnings(lines, path, max_section_lines))
+
     if not headings:
-        # No headings → nothing to validate
+        # No headings → nothing further to validate
         return {"errors": errors, "warnings": warnings}
     # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate-init
 

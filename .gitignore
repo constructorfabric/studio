@@ -569,6 +569,10 @@ coverage.xml
 **/.cache/decisions.jsonl.1
 **/.cache/decisions.jsonl.lock
 
+# doc-index cache (doc_index.py) — per-project structural index for JIT
+# retrieval, read-once-per-file. Rebuilds automatically on content change.
+**/.cache/doc-index/
+
 # Superpowers brainstorming/planning specs (local-only)
 docs/superpowers/
 

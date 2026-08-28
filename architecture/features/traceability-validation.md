@@ -21,6 +21,7 @@
   - [List ID Kinds](#list-id-kinds)
   - [Validate TOC](#validate-toc)
   - [TOC Utilities](#toc-utilities)
+  - [Document Index](#document-index)
   - [Markdown Parsing Utilities](#markdown-parsing-utilities)
   - [Fixing Prompt Enrichment](#fixing-prompt-enrichment)
   - [Headings Contract Validation](#headings-contract-validation)
@@ -416,6 +417,9 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 4. [x] - `p1` - Insert/update TOC using heading-based insertion (`## Table of Contents`) for kit file generator - `inst-toc-util-insert-heading`
 5. [x] - `p1` - Process file: strip manual TOC, insert marker-based TOC, write if changed - `inst-toc-util-process-file`
 6. [x] - `p1` - Validate TOC: check existence, anchor validity, completeness, staleness - `inst-toc-util-validate`
+7. [x] - `p1` - Parse headings with line numbers, fence-aware (shared by doc-index and the JIT-retrieval readiness checks, which need section boundaries the plain heading list doesn't carry) - `inst-toc-util-parse-headings-lines`
+8. [x] - `p1` - Collect JIT-retrieval readiness warnings for a document: gathers all four signals below over *every* heading level, independent of whatever level cap the caller configured for TOC-completeness checking - `inst-toc-jit-readiness-collect`
+9. [x] - `p1` - Compute the four JIT-retrieval readiness signals -- duplicate heading titles, heading depth jumps, oversized sections (`--max-section-lines`), and a missing top-of-file description/frontmatter block -- all warning-only, never errors (see constructorfabric/studio#104) - `inst-toc-jit-readiness`
 
 **Supporting**:
 - [x] - `p1` - Imports, constants, fence tracking, GitHub anchor slug generation - `inst-toc-util-datamodel`
@@ -436,6 +440,32 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - Heading-based TOC replace branch: overwrite content under existing `## Table of Contents` heading - `inst-toc-util-insert-heading-replace`
 - [x] - `p1` - Heading-based TOC new-insert branch: inject `## Table of Contents` before first heading when absent - `inst-toc-util-insert-heading-new`
 - [x] - `p1` - TOC validate init: build heading list and expected TOC string before comparison checks - `inst-toc-util-validate-init`
+
+### Document Index
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-doc-index`
+
+**Input**: Markdown file path
+
+**Output**: A structural index (headings, section line ranges, per-section summary slots) cached per file, keyed by a stat-based fingerprint
+
+A cached, read-once-per-file structural index for Markdown JIT retrieval (see
+constructorfabric/studio#104): parsing a file's headings/section boundaries
+happens once, not once per query, until the file's content actually changes.
+The cache-validity fingerprint is deliberately metadata-only (`mtime` + file
+size via `Path.stat()`), never a content hash â€” the point of the cache is to
+avoid reading the file at all on a hit, and a content hash would defeat that
+by requiring the read it's meant to save.
+
+1. [x] - `p1` - Build a fresh structural index: parse headings + line ranges from current content, compute the stat-based fingerprint - `inst-doc-index-build`
+2. [x] - `p1` - Load a cached index for a file, validated against current stat metadata (no content read on a hit); returns `None` if missing, stale, or corrupt - `inst-doc-index-load`
+3. [x] - `p1` - Persist an index to its cache location; no-ops silently outside a Studio-adapted project - `inst-doc-index-save`
+4. [x] - `p1` - Return the cached index or build-and-cache a fresh one; reports cache hit/miss for benchmarking - `inst-doc-index-get-or-build`
+5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, for a future per-section-summary caller - `inst-doc-index-annotate`
+
+**Supporting**:
+- [x] - `p1` - Stat-based cache-validity fingerprint (`mtime_ns` + size); resolved from the file's own path, never a content hash - `inst-doc-index-etag`
+- [x] - `p1` - Resolve the cache file location within the Studio directory owning the indexed file, resolved from the file's own path (not the process's working directory) - `inst-doc-index-cache-path`
 
 ### Markdown Parsing Utilities
 

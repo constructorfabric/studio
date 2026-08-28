@@ -708,6 +708,255 @@ class TestValidateToc:
 
 
 # ---------------------------------------------------------------------------
+# JIT-retrieval readiness signals (constructorfabric/studio#104)
+# ---------------------------------------------------------------------------
+
+class TestJitRetrievalReadiness:
+    def test_duplicate_heading_titles_warned(self):
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [Intro](#intro)\n"
+            "2. [Intro](#intro-1)\n\n"
+            "---\n\n"
+            "## Intro\n\n"
+            "## Intro\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        assert result["errors"] == []
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-heading-duplicate" in codes
+        dup = [w for w in result["warnings"] if w["code"] == "toc-heading-duplicate"][0]
+        assert dup["heading_text"] == "Intro"
+        assert dup["first_seen_line"] == 10
+
+    def test_no_duplicate_warning_for_unique_headings(self):
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n"
+            "2. [B](#b)\n\n"
+            "---\n\n"
+            "## A\n\n"
+            "## B\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-heading-duplicate" not in codes
+
+    def test_depth_jump_warned(self):
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            "## A\n\n"
+            "#### Skipped H3\n"
+        )
+        result = validate_toc(content, max_heading_level=4)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-heading-depth-jump" in codes
+        jump = [w for w in result["warnings"] if w["code"] == "toc-heading-depth-jump"][0]
+        assert jump["from_level"] == 2
+        assert jump["to_level"] == 4
+
+    def test_no_depth_jump_warning_for_consecutive_levels(self):
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            "## A\n\n"
+            "### A.1\n"
+        )
+        result = validate_toc(content, max_heading_level=3)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-heading-depth-jump" not in codes
+
+    def test_shallower_heading_not_a_depth_jump(self):
+        # Going H3 -> H1 (shallower) must never be flagged; only jumps deeper
+        # by more than one level are a problem.
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            "## A\n\n"
+            "### A.1\n\n"
+            "# Back to top level\n"
+        )
+        result = validate_toc(content, max_heading_level=3)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-heading-depth-jump" not in codes
+
+    def test_oversized_section_warned(self):
+        body = "\n".join(f"line {i}" for i in range(400))
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n"
+            "2. [B](#b)\n\n"
+            "---\n\n"
+            "## A\n\n"
+            f"{body}\n\n"
+            "## B\n"
+        )
+        result = validate_toc(content, max_heading_level=2, max_section_lines=300)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-section-too-long" in codes
+        long_section = [w for w in result["warnings"] if w["code"] == "toc-section-too-long"][0]
+        assert long_section["heading_text"] == "A"
+        assert long_section["section_length"] > 300
+
+    def test_section_within_limit_not_warned(self):
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            "## A\n\n"
+            "Short content.\n"
+        )
+        result = validate_toc(content, max_heading_level=2, max_section_lines=300)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-section-too-long" not in codes
+
+    def test_last_section_length_measured_to_end_of_file(self):
+        body = "\n".join(f"line {i}" for i in range(400))
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{body}\n"
+        )
+        result = validate_toc(content, max_heading_level=2, max_section_lines=300)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-section-too-long" in codes
+
+    def test_missing_description_warned_above_size_threshold(self):
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        assert len(content.split("\n")) >= 100
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    def test_missing_description_not_warned_below_size_threshold(self):
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            "## A\n\nShort.\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" not in codes
+
+    def test_frontmatter_present_suppresses_missing_description(self):
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: A test document.\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" not in codes
+
+    def test_frontmatter_without_description_field_still_warns(self):
+        """CodeRabbit PR #108: frontmatter existing is not the same as a
+        description existing -- a block with only unrelated fields (e.g.
+        title) must still warn, not be silently accepted as satisfying the
+        check its own name promises."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "title: A test document.\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    def test_jit_readiness_warnings_are_never_errors(self):
+        # All four signals are additive warnings; they must never appear
+        # in `errors`, regardless of how badly a document scores. (This
+        # fixture also trips an unrelated, pre-existing TOC-completeness
+        # error since "Skipped H2/H3" isn't listed in the TOC — that error
+        # is expected and irrelevant to what's being asserted here.)
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [Intro](#intro)\n"
+            "2. [Intro](#intro-1)\n\n"
+            "---\n\n"
+            "## Intro\n\n"
+            f"{filler}\n\n"
+            "#### Skipped H2/H3\n\n"
+            "## Intro\n"
+        )
+        result = validate_toc(content, max_heading_level=4)
+        jit_codes = {
+            "toc-heading-duplicate",
+            "toc-heading-depth-jump",
+            "toc-section-too-long",
+            "toc-missing-description",
+        }
+        error_codes = {e["code"] for e in result["errors"]}
+        assert not (error_codes & jit_codes), f"JIT-readiness code leaked into errors: {error_codes}"
+        # This fixture triggers duplicate + depth-jump + missing-description,
+        # but not section-too-long (its filler is under the 300-line default).
+        warning_codes = {w["code"] for w in result["warnings"]}
+        assert {"toc-heading-duplicate", "toc-heading-depth-jump", "toc-missing-description"}.issubset(
+            warning_codes
+        )
+
+    def test_readiness_signals_see_headings_deeper_than_max_heading_level(self):
+        """CodeRabbit PR #108: readiness checks must see *every* heading
+        level, independent of max_heading_level (the CLI's own default is
+        3). A duplicate/depth-jump/oversized-section problem below that
+        level must still be caught -- filtering by the TOC's level cap here
+        would silently hide real structural problems in H4-H6 content, as
+        it did against a real PDF-converted document during development."""
+        body = "\n".join(f"line {i}" for i in range(400))
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            "## A\n\n"
+            "#### Deep\n\n"
+            f"{body}\n\n"
+            "#### Deep\n"
+        )
+        # max_heading_level=2: TOC completeness only cares about H1/H2, but
+        # the two duplicate/oversized H4 "Deep" headings must still surface.
+        result = validate_toc(content, max_heading_level=2, max_section_lines=300)
+        warning_codes = {w["code"] for w in result["warnings"]}
+        assert "toc-heading-duplicate" in warning_codes
+        assert "toc-section-too-long" in warning_codes
+
+
+# ---------------------------------------------------------------------------
 # cmd_validate_toc (integration)
 # ---------------------------------------------------------------------------
 
