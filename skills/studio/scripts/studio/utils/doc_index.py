@@ -24,8 +24,9 @@ import json
 import logging
 import os
 import time
+from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .toc import parse_headings_with_lines
 
@@ -95,6 +96,83 @@ def _index_cache_path(path: Path) -> Optional[Path]:
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cache-path
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-infer-level
+def infer_section_level(headings_with_lines: List[Tuple[int, str, int]]) -> Optional[int]:
+    """Infer which heading level represents one retrievable section.
+
+    PDF-to-Markdown conversion assigns heading levels by font-size/style
+    heuristics, not semantic depth -- a document's real top-level chapters
+    can land on any level. A real document converted during this feature's
+    own development put all 8 of its actual chapters on H5, while a single
+    stray H3 subsection appeared once in the middle; a fixed-level
+    assumption (e.g. "H1-H3 is the chapter level") silently turned the back
+    half of that real document into one fake 6,601-line "section" bounded
+    by that one stray heading (see constructorfabric/studio#104).
+
+    Heuristic: a document's real recurring structure shows up as the
+    heading level used *most often* -- real chapters repeat throughout a
+    document precisely because they're structure, not noise. A level used
+    only once is excluded as a candidate outright: a single occurrence
+    can't be "the" recurring section boundary by definition, and treating
+    it as one produces exactly the degenerate failure above. Ties (and the
+    all-singletons fallback) prefer the shallowest level, on the
+    conservative assumption that a coarser grouping beats fragmenting a
+    document into many tiny sections.
+
+    Returns ``None`` for a headingless document.
+    """
+    if not headings_with_lines:
+        return None
+    counts = Counter(level for level, _text, _line in headings_with_lines)
+    recurring = {level: count for level, count in counts.items() if count >= 2}
+    if not recurring:
+        return min(counts)
+    max_count = max(recurring.values())
+    return min(level for level, count in recurring.items() if count == max_count)
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-infer-level
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-retrieval-sections
+def _build_retrieval_sections(
+    headings_with_lines: List[Tuple[int, str, int]],
+    lines: List[str],
+    section_level: Optional[int],
+) -> List[Dict[str, Any]]:
+    """Group headings at exactly ``section_level`` into retrieval sections.
+
+    Deliberately an *exact* level match, not "level <= section_level": the
+    same unreliable level-assignment this whole mechanism exists to work
+    around means a stray heading numerically shallower than the real
+    chapter level (like the H3 in the docstring above, sitting inside what
+    is structurally an H5 chapter) is not a trustworthy higher-level
+    boundary -- it's noise. Content under an off-level heading stays inside
+    whichever ``section_level`` section it falls under, rather than
+    splitting a real section apart.
+
+    Each section's ``hash`` is a SHA-256 of its own text slice -- the
+    per-section granularity :func:`diff_stale_sections` needs to tell "this
+    one section changed" from "the whole file changed", which a whole-file
+    fingerprint structurally cannot do.
+    """
+    if section_level is None:
+        return []
+    line_count = len(lines)
+    marks = [(text, line_start) for level, text, line_start in headings_with_lines if level == section_level]
+    sections: List[Dict[str, Any]] = []
+    for i, (text, line_start) in enumerate(marks):
+        line_end = marks[i + 1][1] - 1 if i + 1 < len(marks) else line_count
+        section_text = "\n".join(lines[line_start - 1:line_end])
+        sections.append({
+            "heading": text,
+            "line_start": line_start,
+            "line_end": line_end,
+            "hash": hashlib.sha256(section_text.encode("utf-8")).hexdigest(),
+            "summary": None,
+        })
+    return sections
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-retrieval-sections
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-build
 def build_doc_index(path: Path) -> Dict[str, Any]:
     """Build a fresh structural index for a Markdown file.
@@ -102,6 +180,13 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
     Purely deterministic -- headings, section line ranges, and an etag.
     Contains no LLM-generated content; per-section ``summary`` fields start
     as ``None`` and are filled in later via :func:`annotate_section_summary`.
+
+    ``sections`` lists *every* heading, any level (unchanged from before --
+    still what :func:`annotate_section_summary` matches against by
+    ``line_start``). ``retrieval_sections`` is the coarser, inferred
+    "one chunk per real chapter" grouping a future TF-IDF/cascade/OKF
+    caller should read against instead -- see :func:`infer_section_level`
+    for why a fixed heading level can't be assumed.
     """
     canonical_path = path.resolve()
     # Fingerprint before read: if a write lands between the two, the stored
@@ -126,6 +211,8 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
             "summary": None,
         })
 
+    section_level = infer_section_level(headings)
+
     return {
         "schema_version": _SCHEMA_VERSION,
         "path": str(canonical_path),
@@ -133,8 +220,26 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "total_lines": line_count,
         "sections": sections,
+        "section_level": section_level,
+        "retrieval_sections": _build_retrieval_sections(headings, lines, section_level),
     }
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-build
+
+
+def _read_cache_file(cache_path: Path) -> Optional[Dict[str, Any]]:
+    """Read and parse a cache file, or ``None`` if missing/corrupt.
+
+    No staleness check -- just "can this be read as JSON at all". Shared by
+    :func:`load_doc_index` (which layers the etag check on top) and
+    :func:`diff_stale_sections` (which deliberately reads a cache the
+    whole-file etag already considers stale, to compare it section by
+    section instead of discarding it outright).
+    """
+    try:
+        return json.loads(cache_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.debug("doc-index cache unreadable at %s: %s", cache_path, exc)
+        return None
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load
@@ -167,10 +272,8 @@ def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
     if cache_path is None or not cache_path.is_file():
         return None
 
-    try:
-        cached = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("doc-index cache unreadable for %s: %s", path, exc)
+    cached = _read_cache_file(cache_path)
+    if cached is None:
         return None
 
     canonical_path = path.resolve()
@@ -228,6 +331,70 @@ def get_or_build_doc_index(path: Path, *, force_rebuild: bool = False) -> Dict[s
     fresh["cache_hit"] = False
     return fresh
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-or-build
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-diff-stale
+def diff_stale_sections(path: Path) -> Optional[Dict[str, Any]]:
+    """Compare the current file against its last cached build at *section*
+    granularity, not just "is the whole file's cache stale".
+
+    This is what makes a real partial rebuild possible: :func:`load_doc_index`
+    answers "did anything change" (whole-file, via the etag); this answers
+    "which retrieval sections actually changed", so a caller doing expensive
+    per-section work (e.g. an LLM re-summarizing one section) can skip the
+    ones that didn't.
+
+    Returns ``None`` when there's nothing to diff against -- never built, no
+    Studio directory, or the cached build predates ``retrieval_sections``
+    (an older index format) -- callers should treat that as "everything is
+    new" and do a full build instead.
+
+    Otherwise returns ``{"structural_change": bool, "unchanged": [...],
+    "changed": [...]}`` (heading-text lists, in document order). Sections
+    are matched by *position*, not heading text: duplicate heading titles
+    are real (see the ``toc-heading-duplicate`` check) and can't be told
+    apart by name, and a document that gained or lost a retrieval-level
+    heading shifts every position after it anyway. When the section
+    *count* itself differs, ``structural_change`` is ``True`` and
+    ``changed``/``unchanged`` aren't populated -- a position-based diff
+    across a changed count can't be safely narrowed to "which ones
+    changed" without guessing, so the caller should fall back to a full
+    rebuild rather than have this function guess for it.
+    """
+    cache_path = _index_cache_path(path)
+    if cache_path is None or not cache_path.is_file():
+        return None
+
+    cached = _read_cache_file(cache_path)
+    if cached is None or "retrieval_sections" not in cached:
+        return None
+
+    canonical_path = path.resolve()
+    try:
+        content = canonical_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.debug("doc-index section diff failed for %s: %s", path, exc)
+        return None
+
+    lines = content.split("\n")
+    headings = parse_headings_with_lines(lines)
+    section_level = infer_section_level(headings)
+    fresh_sections = _build_retrieval_sections(headings, lines, section_level)
+
+    old_sections = cached["retrieval_sections"]
+    if len(old_sections) != len(fresh_sections):
+        return {
+            "structural_change": True,
+            "unchanged": [],
+            "changed": [s["heading"] for s in fresh_sections],
+        }
+
+    unchanged: List[str] = []
+    changed: List[str] = []
+    for old, new in zip(old_sections, fresh_sections):
+        (unchanged if old["hash"] == new["hash"] else changed).append(new["heading"])
+    return {"structural_change": False, "unchanged": unchanged, "changed": changed}
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-diff-stale
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate

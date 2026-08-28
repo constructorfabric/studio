@@ -447,7 +447,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 **Input**: Markdown file path
 
-**Output**: `cfs doc-index`'s JSON is `{file, cache_hit, total_lines, section_count, sections}`, each `sections[]` entry `{level, heading, line_start, line_end, summary}`. The underlying index dict additionally carries `schema_version`, `path`, and `etag`.
+**Output**: `cfs doc-index`'s JSON is `{file, cache_hit, total_lines, section_count, sections, section_level, retrieval_section_count, retrieval_sections}` -- every heading's own line range in `sections[]` (`{level, heading, line_start, line_end, summary}`), plus a coarser "one chunk per real section" grouping in `retrieval_sections[]` at an inferred heading level, each with a content hash and a summary slot. The underlying cached index dict additionally carries `schema_version`, `path`, and `etag`.
 
 A cached, read-once-per-file structural index for Markdown JIT retrieval (see
 constructorfabric/studio#104): parsing a file's headings/section boundaries
@@ -463,6 +463,9 @@ by requiring the read it's meant to save.
 3. [x] - `p1` - Persist an index to its cache location atomically (temp file + `os.replace`, so a concurrent reader never observes a torn write); no-ops silently outside a Studio-adapted project - `inst-doc-index-save`
 4. [x] - `p1` - Return the cached index or build-and-cache a fresh one; reports cache hit/miss for benchmarking - `inst-doc-index-get-or-build`
 5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, for a future per-section-summary caller - `inst-doc-index-annotate`
+6. [x] - `p1` - Infer which heading level represents one retrievable section: the most-recurring level wins over a level that appears only once (however shallow), since PDF-conversion heading levels don't reliably encode true nesting depth â€” a fixed level assumption silently produces a degenerate mega-section on such documents - `inst-doc-index-infer-level`
+7. [x] - `p1` - Group headings at exactly the inferred level into retrieval sections (off-level headings stay inside whichever section they fall under, never split one apart); hash each section's own text for section-granularity staleness detection - `inst-doc-index-retrieval-sections`
+8. [x] - `p1` - Diff the current file against its last cached build at section granularity: which retrieval sections are unchanged vs. changed, or whether the section count itself changed (a structural change, matched by position not heading text, since duplicate titles are real) - `inst-doc-index-diff-stale`
 
 **Supporting**:
 - [x] - `p1` - Stat-based cache-validity fingerprint (`mtime_ns` + size); resolved from the file's own path, never a content hash - `inst-doc-index-etag`

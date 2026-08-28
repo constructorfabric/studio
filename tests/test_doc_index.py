@@ -15,10 +15,13 @@ from studio.commands.doc_index import cmd_doc_index
 from studio.utils.doc_index import (
     annotate_section_summary,
     build_doc_index,
+    diff_stale_sections,
     get_or_build_doc_index,
+    infer_section_level,
     load_doc_index,
     save_doc_index,
 )
+from studio.utils.toc import parse_headings_with_lines
 
 _SAMPLE = (
     "# Title\n\n"
@@ -102,6 +105,116 @@ class TestBuildDocIndex:
         f = _write(tmp_path, content)
         index = build_doc_index(f)
         assert [s["heading"] for s in index["sections"]] == ["Title", "Real", "Also Real"]
+
+    def test_retrieval_sections_grouped_at_inferred_level(self, tmp_path: Path):
+        f = _write(tmp_path)
+        index = build_doc_index(f)
+        assert index["section_level"] == 2
+        # "### A.1" (H3, off-level) stays inside "## Section A", not its own section.
+        assert [s["heading"] for s in index["retrieval_sections"]] == ["Section A", "Section B"]
+
+    def test_headingless_document_has_no_retrieval_sections(self, tmp_path: Path):
+        f = _write(tmp_path, "Just a paragraph, no headings at all.\n")
+        index = build_doc_index(f)
+        assert index["section_level"] is None
+        assert index["retrieval_sections"] == []
+
+    def test_retrieval_section_hash_changes_only_for_the_edited_section(self, tmp_path: Path):
+        f = _write(tmp_path)
+        before = build_doc_index(f)
+        f.write_text(_SAMPLE.replace("Body of A.", "Body of A, edited."), encoding="utf-8")
+        after = build_doc_index(f)
+        by_heading_before = {s["heading"]: s["hash"] for s in before["retrieval_sections"]}
+        by_heading_after = {s["heading"]: s["hash"] for s in after["retrieval_sections"]}
+        assert by_heading_before["Section A"] != by_heading_after["Section A"]
+        assert by_heading_before["Section B"] == by_heading_after["Section B"]
+
+
+class TestInferSectionLevel:
+    def test_uniform_level_is_chosen(self):
+        headings = [(2, "A", 1), (2, "B", 5), (2, "C", 9)]
+        assert infer_section_level(headings) == 2
+
+    def test_real_bug_regression_dominant_level_wins_over_a_stray_shallower_one(self):
+        """Reproduces the actual failure found developing this feature: a
+        PDF-converted document put its 8 real chapters on H5 and a single
+        subsection heading on H3. Picking the shallowest level present
+        (H3) -- or any fixed level -- turned the rest of the document into
+        one fake mega-section. The dominant (most-recurring) level must
+        win over a level that appears only once, however shallow."""
+        headings = (
+            [(5, f"Chapter {i}", i * 100) for i in range(1, 9)]
+            + [(3, "Stray Subsection", 250)]
+        )
+        assert infer_section_level(headings) == 5
+
+    def test_no_headings_returns_none(self):
+        assert infer_section_level([]) is None
+
+    def test_all_singleton_levels_falls_back_to_shallowest(self):
+        headings = [(4, "A", 1), (2, "B", 5), (6, "C", 9)]
+        assert infer_section_level(headings) == 2
+
+    def test_tie_between_recurring_levels_prefers_shallower(self):
+        headings = [(3, "A", 1), (3, "B", 5), (5, "C", 9), (5, "D", 13)]
+        assert infer_section_level(headings) == 3
+
+    def test_matches_real_parser_output(self, tmp_path: Path):
+        content = "##### Ch1\n\nbody\n\n##### Ch2\n\nbody\n\n### Odd\n\nbody\n\n##### Ch3\n\nbody\n"
+        f = _write(tmp_path, content)
+        lines = f.read_text(encoding="utf-8").split("\n")
+        headings = parse_headings_with_lines(lines)
+        assert infer_section_level(headings) == 5
+
+
+class TestDiffStaleSections:
+    def test_returns_none_when_no_cache_exists(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert diff_stale_sections(f) is None
+
+    def test_returns_none_for_pre_retrieval_sections_cache_format(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        old_format = build_doc_index(f)
+        del old_format["retrieval_sections"]  # simulate an index built before this field existed
+        save_doc_index(f, old_format)
+        assert diff_stale_sections(f) is None
+
+    def test_no_edit_reports_everything_unchanged(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        save_doc_index(f, build_doc_index(f))
+        diff = diff_stale_sections(f)
+        assert diff["structural_change"] is False
+        assert diff["changed"] == []
+        assert set(diff["unchanged"]) == {"Section A", "Section B"}
+
+    def test_editing_one_section_reports_only_that_one_changed(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        save_doc_index(f, build_doc_index(f))
+        f.write_text(_SAMPLE.replace("Body of B.", "Body of B, edited."), encoding="utf-8")
+        diff = diff_stale_sections(f)
+        assert diff["structural_change"] is False
+        assert diff["changed"] == ["Section B"]
+        assert diff["unchanged"] == ["Section A"]
+
+    def test_returns_none_when_file_deleted_after_caching(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        save_doc_index(f, build_doc_index(f))
+        f.unlink()
+        assert diff_stale_sections(f) is None
+
+    def test_adding_a_retrieval_level_heading_is_a_structural_change(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        save_doc_index(f, build_doc_index(f))
+        f.write_text(_SAMPLE + "\n## Section C\n\nBody of C.\n", encoding="utf-8")
+        diff = diff_stale_sections(f)
+        assert diff["structural_change"] is True
+        assert diff["unchanged"] == []
 
 
 class TestCachePersistence:
