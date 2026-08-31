@@ -129,7 +129,7 @@ def score_sections(path: Path, query: str) -> Dict[str, Any]:
     if not sections:
         return {"ranked": [], "margin": None, "unambiguous": False}
 
-    lines = Path(index["path"]).read_text(encoding="utf-8").split("\n")
+    lines = path.resolve().read_text(encoding="utf-8").split("\n")
     doc_tokens = [tokenize(_section_text(lines, section)) for section in sections]
     idf = _inverse_document_frequency(doc_tokens)
     ranked = _rank_sections(sections, doc_tokens, tokenize(query), idf)
