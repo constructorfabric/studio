@@ -34,6 +34,36 @@ jobs:
       - name: Run tests
         run: make test
 
+  # Surfaces the enforcement corpus as its own check. The `test` job already
+  # runs these assertions, but a green suite of ~4,700 tests is not evidence
+  # that a gate can fail -- and a gate that never fails is worthless. This job
+  # makes the red direction visible in the pipeline: known-bad fixtures must be
+  # rejected, known-good fixtures must stay clean.
+  gates:
+    name: Enforcement Gates (seeded violations must fail)
+    runs-on: ubuntu-latest
+    permissions:
+      # This job runs pull-request code (`make install`, `make test-gates`), so
+      # it gets the least privilege that still lets it check out and read.
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Keep the job token out of .git/config so the test corpus this job
+          # executes cannot read it back. The initial fetch is unaffected.
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: make install
+
+      - name: Known-bad must be red, known-good must stay green
+        run: make test-gates
+
   coverage:
     name: Coverage (≥90%)
     runs-on: ubuntu-latest

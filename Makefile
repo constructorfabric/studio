@@ -40,6 +40,7 @@ help:
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make test                          - Run all tests in parallel (-n 6)"
+	@echo "  make test-gates                    - Run the enforcement gate corpus (seeded violations must fail)"
 	@echo "  make test-verbose                  - Run tests with verbose output"
 	@echo "  make test-quick                    - Run fast tests only (skip slow integration tests)"
 	@echo "  make test-coverage                 - Run tests with coverage report"
@@ -148,6 +149,14 @@ check-pylint: check-pipx
 test: check-pytest
 	@echo "Running Constructor Studio tests with pipx..."
 	$(PYTEST_PIPX) tests/ -n 6 -v --tb=short
+
+# Runs the enforcement corpus on its own so the pipeline shows, as a named
+# check, that these gates fail on a seeded violation. The assertions already
+# live in the suite; a green `test` job does not evidence the red direction
+# unless you know the tests exist and go and read them.
+test-gates: check-pytest
+	@echo "Running enforcement gate corpus (known-bad must be red, known-good must be green)..."
+	$(PYTEST_PIPX) tests/test_enforcement_empty_codebase.py tests/test_enforcement_empty_scan.py -v --tb=short
 
 # Run tests with verbose output
 test-verbose: check-pytest
