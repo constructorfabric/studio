@@ -8,13 +8,13 @@ Thin CLI wrapper around ``studio.utils.tfidf``.
 """
 
 import argparse
-from pathlib import Path
 from typing import List
 
 from ..utils.tfidf import score_sections
 from ..utils.ui import ui
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-cmd
 def cmd_tfidf_score(argv: List[str]) -> int:
     """Score a Markdown file's retrieval sections against a query via TF-IDF."""
     p = argparse.ArgumentParser(
@@ -25,12 +25,8 @@ def cmd_tfidf_score(argv: List[str]) -> int:
     p.add_argument("query", help="Query text to score sections against")
     args = p.parse_args(argv)
 
-    filepath = Path(args.file).resolve()
-    if not filepath.is_file():
-        ui.result(
-            {"file": str(filepath), "status": "ERROR", "message": "File not found"},
-            human_fn=lambda d: ui.error(f"{d['file']}: {d['message']}"),
-        )
+    filepath = ui.require_existing_file(args.file)
+    if filepath is None:
         return 2
 
     result = score_sections(filepath, args.query)
@@ -44,8 +40,10 @@ def cmd_tfidf_score(argv: List[str]) -> int:
     }
     ui.result(output, human_fn=_human_tfidf_score)
     return 0
+# @cpt-end:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-cmd
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-cmd-format
 def _human_tfidf_score(data: dict) -> None:
     ui.header("TF-IDF Score")
     ui.substep(f"query: {data['query']!r}")
@@ -62,3 +60,4 @@ def _human_tfidf_score(data: dict) -> None:
     for entry in data["ranked"]:
         ui.substep(f"  {entry['score']:.6f}  [{entry['line_start']}-{entry['line_end']}] {entry['heading']}")
     ui.blank()
+# @cpt-end:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-cmd-format

@@ -7,7 +7,6 @@ Thin CLI wrapper around ``studio.utils.doc_index``.
 
 import argparse
 import logging
-from pathlib import Path
 from typing import List
 
 from ..utils.doc_index import get_or_build_doc_index
@@ -37,12 +36,8 @@ def cmd_doc_index(argv: List[str]) -> int:
     )
     args = p.parse_args(argv)
 
-    filepath = Path(args.file).resolve()
-    if not filepath.is_file():
-        ui.result(
-            {"file": str(filepath), "status": "ERROR", "message": "File not found"},
-            human_fn=lambda d: ui.error(f"{d['file']}: {d['message']}"),
-        )
+    filepath = ui.require_existing_file(args.file)
+    if filepath is None:
         return 2
 
     try:

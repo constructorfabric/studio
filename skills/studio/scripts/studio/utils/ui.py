@@ -23,6 +23,7 @@ Usage in commands::
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 
@@ -258,6 +259,28 @@ def result(
     # @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-result-human
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-require-existing-file
+def require_existing_file(file_arg: str) -> Optional[Path]:
+    """Resolve a CLI file-path argument to an existing file, or emit the
+    standard "File not found" ERROR result (JSON or human, via :func:`result`)
+    and return ``None``.
+
+    Shared by every command taking a single file-path argument (``doc-index``,
+    ``tfidf-score``, ``okf-status``, ...) -- previously each reimplemented the
+    same resolve-and-check block independently, which pylint's duplicate-code
+    check correctly caught once a third copy appeared.
+    """
+    filepath = Path(file_arg).resolve()
+    if filepath.is_file():
+        return filepath
+    result(
+        {"file": str(filepath), "status": "ERROR", "message": "File not found"},
+        human_fn=lambda d: error(f"{d['file']}: {d['message']}"),
+    )
+    return None
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-require-existing-file
+
+
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
@@ -292,6 +315,7 @@ class _UI:  # pylint: disable=too-few-public-methods
     table = staticmethod(table)
     file_action = staticmethod(file_action)
     result = staticmethod(result)
+    require_existing_file = staticmethod(require_existing_file)
     is_json = staticmethod(is_json_mode)
     relpath = staticmethod(relpath)
 

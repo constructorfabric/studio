@@ -13,13 +13,13 @@ Thin CLI wrapper around ``studio.utils.okf``.
 """
 
 import argparse
-from pathlib import Path
 from typing import List
 
 from ..utils.okf import get_okf_status
 from ..utils.ui import ui
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-cmd
 def cmd_okf_status(argv: List[str]) -> int:
     """Report an OKF bundle's state for a Markdown file."""
     p = argparse.ArgumentParser(
@@ -29,20 +29,18 @@ def cmd_okf_status(argv: List[str]) -> int:
     p.add_argument("file", help="Markdown file path")
     args = p.parse_args(argv)
 
-    filepath = Path(args.file).resolve()
-    if not filepath.is_file():
-        ui.result(
-            {"file": str(filepath), "status": "ERROR", "message": "File not found"},
-            human_fn=lambda d: ui.error(f"{d['file']}: {d['message']}"),
-        )
+    filepath = ui.require_existing_file(args.file)
+    if filepath is None:
         return 2
 
     status = get_okf_status(filepath)
     output = {"file": str(filepath), **status}
     ui.result(output, human_fn=_human_okf_status)
     return 0
+# @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-cmd
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-cmd-format
 def _human_okf_status(data: dict) -> None:
     ui.header("OKF Status")
     if not data["available"]:
@@ -58,3 +56,4 @@ def _human_okf_status(data: dict) -> None:
     for entry in data["entries"]:
         ui.substep(f"  [{entry['status']:>7}] [{entry['line_start']}-{entry['line_end']}] {entry['heading']}")
     ui.blank()
+# @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-cmd-format

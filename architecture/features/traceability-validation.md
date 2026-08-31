@@ -480,6 +480,8 @@ even if a write lands in the narrow window during the read.
 - [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
 - [x] - `p1` - Read a file's content bracketed by an etag snapshot on each side, retrying on mismatch: closes the window where a write between the read and the fingerprint could save stale headings under a fresh-looking etag - `inst-doc-index-stable-read`
 - [x] - `p1` - Re-parse a file's current content into retrieval sections for staleness comparison, and build the `(heading, line_start)` identity pair that disambiguates a duplicate heading title in a diff result - `inst-doc-index-diff-stale-helpers`
+- [x] - `p1` - `cfs doc-index` CLI wrapper: parse arguments, build the JSON output payload - `inst-doc-index-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
 
 ### TF-IDF Scoring
 
@@ -496,6 +498,8 @@ Purely mechanical, no LLM call: reuses the Document Index's `retrieval_sections`
 
 **Supporting**:
 - [x] - `p1` - Inverse-document-frequency table builder, section ranker, and margin/unambiguous confidence calculator - `inst-tfidf-score-helpers`
+- [x] - `p1` - `cfs tfidf-score` CLI wrapper: parse arguments, build the JSON output payload - `inst-tfidf-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs tfidf-score` output - `inst-tfidf-cmd-format`
 
 ### OKF Bundle
 
@@ -514,6 +518,8 @@ Deterministic infrastructure only, matching `doc_index.py`/`tfidf.py`: no LLM ca
 
 **Supporting**:
 - [x] - `p1` - Deterministic `index.md` template: a bullet list of concept files with their descriptions, the same shape as a real, previously-built OKF bundle - `inst-okf-render-index`
+- [x] - `p1` - `cfs okf-status` CLI wrapper: parse arguments, build the JSON output payload - `inst-okf-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs okf-status` output - `inst-okf-cmd-format`
 
 ### Markdown Parsing Utilities
 

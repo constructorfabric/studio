@@ -26,6 +26,7 @@ from studio.utils.ui import (
     table,
     file_action,
     result,
+    require_existing_file,
     _has_color,
     _c,
     ui,
@@ -287,13 +288,48 @@ class TestUIResult(_HumanModeBase):
         set_json_mode(False)
 
 
+class TestRequireExistingFile(_HumanModeBase):
+    """Test require_existing_file() — shared by every single-file-argument command."""
+
+    def test_returns_resolved_path_for_existing_file(self):
+        with TemporaryDirectory() as tmp:
+            f = Path(tmp) / "doc.md"
+            f.write_text("content", encoding="utf-8")
+            resolved = require_existing_file(str(f))
+            self.assertEqual(resolved, f.resolve())
+
+    def test_returns_none_and_emits_error_for_missing_file(self):
+        with TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "nope.md"
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                resolved = require_existing_file(str(missing))
+            self.assertIsNone(resolved)
+            self.assertIn("File not found", buf.getvalue())
+
+    def test_json_mode_emits_error_status_payload(self):
+        set_json_mode(True)
+        try:
+            with TemporaryDirectory() as tmp:
+                missing = Path(tmp) / "nope.md"
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    resolved = require_existing_file(str(missing))
+                self.assertIsNone(resolved)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "ERROR")
+                self.assertEqual(out["message"], "File not found")
+        finally:
+            set_json_mode(False)
+
+
 class TestUISingleton(unittest.TestCase):
     """Test the ui singleton exposes all methods."""
 
     def test_ui_has_all_methods(self):
         for attr in ["header", "step", "substep", "success", "error", "warn",
                       "info", "detail", "hint", "blank", "divider", "table",
-                      "file_action", "result", "is_json"]:
+                      "file_action", "result", "require_existing_file", "is_json"]:
             self.assertTrue(hasattr(ui, attr), f"ui missing {attr}")
 
 
