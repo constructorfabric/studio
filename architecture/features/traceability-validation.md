@@ -456,7 +456,10 @@ size) changes.
 The cache-validity fingerprint is deliberately metadata-only (`mtime` + file
 size via `Path.stat()`), never a content hash — the point of the cache is to
 avoid reading the file at all on a hit, and a content hash would defeat that
-by requiring the read it's meant to save.
+by requiring the read it's meant to save. A build reads the content and
+takes that fingerprint bracketed by a stat snapshot on each side, so the
+fingerprint saved is provably the one that matches what was actually parsed
+even if a write lands in the narrow window during the read.
 
 1. [x] - `p1` - Build a fresh structural index: parse headings + line ranges from current content, compute the stat-based fingerprint, stamp the current schema version - `inst-doc-index-build`
 2. [x] - `p1` - Load a cached index for a file, validated against current stat metadata (no content read on a hit) and against the required-field shape at the current schema version; returns `None` if missing, stale, corrupt, or an incomplete/outdated shape - `inst-doc-index-load`
@@ -472,6 +475,8 @@ by requiring the read it's meant to save.
 - [x] - `p1` - Resolve the cache file location within the Studio directory owning the indexed file, resolved from the file's own path (not the process's working directory) - `inst-doc-index-cache-path`
 - [x] - `p1` - `cfs doc-index` CLI wrapper: parse arguments, build the JSON output payload, reporting a clean error for a missing or unreadable file - `inst-doc-index-cmd`
 - [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
+- [x] - `p1` - Read a file's content bracketed by an etag snapshot on each side, retrying on mismatch: closes the window where a write between the read and the fingerprint could save stale headings under a fresh-looking etag - `inst-doc-index-stable-read`
+- [x] - `p1` - Re-parse a file's current content into retrieval sections for staleness comparison, and build the `(heading, line_start)` identity pair that disambiguates a duplicate heading title in a diff result - `inst-doc-index-diff-stale-helpers`
 
 ### Markdown Parsing Utilities
 

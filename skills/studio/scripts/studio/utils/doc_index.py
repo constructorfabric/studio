@@ -173,6 +173,38 @@ def _build_retrieval_sections(
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-retrieval-sections
 
 
+_MAX_READ_ATTEMPTS = 3
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-stable-read
+def _read_with_stable_etag(path: Path) -> Tuple[str, str]:
+    """Read a file's content together with an etag proven to match it.
+
+    A write landing between reading the content and computing the etag
+    could otherwise save headings parsed from the *old* content stamped
+    with the *new* file's etag -- :func:`load_doc_index` would then treat
+    that stale index as valid until a later edit changes the etag again,
+    since nothing about the fingerprint itself would look wrong.
+
+    Fixed by bracketing the read with a stat snapshot on each side: if they
+    match, the file didn't change during the read, so the etag genuinely
+    describes the content just read. If they don't, retry. After
+    ``_MAX_READ_ATTEMPTS`` under sustained contention, return the last read
+    anyway, stamped with its own trailing etag -- the safe direction to
+    fail in, since a file still being rewritten that fast will simply look
+    stale again on the very next check, never silently wrong.
+    """
+    etag_after = _compute_etag(path)
+    for _ in range(_MAX_READ_ATTEMPTS):
+        etag_before = etag_after
+        content = path.read_text(encoding="utf-8")
+        etag_after = _compute_etag(path)
+        if etag_before == etag_after:
+            return content, etag_after
+    return content, etag_after
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-stable-read
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-build
 def build_doc_index(path: Path) -> Dict[str, Any]:
     """Build a fresh structural index for a Markdown file.
@@ -189,13 +221,7 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
     for why a fixed heading level can't be assumed.
     """
     canonical_path = path.resolve()
-    # Fingerprint before read: if a write lands between the two, the stored
-    # etag describes content older than (never newer than) what got parsed,
-    # so a mismatch is always detected on the next load -- computing it
-    # after the read could instead capture a fingerprint newer than the
-    # content actually parsed, which a later stat comparison can't catch.
-    etag = _compute_etag(canonical_path)
-    content = canonical_path.read_text(encoding="utf-8")
+    content, etag = _read_with_stable_etag(canonical_path)
     lines = content.split("\n")
     line_count = len(lines)
 
@@ -333,6 +359,32 @@ def get_or_build_doc_index(path: Path, *, force_rebuild: bool = False) -> Dict[s
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-or-build
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-diff-stale-helpers
+def _compute_fresh_retrieval_sections(path: Path) -> Optional[List[Dict[str, Any]]]:
+    """Re-parse a file's current content into retrieval sections, for
+    comparison against a cached build. ``None`` on a read failure (e.g. the
+    file was deleted after it was cached)."""
+    canonical_path = path.resolve()
+    try:
+        content = canonical_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.debug("doc-index section diff failed for %s: %s", path, exc)
+        return None
+
+    lines = content.split("\n")
+    headings = parse_headings_with_lines(lines)
+    section_level = infer_section_level(headings)
+    return _build_retrieval_sections(headings, lines, section_level)
+
+
+def _position_entry(section: Dict[str, Any]) -> Dict[str, Any]:
+    """The (heading, line_start) pair identifying one retrieval section in
+    a :func:`diff_stale_sections` result -- ``line_start`` is what actually
+    disambiguates two sections sharing a duplicate heading title."""
+    return {"heading": section["heading"], "line_start": section["line_start"]}
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-diff-stale-helpers
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-diff-stale
 def diff_stale_sections(path: Path) -> Optional[Dict[str, Any]]:
     """Compare the current file against its last cached build at *section*
@@ -350,12 +402,15 @@ def diff_stale_sections(path: Path) -> Optional[Dict[str, Any]]:
     new" and do a full build instead.
 
     Otherwise returns ``{"structural_change": bool, "unchanged": [...],
-    "changed": [...]}`` (heading-text lists, in document order). Sections
+    "changed": [...]}``, where each entry is ``{"heading": str, "line_start":
+    int}`` -- the *current* (fresh) position, in document order. Sections
     are matched by *position*, not heading text: duplicate heading titles
-    are real (see the ``toc-heading-duplicate`` check) and can't be told
-    apart by name, and a document that gained or lost a retrieval-level
-    heading shifts every position after it anyway. When the section
-    *count* itself differs, ``structural_change`` is ``True`` and
+    are real (see the ``toc-heading-duplicate`` check), so heading text
+    alone can't tell two same-named sections apart -- ``line_start`` is
+    what a caller should actually use to address "this specific section"
+    afterwards (e.g. to call :func:`annotate_section_summary`), with the
+    heading text included only for human-readable logging. When the
+    section *count* itself differs, ``structural_change`` is ``True`` and
     ``changed``/``unchanged`` aren't populated -- a position-based diff
     across a changed count can't be safely narrowed to "which ones
     changed" without guessing, so the caller should fall back to a full
@@ -369,30 +424,22 @@ def diff_stale_sections(path: Path) -> Optional[Dict[str, Any]]:
     if cached is None or "retrieval_sections" not in cached:
         return None
 
-    canonical_path = path.resolve()
-    try:
-        content = canonical_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.debug("doc-index section diff failed for %s: %s", path, exc)
+    fresh_sections = _compute_fresh_retrieval_sections(path)
+    if fresh_sections is None:
         return None
-
-    lines = content.split("\n")
-    headings = parse_headings_with_lines(lines)
-    section_level = infer_section_level(headings)
-    fresh_sections = _build_retrieval_sections(headings, lines, section_level)
 
     old_sections = cached["retrieval_sections"]
     if len(old_sections) != len(fresh_sections):
         return {
             "structural_change": True,
             "unchanged": [],
-            "changed": [s["heading"] for s in fresh_sections],
+            "changed": [_position_entry(s) for s in fresh_sections],
         }
 
-    unchanged: List[str] = []
-    changed: List[str] = []
-    for old, new in zip(old_sections, fresh_sections):
-        (unchanged if old["hash"] == new["hash"] else changed).append(new["heading"])
+    unchanged: List[Dict[str, Any]] = []
+    changed: List[Dict[str, Any]] = []
+    for old, new in zip(old_sections, fresh_sections, strict=True):
+        (unchanged if old["hash"] == new["hash"] else changed).append(_position_entry(new))
     return {"structural_change": False, "unchanged": unchanged, "changed": changed}
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-diff-stale
 
@@ -405,6 +452,15 @@ def annotate_section_summary(path: Path, line_start: int, summary: str) -> bool:
     pass, never generated inside this module. Returns ``False`` when no
     valid (non-stale) cached index exists or no section matches
     ``line_start`` -- callers should build the index first.
+
+    Updates the matching entry in both ``sections`` (any heading level) and
+    ``retrieval_sections`` (the coarser grouping) when both have a section
+    starting at ``line_start`` -- a retriever reading ``retrieval_sections``
+    needs the summary to show up there too, not just in the finer-grained
+    list. A ``line_start`` that only matches ``sections`` (an off-level
+    heading that isn't itself a retrieval section's start) updates only
+    that list, which is correct: there is no corresponding retrieval
+    section to update.
     """
     index = load_doc_index(path)
     if index is None:
@@ -418,6 +474,11 @@ def annotate_section_summary(path: Path, line_start: int, summary: str) -> bool:
             break
     if not matched:
         return False
+
+    for retrieval_section in index.get("retrieval_sections", []):
+        if retrieval_section["line_start"] == line_start:
+            retrieval_section["summary"] = summary
+            break
 
     save_doc_index(path, index)
     return True

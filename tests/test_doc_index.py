@@ -70,36 +70,6 @@ class TestBuildDocIndex:
         idx2 = build_doc_index(f)
         assert idx1["etag"] != idx2["etag"]
 
-    def test_etag_is_computed_before_reading_content(self, tmp_path: Path, monkeypatch):
-        """CodeRabbit PR #108 (round 2): the etag must be captured before the
-        content read, not after -- a write landing between the two calls
-        would otherwise let the stored etag describe content newer than
-        what got parsed, and no later stat comparison could ever detect
-        that mismatch. Computing the etag first means a race can only make
-        it look older than the parsed content, which a later check always
-        catches."""
-        from studio.utils import doc_index as doc_index_module
-
-        f = _write(tmp_path)
-        call_order = []
-
-        real_compute_etag = doc_index_module._compute_etag
-        real_read_text = Path.read_text
-
-        def _tracked_compute_etag(path):
-            call_order.append("etag")
-            return real_compute_etag(path)
-
-        def _tracked_read_text(self, *args, **kwargs):
-            call_order.append("read")
-            return real_read_text(self, *args, **kwargs)
-
-        monkeypatch.setattr(doc_index_module, "_compute_etag", _tracked_compute_etag)
-        monkeypatch.setattr(Path, "read_text", _tracked_read_text)
-
-        doc_index_module.build_doc_index(f)
-        assert call_order == ["etag", "read"]
-
     def test_skips_headings_in_fenced_code(self, tmp_path: Path):
         content = "# Title\n\n## Real\n\n```bash\n# not a heading\n```\n\n## Also Real\n"
         f = _write(tmp_path, content)
@@ -188,7 +158,10 @@ class TestDiffStaleSections:
         diff = diff_stale_sections(f)
         assert diff["structural_change"] is False
         assert diff["changed"] == []
-        assert set(diff["unchanged"]) == {"Section A", "Section B"}
+        assert {(e["heading"], e["line_start"]) for e in diff["unchanged"]} == {
+            ("Section A", 3),
+            ("Section B", 11),
+        }
 
     def test_editing_one_section_reports_only_that_one_changed(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -197,8 +170,22 @@ class TestDiffStaleSections:
         f.write_text(_SAMPLE.replace("Body of B.", "Body of B, edited."), encoding="utf-8")
         diff = diff_stale_sections(f)
         assert diff["structural_change"] is False
-        assert diff["changed"] == ["Section B"]
-        assert diff["unchanged"] == ["Section A"]
+        assert diff["changed"] == [{"heading": "Section B", "line_start": 11}]
+        assert diff["unchanged"] == [{"heading": "Section A", "line_start": 3}]
+
+    def test_duplicate_headings_are_disambiguated_by_line_start(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #109: heading text alone can't tell two identically
+        named sections apart -- line_start must be returned so a caller
+        knows exactly which one changed."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = "## Details\n\nFirst.\n\n## Details\n\nSecond.\n"
+        f = _write(tmp_path, content)
+        save_doc_index(f, build_doc_index(f))
+        f.write_text(content.replace("Second.", "Second, edited."), encoding="utf-8")
+        diff = diff_stale_sections(f)
+        assert diff["structural_change"] is False
+        assert diff["unchanged"] == [{"heading": "Details", "line_start": 1}]
+        assert diff["changed"] == [{"heading": "Details", "line_start": 5}]
 
     def test_returns_none_when_file_deleted_after_caching(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -215,6 +202,7 @@ class TestDiffStaleSections:
         diff = diff_stale_sections(f)
         assert diff["structural_change"] is True
         assert diff["unchanged"] == []
+        assert {e["heading"] for e in diff["changed"]} == {"Section A", "Section B", "Section C"}
 
 
 class TestCachePersistence:
@@ -440,6 +428,73 @@ class TestAnnotateSectionSummary:
         cached = load_doc_index(f)
         assert cached["sections"][0]["summary"] == "The title."
 
+    def test_updates_matching_retrieval_section_too(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #109: annotate_section_summary() updated only
+        `sections`, leaving the matching `retrieval_sections` entry at
+        summary=None -- a caller reading retrieval_sections (the more
+        relevant list for a future OKF-style summarizer) couldn't see it."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        get_or_build_doc_index(f)
+        assert annotate_section_summary(f, line_start=3, summary="Covers A.") is True
+        index = load_doc_index(f)
+        retrieval_a = next(s for s in index["retrieval_sections"] if s["heading"] == "Section A")
+        assert retrieval_a["summary"] == "Covers A."
+
+    def test_off_level_heading_leaves_retrieval_sections_untouched(self, tmp_path: Path, monkeypatch):
+        """line_start=7 is "### A.1" -- present in `sections` but not itself
+        a retrieval section's start (retrieval sections are at H2 here).
+        Only `sections` should be updated; there's no corresponding
+        retrieval section to touch."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        get_or_build_doc_index(f)
+        assert annotate_section_summary(f, line_start=7, summary="About A.1.") is True
+        index = load_doc_index(f)
+        a1 = next(s for s in index["sections"] if s["heading"] == "A.1")
+        assert a1["summary"] == "About A.1."
+        assert all(s["summary"] is None for s in index["retrieval_sections"])
+
+
+class TestReadWithStableEtag:
+    def test_retries_when_the_file_changes_mid_read(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #109: a write landing between reading content and
+        computing the etag could save headings from the *old* content
+        stamped with the *new* etag. Snapshotting before and after the
+        read, and retrying on mismatch, closes that window."""
+        import studio.utils.doc_index as di
+
+        f = _write(tmp_path)
+        etag_sequence = ["a", "b", "b"]  # initial snapshot, then a mismatch, then a stable match
+        calls = {"n": 0}
+
+        def fake_compute_etag(_path):
+            value = etag_sequence[calls["n"]]
+            calls["n"] += 1
+            return value
+
+        monkeypatch.setattr(di, "_compute_etag", fake_compute_etag)
+        content, etag = di._read_with_stable_etag(f)
+        assert content == _SAMPLE
+        assert etag == "b"
+        assert calls["n"] == 3  # one retry: initial snapshot + two read-and-check cycles
+
+    def test_gives_up_after_max_attempts_under_sustained_contention(self, tmp_path: Path, monkeypatch):
+        import studio.utils.doc_index as di
+
+        f = _write(tmp_path)
+        calls = {"n": 0}
+
+        def always_different(_path):
+            calls["n"] += 1
+            return f"etag-{calls['n']}"
+
+        monkeypatch.setattr(di, "_compute_etag", always_different)
+        content, etag = di._read_with_stable_etag(f)
+        assert content == _SAMPLE  # still returns a real read, not an error
+        assert calls["n"] == di._MAX_READ_ATTEMPTS + 1
+        assert etag == f"etag-{calls['n']}"
+
 
 class TestCmdDocIndex:
     def test_missing_file(self, tmp_path: Path, capsys):
@@ -490,6 +545,37 @@ class TestCmdDocIndex:
         out = json.loads(capsys.readouterr().out)
         assert out["cache_hit"] is False
         assert out["section_count"] == 4
+
+    def test_json_output_exposes_retrieval_sections(self, tmp_path: Path, capsys, monkeypatch):
+        """CodeRabbit PR #109: cmd_doc_index() built its output from `index`
+        but omitted retrieval_sections/section_level -- the new data this
+        PR adds was invisible through the CLI."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        rc = cmd_doc_index([str(f)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["section_level"] == 2
+        assert out["retrieval_section_count"] == 2
+        assert [s["heading"] for s in out["retrieval_sections"]] == ["Section A", "Section B"]
+        assert "hash" in out["retrieval_sections"][0]
+
+    def test_human_output_lists_retrieval_sections(self, tmp_path: Path, capsys, monkeypatch):
+        from studio.utils.ui import is_json_mode, set_json_mode
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        orig = is_json_mode()
+        set_json_mode(False)
+        try:
+            rc = cmd_doc_index([str(f)])
+        finally:
+            set_json_mode(orig)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Retrieval sections (level 2, 2 section(s))" in out
+        assert "Section A" in out
+        assert "Section B" in out
 
     def test_second_invocation_is_cache_hit(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)

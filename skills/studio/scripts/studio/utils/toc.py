@@ -892,6 +892,13 @@ def _frontmatter_has_description(lines: List[str], frontmatter_end: int) -> bool
     ``frontmatter_end`` is the index returned by :func:`_find_frontmatter_end`
     (one past the closing ``---``); the body being scanned is
     ``lines[1:frontmatter_end - 1]``, excluding both delimiter lines.
+
+    A field that's present but carries no real value doesn't satisfy this:
+    a YAML comment (``description: # TODO``) or an empty quoted string
+    (``description: ""``) both parse as "no description" just as much as
+    the field being absent entirely would -- the point of this check is to
+    guarantee a caller gets something to actually read, not just a
+    matching key.
     """
     for line in lines[1:frontmatter_end - 1]:
         match = _DESCRIPTION_FIELD_RE.match(line.strip())
