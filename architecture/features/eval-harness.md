@@ -13,6 +13,7 @@
   - [Run Eval Suite](#run-eval-suite)
   - [Score Structural Compliance](#score-structural-compliance)
   - [Score Rule Compliance (Advisory Judge)](#score-rule-compliance-advisory-judge)
+  - [Assess Semantic Coverage](#assess-semantic-coverage)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Eval Report Lifecycle](#eval-report-lifecycle)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -209,6 +210,40 @@ or unreadable gold file is *excluded* from calibration rather than counted as a 
 - [x] - `p1` - A deterministic reference-stub `JudgeFn` for tests and calibration wiring (not a model) - `inst-judge-stub`
 - [x] - `p1` - The `Calibration` result model (accuracy, consistency, coverage) - `inst-judge-calibrate`
 
+### Assess Semantic Coverage
+
+- [x] `p1` - **ID**: `cpt-studio-algo-eval-semantic`
+
+The semantic-coverage engine: it asks whether a marked block *implements the requirement it
+cites*, which marker density cannot. A deterministic stdlib token-overlap pre-filter scores
+every block against its requirement text and surfaces the weak links; only those go to a
+pluggable `SemanticJudgeFn` (the model call lives out-of-tree). It is advisory throughout —
+no verdict here touches an exit code — and honest: a block with no retrievable requirement, or
+too little text to compare, is reported `unjudgeable`, never a silent "covered". Files a human
+declared `excluded` in the coverage report are skipped; files flagged `whole_file_claims` are
+prioritised. Every model verdict carries an evidence check: a quote absent from the code is not
+trusted.
+
+**Steps**:
+1. [x] - `p1` - Tokenise code and requirement (camelCase + Unicode word-boundary split, stopwords dropped) and score their overlap against the requirement set, or `None` below the token floor - `inst-semantic-tokenize`
+2. [x] - `p1` - Rank every pairing weakest-first, marking below-threshold blocks as weak links and below-floor blocks as unjudgeable, and marking every block in a whole-file-claim file a weak link regardless of overlap (always judged) - `inst-semantic-prefilter`
+3. [x] - `p1` - Judge only the weak links through the injected `SemanticJudgeFn`, degrading a raising or malformed reply to unjudgeable and evidence-checking every quote - `inst-semantic-finding`
+4. [x] - `p1` - Assess pairings end-to-end — scope, rank, judge weak links, and report unjudgeable coverage gaps — advisory throughout - `inst-semantic-report`
+
+**Supporting**:
+- [x] - `p1` - Module imports, verdict constants, and the provisional calibration constants + stopword set - `inst-semantic-imports`
+- [x] - `p1` - The pairing, ranked (with a whole-file-claim `forced` flag), request, reply data model and the `SemanticJudgeFn` seam — the seam is called synchronously and unbounded, so a judge that can hang must enforce its own timeout - `inst-semantic-datamodel`
+- [x] - `p1` - Blank character spans in place (spaces, newlines preserved) so a verbatim quote of the untouched text still matches - `inst-semantic-blank`
+- [x] - `p1` - Derive two code views in one grammar-aware `tokenize` pass — an overlap view (comments and all strings blanked, so prose cannot inflate the score) and an evidence view (comments and docstrings blanked, inline strings kept) — falling back to a plain comment strip for a non-tokenisable fragment - `inst-semantic-strip`
+- [x] - `p1` - Read the frozen coverage-report contract (`excluded[]` / `whole_file_claims[]`, path-separator normalised, `excluded` taking precedence), degrading to an empty scope - `inst-semantic-scope`
+- [x] - `p1` - Build the deterministic judge prompt (bounded fields) and parse a reply to a verdict - `inst-semantic-prompt`
+- [x] - `p1` - The evidence-present hallucination guard: a quote must occur in the evidence view (comments/docstrings stripped), so a quote matching only a comment is not evidence - `inst-semantic-evidence`
+- [x] - `p1` - The `SemanticGap` coverage-gap record (block_id, path, start_line, reason), located like a finding so a report consumer can point at every gap - `inst-semantic-gap`
+- [x] - `p1` - The reference stub judge (deterministic overlap buckets) and its best-evidence-line quote - `inst-semantic-stub`
+- [x] - `p1` - The requirement resolver adapter over `get_content_scoped` - `inst-semantic-resolve`
+- [x] - `p1` - Read a `[gold]` verdict label for calibration, or `None` when absent/malformed - `inst-semantic-gold`
+- [x] - `p1` - Calibrate the judge over gold-backed pairings: report accuracy, consistency, and effective sample size per case, excluding unscoreable / crashed / strict-tie cases — accuracy over cases with a majority, consistency over cases with ≥2 surviving runs — `None` when nothing is measurable - `inst-semantic-calibrate`
+
 ## 4. States (CDSL)
 
 ### Eval Report Lifecycle
@@ -253,6 +288,7 @@ them (subscripting when the flag is absent raises `KeyError`):
 | Eval Harness | `skills/studio/scripts/studio/utils/eval_harness.py` | Scenario/run loading, scorer seam, runner, report, regression diff |
 | Structural Scorer | `skills/studio/scripts/studio/utils/eval_structural.py` | Deterministic structural checks over a run's manifest + phase frontmatter |
 | Advisory Judge | `skills/studio/scripts/studio/utils/eval_judge.py` | Advisory rule-compliance judge (pluggable model seam) + gold-set calibration |
+| Semantic Coverage | `skills/studio/scripts/studio/utils/eval_semantic.py` | Token-overlap pre-filter + advisory judge seam over marked-block vs requirement, with honesty + evidence guards |
 
 ## 7. Acceptance Criteria
 
@@ -267,3 +303,7 @@ them (subscripting when the flag is absent raises `KeyError`):
 - [x] `p1` - Judge calibration reports accuracy against a human gold set and run-to-run consistency, kept separate from structural compliance; judge coverage is derived from which scenarios carry a gold set
 - [x] `p1` - The run evidence is hard-capped: the total (headers, truncation markers, separators and the omission line included) never exceeds the evidence budget. A trimmed phase is still judged; when whole phases are omitted to fit, the request is marked incomplete and the judge returns `UNKNOWN` without a model call — a verdict is never certified from evidence with entire phases unseen
 - [x] `p1` - In default (non-JSON) mode the human summary prints the scorer coverage line, explains that advisory-only UNKNOWNs come from an unwired judge (never counted against the gate), and prints the calibration metrics under `--calibrate`; the JSON payload is unchanged
+- [x] `p1` - Semantic coverage ranks marked blocks by deterministic token-overlap against their requirement and judges only the surfaced weak links — a strong-overlap block triggers no model call, except a block in a `whole_file_claims` file, which is always judged regardless of overlap (its structural coverage rests on a whole-file scope marker, so a high lexical score there must not buy a free pass)
+- [x] `p1` - A block with no retrievable requirement, or with too little text to compare, is reported `unjudgeable`, never a silent `covered`; with no `SemanticJudgeFn` wired every weak link is `unjudgeable` and nothing gates
+- [x] `p1` - A model `evidence_quote` absent from the cited code sets `evidence_ok=false`; a raising or malformed judge reply degrades that one finding to `unjudgeable` without sinking the assessment
+- [x] `p1` - Files a human declared in the coverage report's `excluded[]` are skipped; a report lacking the `excluded[]` / `whole_file_claims[]` fields yields an empty scope (skip nothing, prioritise nothing), never an error

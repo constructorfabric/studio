@@ -72,3 +72,41 @@ record_review  # noqa: B018
 record_escalation  # noqa: B018
 record_invocation  # noqa: B018
 summarize  # noqa: B018
+
+# eval_semantic public API — the semantic-coverage engine. Library + tests only for now;
+# the `cfs` surface and coverage-report integration are the follow-up, so these are not yet
+# reached from a production path. Exercised by tests.
+# See skills/studio/scripts/studio/utils/eval_semantic.py.
+from studio.utils.eval_semantic import (  # noqa: E402
+    reference_stub_judge,
+    assess,
+    resolve_requirement,
+    load_gold,
+    calibrate,
+    SemanticFinding,
+    SemanticGap,
+    SemanticReport,
+    SemanticCalibration,
+)
+
+reference_stub_judge  # noqa: B018
+assess  # noqa: B018
+resolve_requirement  # noqa: B018
+load_gold  # noqa: B018
+calibrate  # noqa: B018
+SemanticFinding.evidence_ok  # noqa: B018
+SemanticFinding.forced  # noqa: B018
+SemanticGap.block_id  # noqa: B018
+SemanticGap.path  # noqa: B018
+SemanticGap.start_line  # noqa: B018
+SemanticGap.reason  # noqa: B018
+SemanticReport.presumed_covered  # noqa: B018
+SemanticReport.skipped_excluded  # noqa: B018
+SemanticReport.schema_version  # noqa: B018
+SemanticCalibration.accuracy  # noqa: B018
+SemanticCalibration.consistency  # noqa: B018
+SemanticCalibration.runs_per_scenario  # noqa: B018
+SemanticCalibration.per_case  # noqa: B018
+SemanticCalibration.excluded  # noqa: B018
+SemanticCalibration.judge  # noqa: B018
+SemanticCalibration.schema_version  # noqa: B018
