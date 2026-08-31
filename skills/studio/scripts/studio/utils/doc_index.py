@@ -299,15 +299,21 @@ _REQUIRED_INDEX_FIELDS = ("total_lines", "sections", "section_level", "retrieval
 
 def _has_schema_current_index(cached: Dict[str, Any]) -> bool:
     """``True`` only if ``cached`` carries every field a consumer
-    (``commands/doc_index.py``, :func:`annotate_section_summary`) reads by
-    subscript, at the schema version this module currently writes --
-    treated the same as a stale/corrupt cache otherwise, so a partially
-    written, hand-edited, or pre-schema-bump cache triggers a clean rebuild
-    instead of a ``KeyError`` deep in a consumer.
+    (``commands/doc_index.py``, :func:`annotate_section_summary`,
+    :func:`diff_stale_sections`) reads by subscript, at the schema version
+    this module currently writes -- treated the same as a stale/corrupt
+    cache otherwise, so a partially written, hand-edited, or pre-schema
+    cache triggers a clean rebuild instead of a ``KeyError`` deep in a
+    consumer. Also checks every ``retrieval_sections`` entry carries a
+    ``hash``: that field was added after ``retrieval_sections`` itself, so
+    a cache from that intermediate schema would otherwise pass the
+    top-level field-presence check and still raise on ``entry["hash"]``.
     """
     if cached.get("schema_version") != _SCHEMA_VERSION:
         return False
-    return all(field in cached for field in _REQUIRED_INDEX_FIELDS)
+    if any(field not in cached for field in _REQUIRED_INDEX_FIELDS):
+        return False
+    return all("hash" in section for section in cached["retrieval_sections"])
 
 
 def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
@@ -462,7 +468,7 @@ def diff_stale_sections(path: Path) -> Optional[Dict[str, Any]]:
         return None
 
     cached = _read_cache_file(cache_path)
-    if cached is None or "retrieval_sections" not in cached:
+    if cached is None or not _has_schema_current_index(cached):
         return None
 
     fresh_sections = _compute_fresh_retrieval_sections(path)

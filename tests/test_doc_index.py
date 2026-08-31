@@ -271,6 +271,29 @@ class TestCachePersistence:
         assert "section_level" in index
         assert "retrieval_sections" in index
 
+    def test_intermediate_cache_missing_per_section_hash_is_rebuilt_not_returned(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110: retrieval_sections existed before per-section
+        hash did. A cache from that intermediate schema has both required
+        top-level fields, so the field-presence check alone lets it through
+        -- but every consumer that reads entry["hash"] (diff_stale_sections,
+        get_okf_status, the doc-index command's human formatter) then hits a
+        KeyError. Treated the same as any other schema mismatch: rebuilt."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        intermediate = build_doc_index(f)
+        for section in intermediate["retrieval_sections"]:
+            del section["hash"]
+        save_doc_index(f, intermediate)
+
+        assert load_doc_index(f) is None
+        assert diff_stale_sections(f) is None
+
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False
+        assert all("hash" in s for s in index["retrieval_sections"])
+
     def test_cmd_doc_index_does_not_crash_on_a_legacy_cache(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)

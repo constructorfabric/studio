@@ -1059,6 +1059,29 @@ class TestJitRetrievalReadiness:
         codes = [w["code"] for w in result["warnings"]]
         assert "toc-missing-description" not in codes
 
+    def test_nested_description_field_does_not_suppress_warning(self):
+        """CodeRabbit PR #110: the regex used to match against the
+        indentation-stripped line, so a nested key like
+        `metadata:\n  description: text` satisfied the same check as a
+        root-level `description:` field. Only a root-level field should
+        count -- a nested one isn't what a caller reading this frontmatter
+        for a description actually finds."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "metadata:\n"
+            "  description: A description nested under another key.\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
     def test_empty_block_scalar_description_still_warns(self):
         """CodeRabbit PR #109 (second round): `description: |` is a YAML
         block-scalar marker -- the real content (if any) belongs on

@@ -907,7 +907,7 @@ def _frontmatter_has_description(lines: List[str], frontmatter_end: int) -> bool
     """
     body = lines[1:frontmatter_end - 1]
     for i, line in enumerate(body):
-        match = _DESCRIPTION_FIELD_RE.match(line.strip())
+        match = _DESCRIPTION_FIELD_RE.match(line)
         if not match:
             continue
         value = match.group(1).strip()

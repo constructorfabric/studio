@@ -123,7 +123,10 @@ def get_okf_status(path: Path) -> Dict[str, Any]:
 
     - ``"missing"`` -- no manifest entry exists for this section yet (never
       summarized, or a structural change added it since the last summary
-      pass -- see :func:`studio.utils.doc_index.diff_stale_sections`).
+      pass -- see :func:`studio.utils.doc_index.diff_stale_sections`), or a
+      manifest entry exists but its concept file was deleted out from under
+      it (a manual cleanup, say) -- the manifest's hash alone doesn't prove
+      the file it points at still exists.
     - ``"stale"`` -- a manifest entry exists, but its recorded
       ``built_from_hash`` no longer matches the section's current hash
       (the source changed since the summary was written).
@@ -145,7 +148,8 @@ def get_okf_status(path: Path) -> Dict[str, Any]:
     entries = []
     for position, section in enumerate(index["retrieval_sections"], start=1):
         manifest_entry = by_line_start.get(section["line_start"])
-        if manifest_entry is None:
+        concept_file = _concept_filename(position, section["heading"])
+        if manifest_entry is None or not (bundle_dir / concept_file).is_file():
             status = "missing"
         elif manifest_entry.get("built_from_hash") != section["hash"]:
             status = "stale"
@@ -155,7 +159,7 @@ def get_okf_status(path: Path) -> Dict[str, Any]:
             "heading": section["heading"],
             "line_start": section["line_start"],
             "line_end": section["line_end"],
-            "concept_file": _concept_filename(position, section["heading"]),
+            "concept_file": concept_file,
             "status": status,
         })
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from studio.commands.okf import cmd_okf_status
 from studio.utils.doc_index import get_or_build_doc_index
 from studio.utils.okf import (
+    _okf_bundle_dir,
     get_okf_status,
     load_okf_manifest,
     save_okf_manifest,
@@ -69,6 +70,25 @@ class TestGetOkfStatus:
         by_heading = {e["heading"]: e for e in status["entries"]}
         assert by_heading["Introduction"]["status"] == "current"
         assert by_heading["Details"]["status"] == "missing"  # untouched, both of them
+
+    def test_deleting_a_written_concept_file_reports_missing_not_current(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #110: a manifest entry's hash still matches after
+        its concept file is deleted out from under it (a manual cleanup,
+        say) -- the hash alone can't prove the file it points at survives,
+        so status must fall back to missing rather than current."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        intro = index["retrieval_sections"][0]
+        write_concept_file(f, intro["line_start"], description="d", body="b")
+        assert get_okf_status(f)["entries"][0]["status"] == "current"
+
+        bundle_dir = _okf_bundle_dir(f)
+        (bundle_dir / "01-introduction.md").unlink()
+
+        status = get_okf_status(f)
+        by_heading = {e["heading"]: e for e in status["entries"]}
+        assert by_heading["Introduction"]["status"] == "missing"
 
     def test_editing_the_source_after_writing_reports_stale(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
