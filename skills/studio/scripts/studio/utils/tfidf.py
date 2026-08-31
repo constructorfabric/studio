@@ -92,9 +92,16 @@ def _rank_sections(
 
 
 def _confidence(ranked: List[Dict[str, Any]]) -> tuple:
-    """See :func:`score_sections` for what ``margin``/``unambiguous`` mean."""
-    if len(ranked) < 2 or ranked[0]["score"] <= 0:
+    """See :func:`score_sections` for what ``margin``/``unambiguous`` mean.
+
+    A single section with a positive score is unambiguous by definition --
+    there is nothing else it could be confused with, the same as a section
+    that beat every rival's zero score outright.
+    """
+    if not ranked or ranked[0]["score"] <= 0:
         return None, False
+    if len(ranked) == 1:
+        return None, True
     second_score = ranked[1]["score"]
     if not second_score:
         return None, True

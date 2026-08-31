@@ -112,6 +112,36 @@ class TestRouteTier2:
         assert result["recommendation"] == "baseline"
         assert "okf_needs_rebuild" not in result
 
+    def test_no_candidate_with_a_partially_summarized_bundle_falls_back_to_baseline(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #111: row 1 (heading-nav found zero hits) has no
+        candidate section to narrow to, so the external OKF file-selector
+        could land on any section in the bundle. Recommending OKF while
+        even one other section is stale/missing would let that external
+        step pick exactly the untrustworthy one."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        index = get_or_build_doc_index(f)
+        section_a = index["retrieval_sections"][0]
+        write_concept_file(f, section_a["line_start"], description="d", body="b")  # SectionB left missing
+
+        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        result = route_tier2(f, tier1)
+        assert result["recommendation"] == "baseline"
+        assert result["okf_needs_rebuild"] is True
+
+    def test_no_candidate_with_a_fully_current_bundle_recommends_okf(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        index = get_or_build_doc_index(f)
+        for section in index["retrieval_sections"]:
+            write_concept_file(f, section["line_start"], description="d", body="b")
+
+        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        result = route_tier2(f, tier1)
+        assert result["recommendation"] == "okf"
+
     def test_current_bundle_for_candidate_recommends_okf(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)

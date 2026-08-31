@@ -464,17 +464,31 @@ def summarize_reads(path: Optional[Path] = None) -> Dict[str, Any]:
     "total_tokens": int}`` -- the per-method cost comparison a caller needs
     to see which retrieval method is actually earning its keep on a real
     document, not just how many events were logged.
+
+    A record whose ``payload`` isn't a dict, or whose ``tokens``/``lines``
+    values aren't numeric, is skipped rather than raising -- the same
+    "a partially corrupt log is still evidence" tolerance
+    :func:`read_events` already applies to unparseable lines, extended to a
+    parseable line with a malformed payload shape.
     """
     methods: Dict[str, Dict[str, int]] = {}
     total_tokens = 0
     for obj in read_events(path, event="read"):
-        payload = obj.get("payload") or {}
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        try:
+            tokens = int(payload.get("tokens", 0) or 0)
+            lines = int(payload.get("lines", 0) or 0)
+        except (TypeError, ValueError) as exc:
+            logger.debug("decision log: skipping read event with non-numeric tokens/lines: %s", exc)
+            continue
         method = str(payload.get("method", "?"))
         entry = methods.setdefault(method, {"count": 0, "total_tokens": 0, "total_lines": 0})
         entry["count"] += 1
-        entry["total_tokens"] += int(payload.get("tokens", 0) or 0)
-        entry["total_lines"] += int(payload.get("lines", 0) or 0)
-        total_tokens += int(payload.get("tokens", 0) or 0)
+        entry["total_tokens"] += tokens
+        entry["total_lines"] += lines
+        total_tokens += tokens
     return {"methods": methods, "total_tokens": total_tokens}
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-summarize-reads
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-read

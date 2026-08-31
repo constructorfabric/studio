@@ -394,6 +394,23 @@ class TestCachePersistence:
         assert index["cache_hit"] is False
         assert all("hash" in s for s in index["retrieval_sections"])
 
+    def test_cache_missing_sections_field_is_rebuilt_not_returned(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: a matching-etag cache that has section_level
+        and retrieval_sections (both valid) but omits sections passed the
+        old field-presence check -- cmd_doc_index() then hits a KeyError at
+        index["sections"]. sections is now itself a required field."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        incomplete = build_doc_index(f)
+        del incomplete["sections"]
+        save_doc_index(f, incomplete)
+
+        assert load_doc_index(f) is None
+
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False
+        assert "sections" in index
+
     def test_cmd_doc_index_does_not_crash_on_a_legacy_cache(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)

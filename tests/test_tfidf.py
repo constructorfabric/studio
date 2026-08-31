@@ -104,10 +104,24 @@ class TestScoreSections:
         scores = [r["score"] for r in result["ranked"]]
         assert scores == sorted(scores, reverse=True)
 
-    def test_single_section_document_has_no_margin(self, tmp_path: Path, monkeypatch):
+    def test_single_section_with_positive_score_is_unambiguous(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: a lone section can't be confused with
+        anything else -- the same "nothing to compete with" case as a
+        section that beat every rival's zero score, just with zero rivals
+        instead of losing ones. Matters for real: route_tier1() only
+        resolves a Tier-1 agreement when unambiguous, so this previously
+        forced every single-section document to escalate needlessly."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path, "## Only\n\nSome KAPING content.\n")
         result = score_sections(f, "KAPING")
+        assert len(result["ranked"]) == 1
+        assert result["margin"] is None
+        assert result["unambiguous"] is True
+
+    def test_single_section_with_zero_score_is_not_unambiguous(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, "## Only\n\nSome unrelated content.\n")
+        result = score_sections(f, "zzzznomatch")
         assert len(result["ranked"]) == 1
         assert result["margin"] is None
         assert result["unambiguous"] is False

@@ -1168,12 +1168,13 @@ class TestJitRetrievalReadiness:
         ids=["digit-then-chomp", "chomp-then-digit", "trailing-comment"],
     )
     def test_empty_block_scalar_with_valid_indicator_variants_still_warns(self, block_scalar_header):
-        """CodeRabbit PR #110 (round 2): YAML allows the chomping (+/-) and
-        indentation (1-9) indicators in either order, plus an optional
-        trailing comment -- `|2-`, `|-2`, and `| # TODO` are all valid
-        block-scalar headers the old regex rejected outright, which made
-        the later logic treat them as an ordinary (non-empty) scalar value
-        and wrongly suppress the missing-description warning."""
+        """CodeRabbit PR #110/#111 (both independently flagged this): YAML
+        allows the chomping (+/-) and indentation (1-9) indicators in
+        either order, plus a trailing "# comment" (preceded by whitespace)
+        -- `|2-`, `|-2`, and `| # TODO` are all valid block-scalar headers
+        the old regex rejected outright, which made the later logic treat
+        them as an ordinary (non-empty) scalar value and wrongly suppress
+        the missing-description warning."""
         filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
         content = (
             "---\n"

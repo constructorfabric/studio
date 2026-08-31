@@ -136,13 +136,17 @@ def route_tier2(
     """Choose OKF vs. baseline once Tier 1 has escalated.
 
     Only called for rows 1/4 (see :func:`route_tier1`). When Tier 1 named a
-    candidate section (row 4), a stale or missing OKF concept file for it
-    downgrades the recommendation to baseline with ``okf_needs_rebuild:
-    True`` rather than serving a known-wrong summary -- see this module's
-    docstring for why that's the only coherent choice here. Row 1 has no
-    candidate section to check, so a merely-existing bundle is trusted at
-    face value: OKF's own (external, LLM-driven) file-selection step is what
-    picks within it.
+    candidate section (row 4), only that section's concept file must be
+    current. Row 1 has no candidate section to narrow to -- heading-nav
+    found nothing, so the query could need any section -- and OKF's own
+    (external, LLM-driven) file-selection step picks among *whatever this
+    function hands it*; recommending OKF there while some other section is
+    stale or missing would let that external step land on exactly the
+    untrustworthy one. Either way, a stale or missing concept file in the
+    checked set downgrades the recommendation to baseline with
+    ``okf_needs_rebuild: True`` rather than risking a known-wrong summary --
+    see this module's docstring for why that's the only coherent choice
+    here.
     """
     status = get_okf_status(path)
     # get_okf_status() returns one entry per retrieval section regardless of
@@ -157,10 +161,16 @@ def route_tier2(
     if candidates:
         by_line_start = {entry["line_start"]: entry for entry in status["entries"]}
         relevant = [by_line_start[c["line_start"]] for c in candidates if c["line_start"] in by_line_start]
-        if any(entry["status"] != "current" for entry in relevant):
-            rec = _baseline_recommendation(expected_future_queries)
-            rec["okf_needs_rebuild"] = True
-            return rec
+    else:
+        # No named candidate (row 1): the external selector could land on
+        # any section in the bundle, so every section must be trustworthy,
+        # not just some of them.
+        relevant = status["entries"]
+
+    if any(entry["status"] != "current" for entry in relevant):
+        rec = _baseline_recommendation(expected_future_queries)
+        rec["okf_needs_rebuild"] = True
+        return rec
 
     return {"recommendation": "okf", "reason": "okf_bundle_current", "bundle_dir": status["bundle_dir"]}
 # @cpt-end:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-tier2

@@ -884,9 +884,14 @@ def _check_section_lengths(
 
 
 _DESCRIPTION_FIELD_RE = re.compile(r"^description\s*:\s*(.*)$")
-# YAML permits the chomping (+/-) and indentation (1-9) indicators in either
-# order, and an optional trailing comment: |, |-, |2, |2-, |-2, | # comment.
-_BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[1-9][+\-]?|[+\-]?[1-9]?)(?:\s*#.*)?$")
+# YAML 1.2.2 allows the chomping (+/-) and indentation (1-9) indicators in
+# either order, and a trailing "# comment" (preceded by whitespace) on the
+# header line itself: |, |-, |2, |2-, |-2, | # comment. The original regex
+# only matched one indicator order and rejected any trailing comment, so a
+# real header like "|2-" or "| # TODO" fell through to the "has a real
+# description" branch instead of being recognized as an (possibly empty)
+# block scalar at all.
+_BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[+\-]?[1-9]?|[1-9][+\-]?)(?:\s+#.*)?$")
 
 
 def _quoted_value_is_empty(value: str) -> bool:

@@ -474,10 +474,10 @@ class TestLoadOkfManifest:
         assert load_okf_manifest(f) is None
 
     def test_returns_none_when_top_level_is_not_a_dict(self, tmp_path: Path, monkeypatch):
-        """CodeRabbit PR #110 (round 2): a manifest that decodes to valid
-        JSON but isn't the expected object shape (e.g. a bare list) must
-        be treated the same as a corrupt/absent one, not passed through
-        for a reader to fail on."""
+        """CodeRabbit PR #110/#111 (both independently flagged this): a
+        manifest that decodes to valid JSON but isn't the expected object
+        shape (e.g. a bare list) must be treated the same as a
+        corrupt/absent one, not passed through for a reader to fail on."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         index = get_or_build_doc_index(f)
@@ -487,10 +487,21 @@ class TestLoadOkfManifest:
         manifest_path.write_text("[]", encoding="utf-8")
         assert load_okf_manifest(f) is None
 
+    def test_returns_none_when_entries_is_not_a_list(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        write_concept_file(f, index["retrieval_sections"][0]["line_start"], description="d", body="b")
+        status = get_okf_status(f)
+        manifest_path = Path(status["bundle_dir"]) / "manifest.json"
+        manifest_path.write_text(json.dumps({"entries": "not-a-list"}), encoding="utf-8")
+        assert load_okf_manifest(f) is None
+
     def test_returns_none_when_an_entry_is_missing_a_required_field(self, tmp_path: Path, monkeypatch):
-        """CodeRabbit PR #110 (round 2): an entry missing "line_start" (hand-
-        edited, or a future/older schema) used to reach get_okf_status()'s
-        by_line_start dict comprehension as an unhandled KeyError."""
+        """CodeRabbit PR #110/#111 (both independently flagged this): an
+        entry missing a required field (hand-edited, or a future/older
+        schema) used to reach get_okf_status()'s dict comprehensions as an
+        unhandled KeyError."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         index = get_or_build_doc_index(f)
@@ -503,6 +514,40 @@ class TestLoadOkfManifest:
         assert load_okf_manifest(f) is None
         # get_okf_status must not crash either -- it falls back to "no manifest".
         assert all(e["status"] == "missing" for e in get_okf_status(f)["entries"])
+
+    def test_empty_entries_list_is_a_valid_manifest(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert save_okf_manifest(f, {"entries": []}) is True
+        assert load_okf_manifest(f) == {"entries": []}
+
+
+class TestGetOkfStatusReorderTolerance:
+    def test_content_inserted_above_an_unchanged_section_keeps_it_current(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: a section's own line_start shifts whenever
+        earlier content changes size, even without any structural change.
+        Since matching is primarily by content hash (see
+        get_okf_status's docstring), a section genuinely unchanged in
+        content must not report "missing" just because something above it
+        grew and shifted its line_start."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        details = index["retrieval_sections"][1]  # "Details", position 2
+        assert details["heading"] == "Details"
+        write_concept_file(f, details["line_start"], description="d", body="b")
+        assert get_okf_status(f)["entries"][1]["status"] == "current"
+
+        # Grow the Introduction section (position 1) without touching Details --
+        # Details' line_start shifts, but its content (and hash) don't.
+        grown = _SAMPLE.replace(
+            "Body of the introduction.\n\n", "Body of the introduction.\n\nMore intro text.\n\n"
+        )
+        f.write_text(grown, encoding="utf-8")
+
+        status = get_okf_status(f)
+        assert status["entries"][1]["heading"] == "Details"
+        assert status["entries"][1]["status"] == "current"
 
 
 class TestCmdOkfStatus:
