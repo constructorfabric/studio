@@ -22,6 +22,8 @@
   - [Validate TOC](#validate-toc)
   - [TOC Utilities](#toc-utilities)
   - [Document Index](#document-index)
+  - [TF-IDF Scoring](#tf-idf-scoring)
+  - [OKF Bundle](#okf-bundle)
   - [Markdown Parsing Utilities](#markdown-parsing-utilities)
   - [Fixing Prompt Enrichment](#fixing-prompt-enrichment)
   - [Headings Contract Validation](#headings-contract-validation)
@@ -478,6 +480,40 @@ even if a write lands in the narrow window during the read.
 - [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
 - [x] - `p1` - Read a file's content bracketed by an etag snapshot on each side, retrying on mismatch: closes the window where a write between the read and the fingerprint could save stale headings under a fresh-looking etag - `inst-doc-index-stable-read`
 - [x] - `p1` - Re-parse a file's current content into retrieval sections for staleness comparison, and build the `(heading, line_start)` identity pair that disambiguates a duplicate heading title in a diff result - `inst-doc-index-diff-stale-helpers`
+
+### TF-IDF Scoring
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-tfidf`
+
+**Input**: Markdown file path, query text
+
+**Output**: Retrieval sections ranked by TF-IDF score against the query, plus a confidence signal
+
+Purely mechanical, no LLM call: reuses the Document Index's `retrieval_sections` for section boundaries (read once per file, same as every other JIT-retrieval consumer), then scores each section as sum(term-frequency x inverse-document-frequency) over the query's own terms. A rare, distinctive term scores its one relevant section far above every other (verified against a real document: 0.0016 vs. 0.0000 everywhere else); a common term whose real answer lives in a longer, more thoroughly-covered section can still lose to a shorter section with a single coincidental mention, since term frequency is normalized by section length — a real, measured, and documented failure mode of this method on its own, not a defect in the implementation (see the "zero-shot" case in the source findings document: margin 1.06x, wrong section on top). This is exactly why a margin/unambiguous confidence signal is returned alongside the ranking rather than just the ranking alone — a routing layer built on top of this needs to know when the ranking itself isn't trustworthy, not just what it is.
+
+1. [x] - `p1` - Tokenize text: lowercase, alphanumeric-only, dropping tokens shorter than 3 characters - `inst-tfidf-tokenize`
+2. [x] - `p1` - Score every retrieval section against a query: build the document's inverse-document-frequency table, rank sections by term-frequency x idf, and compute a margin/unambiguous confidence signal from the top two scores - `inst-tfidf-score`
+
+**Supporting**:
+- [x] - `p1` - Inverse-document-frequency table builder, section ranker, and margin/unambiguous confidence calculator - `inst-tfidf-score-helpers`
+
+### OKF Bundle
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-okf`
+
+**Input**: Markdown file path; a written section's `line_start`, description, and body text (from an external caller)
+
+**Output**: A local, regenerable bundle of concept files + `index.md`, and a per-section missing/stale/current status report
+
+Deterministic infrastructure only, matching `doc_index.py`/`tfidf.py`: no LLM call happens in this module. Writing an actual section summary is an external caller's job (an agent, dispatched outside this codebase) -- this module tracks which concept files should exist relative to the document's *current* retrieval sections, detects when a written one is stale (its recorded `built_from_hash` no longer matches the section's current hash from the Document Index), and persists whatever the caller writes. The whole bundle is local-only and gitignored (`.cache/okf/` — see `.gitignore`): unlike the content of a summary, which is expensive to regenerate (real LLM tokens), the bundle not surviving a fresh clone just means it rebuilds from scratch the same way `doc_index.py`'s own cache does — nothing here assumes it survives across clones, only across calls on the same machine.
+
+1. [x] - `p1` - Resolve the local bundle directory for a source file within its Studio directory, resolved from the file's own path - `inst-okf-bundle-dir`
+2. [x] - `p1` - Load/persist the bundle manifest (`manifest.json`): which concept file exists per section, its description, and the section hash it was built from - `inst-okf-manifest-io`
+3. [x] - `p1` - Report the bundle's state against the document's *current* retrieval sections: missing (never summarized), stale (source changed since summary was written), or current - `inst-okf-status`
+4. [x] - `p1` - Write (or overwrite) one section's concept file with frontmatter + body, update its manifest entry with the section's current hash, and regenerate `index.md` from the full manifest - `inst-okf-write-concept`
+
+**Supporting**:
+- [x] - `p1` - Deterministic `index.md` template: a bullet list of concept files with their descriptions, the same shape as a real, previously-built OKF bundle - `inst-okf-render-index`
 
 ### Markdown Parsing Utilities
 

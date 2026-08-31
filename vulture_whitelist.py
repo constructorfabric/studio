@@ -16,6 +16,7 @@ from studio.utils.doc_index import annotate_section_summary, diff_stale_sections
 from studio.utils.eval_harness import ReferencePresenceScorer, Scenario, ScorerKind, run_suite
 from studio.utils.eval_judge import Gold
 from studio.utils.manifest import ManifestLayerState
+from studio.utils.okf import write_concept_file
 
 is_json = _UI.is_json  # staticmethod alias exposed on the ui singleton
 
@@ -46,6 +47,11 @@ INCLUDE_ERROR = ManifestLayerState.INCLUDE_ERROR  # valid enum value for future 
 # skills/studio/scripts/studio/utils/doc_index.py.
 annotate_section_summary  # noqa: B018
 diff_stale_sections  # noqa: B018
+
+# OKF concept-file writer: called by a future external LLM caller after it
+# has actually produced a summary, not yet reached from production paths.
+# Exercised by tests. See skills/studio/scripts/studio/utils/okf.py.
+write_concept_file  # noqa: B018
 
 # cfs map module — symbols retained for layout/configuration completeness.
 from studio.commands.map.layout import MAX_ROW_W  # noqa: E402
