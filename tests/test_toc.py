@@ -1059,6 +1059,86 @@ class TestJitRetrievalReadiness:
         codes = [w["code"] for w in result["warnings"]]
         assert "toc-missing-description" not in codes
 
+    def test_empty_block_scalar_description_still_warns(self):
+        """CodeRabbit PR #109 (second round): `description: |` is a YAML
+        block-scalar marker -- the real content (if any) belongs on
+        indented lines below it, not on the marker line itself. With
+        nothing indented beneath it, this frontmatter has no real
+        description, immediately followed by the closing `---`."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: |\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    def test_populated_block_scalar_description_suppresses_warning(self):
+        """The other side of the block-scalar fix: real indented content
+        under `description: |` must still count as a real description."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: |\n"
+            "  A real, multi-line\n"
+            "  block-scalar description.\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" not in codes
+
+    def test_block_scalar_with_leading_blank_line_before_content_still_counts(self):
+        """A blank line immediately under the block-scalar marker (before
+        the real indented content) must be skipped, not mistaken for "no
+        content"."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: |\n"
+            "\n"
+            "  Real content after a leading blank line.\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" not in codes
+
+    def test_folded_block_scalar_marker_variant_is_recognized(self):
+        """`>` (folded) and modifiers like `|-`/`>+` are all valid YAML
+        block-scalar indicators, not just the bare `|`."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: >-\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
     def test_jit_readiness_warnings_are_never_errors(self):
         # All four signals are additive warnings; they must never appear
         # in `errors`, regardless of how badly a document scores. (This

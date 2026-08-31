@@ -269,7 +269,7 @@ def _read_cache_file(cache_path: Path) -> Optional[Dict[str, Any]]:
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load
-_REQUIRED_INDEX_FIELDS = ("total_lines", "sections")
+_REQUIRED_INDEX_FIELDS = ("total_lines", "sections", "section_level", "retrieval_sections")
 
 
 def _has_schema_current_index(cached: Dict[str, Any]) -> bool:
@@ -293,6 +293,13 @@ def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
     read (the property the whole cache exists to provide). Only a stale or
     absent cache falls through to :func:`build_doc_index`, which does the
     one real read.
+
+    A matching etag alone isn't enough: a cache written by an older version
+    of this module (before ``section_level``/``retrieval_sections``
+    existed) can have a matching etag if the file hasn't changed since, but
+    a caller reading those fields on it would hit a ``KeyError`` rather
+    than a clean rebuild. Treated the same as a stale cache -- rebuilt,
+    not crashed on.
     """
     cache_path = _index_cache_path(path)
     if cache_path is None or not cache_path.is_file():

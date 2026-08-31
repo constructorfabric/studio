@@ -211,6 +211,43 @@ class TestCachePersistence:
         f = _write(tmp_path)
         assert load_doc_index(f) is None
 
+    def test_legacy_cache_with_matching_etag_but_old_schema_is_rebuilt_not_returned(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #109 (second round): a cache written before
+        section_level/retrieval_sections existed can have a matching etag
+        if the file hasn't changed since -- load_doc_index() must not
+        return it as-is, or a caller reading those fields hits a
+        KeyError instead of a clean rebuild."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        legacy = build_doc_index(f)
+        del legacy["section_level"]
+        del legacy["retrieval_sections"]
+        save_doc_index(f, legacy)
+
+        assert load_doc_index(f) is None  # not the legacy dict, and not a crash
+
+        # The real caller path rebuilds cleanly rather than raising.
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False
+        assert "section_level" in index
+        assert "retrieval_sections" in index
+
+    def test_cmd_doc_index_does_not_crash_on_a_legacy_cache(self, tmp_path: Path, capsys, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        legacy = build_doc_index(f)
+        del legacy["section_level"]
+        del legacy["retrieval_sections"]
+        save_doc_index(f, legacy)
+
+        rc = cmd_doc_index([str(f)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["cache_hit"] is False
+        assert "retrieval_sections" in out
+
     def test_save_then_load_round_trips(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
