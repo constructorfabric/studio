@@ -74,6 +74,7 @@ from studio.utils.decision_log import (  # noqa: E402
     record_review,
     record_escalation,
     record_invocation,
+    record_read,
     summarize,
 )
 
@@ -86,6 +87,12 @@ record_review  # noqa: B018
 record_escalation  # noqa: B018
 record_invocation  # noqa: B018
 summarize  # noqa: B018
+
+# record_read: called by a future external caller once a read-and-answer step
+# actually fires (an agent doing the real read), not yet reached from
+# production paths. Exercised by tests. See
+# skills/studio/scripts/studio/utils/decision_log.py.
+record_read  # noqa: B018
 
 # eval_semantic public API — the semantic-coverage engine. Library + tests only for now;
 # the `cfs` surface and coverage-report integration are the follow-up, so these are not yet

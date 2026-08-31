@@ -28,7 +28,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .doc_index import get_or_build_doc_index
+from .doc_index import get_or_build_doc_index, section_text
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _MIN_TOKEN_LENGTH = 3
@@ -47,10 +47,6 @@ def tokenize(text: str) -> List[str]:
     """
     return [t for t in _TOKEN_RE.findall(text.lower()) if len(t) >= _MIN_TOKEN_LENGTH]
 # @cpt-end:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-tokenize
-
-
-def _section_text(lines: List[str], section: Dict[str, Any]) -> str:
-    return "\n".join(lines[section["line_start"] - 1:section["line_end"]])
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-score-helpers
@@ -141,7 +137,7 @@ def score_sections(path: Path, query: str) -> Dict[str, Any]:
         return {"ranked": [], "margin": None, "unambiguous": False}
 
     lines = path.resolve().read_text(encoding="utf-8").split("\n")
-    doc_tokens = [tokenize(_section_text(lines, section)) for section in sections]
+    doc_tokens = [tokenize(section_text(lines, section)) for section in sections]
     idf = _inverse_document_frequency(doc_tokens)
     ranked = _rank_sections(sections, doc_tokens, tokenize(query), idf)
     margin, unambiguous = _confidence(ranked)

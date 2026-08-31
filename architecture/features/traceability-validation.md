@@ -25,6 +25,9 @@
   - [TF-IDF Scoring](#tf-idf-scoring)
   - [OKF Bundle](#okf-bundle)
   - [Atomic File I/O](#atomic-file-io)
+  - [Heading-Nav Search](#heading-nav-search)
+  - [JIT-Retrieval Cascade](#jit-retrieval-cascade)
+  - [Read Gate](#read-gate)
   - [Markdown Parsing Utilities](#markdown-parsing-utilities)
   - [Fixing Prompt Enrichment](#fixing-prompt-enrichment)
   - [Headings Contract Validation](#headings-contract-validation)
@@ -485,6 +488,7 @@ detected as stale again on the very next check, never silently wrong.
 - [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
 - [x] - `p1` - Read a file's content bracketed by an etag snapshot on each side, retrying on mismatch: closes the window where a write between the read and the fingerprint could save stale headings under a fresh-looking etag - `inst-doc-index-stable-read`
 - [x] - `p1` - Re-parse a file's current content into retrieval sections for staleness comparison, and build the `(heading, line_start)` identity pair that disambiguates a duplicate heading title in a diff result - `inst-doc-index-diff-stale-helpers`
+- [x] - `p1` - Slice a retrieval section's own raw text out of a file's lines by its `line_start`/`line_end` -- the one shared implementation every consumer needing a section's actual content (not just its boundaries) reuses instead of re-deriving the slice - `inst-doc-index-section-text`
 - [x] - `p1` - `cfs doc-index` CLI wrapper: parse arguments, build the JSON output payload - `inst-doc-index-cmd`
 - [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
 
@@ -540,6 +544,56 @@ Shared by every local cache/bundle writer in this package (`doc_index.py`, `okf.
 
 1. [x] - `p1` - Write text to a path atomically: temp file + `os.replace`, so a reader racing a concurrent writer sees either the old complete file or the new complete one, never a torn write - `inst-atomic-write`
 2. [x] - `p1` - Run a read-modify-write callback under an exclusive lock on a sibling lock file, serializing concurrent callers so two overlapping cycles can't each read the same base state and have whichever writes last silently discard the other's update - `inst-atomic-lock`
+
+### Heading-Nav Search
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-heading-nav`
+
+**Input**: Markdown file path, query text
+
+**Output**: Every retrieval section containing the query literally, plus the first (document-order) hit
+
+Purely mechanical, no LLM call: a case-insensitive literal-substring search of the query against each retrieval section's own raw text, mirroring a real `grep -i "<query>"` against the content -- deliberately not tokenized or word-split, and sharing the Document Index's `retrieval_sections` for boundaries so this reads no more of the file than every other JIT-retrieval consumer already does. Has no semantic fallback by design: a query phrased differently than the source's own vocabulary returns zero hits everywhere, even when a related concept exists under different wording (a real, documented failure mode of this method on its own, not a defect) -- that hard failure is itself the useful signal a caller needs to decide whether to escalate past this method.
+
+1. [x] - `p1` - Find every retrieval section containing a query's literal text (case-insensitive), in document order, plus the first match - `inst-heading-nav-search`
+
+**Supporting**:
+- [x] - `p1` - `cfs heading-nav` CLI wrapper: parse arguments, build the JSON output payload - `inst-heading-nav-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs heading-nav` output - `inst-heading-nav-cmd-format`
+
+### JIT-Retrieval Cascade
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-cascade`
+
+**Input**: Markdown file path, query text; optional numeric margin threshold and expected future query volume
+
+**Output**: A routing decision -- resolved at Tier 1, resolved with multiple candidates, or escalated to a Tier 2 OKF-vs-baseline recommendation (plus a large-read gate check when that recommendation is baseline)
+
+Combines Heading-Nav Search and TF-IDF Scoring into the two-tier routing decision neither mechanical method answers on its own (see constructorfabric/studio#104): heading-nav's zero-hit case and TF-IDF's own agreement/margin against heading-nav's pick determine whether a query resolves for free at Tier 1, needs both methods' candidates read, or must escalate to a Tier 2 choice between the local OKF bundle and a full baseline read. Tier 1's large-margin resolution is deliberately restricted to TF-IDF's `unambiguous` signal rather than a numeric cutoff -- of the two real margins measured while designing this cascade, only an infinite (unambiguous) one was on a correct pick; every finite margin measured, however large, was on a documented wrong pick -- so a numeric `margin_threshold` exists as an explicit, off-by-default opt-in rather than a built-in assumption. Tier 2 never recommends an OKF concept file it knows is stale or missing for the section Tier 1 named as its escalation candidate: since nothing in this codebase can perform a background rebuild (no job runner, and by design no LLM call anywhere in this module or the ones it composes), falling back to baseline is the only choice that doesn't risk silently serving a known-wrong summary.
+
+1. [x] - `p1` - Apply the Tier 1 routing table: heading-nav zero hits escalates; agreement with TF-IDF's top pick resolves when unambiguous (or past an explicit margin threshold), else escalates as a diffuse margin; disagreement between the two resolves with both candidates - `inst-cascade-tier1`
+2. [x] - `p1` - Choose OKF vs. baseline once Tier 1 escalates: an available bundle with no summarized sections yet, or a stale/missing concept file for Tier 1's named candidate, both count as "no usable bundle" and recommend baseline; a current bundle for the candidate recommends OKF - `inst-cascade-tier2`
+3. [x] - `p1` - Route one query end to end: run Tier 1, and only when it escalates run Tier 2 and -- if Tier 2 recommends baseline -- the large-read confirmation gate against the document's real line count - `inst-cascade-route`
+
+**Supporting**:
+- [x] - `p1` - `cfs retrieve` CLI wrapper: parse arguments, build the JSON output payload - `inst-cascade-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs retrieve` output - `inst-cascade-cmd-format`
+
+### Read Gate
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-read-gate`
+
+**Input**: A document's total line count; an optional line-count threshold
+
+**Output**: `{needs_confirmation, total_lines, threshold}` -- a structured verdict for an external caller to act on, not an interactive prompt
+
+Pure decision logic, no I/O: this is a deterministic CLI, not the caller that actually reads a file and answers a query, so it produces the structured flag that decision depends on rather than blocking on its own `input()` call. The default threshold (5,000 lines) is the real number measured during this design's own token-tracking prototype -- the only read among nine real candidate targets against a 166-page source document that crossed it was a whole-document baseline read.
+
+1. [x] - `p1` - Decide whether a read of a given line count should pause for confirmation against a threshold - `inst-read-gate-check`
+
+**Supporting**:
+- [x] - `p1` - `cfs read-gate` CLI wrapper: build the document index, extract its total line count, apply the gate check - `inst-read-gate-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs read-gate` output - `inst-read-gate-cmd-format`
 
 ### Markdown Parsing Utilities
 
@@ -807,6 +861,9 @@ The system **MUST** scan CDSL instruction markers (`inst-{slug}` suffixes in num
 | Fixing Utils | `skills/.../utils/fixing.py` | Fixing prompt generation for LLM agents |
 | Language Config | `skills/.../utils/language_config.py` | Language-specific file extensions and comment patterns |
 | Parsing Utils | `skills/.../utils/parsing.py` | Markdown structure parsing, section extraction |
+| Heading-Nav Utils | `skills/.../utils/heading_nav.py` | Literal-substring section search for JIT retrieval |
+| Cascade Utils | `skills/.../utils/cascade.py` | Two-tier JIT-retrieval routing (heading-nav + TF-IDF, OKF vs. baseline) |
+| Read Gate Utils | `skills/.../utils/read_gate.py` | Large-read confirmation threshold check |
 
 ## 7. Acceptance Criteria
 

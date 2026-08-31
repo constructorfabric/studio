@@ -219,6 +219,36 @@ def test_record_invocation_shape(log_path: Path) -> None:
     assert ev["payload"]["args"] == {"paths": 1}      # arg-shape summary, never raw argv
 
 
+def test_record_read_shape(log_path: Path) -> None:
+    dl.record_read("tfidf", "doc.md", 8925, 49676, source="cli", path=log_path)
+    ev = next(iter(dl.read_events(log_path, event="read")))
+    assert ev["payload"]["method"] == "tfidf"
+    assert ev["payload"]["lines"] == 8925
+    assert ev["payload"]["tokens"] == 49676
+    assert ev["payload"]["source"] == "cli"
+
+
+def test_read_is_a_declared_event_name() -> None:
+    assert "read" in dl.EVENTS
+
+
+def test_summarize_reads_aggregates_tokens_and_lines_per_method(log_path: Path) -> None:
+    dl.record_read("tfidf", "doc.md", 8925, 49676, path=log_path)
+    dl.record_read("tfidf", "doc.md", 8925, 12000, path=log_path)
+    dl.record_read("baseline", "doc.md", 8925, 333573, path=log_path)
+    dl.record("routing", {"a": 1}, path=log_path)  # non-read event, must be ignored
+
+    result = dl.summarize_reads(log_path)
+    assert result["methods"]["tfidf"] == {"count": 2, "total_tokens": 61676, "total_lines": 17850}
+    assert result["methods"]["baseline"] == {"count": 1, "total_tokens": 333573, "total_lines": 8925}
+    assert result["total_tokens"] == 61676 + 333573
+
+
+def test_summarize_reads_on_empty_log_returns_no_methods(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+    assert dl.summarize_reads() == {"methods": {}, "total_tokens": 0}
+
+
 # ---------------------------------------------------------------------------
 # path resolution
 

@@ -146,6 +146,22 @@ def _cmd_okf_status(argv: List[str]) -> int:
     from .commands.okf import cmd_okf_status
     return cmd_okf_status(argv)
 
+def _cmd_heading_nav(argv: List[str]) -> int:
+    from .commands.heading_nav import cmd_heading_nav
+    return cmd_heading_nav(argv)
+
+def _cmd_retrieve(argv: List[str]) -> int:
+    from .commands.cascade import cmd_retrieve
+    return cmd_retrieve(argv)
+
+def _cmd_read_gate(argv: List[str]) -> int:
+    from .commands.read_gate import cmd_read_gate
+    return cmd_read_gate(argv)
+
+def _cmd_usage_report(argv: List[str]) -> int:
+    from .commands.usage_report import cmd_usage_report
+    return cmd_usage_report(argv)
+
 # =============================================================================
 # ADAPTER COMMAND
 # =============================================================================
@@ -231,6 +247,10 @@ _COMMAND_DESCRIPTIONS = {
     "doc-index": "Build/reuse a cached heading index for a Markdown file (read once, not per query)",
     "tfidf-score": "Rank a Markdown file's retrieval sections against a query via TF-IDF",
     "okf-status": "Report an OKF bundle's state for a Markdown file (missing/stale/current per section)",
+    "heading-nav": "Find a Markdown file's retrieval sections containing a query's literal text",
+    "retrieve": "Route a query through the two-tier JIT-retrieval cascade (heading-nav + TF-IDF, OKF vs. baseline)",
+    "read-gate": "Check whether a Markdown file's line count crosses the large-read confirmation threshold",
+    "usage-report": "Aggregate the local decision log's read events into a per-method token table",
     "pdsl": "Validate PDSL prompt blocks",
     "workspace-init": "Initialize multi-repo workspace",
     "workspace-add": "Add a source to workspace config",
@@ -247,7 +267,10 @@ _COMMAND_SECTIONS = [
     ("Validation", ["validate", "validate-kits", "validate-toc", "spec-coverage", "check-language"]),
     ("Search & Navigation", ["list-ids", "list-id-kinds", "get-content", "where-defined", "where-used"]),
     ("Kit Management", ["kit"]),
-    ("Utility", ["toc", "chunk-input", "doc-index", "tfidf-score", "okf-status", "pdsl"]),
+    ("Utility", [
+        "toc", "chunk-input", "doc-index", "tfidf-score", "okf-status",
+        "heading-nav", "retrieve", "read-gate", "usage-report", "pdsl",
+    ]),
     ("Workspace", ["workspace-init", "workspace-add", "workspace-info", "workspace-sync"]),
     ("Delegation", ["delegate"]),
     ("Diagnostics", ["doctor"]),
@@ -281,6 +304,10 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "doc-index": "_cmd_doc_index",
     "tfidf-score": "_cmd_tfidf_score",
     "okf-status": "_cmd_okf_status",
+    "heading-nav": "_cmd_heading_nav",
+    "retrieve": "_cmd_retrieve",
+    "read-gate": "_cmd_read_gate",
+    "usage-report": "_cmd_usage_report",
     "workspace-init": "_cmd_workspace_init",
     "workspace-add": "_cmd_workspace_add",
     "workspace-info": "_cmd_workspace_info",
@@ -317,6 +344,10 @@ _COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
     _cmd_doc_index,
     _cmd_tfidf_score,
     _cmd_okf_status,
+    _cmd_heading_nav,
+    _cmd_retrieve,
+    _cmd_read_gate,
+    _cmd_usage_report,
     _cmd_workspace_init,
     _cmd_workspace_add,
     _cmd_workspace_info,

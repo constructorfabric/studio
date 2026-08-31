@@ -220,6 +220,19 @@ def _make_section(
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-retrieval-sections
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-section-text
+def section_text(lines: List[str], section: Dict[str, Any]) -> str:
+    """Slice a retrieval section's own raw text out of the file's lines.
+
+    Shared by every consumer that needs a section's actual content rather
+    than just its boundaries (TF-IDF scoring, heading-nav search) -- one
+    implementation of the ``line_start``/``line_end`` slicing convention
+    instead of each consumer re-deriving it slightly differently.
+    """
+    return "\n".join(lines[section["line_start"] - 1:section["line_end"]])
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-section-text
+
+
 _MAX_READ_ATTEMPTS = 3
 
 

@@ -723,7 +723,13 @@ Enables users to install Studio globally, initialize it in any project with sens
 4. [x] - `p1` - Redact `$HOME` to `~` recursively so no username is recorded - `inst-log-redact`
 5. [x] - `p1` - Append one schema-versioned event (run_id, decision_id, event, command, payload); never raise into the caller; rotate by size; show a one-time notice - `inst-log-record`
 6. [x] - `p1` - Typed record helpers — routing, dispatch, validation, review, escalation, and command invocation (exit code, duration, arg-shape) — that call the writer - `inst-log-api`
+   - [x] - `p1` - `record_read`: log one read-and-answer event (method, target, lines, tokens, source) in the one shared schema every JIT-retrieval method's real cost is measured in - `inst-log-read-wrapper`
 7. [x] - `p1` - Read events back oldest-first (skipping unparseable lines) and summarise counts by event and run - `inst-log-read`
+   - [x] - `p1` - `summarize_reads`: aggregate logged `"read"` events into a per-method token/line/count table - `inst-log-summarize-reads`
+
+**Supporting**:
+- [x] - `p1` - `cfs usage-report` CLI wrapper: aggregate `summarize()` and `summarize_reads()` into one payload - `inst-usage-report-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs usage-report` output - `inst-usage-report-cmd-format`
 
 ## 4. States (CDSL)
 
