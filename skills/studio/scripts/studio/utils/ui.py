@@ -20,10 +20,14 @@ Usage in commands::
     ui.result(data_dict, human_fn=_format_init)
 """
 
+import argparse
 import json
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
+
+T = TypeVar("T")
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +262,153 @@ def result(
     # @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-result-human
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-json-safe-argparse
+class _ArgumentParsingError(Exception):
+    """Raised by :class:`JsonSafeArgumentParser` instead of the process
+    exiting directly, so :func:`parse_args_or_json_error` can turn a
+    parsing failure into the standard JSON/human ERROR result."""
+
+
+class JsonSafeArgumentParser(argparse.ArgumentParser):
+    """An ``ArgumentParser`` whose parsing *failures* raise instead of
+    printing a plain-text usage banner and calling ``sys.exit`` directly.
+
+    A missing/malformed argument otherwise bypasses this project's own
+    ``--json`` output contract entirely: ``parser.error()`` writes
+    unparseable plain text to stderr and exits, never touching
+    :func:`result`, so a caller that always parses stdout as JSON gets an
+    empty payload and an unhandled stderr string instead of a structured
+    error. ``--help``/``--version`` are unaffected -- those call
+    ``exit()``, not ``error()``, and stay human-oriented on purpose.
+    """
+
+    def error(self, message: str) -> None:  # noqa: D102 - argparse's own signature
+        raise _ArgumentParsingError(message)
+
+
+def parse_args_or_json_error(parser: "JsonSafeArgumentParser", argv: List[str]) -> Optional[argparse.Namespace]:
+    """Parse ``argv`` with ``parser``, or emit the standard ERROR result and
+    return ``None`` on a parsing failure -- the caller should ``return 2``.
+
+    ``--help``/``--version`` still exit the process directly and are not
+    caught here (see :class:`JsonSafeArgumentParser`).
+    """
+    try:
+        return parser.parse_args(argv)
+    except _ArgumentParsingError as exc:
+        result(
+            {"status": "ERROR", "message": str(exc)},
+            human_fn=lambda d: error(d["message"]),
+        )
+        return None
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-json-safe-argparse
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-require-existing-file
+def require_existing_file(file_arg: str) -> Optional[Path]:
+    """Resolve a CLI file-path argument to an existing file, or emit the
+    standard "File not found" ERROR result (JSON or human, via :func:`result`)
+    and return ``None``.
+
+    Shared by every command taking a single file-path argument (``doc-index``,
+    ``tfidf-score``, ``okf-status``, ...) -- previously each reimplemented the
+    same resolve-and-check block independently, which pylint's duplicate-code
+    check correctly caught once a third copy appeared.
+    """
+    filepath = Path(file_arg).resolve()
+    if filepath.is_file():
+        return filepath
+    result(
+        {"file": str(filepath), "status": "ERROR", "message": "File not found"},
+        human_fn=lambda d: error(f"{d['file']}: {d['message']}"),
+    )
+    return None
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-require-existing-file
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-parse-file-command
+def parse_file_command(
+    parser: JsonSafeArgumentParser, argv: List[str], *, file_attr: str = "file",
+) -> "tuple[Optional[argparse.Namespace], Optional[Path]]":
+    """Parse ``argv``, then resolve+validate its ``file_attr`` positional as
+    an existing file -- the two-step dance every single-file-argument
+    command needs (safe argparse, then :func:`require_existing_file`),
+    extracted once a third command repeated it identically enough for
+    pylint's duplicate-code check to catch it (the same reason
+    :func:`require_existing_file` itself exists).
+
+    Returns ``(args, filepath)``. ``filepath`` is ``None`` on either
+    failure (a parsing error or a missing/non-file path) -- the caller
+    should ``return 2`` in that case; the appropriate ERROR result has
+    already been emitted either way. ``args`` is also ``None`` specifically
+    on a parsing failure, since there's nothing parsed to return.
+    """
+    args = parse_args_or_json_error(parser, argv)
+    if args is None:
+        return None, None
+    filepath = require_existing_file(getattr(args, file_attr))
+    return args, filepath
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-parse-file-command
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-report-read-error
+def report_read_error(filepath: Path, exc: BaseException) -> None:
+    """Emit the standard "Cannot read file" ERROR result (JSON or human) for
+    an ``OSError``/``UnicodeDecodeError`` raised while reading an already-
+    existing file (a non-UTF-8 file, a permissions failure, a race after
+    the initial existence check).
+
+    Shared by every command that reads a file's content after
+    :func:`parse_file_command` has already confirmed it exists (``doc-index``,
+    ``tfidf-score``, ...) -- extracted once a second copy of the identical
+    try/except/result block appeared, the same duplicate-code trigger
+    :func:`require_existing_file` and :func:`parse_file_command` were each
+    extracted for.
+    """
+    result(
+        {"file": str(filepath), "status": "ERROR", "message": f"Cannot read file: {exc}"},
+        human_fn=lambda d: error(f"{d['file']}: {d['message']}"),
+    )
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-report-read-error
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-call-with-read-error-handling
+def call_with_read_error_handling(filepath: Path, fn: Callable[[], T]) -> Tuple[Optional[T], Optional[int]]:
+    """Call ``fn()`` -- a zero-arg callable that reads *filepath*'s content
+    -- catching ``OSError``/``UnicodeDecodeError`` and reporting via
+    :func:`report_read_error`.
+
+    Returns ``(result, None)`` on success, or ``(None, 2)`` on a caught
+    read failure; callers should ``return exit_code`` when it isn't
+    ``None``. Extracted once the identical "call the thing that reads a
+    file, catch its two read-failure exceptions, report, return 2" block
+    appeared across four commands (``heading-nav``, ``retrieve``,
+    ``read-gate``, ``okf-status``) -- the same duplicate-code trigger
+    every other shared helper in this module was extracted for.
+    """
+    try:
+        return fn(), None
+    except (OSError, UnicodeDecodeError) as exc:
+        report_read_error(filepath, exc)
+        return None, 2
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-call-with-read-error-handling
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-display-heading
+def display_heading(heading: Optional[str]) -> str:
+    """Render a retrieval section's heading for human/text display.
+
+    ``None`` is the synthetic preamble section's heading (content before a
+    document's first real heading -- see doc_index.py's
+    ``_build_retrieval_sections``), never a real heading's value; shown as
+    a readable label instead of the literal string "None". Shared by every
+    command that prints a section's heading (``doc-index``, ``tfidf-score``,
+    ``okf-status``, ...).
+    """
+    return heading if heading is not None else "(preamble)"
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-display-heading
+
+
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
@@ -292,6 +443,13 @@ class _UI:  # pylint: disable=too-few-public-methods
     table = staticmethod(table)
     file_action = staticmethod(file_action)
     result = staticmethod(result)
+    require_existing_file = staticmethod(require_existing_file)
+    parse_file_command = staticmethod(parse_file_command)
+    report_read_error = staticmethod(report_read_error)
+    call_with_read_error_handling = staticmethod(call_with_read_error_handling)
+    display_heading = staticmethod(display_heading)
+    JsonSafeArgumentParser = JsonSafeArgumentParser
+    parse_args_or_json_error = staticmethod(parse_args_or_json_error)
     is_json = staticmethod(is_json_mode)
     relpath = staticmethod(relpath)
 

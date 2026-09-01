@@ -105,7 +105,37 @@ class TestBuildDocIndex:
         index = build_doc_index(f)
         assert index["section_level"] == 2
         # "### A.1" (H3, off-level) stays inside "## Section A", not its own section.
-        assert [s["heading"] for s in index["retrieval_sections"]] == ["Section A", "Section B"]
+        # A leading `None`-heading entry captures "# Title" (real content before
+        # the first H2), which used to be silently dropped from retrieval_sections.
+        assert [s["heading"] for s in index["retrieval_sections"]] == [None, "Section A", "Section B"]
+
+    def test_preamble_before_first_section_is_captured_not_dropped(self, tmp_path: Path):
+        """CodeRabbit PR #110: content before the first section-level
+        heading (a title, an intro paragraph) used to be invisible to
+        every retrieval_sections entry -- present in the finer-grained
+        sections list, but nowhere in the coarser one a retriever
+        actually reads."""
+        f = _write(tmp_path)
+        index = build_doc_index(f)
+        preamble = index["retrieval_sections"][0]
+        assert preamble["heading"] is None
+        assert preamble["line_start"] == 1
+        assert preamble["line_end"] == 2  # "# Title" + the blank line after it
+        assert preamble["empty"] is False
+
+    def test_blank_only_preamble_is_not_captured(self, tmp_path: Path):
+        content = "\n\n## Section A\n\nBody of A.\n"
+        f = _write(tmp_path, content)
+        index = build_doc_index(f)
+        assert [s["heading"] for s in index["retrieval_sections"]] == ["Section A"]
+
+    def test_adjacent_same_level_headings_produce_an_empty_section(self, tmp_path: Path):
+        content = "## Section A\n## Section B\n\nBody of B.\n"
+        f = _write(tmp_path, content)
+        index = build_doc_index(f)
+        by_heading = {s["heading"]: s for s in index["retrieval_sections"]}
+        assert by_heading["Section A"]["empty"] is True
+        assert by_heading["Section B"]["empty"] is False
 
     def test_headingless_document_has_no_retrieval_sections(self, tmp_path: Path):
         f = _write(tmp_path, "Just a paragraph, no headings at all.\n")
@@ -174,6 +204,42 @@ class TestInferSectionLevel:
         assert infer_section_level(headings) == 5
 
 
+class TestLargeDocumentIntegration:
+    """CodeRabbit PR #110: infer_section_level's own docstring cites a real
+    failure at real scale (8 chapters on H5, one stray H3, ~6,601 lines) --
+    but every existing test exercised the formula against a handful of
+    synthetic heading tuples, never the full build_doc_index pipeline at
+    anything close to that shape. Reproduces it end to end: real file I/O,
+    real heading parsing, real section splitting and hashing."""
+
+    def test_full_pipeline_at_real_bug_scale(self, tmp_path: Path):
+        chapter_body = "\n".join(f"Paragraph {i} of chapter filler text." for i in range(800))
+        chapters = [f"##### Chapter {i}\n\n{chapter_body}\n" for i in range(1, 9)]
+        # A stray, numerically-shallower H3 dropped into the middle, exactly
+        # like the real PDF-conversion artifact this heuristic exists for.
+        content = "\n".join(chapters[:4]) + "\n### Stray Subsection\n\nbody\n" + "\n".join(chapters[4:])
+        f = tmp_path / "large.md"
+        f.write_text(content, encoding="utf-8")
+
+        assert len(content.split("\n")) > 6000
+
+        index = build_doc_index(f)
+        assert index["section_level"] == 5
+        headings = [s["heading"] for s in index["retrieval_sections"]]
+        assert headings == [f"Chapter {i}" for i in range(1, 9)]
+
+        # Correct line-range partitioning: every chapter's content stays
+        # inside its own section, none bleed into a "fake mega-section."
+        for section in index["retrieval_sections"]:
+            assert section["line_end"] > section["line_start"]
+        line_starts = [s["line_start"] for s in index["retrieval_sections"]]
+        assert line_starts == sorted(line_starts)
+        # Every section's hash is genuinely distinct real content, not the
+        # same value repeated (which would indicate a broken line-range
+        # computation collapsing sections together).
+        assert len({s["hash"] for s in index["retrieval_sections"]}) == 8
+
+
 class TestDiffStaleSections:
     def test_returns_none_when_no_cache_exists(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -196,6 +262,7 @@ class TestDiffStaleSections:
         assert diff["structural_change"] is False
         assert diff["changed"] == []
         assert {(e["heading"], e["line_start"]) for e in diff["unchanged"]} == {
+            (None, 1),
             ("Section A", 3),
             ("Section B", 11),
         }
@@ -208,7 +275,40 @@ class TestDiffStaleSections:
         diff = diff_stale_sections(f)
         assert diff["structural_change"] is False
         assert diff["changed"] == [{"heading": "Section B", "line_start": 11}]
-        assert diff["unchanged"] == [{"heading": "Section A", "line_start": 3}]
+        assert {(e["heading"], e["line_start"]) for e in diff["unchanged"]} == {(None, 1), ("Section A", 3)}
+
+    def test_reordered_sections_with_no_text_edits_report_everything_unchanged(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110: sections used to be matched by position, so
+        a pure reorder with zero text changes reported every section as
+        changed. Hash-based matching (a multiset match, so duplicate
+        content is handled correctly) now recognizes moved-but-unedited
+        content as unchanged."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = "## Section A\n\nBody of A.\n\n## Section B\n\nBody of B.\n"
+        reordered = "## Section B\n\nBody of B.\n\n## Section A\n\nBody of A.\n"
+        f = _write(tmp_path, content)
+        save_doc_index(f, build_doc_index(f))
+        f.write_text(reordered, encoding="utf-8")
+        diff = diff_stale_sections(f)
+        assert diff["structural_change"] is False
+        assert diff["changed"] == []
+        assert {e["heading"] for e in diff["unchanged"]} == {"Section A", "Section B"}
+
+    def test_reorder_combined_with_a_real_edit_flags_only_the_edited_content(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = "## Section A\n\nBody of A.\n\n## Section B\n\nBody of B.\n"
+        reordered_and_edited = "## Section B\n\nBody of B.\n\n## Section A\n\nBody of A, edited.\n"
+        f = _write(tmp_path, content)
+        save_doc_index(f, build_doc_index(f))
+        f.write_text(reordered_and_edited, encoding="utf-8")
+        diff = diff_stale_sections(f)
+        assert diff["structural_change"] is False
+        assert [e["heading"] for e in diff["changed"]] == ["Section A"]
+        assert [e["heading"] for e in diff["unchanged"]] == ["Section B"]
 
     def test_duplicate_headings_are_disambiguated_by_line_start(self, tmp_path: Path, monkeypatch):
         """CodeRabbit PR #109: heading text alone can't tell two identically
@@ -239,7 +339,7 @@ class TestDiffStaleSections:
         diff = diff_stale_sections(f)
         assert diff["structural_change"] is True
         assert diff["unchanged"] == []
-        assert {e["heading"] for e in diff["changed"]} == {"Section A", "Section B", "Section C"}
+        assert {e["heading"] for e in diff["changed"]} == {None, "Section A", "Section B", "Section C"}
 
 
 class TestCachePersistence:
@@ -271,6 +371,46 @@ class TestCachePersistence:
         assert "section_level" in index
         assert "retrieval_sections" in index
 
+    def test_intermediate_cache_missing_per_section_hash_is_rebuilt_not_returned(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110: retrieval_sections existed before per-section
+        hash did. A cache from that intermediate schema has both required
+        top-level fields, so the field-presence check alone lets it through
+        -- but every consumer that reads entry["hash"] (diff_stale_sections,
+        get_okf_status, the doc-index command's human formatter) then hits a
+        KeyError. Treated the same as any other schema mismatch: rebuilt."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        intermediate = build_doc_index(f)
+        for section in intermediate["retrieval_sections"]:
+            del section["hash"]
+        save_doc_index(f, intermediate)
+
+        assert load_doc_index(f) is None
+        assert diff_stale_sections(f) is None
+
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False
+        assert all("hash" in s for s in index["retrieval_sections"])
+
+    def test_cache_missing_sections_field_is_rebuilt_not_returned(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: a matching-etag cache that has section_level
+        and retrieval_sections (both valid) but omits sections passed the
+        old field-presence check -- cmd_doc_index() then hits a KeyError at
+        index["sections"]. sections is now itself a required field."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        incomplete = build_doc_index(f)
+        del incomplete["sections"]
+        save_doc_index(f, incomplete)
+
+        assert load_doc_index(f) is None
+
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False
+        assert "sections" in index
+
     def test_cmd_doc_index_does_not_crash_on_a_legacy_cache(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
@@ -294,6 +434,19 @@ class TestCachePersistence:
         assert loaded is not None
         assert loaded["etag"] == built["etag"]
         assert loaded["sections"] == built["sections"]
+
+    def test_save_returns_true_on_a_real_write(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: save_doc_index used to return None
+        unconditionally, giving a caller no way to distinguish an actual
+        write from a silent no-op outside a Studio project."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert save_doc_index(f, build_doc_index(f)) is True
+
+    def test_save_returns_false_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
+        f = _write(tmp_path)
+        assert save_doc_index(f, build_doc_index(f)) is False
 
     def test_load_returns_none_when_cache_is_stale(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -469,8 +622,9 @@ class TestGetOrBuildDocIndex:
     def test_cache_hit_preserves_previously_annotated_summary(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        get_or_build_doc_index(f)
-        assert annotate_section_summary(f, line_start=3, summary="Covers A.") is True
+        built = get_or_build_doc_index(f)
+        section_a_hash = next(s["hash"] for s in built["sections"] if s["line_start"] == 3)
+        assert annotate_section_summary(f, line_start=3, expected_hash=section_a_hash, summary="Covers A.") is True
         index = get_or_build_doc_index(f)
         assert index["cache_hit"] is True
         section_a = next(s for s in index["sections"] if s["heading"] == "Section A")
@@ -479,8 +633,9 @@ class TestGetOrBuildDocIndex:
     def test_content_change_invalidates_and_drops_stale_summaries(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        get_or_build_doc_index(f)
-        annotate_section_summary(f, line_start=3, summary="Covers A.")
+        built = get_or_build_doc_index(f)
+        section_a_hash = next(s["hash"] for s in built["sections"] if s["line_start"] == 3)
+        annotate_section_summary(f, line_start=3, expected_hash=section_a_hash, summary="Covers A.")
         f.write_text(_SAMPLE + "\n## Section C\n")
         index = get_or_build_doc_index(f)
         assert index["cache_hit"] is False
@@ -498,19 +653,57 @@ class TestAnnotateSectionSummary:
     def test_returns_false_when_no_cache_exists_yet(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        assert annotate_section_summary(f, line_start=3, summary="x") is False
+        assert annotate_section_summary(f, line_start=3, expected_hash="anything", summary="x") is False
+
+    def test_returns_false_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
+        f = _write(tmp_path)
+        assert annotate_section_summary(f, line_start=3, expected_hash="anything", summary="x") is False
 
     def test_returns_false_for_unmatched_line_start(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         get_or_build_doc_index(f)
-        assert annotate_section_summary(f, line_start=999, summary="x") is False
+        assert annotate_section_summary(f, line_start=999, expected_hash="anything", summary="x") is False
+
+    def test_propagates_a_persistence_failure_instead_of_reporting_true(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: annotate_section_summary used to return True
+        unconditionally after calling save_doc_index, discarding whatever
+        save_doc_index actually reported -- an external caller (e.g. an
+        LLM summarization pass) would believe a summary was persisted when
+        the underlying write silently failed/no-opped."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        line_start = index["sections"][0]["line_start"]
+        expected_hash = index["sections"][0]["hash"]
+
+        monkeypatch.setattr(di, "save_doc_index", lambda *_a, **_k: False)
+        result = annotate_section_summary(f, line_start=line_start, expected_hash=expected_hash, summary="x")
+        assert result is False
+
+    def test_returns_false_on_hash_mismatch(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #110: a caller's expected_hash must match the
+        section's current hash, or the write is rejected -- otherwise a
+        document edited between read and write-back could silently
+        attach one section's summary to a different section's content
+        that now happens to occupy the same line_start."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        get_or_build_doc_index(f)
+        assert annotate_section_summary(f, line_start=3, expected_hash="stale-hash", summary="x") is False
+        cached = load_doc_index(f)
+        section_a = next(s for s in cached["sections"] if s["line_start"] == 3)
+        assert section_a["summary"] is None
 
     def test_returns_true_and_persists_on_match(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        get_or_build_doc_index(f)
-        assert annotate_section_summary(f, line_start=1, summary="The title.") is True
+        built = get_or_build_doc_index(f)
+        title_hash = built["sections"][0]["hash"]
+        assert annotate_section_summary(f, line_start=1, expected_hash=title_hash, summary="The title.") is True
         cached = load_doc_index(f)
         assert cached["sections"][0]["summary"] == "The title."
 
@@ -521,8 +714,9 @@ class TestAnnotateSectionSummary:
         relevant list for a future OKF-style summarizer) couldn't see it."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        get_or_build_doc_index(f)
-        assert annotate_section_summary(f, line_start=3, summary="Covers A.") is True
+        built = get_or_build_doc_index(f)
+        section_a_hash = next(s["hash"] for s in built["sections"] if s["line_start"] == 3)
+        assert annotate_section_summary(f, line_start=3, expected_hash=section_a_hash, summary="Covers A.") is True
         index = load_doc_index(f)
         retrieval_a = next(s for s in index["retrieval_sections"] if s["heading"] == "Section A")
         assert retrieval_a["summary"] == "Covers A."
@@ -534,8 +728,9 @@ class TestAnnotateSectionSummary:
         retrieval section to touch."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        get_or_build_doc_index(f)
-        assert annotate_section_summary(f, line_start=7, summary="About A.1.") is True
+        built = get_or_build_doc_index(f)
+        a1_hash = next(s["hash"] for s in built["sections"] if s["line_start"] == 7)
+        assert annotate_section_summary(f, line_start=7, expected_hash=a1_hash, summary="About A.1.") is True
         index = load_doc_index(f)
         a1 = next(s for s in index["sections"] if s["heading"] == "A.1")
         assert a1["summary"] == "About A.1."
@@ -559,21 +754,24 @@ class TestAnnotateSectionSummary:
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         index = get_or_build_doc_index(f)
-        line_a = index["sections"][1]["line_start"]  # "Section A"
-        line_b = index["sections"][3]["line_start"]  # "Section B"
+        section_a = index["sections"][1]  # "Section A"
+        section_b = index["sections"][3]  # "Section B"
+        line_a, hash_a = section_a["line_start"], section_a["hash"]
+        line_b, hash_b = section_b["line_start"], section_b["hash"]
 
         original_save = di.save_doc_index
 
         def slow_save(path, saved_index):
             time_module.sleep(0.1)
-            original_save(path, saved_index)
+            return original_save(path, saved_index)
 
         monkeypatch.setattr(di, "save_doc_index", slow_save)
 
         results: dict = {}
+        hashes = {line_a: hash_a, line_b: hash_b}
 
         def run(line_start: int, summary: str) -> None:
-            results[line_start] = di.annotate_section_summary(f, line_start, summary)
+            results[line_start] = di.annotate_section_summary(f, line_start, hashes[line_start], summary)
 
         t1 = threading.Thread(target=run, args=(line_a, "Summary A"))
         t2 = threading.Thread(target=run, args=(line_b, "Summary B"))
@@ -636,6 +834,16 @@ class TestCmdDocIndex:
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"
 
+    def test_missing_required_argument_emits_json_error_not_a_plain_text_banner(self, capsys):
+        """CodeRabbit PR #111: cmd_doc_index uses JsonSafeArgumentParser, so
+        omitting the required positional must still emit the project's own
+        --json ERROR contract (via parse_args_or_json_error), not argparse's
+        default usage banner + SystemExit."""
+        rc = cmd_doc_index([])  # file omitted
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
     def test_unreadable_file_reports_a_clean_error_not_a_raw_traceback(
         self, tmp_path: Path, capsys, monkeypatch
     ):
@@ -674,8 +882,8 @@ class TestCmdDocIndex:
         assert rc == 0
         out = json.loads(capsys.readouterr().out)
         assert out["section_level"] == 2
-        assert out["retrieval_section_count"] == 2
-        assert [s["heading"] for s in out["retrieval_sections"]] == ["Section A", "Section B"]
+        assert out["retrieval_section_count"] == 3
+        assert [s["heading"] for s in out["retrieval_sections"]] == [None, "Section A", "Section B"]
         assert "hash" in out["retrieval_sections"][0]
 
     def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(self, tmp_path: Path, capsys, monkeypatch):
@@ -716,7 +924,8 @@ class TestCmdDocIndex:
             set_json_mode(orig)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "Retrieval sections (level 2, 2 section(s))" in out
+        assert "Retrieval sections (level 2, 3 section(s))" in out
+        assert "(preamble)" in out
         assert "Section A" in out
         assert "Section B" in out
 
@@ -778,9 +987,11 @@ class TestCmdDocIndex:
 
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
+        built = get_or_build_doc_index(f)
+        section_a_hash = next(s["hash"] for s in built["sections"] if s["line_start"] == 3)
         cmd_doc_index([str(f)])
         capsys.readouterr()
-        assert annotate_section_summary(f, line_start=3, summary="Covers A.") is True
+        assert annotate_section_summary(f, line_start=3, expected_hash=section_a_hash, summary="Covers A.") is True
         orig = is_json_mode()
         set_json_mode(False)
         try:

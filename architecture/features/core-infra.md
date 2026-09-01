@@ -596,6 +596,12 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - `file_action`: file-change icon printer (created/updated/unchanged/etc.) to stderr - `inst-ui-file-action`
 - [x] - `p1` - `result` JSON branch: serialize result dict as JSON to stdout in `--json` mode - `inst-ui-result-json`
 - [x] - `p1` - `result` human branch: invoke `human_fn` or generic status/message fallback to stderr - `inst-ui-result-human`
+- [x] - `p1` - `require_existing_file`: resolve a CLI file-path argument, emitting the standard "File not found" ERROR result and returning `None` when it doesn't exist -- shared by every single-file-argument command - `inst-ui-require-existing-file`
+- [x] - `p1` - `JsonSafeArgumentParser`/`parse_args_or_json_error`: an `ArgumentParser` whose parsing failures raise instead of printing a plain-text usage banner and exiting directly, so a missing/malformed argument still honors the `--json` output contract (`--help`/`--version` are unaffected, since those exit via a different path) - `inst-ui-json-safe-argparse`
+- [x] - `p1` - `parse_file_command`: the combined "parse args safely, then require an existing file" two-step every single-file-argument command needs, extracted once a third command repeated the pattern identically enough for pylint's duplicate-code check to catch it - `inst-ui-parse-file-command`
+- [x] - `p1` - `report_read_error`: the standard "Cannot read file" ERROR result for an `OSError`/`UnicodeDecodeError` raised while reading a file `parse_file_command` already confirmed exists, extracted once a second command repeated the identical try/except/result block - `inst-ui-report-read-error`
+- [x] - `p1` - `call_with_read_error_handling`: call a zero-arg callable that reads a file, catching `OSError`/`UnicodeDecodeError` and reporting via `report_read_error`, extracted once the identical try/except block appeared across four commands - `inst-ui-call-with-read-error-handling`
+- [x] - `p1` - `display_heading`: render a retrieval section's heading for human display, substituting a readable label for the synthetic preamble section's `None` heading instead of the literal string "None" - `inst-ui-display-heading`
 - [x] - `p1` - Create a temporary stderr-bound logger handler with plain-message formatting for UI diagnostics - `inst-ui-stderr-handler`
 - [x] - `p1` - Emit one plain-text stderr message through the dedicated helper, allowing a logger-backed implementation internally, then close the handler - `inst-ui-stderr-emit`
 - [x] - `p1` - `relpath`: convert absolute path to cwd-relative path with fallback - `inst-ui-relpath`
@@ -718,7 +724,13 @@ Enables users to install Studio globally, initialize it in any project with sens
 4. [x] - `p1` - Redact `$HOME` to `~` recursively so no username is recorded - `inst-log-redact`
 5. [x] - `p1` - Append one schema-versioned event (run_id, decision_id, event, command, payload); never raise into the caller; rotate by size; show a one-time notice - `inst-log-record`
 6. [x] - `p1` - Typed record helpers — routing, dispatch, validation, review, escalation, and command invocation (exit code, duration, arg-shape) — that call the writer - `inst-log-api`
+   - [x] - `p1` - `record_read`: log one read-and-answer event (method, target, lines, tokens, source) in the one shared schema every JIT-retrieval method's real cost is measured in - `inst-log-read-wrapper`
 7. [x] - `p1` - Read events back oldest-first (skipping unparseable lines) and summarise counts by event and run - `inst-log-read`
+   - [x] - `p1` - `summarize_reads`: aggregate logged `"read"` events into a per-method token/line/count table - `inst-log-summarize-reads`
+
+**Supporting**:
+- [x] - `p1` - `cfs usage-report` CLI wrapper: aggregate `summarize()` and `summarize_reads()` into one payload - `inst-usage-report-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs usage-report` output - `inst-usage-report-cmd-format`
 
 ## 4. States (CDSL)
 

@@ -34,12 +34,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import time
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .atomic_io import atomic_write_text, with_file_lock
 from .toc import parse_headings_with_lines
 
 logger = logging.getLogger(__name__)
@@ -173,24 +173,64 @@ def _build_retrieval_sections(
     :func:`diff_stale_sections` needs to tell "this one section changed"
     from "the whole file changed", which a whole-file fingerprint
     structurally cannot do.
+
+    Content before the first ``section_level`` heading (a document title,
+    an intro paragraph) is otherwise invisible to every entry here, since
+    each entry starts at a heading line -- a real gap, since that region is
+    exactly where a title or one-line summary usually lives. When such
+    content exists and isn't just blank lines, it's captured as a leading
+    synthetic entry with ``heading=None`` (never a real heading's value,
+    so a caller can tell it apart from actual sections) spanning lines 1
+    through the line before the first real section heading.
+
+    ``empty`` flags a section whose slice is only its own heading line --
+    two same-level headings with nothing between them -- so a caller can
+    skip summarizing content that doesn't exist rather than treating it
+    the same as a genuinely short section.
     """
     if section_level is None:
         return []
     line_count = len(lines)
     marks = [(text, line_start) for level, text, line_start in headings_with_lines if level == section_level]
     sections: List[Dict[str, Any]] = []
+    if marks and marks[0][1] > 1 and any(line.strip() for line in lines[:marks[0][1] - 1]):
+        # Not "heading line + body": the whole span is body/title content,
+        # already confirmed non-blank above, so never flagged empty.
+        sections.append(_make_section(None, 1, marks[0][1] - 1, lines, empty=False))
     for i, (text, line_start) in enumerate(marks):
         line_end = marks[i + 1][1] - 1 if i + 1 < len(marks) else line_count
-        hash_text = "\n".join(line.rstrip() for line in lines[line_start - 1:line_end])
-        sections.append({
-            "heading": text,
-            "line_start": line_start,
-            "line_end": line_end,
-            "hash": hashlib.sha256(hash_text.encode("utf-8")).hexdigest(),
-            "summary": None,
-        })
+        # A real section's line_start is the heading line itself, so
+        # line_end <= line_start means no body lines followed it at all.
+        sections.append(_make_section(text, line_start, line_end, lines, empty=line_end <= line_start))
     return sections
+
+
+def _make_section(
+    heading: Optional[str], line_start: int, line_end: int, lines: List[str], *, empty: bool,
+) -> Dict[str, Any]:
+    hash_text = "\n".join(line.rstrip() for line in lines[line_start - 1:line_end])
+    return {
+        "heading": heading,
+        "line_start": line_start,
+        "line_end": line_end,
+        "hash": hashlib.sha256(hash_text.encode("utf-8")).hexdigest(),
+        "empty": empty,
+        "summary": None,
+    }
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-retrieval-sections
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-section-text
+def section_text(lines: List[str], section: Dict[str, Any]) -> str:
+    """Slice a retrieval section's own raw text out of the file's lines.
+
+    Shared by every consumer that needs a section's actual content rather
+    than just its boundaries (TF-IDF scoring, heading-nav search) -- one
+    implementation of the ``line_start``/``line_end`` slicing convention
+    instead of each consumer re-deriving it slightly differently.
+    """
+    return "\n".join(lines[section["line_start"] - 1:section["line_end"]])
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-section-text
 
 
 _MAX_READ_ATTEMPTS = 3
@@ -249,11 +289,13 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
     sections: List[Dict[str, Any]] = []
     for i, (level, text, line_start) in enumerate(headings):
         line_end = headings[i + 1][2] - 1 if i + 1 < len(headings) else line_count
+        hash_text = "\n".join(line.rstrip() for line in lines[line_start - 1:line_end])
         sections.append({
             "level": level,
             "heading": text,
             "line_start": line_start,
             "line_end": line_end,
+            "hash": hashlib.sha256(hash_text.encode("utf-8")).hexdigest(),
             "summary": None,
         })
 
@@ -299,15 +341,24 @@ _REQUIRED_INDEX_FIELDS = ("total_lines", "sections", "section_level", "retrieval
 
 def _has_schema_current_index(cached: Dict[str, Any]) -> bool:
     """``True`` only if ``cached`` carries every field a consumer
-    (``commands/doc_index.py``, :func:`annotate_section_summary`) reads by
-    subscript, at the schema version this module currently writes --
-    treated the same as a stale/corrupt cache otherwise, so a partially
-    written, hand-edited, or pre-schema-bump cache triggers a clean rebuild
-    instead of a ``KeyError`` deep in a consumer.
+    (``commands/doc_index.py``, :func:`annotate_section_summary`,
+    :func:`diff_stale_sections`) reads by subscript, at the schema version
+    this module currently writes -- treated the same as a stale/corrupt
+    cache otherwise, so a partially written, hand-edited, or pre-schema
+    cache triggers a clean rebuild instead of a ``KeyError`` deep in a
+    consumer. Also checks every ``retrieval_sections`` and ``sections``
+    entry carries a ``hash``: both fields were added after their
+    containers already existed, so a cache from one of those intermediate
+    schemas would otherwise pass the top-level field-presence check and
+    still raise on ``entry["hash"]``.
     """
     if cached.get("schema_version") != _SCHEMA_VERSION:
         return False
-    return all(field in cached for field in _REQUIRED_INDEX_FIELDS)
+    if any(field not in cached for field in _REQUIRED_INDEX_FIELDS):
+        return False
+    if not all("hash" in section for section in cached["retrieval_sections"]):
+        return False
+    return all("hash" in section for section in cached["sections"])
 
 
 def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
@@ -347,15 +398,20 @@ def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
     if cached.get("etag") != current_etag:
         return None
     if not _has_schema_current_index(cached):
-        logger.debug("doc-index cache for %s is malformed or predates the current schema; rebuilding", path)
+        # A matching etag but a stale/malformed shape means a hand-edited
+        # or pre-schema-bump cache slipped past the etag check -- a real
+        # anomaly, not a routine miss, so warning rather than debug.
+        logger.warning("doc-index cache for %s is malformed or predates the current schema; rebuilding", path)
         return None
     return cached
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-save
-def save_doc_index(path: Path, index: Dict[str, Any]) -> None:
-    """Persist an index to its cache location. No-ops outside a Studio project.
+def save_doc_index(path: Path, index: Dict[str, Any]) -> bool:
+    """Persist an index to its cache location. No-ops (returns ``False``)
+    outside a Studio project, so a caller can tell an actual write from a
+    silent no-op instead of assuming success unconditionally.
 
     Written atomically (temp file + ``os.replace``): a reader racing a
     concurrent writer sees either the old complete file or the new complete
@@ -363,11 +419,9 @@ def save_doc_index(path: Path, index: Dict[str, Any]) -> None:
     """
     cache_path = _index_cache_path(path)
     if cache_path is None:
-        return
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = cache_path.with_name(f"{cache_path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
-    os.replace(tmp_path, cache_path)
+        return False
+    atomic_write_text(cache_path, json.dumps(index, indent=2))
+    return True
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-save
 
 
@@ -444,25 +498,31 @@ def diff_stale_sections(path: Path) -> Optional[Dict[str, Any]]:
 
     Otherwise returns ``{"structural_change": bool, "unchanged": [...],
     "changed": [...]}``, where each entry is ``{"heading": str, "line_start":
-    int}`` -- the *current* (fresh) position, in document order. Sections
-    are matched by *position*, not heading text: duplicate heading titles
-    are real (see the ``toc-heading-duplicate`` check), so heading text
-    alone can't tell two same-named sections apart -- ``line_start`` is
-    what a caller should actually use to address "this specific section"
-    afterwards (e.g. to call :func:`annotate_section_summary`), with the
-    heading text included only for human-readable logging. When the
-    section *count* itself differs, ``structural_change`` is ``True`` and
-    ``changed``/``unchanged`` aren't populated -- a position-based diff
-    across a changed count can't be safely narrowed to "which ones
-    changed" without guessing, so the caller should fall back to a full
-    rebuild rather than have this function guess for it.
+    int}`` -- the *current* (fresh) position, in document order. Matched
+    primarily by *content hash*, not position: a section's hash appearing
+    in both the cached and fresh section lists is content that survived
+    unedited, however it moved, so a pure reorder with zero text changes
+    reports every section unchanged instead of misreporting the whole
+    document as edited. Matching is multiset-based (:class:`Counter`), so
+    genuine duplicate-content sections are paired up to the smaller of the
+    two counts, with only the surplus falling to ``changed`` -- correct
+    even when the same text legitimately appears more than once. Heading
+    text alone still can't identify a specific section (duplicate heading
+    titles are real -- see the ``toc-heading-duplicate`` check), so a
+    caller addressing "this specific section" afterwards (e.g. to call
+    :func:`annotate_section_summary`) uses the *current* ``line_start`` in
+    a returned entry, not a hash. When the section *count* itself differs,
+    ``structural_change`` is ``True`` and ``changed``/``unchanged`` aren't
+    populated -- a diff across a changed count can't be safely narrowed to
+    "which ones changed" without guessing, so the caller should fall back
+    to a full rebuild rather than have this function guess for it.
     """
     cache_path = _index_cache_path(path)
     if cache_path is None or not cache_path.is_file():
         return None
 
     cached = _read_cache_file(cache_path)
-    if cached is None or "retrieval_sections" not in cached:
+    if cached is None or not _has_schema_current_index(cached):
         return None
 
     fresh_sections = _compute_fresh_retrieval_sections(path)
@@ -477,47 +537,40 @@ def diff_stale_sections(path: Path) -> Optional[Dict[str, Any]]:
             "changed": [_position_entry(s) for s in fresh_sections],
         }
 
+    remaining_old_hashes = Counter(s["hash"] for s in old_sections)
     unchanged: List[Dict[str, Any]] = []
     changed: List[Dict[str, Any]] = []
-    for old, new in zip(old_sections, fresh_sections, strict=True):
-        (unchanged if old["hash"] == new["hash"] else changed).append(_position_entry(new))
+    for new in fresh_sections:
+        if remaining_old_hashes[new["hash"]] > 0:
+            remaining_old_hashes[new["hash"]] -= 1
+            unchanged.append(_position_entry(new))
+        else:
+            changed.append(_position_entry(new))
     return {"structural_change": False, "unchanged": unchanged, "changed": changed}
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-diff-stale
 
 
-def _with_cache_lock(cache_path: Path, fn):
-    """Run ``fn()`` -- a read-modify-write cycle against ``cache_path`` --
-    under an exclusive lock on a sibling ``.lock`` file, serializing
-    concurrent callers so two overlapping read-modify-write cycles (e.g.
-    two :func:`annotate_section_summary` calls for different sections of
-    the same document, running from separate processes) can't each load
-    the same base index, mutate their own part, and have whichever writes
-    last silently discard the other's update. Mirrors
-    :func:`studio.utils.decision_log._append_locked`'s exact fallback: an
-    exclusive ``fcntl`` lock where available (POSIX), otherwise runs
-    ``fn()`` unlocked on platforms without it (e.g. Windows) -- atomicity
-    of each individual write is already guaranteed by :func:`save_doc_index`
-    regardless; only the cross-call serialization is best-effort there.
-    """
-    try:
-        import fcntl  # pylint: disable=import-outside-toplevel
-    except ImportError:
-        return fn()
-    lock_path = cache_path.with_name(f"{cache_path.name}.lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock_path, "a", encoding="utf-8") as lock_fh:
-        fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
-        return fn()
-
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate
-def annotate_section_summary(path: Path, line_start: int, summary: str) -> bool:
+def annotate_section_summary(path: Path, line_start: int, expected_hash: str, summary: str) -> bool:
     """Attach a one-line summary to a cached section, keyed by its line_start.
 
     Summaries are written by an LLM caller during a one-time enrichment
     pass, never generated inside this module. Returns ``False`` when no
-    valid (non-stale) cached index exists or no section matches
-    ``line_start`` -- callers should build the index first.
+    valid (non-stale) cached index exists, no section matches
+    ``line_start``, or ``expected_hash`` doesn't match that section's
+    current hash -- callers should build the index first, and re-resolve
+    on a hash mismatch rather than retry blindly.
+
+    ``expected_hash`` must be the hash of the ``sections`` entry the
+    caller actually read and summarized (from a prior
+    :func:`get_or_build_doc_index`/:func:`build_doc_index` call). Without
+    this check, a document edited between that read and this write can
+    shift a *different* section into the same ``line_start`` (e.g. content
+    inserted above it), and matching by position alone would silently
+    attach one section's summary to another section's content -- a
+    caller can't tell the difference from the return value alone unless
+    the write is rejected outright.
 
     Updates the matching entry in both ``sections`` (any heading level) and
     ``retrieval_sections`` (the coarser grouping) when both have a section
@@ -526,12 +579,16 @@ def annotate_section_summary(path: Path, line_start: int, summary: str) -> bool:
     list. A ``line_start`` that only matches ``sections`` (an off-level
     heading that isn't itself a retrieval section's start) updates only
     that list, which is correct: there is no corresponding retrieval
-    section to update.
+    section to update. The retrieval_sections match is only reached once
+    the ``sections``-level hash check above has already confirmed this
+    document position still holds the content the caller expects, so it
+    doesn't need (and can't reuse -- its hash covers a different span) a
+    second hash check of its own.
 
     The read-modify-write cycle (load, mutate one section, save) runs
-    under :func:`_with_cache_lock`, so two concurrent calls annotating
-    different sections of the same document don't race and silently drop
-    one side's update.
+    under :func:`studio.utils.atomic_io.with_file_lock`, so two concurrent
+    calls annotating different sections of the same document don't race
+    and silently drop one side's update.
     """
     cache_path = _index_cache_path(path)
     if cache_path is None:
@@ -542,22 +599,23 @@ def annotate_section_summary(path: Path, line_start: int, summary: str) -> bool:
         if index is None:
             return False
 
-        matched = False
+        matched_section = None
         for section in index["sections"]:
             if section["line_start"] == line_start:
-                section["summary"] = summary
-                matched = True
+                matched_section = section
                 break
-        if not matched:
+        if matched_section is None:
+            return False
+        if matched_section["hash"] != expected_hash:
             return False
 
+        matched_section["summary"] = summary
         for retrieval_section in index.get("retrieval_sections", []):
             if retrieval_section["line_start"] == line_start:
                 retrieval_section["summary"] = summary
                 break
 
-        save_doc_index(path, index)
-        return True
+        return save_doc_index(path, index)
 
-    return _with_cache_lock(cache_path, _read_modify_write)
+    return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _read_modify_write)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate

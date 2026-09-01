@@ -22,6 +22,7 @@ from studio.utils.toc import (
     insert_toc_heading,
     insert_toc_markers,
     parse_headings,
+    parse_headings_with_lines,
     validate_toc,
 )
 
@@ -812,6 +813,60 @@ class TestJitRetrievalReadiness:
         codes = [w["code"] for w in result["warnings"]]
         assert "toc-heading-duplicate" not in codes
 
+    def test_frontmatter_closed_with_dots_is_still_recognized(self):
+        """CodeRabbit PR #110 (round 2): YAML permits closing a document
+        with `...` as well as `---`. Only recognizing `---` meant `...`-
+        terminated frontmatter was never seen as closed, so every heading
+        after it (all of them, here) was silently skipped."""
+        content = (
+            "---\n"
+            "title: Foo\n"
+            "...\n"
+            "# Title\n\n"
+            "## Section A\n\n"
+            "## Section B\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [e["code"] for e in result["errors"]]
+        # A TOC-less document with real headings should trip a missing-TOC
+        # error -- it can only do that if headings after `...` are seen.
+        assert "toc-missing" in codes
+
+    def test_indented_terminator_inside_a_block_scalar_is_not_a_real_terminator(self):
+        """CodeRabbit PR #110 (round 3): an indented `---`/`...` is valid
+        content *inside* a YAML block scalar (e.g. `description: |`), not
+        a document terminator -- ending frontmatter early there would let
+        a later, still-inside-frontmatter `#`-prefixed line get mistaken
+        for a real Markdown heading."""
+        content = (
+            "---\n"
+            "description: |\n"
+            "  ...\n"
+            "## not a real heading -- still frontmatter content\n"
+            "title: Foo\n"
+            "---\n\n"
+            "# Real Title\n\n"
+            "## Section A\n"
+        ).split("\n")
+        headings = parse_headings_with_lines(content)
+        assert [text for _level, text, _line in headings] == ["Real Title", "Section A"]
+
+    def test_indented_opening_delimiter_is_not_mistaken_for_frontmatter(self):
+        """CodeRabbit PR #110 (round 4): an indented `  ---` on the first
+        line is a valid Markdown indented thematic break, not a YAML
+        frontmatter opener. Treating it as one would mis-scope everything
+        up to the next real `---` as frontmatter, skipping any headings in
+        between."""
+        content = (
+            "  ---\n"
+            "# Real Title\n\n"
+            "## Section A\n\n"
+            "---\n\n"
+            "## Section B\n"
+        ).split("\n")
+        headings = parse_headings_with_lines(content)
+        assert [text for _level, text, _line in headings] == ["Real Title", "Section A", "Section B"]
+
     def test_depth_jump_warned(self):
         content = (
             "# Title\n\n"
@@ -1059,6 +1114,29 @@ class TestJitRetrievalReadiness:
         codes = [w["code"] for w in result["warnings"]]
         assert "toc-missing-description" not in codes
 
+    def test_nested_description_field_does_not_suppress_warning(self):
+        """CodeRabbit PR #110: the regex used to match against the
+        indentation-stripped line, so a nested key like
+        `metadata:\n  description: text` satisfied the same check as a
+        root-level `description:` field. Only a root-level field should
+        count -- a nested one isn't what a caller reading this frontmatter
+        for a description actually finds."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "metadata:\n"
+            "  description: A description nested under another key.\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
     def test_empty_block_scalar_description_still_warns(self):
         """CodeRabbit PR #109 (second round): `description: |` is a YAML
         block-scalar marker -- the real content (if any) belongs on
@@ -1069,6 +1147,38 @@ class TestJitRetrievalReadiness:
         content = (
             "---\n"
             "description: |\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    @pytest.mark.parametrize(
+        "block_scalar_header",
+        [
+            "description: |2-",
+            "description: |-2",
+            "description: | # TODO",
+        ],
+        ids=["digit-then-chomp", "chomp-then-digit", "trailing-comment"],
+    )
+    def test_empty_block_scalar_with_valid_indicator_variants_still_warns(self, block_scalar_header):
+        """CodeRabbit PR #110/#111 (both independently flagged this): YAML
+        allows the chomping (+/-) and indentation (1-9) indicators in
+        either order, plus a trailing "# comment" (preceded by whitespace)
+        -- `|2-`, `|-2`, and `| # TODO` are all valid block-scalar headers
+        the old regex rejected outright, which made the later logic treat
+        them as an ordinary (non-empty) scalar value and wrongly suppress
+        the missing-description warning."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            f"{block_scalar_header}\n"
             "---\n\n"
             "# Title\n\n"
             "## Table of Contents\n\n"

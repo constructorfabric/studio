@@ -573,6 +573,12 @@ coverage.xml
 # retrieval, read-once-per-file. Rebuilds automatically on content change.
 **/.cache/doc-index/
 
+# OKF bundle cache (okf.py) — local, regenerable concept files + index for
+# JIT retrieval's semantic fallback. Never committed: a fresh clone rebuilds
+# it (at real token cost, via an external LLM caller) rather than relying on
+# a stale copy shipped in version control.
+**/.cache/okf/
+
 # Superpowers brainstorming/planning specs (local-only)
 docs/superpowers/
 

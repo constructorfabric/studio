@@ -22,6 +22,12 @@
   - [Validate TOC](#validate-toc)
   - [TOC Utilities](#toc-utilities)
   - [Document Index](#document-index)
+  - [TF-IDF Scoring](#tf-idf-scoring)
+  - [OKF Bundle](#okf-bundle)
+  - [Atomic File I/O](#atomic-file-io)
+  - [Heading-Nav Search](#heading-nav-search)
+  - [JIT-Retrieval Cascade](#jit-retrieval-cascade)
+  - [Read Gate](#read-gate)
   - [Markdown Parsing Utilities](#markdown-parsing-utilities)
   - [Fixing Prompt Enrichment](#fixing-prompt-enrichment)
   - [Headings Contract Validation](#headings-contract-validation)
@@ -458,18 +464,22 @@ The cache-validity fingerprint is deliberately metadata-only (`mtime` + file
 size via `Path.stat()`), never a content hash — the point of the cache is to
 avoid reading the file at all on a hit, and a content hash would defeat that
 by requiring the read it's meant to save. A build reads the content and
-takes that fingerprint bracketed by a stat snapshot on each side, so the
-fingerprint saved is provably the one that matches what was actually parsed
-even if a write lands in the narrow window during the read.
+takes that fingerprint bracketed by a stat snapshot on each side: when the
+two snapshots agree, the fingerprint saved is provably the one that
+matches what was actually parsed even if a write lands in the narrow
+window during the read; under sustained contention past a bounded retry
+limit, it falls back to the last read paired with its own trailing,
+unverified fingerprint -- safe because that content will simply be
+detected as stale again on the very next check, never silently wrong.
 
 1. [x] - `p1` - Build a fresh structural index: parse headings + line ranges from current content, compute the stat-based fingerprint, stamp the current schema version - `inst-doc-index-build`
 2. [x] - `p1` - Load a cached index for a file, validated against current stat metadata (no content read on a hit) and against the required-field shape at the current schema version; returns `None` if missing, stale, corrupt, or an incomplete/outdated shape - `inst-doc-index-load`
 3. [x] - `p1` - Persist an index to its cache location atomically (temp file + `os.replace`, so a concurrent reader never observes a torn write); no-ops silently outside a Studio-adapted project - `inst-doc-index-save`
 4. [x] - `p1` - Return the cached index or build-and-cache a fresh one; reports cache hit/miss for benchmarking - `inst-doc-index-get-or-build`
-5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, for a future per-section-summary caller - `inst-doc-index-annotate`
+5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, only once the caller's `expected_hash` matches that section's current hash -- rejecting the write on mismatch instead of silently attaching the summary to whatever content now occupies that position - `inst-doc-index-annotate`
 6. [x] - `p1` - Infer which heading level represents one retrievable section: the most-recurring level wins over a level that appears only once (however shallow), since PDF-conversion heading levels don't reliably encode true nesting depth — a fixed level assumption silently produces a degenerate mega-section on such documents - `inst-doc-index-infer-level`
-7. [x] - `p1` - Group headings at exactly the inferred level into retrieval sections (off-level headings stay inside whichever section they fall under, never split one apart); hash each section's own text for section-granularity staleness detection - `inst-doc-index-retrieval-sections`
-8. [x] - `p1` - Diff the current file against its last cached build at section granularity: which retrieval sections are unchanged vs. changed, or whether the section count itself changed (a structural change, matched by position not heading text, since duplicate titles are real) - `inst-doc-index-diff-stale`
+7. [x] - `p1` - Group headings at exactly the inferred level into retrieval sections (off-level headings stay inside whichever section they fall under, never split one apart); hash each section's own text, trailing-whitespace-stripped per line, for section-granularity staleness detection; flag a section with nothing between it and the next same-level heading as `empty`; when real content (not just blank lines) precedes the first section-level heading, capture it as a leading synthetic entry (`heading=None`) instead of leaving it invisible to every entry here - `inst-doc-index-retrieval-sections`
+8. [x] - `p1` - Diff the current file against its last cached build at section granularity: which retrieval sections are unchanged vs. changed, or whether the section count itself changed (a structural change). Matched primarily by content hash (a multiset match, so duplicate-content sections pair up correctly) rather than position, so a pure reorder with no text edits reports every section unchanged instead of misreporting the whole document as edited; a returned entry's `line_start` (not its hash) is what a caller uses to address "this specific section" afterwards, since duplicate heading titles are real - `inst-doc-index-diff-stale`
 
 **Supporting**:
 - [x] - `p1` - Stat-based cache-validity fingerprint (`mtime_ns` + size); resolved from the file's own path, never a content hash - `inst-doc-index-etag`
@@ -478,6 +488,113 @@ even if a write lands in the narrow window during the read.
 - [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
 - [x] - `p1` - Read a file's content bracketed by an etag snapshot on each side, retrying on mismatch: closes the window where a write between the read and the fingerprint could save stale headings under a fresh-looking etag - `inst-doc-index-stable-read`
 - [x] - `p1` - Re-parse a file's current content into retrieval sections for staleness comparison, and build the `(heading, line_start)` identity pair that disambiguates a duplicate heading title in a diff result - `inst-doc-index-diff-stale-helpers`
+- [x] - `p1` - Slice a retrieval section's own raw text out of a file's lines by its `line_start`/`line_end` -- the one shared implementation every consumer needing a section's actual content (not just its boundaries) reuses instead of re-deriving the slice - `inst-doc-index-section-text`
+- [x] - `p1` - `cfs doc-index` CLI wrapper: parse arguments, build the JSON output payload - `inst-doc-index-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
+
+### TF-IDF Scoring
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-tfidf`
+
+**Input**: Markdown file path, query text
+
+**Output**: Retrieval sections ranked by TF-IDF score against the query, plus a confidence signal
+
+Purely mechanical, no LLM call: reuses the Document Index's `retrieval_sections` for section boundaries (read once per file, same as every other JIT-retrieval consumer), then scores each section as sum(term-frequency x inverse-document-frequency) over the query's own terms. A rare, distinctive term scores its one relevant section far above every other (verified against a real document: 0.0016 vs. 0.0000 everywhere else); a common term whose real answer lives in a longer, more thoroughly-covered section can still lose to a shorter section with a single coincidental mention, since term frequency is normalized by section length — a real, measured, and documented failure mode of this method on its own, not a defect in the implementation (see the "zero-shot" case in the source findings document: margin 1.06x, wrong section on top). This is exactly why a margin/unambiguous confidence signal is returned alongside the ranking rather than just the ranking alone — a routing layer built on top of this needs to know when the ranking itself isn't trustworthy, not just what it is.
+
+1. [x] - `p1` - Tokenize text: lowercase, alphanumeric-only, dropping tokens shorter than 3 characters - `inst-tfidf-tokenize`
+2. [x] - `p1` - Score every retrieval section against a query: build the document's inverse-document-frequency table, rank sections by term-frequency x idf, and compute a margin/unambiguous confidence signal from the top two scores - `inst-tfidf-score`
+
+**Supporting**:
+- [x] - `p1` - Inverse-document-frequency table builder, section ranker, and margin/unambiguous confidence calculator - `inst-tfidf-score-helpers`
+- [x] - `p1` - `cfs tfidf-score` CLI wrapper: parse arguments, build the JSON output payload - `inst-tfidf-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs tfidf-score` output - `inst-tfidf-cmd-format`
+
+### OKF Bundle
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-okf`
+
+**Input**: Markdown file path; a written section's `line_start`, description, and body text (from an external caller)
+
+**Output**: A local, regenerable bundle of concept files + `index.md`, and a per-section missing/stale/current status report
+
+Deterministic infrastructure only, matching `doc_index.py`/`tfidf.py`: no LLM call happens in this module. Writing an actual section summary is an external caller's job (an agent, dispatched outside this codebase) -- this module tracks which concept files should exist relative to the document's *current* retrieval sections, detects when a written one is stale (its recorded `built_from_hash` no longer matches the section's current hash from the Document Index), and persists whatever the caller writes. The whole bundle is local-only and gitignored (`.cache/okf/` — see `.gitignore`): unlike the content of a summary, which is expensive to regenerate (real LLM tokens), the bundle not surviving a fresh clone just means it rebuilds from scratch the same way `doc_index.py`'s own cache does — nothing here assumes it survives across clones, only across calls on the same machine.
+
+1. [x] - `p1` - Resolve the local bundle directory for a source file within its Studio directory, resolved from the file's own path - `inst-okf-bundle-dir`
+2. [x] - `p1` - Load/persist the bundle manifest (`manifest.json`) atomically; loading validates the decoded shape (a dict, an `entries` list, each entry carrying `line_start`/`concept_file`/`built_from_hash`), treating a malformed/pre-schema manifest as absent rather than returned broken - `inst-okf-manifest-io`
+3. [x] - `p1` - Report the bundle's state against the document's *current* retrieval sections: missing (never summarized, or its concept file was deleted out from under it), stale (source changed since summary was written), or current. Matched primarily by content *hash*, not `line_start` -- inserting or reordering other sections shifts `line_start` without touching a section's own text, so a manifest entry is reconciled to whichever current section now carries its recorded hash (consumed one at a time per hash, preserving that entry's own `concept_file`) before falling back to `line_start` to distinguish a genuine edit (stale) from never-summarized (missing) - `inst-okf-status`
+4. [x] - `p1` - Write (or overwrite) one section's concept file (YAML frontmatter values safely quoted against embedded colons/quotes/newlines) and its manifest entry under one exclusive lock spanning the whole read-modify-write-and-reindex cycle, then regenerate `index.md` from the bundle's real current status (not the raw manifest), so a deleted concept file drops out instead of becoming a dead link and a stale entry is visibly marked - `inst-okf-write-concept`
+
+**Supporting**:
+- [x] - `p1` - YAML double-quoted-scalar escaper for frontmatter values, safe against caller-supplied content (an LLM's own summary text) containing colons, quotes, backslashes, or an embedded block-close sequence - `inst-okf-yaml-quote`
+- [x] - `p1` - Concept-file frontmatter builder: title/description/resource/generated-by, every value safely quoted - `inst-okf-build-frontmatter`
+- [x] - `p1` - Deterministic `index.md` template driven by real per-section status (missing/stale/current), not just the raw manifest, so it never disagrees with `cfs okf-status` - `inst-okf-render-index`
+- [x] - `p1` - `cfs okf-status` CLI wrapper: parse arguments, build the JSON output payload - `inst-okf-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs okf-status` output, including the concept file path - `inst-okf-cmd-format`
+
+### Atomic File I/O
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-atomic-io`
+
+**Input**: A file path and content to write; a lock path and a read-modify-write callback
+
+**Output**: A file written without any observable torn/partial state; a callback run with cross-call exclusivity
+
+Shared by every local cache/bundle writer in this package (`doc_index.py`, `okf.py`) once a second consumer needed the exact same two behaviors a first implementation had already solved once -- extracted rather than reimplemented a second time. Mirrors the fallback shape `decision_log.py`'s own locking already established for this codebase (exclusive `fcntl` lock where available, unlocked elsewhere), kept separate since that module also bakes in log-rotation behavior these callers don't need.
+
+1. [x] - `p1` - Write text to a path atomically: temp file + `os.replace`, so a reader racing a concurrent writer sees either the old complete file or the new complete one, never a torn write - `inst-atomic-write`
+2. [x] - `p1` - Run a read-modify-write callback under an exclusive lock on a sibling lock file, serializing concurrent callers so two overlapping cycles can't each read the same base state and have whichever writes last silently discard the other's update - `inst-atomic-lock`
+
+### Heading-Nav Search
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-heading-nav`
+
+**Input**: Markdown file path, query text
+
+**Output**: Every retrieval section containing the query literally, plus the first (document-order) hit
+
+Purely mechanical, no LLM call: a case-insensitive literal-substring search of the query against each retrieval section's own raw text, mirroring a real `grep -i "<query>"` against the content -- deliberately not tokenized or word-split, and sharing the Document Index's `retrieval_sections` for boundaries so this reads no more of the file than every other JIT-retrieval consumer already does. Has no semantic fallback by design: a query phrased differently than the source's own vocabulary returns zero hits everywhere, even when a related concept exists under different wording (a real, documented failure mode of this method on its own, not a defect) -- that hard failure is itself the useful signal a caller needs to decide whether to escalate past this method.
+
+1. [x] - `p1` - Find every retrieval section containing a query's literal text (case-insensitive), in document order, plus the first match; excludes fenced code blocks from the match so an incidental code-sample hit can't count as a prose match - `inst-heading-nav-search`
+
+**Supporting**:
+- [x] - `p1` - Blank out fenced-code-block lines before counting hits, reusing `toc.py`'s own fence-tracking - `inst-heading-nav-strip-fences`
+- [x] - `p1` - `cfs heading-nav` CLI wrapper: parse arguments, build the JSON output payload - `inst-heading-nav-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs heading-nav` output - `inst-heading-nav-cmd-format`
+
+### JIT-Retrieval Cascade
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-cascade`
+
+**Input**: Markdown file path, query text; optional numeric margin threshold and expected future query volume
+
+**Output**: A routing decision -- resolved at Tier 1, resolved with multiple candidates, or escalated to a Tier 2 OKF-vs-baseline recommendation (plus a large-read gate check when that recommendation is baseline)
+
+Combines Heading-Nav Search and TF-IDF Scoring into the two-tier routing decision neither mechanical method answers on its own (see constructorfabric/studio#104): heading-nav's zero-hit case and TF-IDF's own agreement/margin against heading-nav's pick determine whether a query resolves for free at Tier 1, needs both methods' candidates read, or must escalate to a Tier 2 choice between the local OKF bundle and a full baseline read. Tier 1's large-margin resolution is deliberately restricted to TF-IDF's `unambiguous` signal rather than a numeric cutoff -- of the two real margins measured while designing this cascade, only an infinite (unambiguous) one was on a correct pick; every finite margin measured, however large, was on a documented wrong pick -- so a numeric `margin_threshold` exists as an explicit, off-by-default opt-in rather than a built-in assumption. Tier 2 never recommends an OKF concept file it knows is stale or missing for the section Tier 1 named as its escalation candidate: since nothing in this codebase can perform a background rebuild (no job runner, and by design no LLM call anywhere in this module or the ones it composes), falling back to baseline is the only choice that doesn't risk silently serving a known-wrong summary.
+
+1. [x] - `p1` - Apply the Tier 1 routing table: heading-nav zero hits escalates; agreement with TF-IDF's top pick resolves when unambiguous (or past an explicit margin threshold), else escalates as a diffuse margin; disagreement between the two resolves with both candidates - `inst-cascade-tier1`
+2. [x] - `p1` - Choose OKF vs. baseline once Tier 1 escalates: an available bundle with no summarized sections yet counts as "no usable bundle"; otherwise every section that could actually be selected -- Tier 1's named candidate, or the whole bundle when there's no candidate to narrow to -- must be current, else recommend baseline with a rebuild flag - `inst-cascade-tier2`
+3. [x] - `p1` - Route one query end to end: run Tier 1, and only when it escalates run Tier 2 and -- if Tier 2 recommends baseline -- the large-read confirmation gate against the document's real line count - `inst-cascade-route`
+
+**Supporting**:
+- [x] - `p1` - `cfs retrieve` CLI wrapper: parse arguments, build the JSON output payload - `inst-cascade-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs retrieve` output - `inst-cascade-cmd-format`
+
+### Read Gate
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-read-gate`
+
+**Input**: A document's total line count; an optional line-count threshold
+
+**Output**: `{needs_confirmation, total_lines, threshold}` -- a structured verdict for an external caller to act on, not an interactive prompt
+
+Pure decision logic, no I/O: this is a deterministic CLI, not the caller that actually reads a file and answers a query, so it produces the structured flag that decision depends on rather than blocking on its own `input()` call. The default threshold (5,000 lines) is the real number measured during this design's own token-tracking prototype -- the only read among nine real candidate targets against a 166-page source document that crossed it was a whole-document baseline read.
+
+1. [x] - `p1` - Decide whether a read of a given line count should pause for confirmation against a threshold - `inst-read-gate-check`
+
+**Supporting**:
+- [x] - `p1` - `cfs read-gate` CLI wrapper: build the document index, extract its total line count, apply the gate check - `inst-read-gate-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs read-gate` output - `inst-read-gate-cmd-format`
 
 ### Markdown Parsing Utilities
 
@@ -745,6 +862,9 @@ The system **MUST** scan CDSL instruction markers (`inst-{slug}` suffixes in num
 | Fixing Utils | `skills/.../utils/fixing.py` | Fixing prompt generation for LLM agents |
 | Language Config | `skills/.../utils/language_config.py` | Language-specific file extensions and comment patterns |
 | Parsing Utils | `skills/.../utils/parsing.py` | Markdown structure parsing, section extraction |
+| Heading-Nav Utils | `skills/.../utils/heading_nav.py` | Literal-substring section search for JIT retrieval |
+| Cascade Utils | `skills/.../utils/cascade.py` | Two-tier JIT-retrieval routing (heading-nav + TF-IDF, OKF vs. baseline) |
+| Read Gate Utils | `skills/.../utils/read_gate.py` | Large-read confirmation threshold check |
 
 ## 7. Acceptance Criteria
 

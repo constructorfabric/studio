@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 SCHEMA_VERSION = 1
 
 #: Event names this module writes. Readers must tolerate others.
-EVENTS = ("routing", "dispatch", "validation", "review", "escalation", "invocation")
+EVENTS = ("routing", "dispatch", "validation", "review", "escalation", "invocation", "read")
 
 #: Environment overrides.
 _ENV_PATH = "CFS_DECISION_LOG"          # explicit path, or an off-value to disable
@@ -359,6 +359,20 @@ def record_invocation(command: str, exit_code: int = 0, duration_ms: int = 0,
         "exit_code": exit_code, "duration_ms": duration_ms,
         "args": dict(args_shape or {}),
     }, command=command, decision_id=decision_id, path=path)
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-read-wrapper
+def record_read(method: str, target: str, lines: int, tokens: int, source: str = "", *,
+                command: str = "", decision_id: str = "",
+                path: Optional[Path] = None) -> bool:
+    """Log one read-and-answer event: which retrieval method fired, and its
+    real cost, in the one shared schema every method's cost is measured in.
+    """
+    return record("read", {
+        "method": method, "target": _redact(target),
+        "lines": lines, "tokens": tokens, "source": source,
+    }, command=command, decision_id=decision_id, path=path)
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-read-wrapper
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-api
 
 
@@ -440,4 +454,41 @@ def summarize(path: Optional[Path] = None) -> Dict[str, Any]:
         "first_ts": first_ts,
         "last_ts": last_ts,
     }
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-summarize-reads
+def summarize_reads(path: Optional[Path] = None) -> Dict[str, Any]:
+    """Aggregate logged ``"read"`` events into a per-method token table.
+
+    Returns ``{"methods": {method: {"count", "total_tokens", "total_lines"}},
+    "total_tokens": int}`` -- the per-method cost comparison a caller needs
+    to see which retrieval method is actually earning its keep on a real
+    document, not just how many events were logged.
+
+    A record whose ``payload`` isn't a dict, or whose ``tokens``/``lines``
+    values aren't numeric, is skipped rather than raising -- the same
+    "a partially corrupt log is still evidence" tolerance
+    :func:`read_events` already applies to unparseable lines, extended to a
+    parseable line with a malformed payload shape.
+    """
+    methods: Dict[str, Dict[str, int]] = {}
+    total_tokens = 0
+    for obj in read_events(path, event="read"):
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        try:
+            tokens = int(payload.get("tokens", 0) or 0)
+            lines = int(payload.get("lines", 0) or 0)
+        except (TypeError, ValueError) as exc:
+            logger.debug("decision log: skipping read event with non-numeric tokens/lines: %s", exc)
+            continue
+        method = str(payload.get("method", "?"))
+        entry = methods.setdefault(method, {"count": 0, "total_tokens": 0, "total_lines": 0})
+        entry["count"] += 1
+        entry["total_tokens"] += tokens
+        entry["total_lines"] += lines
+        total_tokens += tokens
+    return {"methods": methods, "total_tokens": total_tokens}
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-summarize-reads
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-read

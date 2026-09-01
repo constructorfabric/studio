@@ -370,11 +370,28 @@ def add_toc_max_level_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def _find_frontmatter_end(lines: List[str]) -> int:
-    """Return the index after YAML frontmatter when present."""
-    if not lines or lines[0].strip() != "---":
+    """Return the index after YAML frontmatter when present.
+
+    YAML allows a document to close with either ``---`` (a new document
+    marker, which this codebase treats as "end of frontmatter") or ``...``
+    (the explicit end-of-document marker) -- accepting only ``---`` meant
+    frontmatter closed with ``...`` was never recognized as closed at all,
+    so every line after it (including every real heading) was treated as
+    still inside frontmatter and skipped entirely.
+
+    Both the opening and closing delimiter must start at column zero:
+    ``rstrip()`` (trailing whitespace only), never ``strip()``. An indented
+    ``  ---`` on the first line is valid Markdown as an indented thematic
+    break, not frontmatter at all; an indented ``---``/``...`` later on is
+    valid content inside a YAML block-scalar value (e.g.
+    ``description: |\\n  ---``). Treating either as a real delimiter would
+    mis-scope frontmatter and let the rest of it parse as Markdown (a
+    stray ``# note`` becoming a heading).
+    """
+    if not lines or lines[0].rstrip() != "---":
         return 0
     idx = 1
-    while idx < len(lines) and lines[idx].strip() != "---":
+    while idx < len(lines) and lines[idx].rstrip() not in ("---", "..."):
         idx += 1
     if idx < len(lines):
         idx += 1
@@ -867,7 +884,14 @@ def _check_section_lengths(
 
 
 _DESCRIPTION_FIELD_RE = re.compile(r"^description\s*:\s*(.*)$")
-_BLOCK_SCALAR_RE = re.compile(r"^[|>][+\-]?\d*$")
+# YAML 1.2.2 allows the chomping (+/-) and indentation (1-9) indicators in
+# either order, and a trailing "# comment" (preceded by whitespace) on the
+# header line itself: |, |-, |2, |2-, |-2, | # comment. The original regex
+# only matched one indicator order and rejected any trailing comment, so a
+# real header like "|2-" or "| # TODO" fell through to the "has a real
+# description" branch instead of being recognized as an (possibly empty)
+# block scalar at all.
+_BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[+\-]?[1-9]?|[1-9][+\-]?)(?:\s+#.*)?$")
 
 
 def _quoted_value_is_empty(value: str) -> bool:
@@ -907,7 +931,7 @@ def _frontmatter_has_description(lines: List[str], frontmatter_end: int) -> bool
     """
     body = lines[1:frontmatter_end - 1]
     for i, line in enumerate(body):
-        match = _DESCRIPTION_FIELD_RE.match(line.strip())
+        match = _DESCRIPTION_FIELD_RE.match(line)
         if not match:
             continue
         value = match.group(1).strip()

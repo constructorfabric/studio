@@ -16,6 +16,7 @@ from studio.utils.doc_index import annotate_section_summary, diff_stale_sections
 from studio.utils.eval_harness import ReferencePresenceScorer, Scenario, ScorerKind, run_suite
 from studio.utils.eval_judge import Gold
 from studio.utils.manifest import ManifestLayerState
+from studio.utils.okf import write_concept_file
 
 is_json = _UI.is_json  # staticmethod alias exposed on the ui singleton
 
@@ -47,6 +48,11 @@ INCLUDE_ERROR = ManifestLayerState.INCLUDE_ERROR  # valid enum value for future 
 annotate_section_summary  # noqa: B018
 diff_stale_sections  # noqa: B018
 
+# OKF concept-file writer: called by a future external LLM caller after it
+# has actually produced a summary, not yet reached from production paths.
+# Exercised by tests. See skills/studio/scripts/studio/utils/okf.py.
+write_concept_file  # noqa: B018
+
 # cfs map module — symbols retained for layout/configuration completeness.
 from studio.commands.map.layout import MAX_ROW_W  # noqa: E402
 from studio.commands.map.categorize import OverrideCategory  # noqa: E402
@@ -68,6 +74,7 @@ from studio.utils.decision_log import (  # noqa: E402
     record_review,
     record_escalation,
     record_invocation,
+    record_read,
     summarize,
 )
 
@@ -80,6 +87,12 @@ record_review  # noqa: B018
 record_escalation  # noqa: B018
 record_invocation  # noqa: B018
 summarize  # noqa: B018
+
+# record_read: called by a future external caller once a read-and-answer step
+# actually fires (an agent doing the real read), not yet reached from
+# production paths. Exercised by tests. See
+# skills/studio/scripts/studio/utils/decision_log.py.
+record_read  # noqa: B018
 
 # eval_semantic public API — the semantic-coverage engine. Library + tests only for now;
 # the `cfs` surface and coverage-report integration are the follow-up, so these are not yet

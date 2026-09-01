@@ -219,6 +219,65 @@ def test_record_invocation_shape(log_path: Path) -> None:
     assert ev["payload"]["args"] == {"paths": 1}      # arg-shape summary, never raw argv
 
 
+def test_record_read_shape(log_path: Path) -> None:
+    dl.record_read("tfidf", "doc.md", 8925, 49676, source="cli", path=log_path)
+    ev = next(iter(dl.read_events(log_path, event="read")))
+    assert ev["payload"]["method"] == "tfidf"
+    assert ev["payload"]["lines"] == 8925
+    assert ev["payload"]["tokens"] == 49676
+    assert ev["payload"]["source"] == "cli"
+
+
+def test_read_is_a_declared_event_name() -> None:
+    assert "read" in dl.EVENTS
+
+
+def test_summarize_reads_aggregates_tokens_and_lines_per_method(log_path: Path) -> None:
+    dl.record_read("tfidf", "doc.md", 8925, 49676, path=log_path)
+    dl.record_read("tfidf", "doc.md", 8925, 12000, path=log_path)
+    dl.record_read("baseline", "doc.md", 8925, 333573, path=log_path)
+    dl.record("routing", {"a": 1}, path=log_path)  # non-read event, must be ignored
+
+    result = dl.summarize_reads(log_path)
+    assert result["methods"]["tfidf"] == {"count": 2, "total_tokens": 61676, "total_lines": 17850}
+    assert result["methods"]["baseline"] == {"count": 1, "total_tokens": 333573, "total_lines": 8925}
+    assert result["total_tokens"] == 61676 + 333573
+
+
+def test_summarize_reads_on_empty_log_returns_no_methods(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+    assert dl.summarize_reads() == {"methods": {}, "total_tokens": 0}
+
+
+def _append_raw_read_line(log_path: Path, payload) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    obj = {"schema": dl.SCHEMA_VERSION, "ts": "2026-01-01T00:00:00+00:00",
+           "run_id": "x", "decision_id": "", "event": "read", "command": "", "payload": payload}
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(obj) + "\n")
+
+
+def test_summarize_reads_skips_a_non_dict_payload(log_path: Path) -> None:
+    """CodeRabbit PR #111: a parseable "read" record whose payload isn't a
+    dict (hand-edited or corrupted log) must not crash .get() -- skipped,
+    same tolerance read_events() already gives an unparseable line."""
+    _append_raw_read_line(log_path, "not-a-dict")
+    dl.record_read("tfidf", "doc.md", 100, 200, path=log_path)
+
+    result = dl.summarize_reads(log_path)
+    assert result == {"methods": {"tfidf": {"count": 1, "total_tokens": 200, "total_lines": 100}},
+                      "total_tokens": 200}
+
+
+def test_summarize_reads_skips_non_numeric_tokens_or_lines(log_path: Path) -> None:
+    _append_raw_read_line(log_path, {"method": "tfidf", "tokens": "not-a-number", "lines": 100})
+    dl.record_read("baseline", "doc.md", 100, 200, path=log_path)
+
+    result = dl.summarize_reads(log_path)
+    assert result == {"methods": {"baseline": {"count": 1, "total_tokens": 200, "total_lines": 100}},
+                      "total_tokens": 200}
+
+
 # ---------------------------------------------------------------------------
 # path resolution
 
