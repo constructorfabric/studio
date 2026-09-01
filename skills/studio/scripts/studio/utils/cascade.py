@@ -38,6 +38,7 @@ option that fits what this codebase can actually guarantee.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
@@ -61,6 +62,22 @@ def _as_candidate(section: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _validate_margin_threshold(margin_threshold: Optional[float]) -> None:
+    """Reject a non-finite or non-positive ``margin_threshold`` before it can
+    reach row 4's comparison.
+
+    ``commands/cascade.py``'s ``_margin_threshold_arg`` enforces this same
+    rule for the CLI, but a direct Python caller of :func:`route_tier1`/
+    :func:`route_query` bypasses argparse entirely -- without this check
+    here too, a non-positive or non-finite threshold would make
+    ``tfidf_result["margin"] >= margin_threshold`` fire on virtually any
+    finite margin, silently defeating the "no finite value is yet proven
+    safe" design basis this module's own docstring documents.
+    """
+    if margin_threshold is not None and not (math.isfinite(margin_threshold) and margin_threshold > 0):
+        raise ValueError(f"margin_threshold must be a finite number > 0, got {margin_threshold!r}")
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-tier1
 def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = None) -> Dict[str, Any]:
     """Apply the Tier 1 routing table to a query against ``path``.
@@ -71,6 +88,7 @@ def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = N
     it's still the best Tier-1 guess to hand Tier 2), two for row 3, none
     for row 1 (heading-nav found nothing to anchor a guess to at all).
     """
+    _validate_margin_threshold(margin_threshold)
     nav_first_match = find_sections(path, query)["first_match"]
     if nav_first_match is None:
         return {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}

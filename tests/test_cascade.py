@@ -92,6 +92,26 @@ class TestRouteTier1:
         assert result["tier"] == "resolved"
         assert result["reason"] == "heading_nav_tfidf_agree_large_margin"
 
+    @pytest.mark.parametrize("bad_threshold", [0, -1, float("nan"), float("inf")])
+    def test_margin_threshold_rejects_invalid_values_at_the_callable_api(
+        self, tmp_path: Path, monkeypatch, bad_threshold,
+    ):
+        """A direct Python caller bypasses commands/cascade.py's argparse
+        validation entirely -- without a check here too, a non-positive or
+        non-finite threshold would make the row-4 margin comparison fire on
+        virtually any finite margin, defeating the "no finite value is yet
+        proven safe" design basis."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        with pytest.raises(ValueError, match="margin_threshold"):
+            route_tier1(f, "widget", margin_threshold=bad_threshold)
+
+    def test_route_query_also_rejects_an_invalid_margin_threshold(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        with pytest.raises(ValueError, match="margin_threshold"):
+            route_query(f, "widget", margin_threshold=-1.0)
+
 
 class TestRouteTier2:
     def test_no_bundle_at_all_recommends_baseline(self, tmp_path: Path, monkeypatch):

@@ -292,19 +292,21 @@ def _match_sections_by_hash(
 
 def _concept_file_is_valid(concept_path: Path) -> bool:
     """Minimal content-validity check for a concept file already confirmed
-    to exist on disk: real content always opens with the YAML frontmatter
-    block :func:`_build_frontmatter` writes. A physical-presence check
-    alone (``is_file()``) can't tell a genuine concept file from one
-    truncated, emptied, or corrupted after the fact -- this catches that
-    without needing full YAML parsing, which is more than this check needs
-    to answer "is there real content here at all".
+    to exist on disk: real content always opens *and closes* the YAML
+    frontmatter block :func:`_build_frontmatter` writes. A physical-presence
+    check alone (``is_file()``) can't tell a genuine concept file from one
+    truncated, emptied, or corrupted after the fact -- checking only the
+    opening ``---`` doesn't either, since a file truncated right after it
+    still passes that alone; requiring the closing delimiter too catches
+    that without needing full YAML parsing, which is more than this check
+    needs to answer "is there real content here at all".
     """
     try:
         content = concept_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         logger.debug("okf concept file unreadable at %s: %s", concept_path, exc)
         return False
-    return content.startswith("---\n")
+    return content.startswith("---\n") and "\n---\n" in content[4:]
 
 
 def _resolve_section_status(
