@@ -30,6 +30,7 @@ import json
 import logging
 import re
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -91,6 +92,29 @@ def _concept_filename(position: int, heading: Optional[str]) -> str:
     return f"{position:02d}-{_slugify(heading)}.md"
 
 
+_REQUIRED_MANIFEST_ENTRY_FIELDS = ("line_start", "concept_file", "built_from_hash")
+
+
+def _is_valid_manifest_shape(manifest: Any) -> bool:
+    """``True`` only if *manifest* has the shape every reader assumes: a
+    dict with an ``entries`` list, each entry a dict carrying every field
+    :func:`get_okf_status`/:func:`write_concept_file` dereference by key.
+    A hand-edited or partially-written manifest missing one of these would
+    otherwise surface as an unhandled ``KeyError`` deep inside a reader,
+    instead of the clean "treat this bundle as absent, rebuild" fallback
+    every other malformed-cache case in this codebase already gets.
+    """
+    if not isinstance(manifest, dict):
+        return False
+    entries = manifest.get("entries")
+    if not isinstance(entries, list):
+        return False
+    return all(
+        isinstance(entry, dict) and all(field in entry for field in _REQUIRED_MANIFEST_ENTRY_FIELDS)
+        for entry in entries
+    )
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-manifest-io
 def load_okf_manifest(path: Path) -> Optional[Dict[str, Any]]:
     """Load the OKF bundle manifest for ``path``, or ``None`` if absent/corrupt/unavailable."""
@@ -101,10 +125,14 @@ def load_okf_manifest(path: Path) -> Optional[Dict[str, Any]]:
     if not manifest_path.is_file():
         return None
     try:
-        return json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         logger.debug("okf manifest unreadable for %s: %s", path, exc)
         return None
+    if not _is_valid_manifest_shape(manifest):
+        logger.warning("okf manifest for %s has an invalid/incomplete shape; treating as absent", path)
+        return None
+    return manifest
 
 
 def save_okf_manifest(path: Path, manifest: Dict[str, Any]) -> bool:
@@ -147,6 +175,20 @@ def get_okf_status(path: Path) -> Dict[str, Any]:
     - ``"current"`` -- the manifest's recorded hash matches; the concept
       file is trustworthy as-is.
 
+    A section is matched to a manifest entry primarily by content hash, not
+    position: if inserting or reordering *other* sections shifted this
+    one's line numbers without touching its own text, its hash is
+    unchanged, and it's matched to the entry that recorded that hash
+    wherever that entry's own ``line_start`` now points -- preserving that
+    entry's stored ``concept_file`` rather than recomputing one from the
+    new position, so a reorder never claims a file that was never written.
+    Entries are consumed one at a time per hash (ties broken toward the
+    entry already at this exact ``line_start``, for stable pairing when
+    duplicate-content sections exist), so each moved section claims a
+    distinct entry rather than all collapsing onto the first. Only when no
+    entry's hash matches does an entry already recorded at this exact
+    ``line_start`` mark the section ``"stale"`` instead of ``"missing"``.
+
     ``available`` is ``False`` when there's no Studio directory to hold a
     bundle at all (outside a Studio-adapted project) -- distinct from an
     empty/all-missing bundle inside one.
@@ -156,28 +198,53 @@ def get_okf_status(path: Path) -> Dict[str, Any]:
         return {"available": False, "bundle_dir": None, "entries": []}
 
     index = get_or_build_doc_index(path)
-    manifest = load_okf_manifest(path) or {"entries": []}
-    by_line_start = {entry["line_start"]: entry for entry in manifest.get("entries", [])}
+    manifest_entries = (load_okf_manifest(path) or {"entries": []}).get("entries", [])
+    by_line_start = {entry["line_start"]: entry for entry in manifest_entries}
+    pool: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for entry in manifest_entries:
+        pool[entry["built_from_hash"]].append(entry)
 
-    entries = []
-    for position, section in enumerate(index["retrieval_sections"], start=1):
-        manifest_entry = by_line_start.get(section["line_start"])
-        concept_file = _concept_filename(position, section["heading"])
-        if manifest_entry is None or not (bundle_dir / concept_file).is_file():
-            status = "missing"
-        elif manifest_entry.get("built_from_hash") != section["hash"]:
-            status = "stale"
-        else:
-            status = "current"
-        entries.append({
-            "heading": section["heading"],
-            "line_start": section["line_start"],
-            "line_end": section["line_end"],
-            "concept_file": concept_file,
-            "status": status,
-        })
-
+    entries = [
+        _resolve_section_status(section, position, pool, by_line_start, bundle_dir)
+        for position, section in enumerate(index["retrieval_sections"], start=1)
+    ]
     return {"available": True, "bundle_dir": str(bundle_dir), "entries": entries}
+
+
+def _resolve_section_status(
+    section: Dict[str, Any],
+    position: int,
+    pool: Dict[str, List[Dict[str, Any]]],
+    by_line_start: Dict[int, Dict[str, Any]],
+    bundle_dir: Path,
+) -> Dict[str, Any]:
+    """Resolve one retrieval section's OKF entry -- the per-section half of
+    :func:`get_okf_status`'s hash-primary matching, extracted so that
+    function's own local-variable count doesn't grow with each new
+    matching rule."""
+    candidates = pool.get(section["hash"])
+    matched_entry = None
+    if candidates:
+        same_slot = next(
+            (c for c in candidates if c["line_start"] == section["line_start"]),
+            candidates[0],
+        )
+        candidates.remove(same_slot)
+        matched_entry = same_slot
+
+    if matched_entry is not None:
+        concept_file = matched_entry["concept_file"]
+        status = "current" if (bundle_dir / concept_file).is_file() else "missing"
+    else:
+        concept_file = _concept_filename(position, section["heading"])
+        status = "stale" if by_line_start.get(section["line_start"]) is not None else "missing"
+    return {
+        "heading": section["heading"],
+        "line_start": section["line_start"],
+        "line_end": section["line_end"],
+        "concept_file": concept_file,
+        "status": status,
+    }
 # @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-status
 
 

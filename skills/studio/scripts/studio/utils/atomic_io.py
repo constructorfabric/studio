@@ -16,6 +16,7 @@ don't need.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Callable, TypeVar
 
@@ -27,11 +28,22 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
     """Write ``content`` to ``path`` atomically: temp file + ``os.replace``,
     so a reader racing a concurrent writer sees either the old complete
     file or the new complete one, never a torn/partial write.
+
+    The temp file gets a unique name per call (``tempfile.mkstemp``), not
+    just per-process (a PID-based name): two threads in the same process
+    writing the same target would otherwise share one temp path and race
+    each other's write/replace/cleanup.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(content, encoding=encoding)
-    os.replace(tmp_path, path)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as tmp_fh:
+            tmp_fh.write(content)
+        os.replace(tmp_path, path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
 # @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
 
 

@@ -5,10 +5,13 @@ mechanical gate independent of any cascade routing logic built on top of it.
 Thin CLI wrapper around ``studio.utils.tfidf``.
 """
 
+import logging
 from typing import List
 
 from ..utils.tfidf import score_sections
 from ..utils.ui import ui
+
+logger = logging.getLogger(__name__)
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-cmd
@@ -29,7 +32,12 @@ def cmd_tfidf_score(argv: List[str]) -> int:
     if filepath is None:
         return 2
 
-    result = score_sections(filepath, args.query)
+    try:
+        result = score_sections(filepath, args.query)
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("tfidf-score: cannot read %s: %s", filepath, exc)
+        ui.report_read_error(filepath, exc)
+        return 2
 
     output = {
         "file": str(filepath),

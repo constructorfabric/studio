@@ -370,11 +370,19 @@ def add_toc_max_level_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def _find_frontmatter_end(lines: List[str]) -> int:
-    """Return the index after YAML frontmatter when present."""
+    """Return the index after YAML frontmatter when present.
+
+    YAML allows a document to close with either ``---`` (a new document
+    marker, which this codebase treats as "end of frontmatter") or ``...``
+    (the explicit end-of-document marker) -- accepting only ``---`` meant
+    frontmatter closed with ``...`` was never recognized as closed at all,
+    so every line after it (including every real heading) was treated as
+    still inside frontmatter and skipped entirely.
+    """
     if not lines or lines[0].strip() != "---":
         return 0
     idx = 1
-    while idx < len(lines) and lines[idx].strip() != "---":
+    while idx < len(lines) and lines[idx].strip() not in ("---", "..."):
         idx += 1
     if idx < len(lines):
         idx += 1
@@ -867,7 +875,9 @@ def _check_section_lengths(
 
 
 _DESCRIPTION_FIELD_RE = re.compile(r"^description\s*:\s*(.*)$")
-_BLOCK_SCALAR_RE = re.compile(r"^[|>][+\-]?\d*$")
+# YAML permits the chomping (+/-) and indentation (1-9) indicators in either
+# order, and an optional trailing comment: |, |-, |2, |2-, |-2, | # comment.
+_BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[1-9][+\-]?|[+\-]?[1-9]?)(?:\s*#.*)?$")
 
 
 def _quoted_value_is_empty(value: str) -> bool:

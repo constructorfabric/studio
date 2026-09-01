@@ -349,6 +349,27 @@ def parse_file_command(
 # @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-parse-file-command
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-report-read-error
+def report_read_error(filepath: Path, exc: BaseException) -> None:
+    """Emit the standard "Cannot read file" ERROR result (JSON or human) for
+    an ``OSError``/``UnicodeDecodeError`` raised while reading an already-
+    existing file (a non-UTF-8 file, a permissions failure, a race after
+    the initial existence check).
+
+    Shared by every command that reads a file's content after
+    :func:`parse_file_command` has already confirmed it exists (``doc-index``,
+    ``tfidf-score``, ...) -- extracted once a second copy of the identical
+    try/except/result block appeared, the same duplicate-code trigger
+    :func:`require_existing_file` and :func:`parse_file_command` were each
+    extracted for.
+    """
+    result(
+        {"file": str(filepath), "status": "ERROR", "message": f"Cannot read file: {exc}"},
+        human_fn=lambda d: error(f"{d['file']}: {d['message']}"),
+    )
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-report-read-error
+
+
 # @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-display-heading
 def display_heading(heading: Optional[str]) -> str:
     """Render a retrieval section's heading for human/text display.
@@ -400,6 +421,7 @@ class _UI:  # pylint: disable=too-few-public-methods
     result = staticmethod(result)
     require_existing_file = staticmethod(require_existing_file)
     parse_file_command = staticmethod(parse_file_command)
+    report_read_error = staticmethod(report_read_error)
     display_heading = staticmethod(display_heading)
     JsonSafeArgumentParser = JsonSafeArgumentParser
     parse_args_or_json_error = staticmethod(parse_args_or_json_error)

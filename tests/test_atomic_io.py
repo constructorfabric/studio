@@ -36,6 +36,37 @@ class TestAtomicWriteText:
         names = [p.name for p in tmp_path.iterdir()]
         assert names == ["file.txt"]
 
+    def test_concurrent_writes_to_the_same_target_do_not_collide(self, tmp_path: Path):
+        """CodeRabbit PR #110: a PID-based temp filename is shared by every
+        call within one process -- two threads writing the same target
+        could each pick up the other's temp file mid-write, causing a
+        FileNotFoundError on os.replace or one call silently publishing
+        the other's content. A unique temp name per call (tempfile.mkstemp)
+        closes that window: each thread's write completes cleanly, and the
+        final content is one call's payload in full, never a torn mix."""
+        import threading
+
+        target = tmp_path / "file.txt"
+        barrier = threading.Barrier(2)
+        errors = []
+        payloads = ["a" * 200_000, "b" * 200_000]
+
+        def _write(content):
+            barrier.wait()
+            try:
+                atomic_write_text(target, content)
+            except OSError as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_write, args=(p,)) for p in payloads]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        assert target.read_text(encoding="utf-8") in payloads
+
 
 class TestWithFileLock:
     def test_runs_and_returns_the_callback_result(self, tmp_path: Path):

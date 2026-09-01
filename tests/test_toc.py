@@ -812,6 +812,25 @@ class TestJitRetrievalReadiness:
         codes = [w["code"] for w in result["warnings"]]
         assert "toc-heading-duplicate" not in codes
 
+    def test_frontmatter_closed_with_dots_is_still_recognized(self):
+        """CodeRabbit PR #110 (round 2): YAML permits closing a document
+        with `...` as well as `---`. Only recognizing `---` meant `...`-
+        terminated frontmatter was never seen as closed, so every heading
+        after it (all of them, here) was silently skipped."""
+        content = (
+            "---\n"
+            "title: Foo\n"
+            "...\n"
+            "# Title\n\n"
+            "## Section A\n\n"
+            "## Section B\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [e["code"] for e in result["errors"]]
+        # A TOC-less document with real headings should trip a missing-TOC
+        # error -- it can only do that if headings after `...` are seen.
+        assert "toc-missing" in codes
+
     def test_depth_jump_warned(self):
         content = (
             "# Title\n\n"
@@ -1092,6 +1111,37 @@ class TestJitRetrievalReadiness:
         content = (
             "---\n"
             "description: |\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    @pytest.mark.parametrize(
+        "block_scalar_header",
+        [
+            "description: |2-",
+            "description: |-2",
+            "description: | # TODO",
+        ],
+        ids=["digit-then-chomp", "chomp-then-digit", "trailing-comment"],
+    )
+    def test_empty_block_scalar_with_valid_indicator_variants_still_warns(self, block_scalar_header):
+        """CodeRabbit PR #110 (round 2): YAML allows the chomping (+/-) and
+        indentation (1-9) indicators in either order, plus an optional
+        trailing comment -- `|2-`, `|-2`, and `| # TODO` are all valid
+        block-scalar headers the old regex rejected outright, which made
+        the later logic treat them as an ordinary (non-empty) scalar value
+        and wrongly suppress the missing-description warning."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            f"{block_scalar_header}\n"
             "---\n\n"
             "# Title\n\n"
             "## Table of Contents\n\n"

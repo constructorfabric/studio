@@ -102,6 +102,78 @@ class TestGetOkfStatus:
         by_heading = {e["heading"]: e for e in status["entries"]}
         assert by_heading["Introduction"]["status"] == "stale"
 
+    def test_a_section_that_moved_without_changing_reports_current_not_missing(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110 (round 2): inserting a new section between two
+        already-written ones shifts everything after it to a new
+        line_start -- content-identical sections must reconcile to their
+        existing manifest entry by hash and keep their original
+        concept_file, not report "missing" and force a needless
+        re-summarization. Section lengths differ deliberately so no old
+        line_start numerically collides with an unrelated new one."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = (
+            "## Alpha\n\nAlpha body line one.\nAlpha body line two.\n\n"
+            "## Beta\n\nBeta body.\n"
+        )
+        f = _write(tmp_path, content)
+        index = get_or_build_doc_index(f)
+        beta = index["retrieval_sections"][1]
+        assert beta["heading"] == "Beta"
+        write_concept_file(f, beta["line_start"], description="d", body="b")
+        beta_concept_file = get_okf_status(f)["entries"][1]["concept_file"]
+
+        # Insert a differently-sized section between Alpha and Beta -- Beta's
+        # own text is untouched, but its line_start shifts.
+        moved = content.replace(
+            "## Beta", "## Gamma\n\nGamma body.\n\n## Beta"
+        )
+        f.write_text(moved, encoding="utf-8")
+        new_index = get_or_build_doc_index(f)
+        new_beta = next(s for s in new_index["retrieval_sections"] if s["heading"] == "Beta")
+        assert new_beta["line_start"] != beta["line_start"]
+
+        status = get_okf_status(f)
+        by_heading = {e["heading"]: e for e in status["entries"]}
+        assert by_heading["Beta"]["status"] == "current"
+        assert by_heading["Beta"]["concept_file"] == beta_concept_file
+        assert by_heading["Alpha"]["status"] == "missing"
+        assert by_heading["Gamma"]["status"] in ("missing", "stale")
+
+    def test_duplicate_content_sections_each_reconcile_to_a_distinct_entry(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110 (round 2): two sections with byte-identical
+        text share one content hash -- reconciling both to the *same*
+        manifest entry after a reorder would silently drop one's own
+        summary. Each must claim its own entry from the hash pool."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        dup_content = (
+            "## Details\n\nSame body text.\n\n"
+            "## Details\n\nSame body text.\n"
+        )
+        f = _write(tmp_path, dup_content)
+        index = get_or_build_doc_index(f)
+        details_sections = index["retrieval_sections"]
+        assert len(details_sections) == 2
+        assert details_sections[0]["hash"] == details_sections[1]["hash"]
+
+        write_concept_file(f, details_sections[0]["line_start"], description="first", body="b1")
+        write_concept_file(f, details_sections[1]["line_start"], description="second", body="b2")
+        before = get_okf_status(f)["entries"]
+        before_files = {e["line_start"]: e["concept_file"] for e in before}
+
+        # Reorder by prepending a new section -- both Details sections shift
+        # by the same offset, hashes unchanged.
+        f.write_text("## Preamble\n\nPreamble body line only.\n\n" + dup_content, encoding="utf-8")
+        after = get_okf_status(f)["entries"]
+        after_details = [e for e in after if e["heading"] == "Details"]
+        assert len(after_details) == 2
+        assert all(e["status"] == "current" for e in after_details)
+        after_files = sorted(e["concept_file"] for e in after_details)
+        assert after_files == sorted(before_files.values())
+
 
 class TestWriteConceptFile:
     def test_returns_false_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
@@ -229,6 +301,37 @@ class TestLoadOkfManifest:
         manifest_path = Path(status["bundle_dir"]) / "manifest.json"
         manifest_path.write_text("{not valid json", encoding="utf-8")
         assert load_okf_manifest(f) is None
+
+    def test_returns_none_when_top_level_is_not_a_dict(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #110 (round 2): a manifest that decodes to valid
+        JSON but isn't the expected object shape (e.g. a bare list) must
+        be treated the same as a corrupt/absent one, not passed through
+        for a reader to fail on."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        write_concept_file(f, index["retrieval_sections"][0]["line_start"], description="d", body="b")
+        status = get_okf_status(f)
+        manifest_path = Path(status["bundle_dir"]) / "manifest.json"
+        manifest_path.write_text("[]", encoding="utf-8")
+        assert load_okf_manifest(f) is None
+
+    def test_returns_none_when_an_entry_is_missing_a_required_field(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #110 (round 2): an entry missing "line_start" (hand-
+        edited, or a future/older schema) used to reach get_okf_status()'s
+        by_line_start dict comprehension as an unhandled KeyError."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        write_concept_file(f, index["retrieval_sections"][0]["line_start"], description="d", body="b")
+        status = get_okf_status(f)
+        manifest_path = Path(status["bundle_dir"]) / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        del manifest["entries"][0]["line_start"]
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        assert load_okf_manifest(f) is None
+        # get_okf_status must not crash either -- it falls back to "no manifest".
+        assert all(e["status"] == "missing" for e in get_okf_status(f)["entries"])
 
 
 class TestCmdOkfStatus:

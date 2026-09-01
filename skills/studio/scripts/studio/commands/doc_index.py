@@ -41,10 +41,7 @@ def cmd_doc_index(argv: List[str]) -> int:
         index = get_or_build_doc_index(filepath, force_rebuild=args.rebuild)
     except (OSError, UnicodeDecodeError) as exc:
         logger.warning("doc-index: cannot read %s: %s", filepath, exc)
-        ui.result(
-            {"file": str(filepath), "status": "ERROR", "message": f"Cannot read file: {exc}"},
-            human_fn=lambda d: ui.error(f"{d['file']}: {d['message']}"),
-        )
+        ui.report_read_error(filepath, exc)
         return 2
 
     output = {
