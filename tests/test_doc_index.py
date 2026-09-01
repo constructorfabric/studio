@@ -6,6 +6,7 @@ See constructorfabric/studio#104.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -38,6 +39,29 @@ def _write(tmp_path: Path, content: str = _SAMPLE, name: str = "doc.md") -> Path
     f = tmp_path / name
     f.write_text(content, encoding="utf-8")
     return f
+
+
+@pytest.fixture
+def studio_logger_propagates():
+    """Force the "studio" logger to propagate for the duration of a test.
+
+    Whichever CLI test runs first in the full suite triggers
+    cli.py's own _configure_studio_logging(), which sets
+    logging.getLogger("studio").propagate = False for the rest of the
+    process -- a real, ambient global-state mutation, not something this
+    test file controls. That silently blocks pytest's caplog (which
+    listens on the root logger) from ever seeing a child logger's records
+    for any test that runs after it. Tests asserting on log output for
+    "studio.utils.doc_index" opt into this fixture to stay correct
+    regardless of suite ordering, restoring the original value afterward.
+    """
+    studio_logger = logging.getLogger("studio")
+    original = studio_logger.propagate
+    studio_logger.propagate = True
+    try:
+        yield
+    finally:
+        studio_logger.propagate = original
 
 
 class TestBuildDocIndex:
@@ -324,7 +348,9 @@ class TestCachePersistence:
         assert seen_paths, "find_studio_directory was never called"
         assert seen_paths[0] == f.resolve().parent
 
-    def test_load_returns_none_on_corrupt_cache_file(self, tmp_path: Path, monkeypatch, caplog):
+    def test_load_returns_none_on_corrupt_cache_file(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates
+    ):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         save_doc_index(f, build_doc_index(f))
@@ -400,7 +426,7 @@ class TestCachePersistence:
         assert load_doc_index(f) is None
 
     def test_studio_directory_lookup_error_means_no_crash_and_no_cache(
-        self, tmp_path: Path, monkeypatch, caplog
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates
     ):
         """An OSError from find_studio_directory (e.g. an unreadable parent
         directory) must degrade to 'no cache', not raise -- and it must be
