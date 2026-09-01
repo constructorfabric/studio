@@ -36,6 +36,25 @@ class TestAtomicWriteText:
         names = [p.name for p in tmp_path.iterdir()]
         assert names == ["file.txt"]
 
+    def test_cleans_up_the_temp_file_when_replace_fails(self, tmp_path: Path, monkeypatch):
+        """A failure between the temp write and the final os.replace (disk
+        full, a permissions change mid-write) must not leave an orphaned
+        temp file behind, and must propagate the original error rather
+        than swallowing it."""
+        import os as os_module
+
+        target = tmp_path / "file.txt"
+
+        def _raise_replace(*_a, **_k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(os_module, "replace", _raise_replace)
+        with pytest.raises(OSError, match="disk full"):
+            atomic_write_text(target, "content")
+
+        assert not target.exists()
+        assert list(tmp_path.iterdir()) == []
+
     def test_concurrent_writes_to_the_same_target_do_not_collide(self, tmp_path: Path):
         """CodeRabbit PR #110: a PID-based temp filename is shared by every
         call within one process -- two threads writing the same target

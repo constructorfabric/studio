@@ -129,6 +129,14 @@ class TestCmdTfidfScore:
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"
 
+    def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(self, tmp_path: Path, capsys):
+        f = tmp_path / "bad.md"
+        f.write_bytes(b"# Title\n\xff\xfe not valid utf-8\n")
+        rc = cmd_tfidf_score([str(f), "query"])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
     def test_missing_required_argument_emits_json_error_not_a_plain_text_banner(
         self, tmp_path: Path, capsys
     ):
