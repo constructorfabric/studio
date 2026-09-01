@@ -14,6 +14,7 @@
   - [Calculate Coverage Metrics](#calculate-coverage-metrics)
   - [Calculate Granularity Score](#calculate-granularity-score)
   - [Generate Coverage Report](#generate-coverage-report)
+  - [Assess Semantic Coverage (advisory)](#assess-semantic-coverage-advisory)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Coverage Report Lifecycle](#coverage-report-lifecycle)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -72,7 +73,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 - No code files found → report with `applicable: false` naming how many registered entries resolved to no files, and 0% coverage
 
 **Steps**:
-1. [x] - `p1` - User invokes `cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose]` - `inst-user-spec-coverage`
+1. [x] - `p1` - User invokes `cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose] [--semantic]` - `inst-user-spec-coverage`
 2. [x] - `p1` - Load project context: studio config, registry, systems, codebase entries - `inst-load-context`
 3. [x] - `p1` - Resolve all code files from registered codebase entries - `inst-resolve-code-files`
 4. [x] - `p1` - **FOR EACH** code file, scan for `@cpt-*` markers using `cpt-studio-algo-spec-coverage-scan` - `inst-foreach-file`
@@ -97,6 +98,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 - [x] - `p1` - Route JSON report to file or terminal UI - `inst-output-report`
 - [x] - `p1` - Format uncovered ranges and render human-friendly per-file/status sections - `inst-human-report-helpers`
 - [x] - `p1` - Name the files whose coverage rests on a whole-file scope marker, largest first, with their count and total claimed lines - `inst-human-report-claims`
+- [x] - `p1` - When `--semantic` is set, run the advisory semantic pass (`cpt-studio-algo-semantic-coverage-pass`) and attach its section to the report **after** status/exit are computed, so it can never gate - `inst-attach-semantic`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -167,6 +169,23 @@ A file with good granularity has approximately 1 CDSL instruction (`@cpt-begin`/
 
 **Supporting**:
 - [x] - `p1` - Report function signature and relative path helper - `inst-report-datamodel`
+
+### Assess Semantic Coverage (advisory)
+
+- [x] `p1` - **ID**: `cpt-studio-algo-semantic-coverage-pass`
+
+**Input**: registered artifacts (for id→doc resolution), the scanned code files, the coverage report (for scope)
+
+**Output**: an advisory `semantic` report section — never affects status/exit. Success shape: `assessed` / `presumed_covered` / `unjudgeable[]` / `findings[]` / `skipped_excluded` / `schema_version` / `advisory`. If the pass raises, it degrades to `{advisory: true, error: <message>}` instead.
+
+**Steps**:
+1. [x] - `p1` - Build the id→declaring-artifact map from cpt definition hits across the registered artifacts - `inst-scov-defmap`
+2. [x] - `p1` - Build one pairing per marked block: code = the block's lines, requirement = the algo declaration resolved from the block's id (unjudgeable when unresolved) - `inst-scov-pairings`
+3. [x] - `p1` - Run the advisory engine (`assess`) over the pairings, passing the coverage report for scope, and serialise the result as the `semantic` section (`advisory: true`) - `inst-scov-run`
+4. [x] - `p1` - Render a one-line advisory human summary (counts + weak/wrong tally) - `inst-scov-summary`
+
+**Supporting**:
+- [x] - `p1` - Module imports and setup for the semantic-coverage pass - `inst-scov-imports`
 
 ## 4. States (CDSL)
 
@@ -240,6 +259,7 @@ The system **MUST** output a JSON report with: summary (total files, covered fil
 | Report Generator | `skills/.../utils/coverage.py` | JSON report assembly |
 | Codebase Utils | `skills/.../utils/codebase.py` | Existing code scanning infrastructure (reused) |
 | Language Config | `skills/.../utils/language_config.py` | Language-specific comment patterns (reused) |
+| Semantic Coverage Pass | `skills/.../utils/semantic_coverage.py` | Advisory: build pairings, run the semantic engine, serialise the `semantic` section (never gates) |
 
 ## 7. Acceptance Criteria
 

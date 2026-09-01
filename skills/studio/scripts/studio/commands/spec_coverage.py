@@ -75,6 +75,10 @@ def _build_spec_coverage_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--verbose", action="store_true", help="Include per-file marker details and covered ranges")
     parser.add_argument("--output", default=None, help="Write report to file instead of stdout")
+    parser.add_argument("--semantic", action="store_true",
+                        help="Attach the advisory semantic-coverage pass — assesses covered/partial/"
+                             "wrong/unjudgeable per marked block; never gates status/exit "
+                             "(see architecture/features/spec-coverage.md)")
     return parser
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-build-parser
 
@@ -402,6 +406,27 @@ def _load_spec_coverage_context():
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
 
 
+# @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-attach-semantic
+def _attach_semantic_section(args, filtered_files, json_report) -> None:
+    """Attach the advisory semantic pass AFTER status/exit are set, so a verdict can never gate."""
+    if not getattr(args, "semantic", False):
+        return
+    try:
+        # Everything advisory lives inside the guard — imports, context resolution, and the pass
+        # itself — so NOTHING (an import failure included) can change the structural status/exit
+        # already computed above. A failure is recorded as an advisory error rather than crashing.
+        from ..utils.context import get_context
+        from ..utils.semantic_coverage import run_semantic_pass
+        ctx = get_context()
+        if ctx is None:
+            return
+        json_report["semantic"] = run_semantic_pass(ctx, filtered_files, json_report)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("semantic pass failed (advisory, ignored): %s", exc)
+        json_report["semantic"] = {"advisory": True, "error": str(exc)}
+# @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-attach-semantic
+
+
 def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict, int]:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-validate-systems
     system_slugs, validation_error = _validate_selected_systems(args, meta)
@@ -417,18 +442,20 @@ def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict
     # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
     if not filtered_files:
         requested = _requested_thresholds(args)
-        empty = _empty_coverage_result(
-            _count_selected_codebase_entries(meta, system_slugs), requested
-        )
-        return empty, 2 if requested else 0
+        json_report = _empty_coverage_result(
+            _count_selected_codebase_entries(meta, system_slugs), requested)
+        # --semantic still attaches its (empty) advisory section here, so the flag's presence
+        # is consistent whether or not the codebase resolved to any files.
+        _attach_semantic_section(args, filtered_files, json_report)
+        return json_report, 2 if requested else 0
     # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
-    file_coverages = _scan_file_coverages(filtered_files)
-    report = calculate_metrics(file_coverages)
+    report = calculate_metrics(_scan_file_coverages(filtered_files))
     json_report = generate_report(report, verbose=args.verbose, project_root=project_root)
     # The population this percentage is computed over, so a shift in it is
     # attributable rather than looking like a change in the code.
     json_report["summary"]["files_excluded"] = files_excluded
     status = _apply_thresholds(report, args, project_root, json_report)
+    _attach_semantic_section(args, filtered_files, json_report)
     # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-covered
     if status == "PASS" and report.covered_lines > 0:
         return json_report, 0
@@ -587,6 +614,17 @@ def _human_spec_coverage(data: dict) -> None:
     ui.detail("Files", f"{files_line} ({excluded} excluded)" if excluded else files_line)
     ui.detail("Coverage", f"{summary.get('coverage_pct', 0):.1f}%")
     ui.detail("Granularity", f"{summary.get('granularity_score', 0):.4f}")
+
+    # Advisory semantic line — never part of the gate; only shown when --semantic ran.
+    semantic = data.get("semantic")
+    if semantic and semantic.get("error"):
+        # The advisory pass recorded a failure (possibly an import failure of semantic_coverage
+        # itself) — render it WITHOUT importing summary_line, which could re-raise here, after the
+        # structural status/exit are already set.
+        ui.info(f"semantic (advisory, never gates): pass errored, skipped — {semantic['error']}")
+    elif semantic:
+        from ..utils.semantic_coverage import summary_line
+        ui.info(summary_line(semantic))
 
     # Per-file details — files is a dict {path: entry_dict}
     files = data.get("files", {})

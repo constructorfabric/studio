@@ -18,7 +18,9 @@ code inside its markers does the wrong thing. This engine adds the layer density
   reported ``UNJUDGEABLE`` — never a silent "covered". The report states what it could not judge.
 * **Scoped by the frozen coverage contract.** Files a human declared ``excluded`` are skipped;
   files flagged ``whole_file_claims`` (scope-only) are prioritised — that is where a green
-  structural number most plausibly hides wrong code.
+  structural number most plausibly hides wrong code. This scoping activates once the coverage
+  producer emits those keys (tracked in #107); until then the scope is empty and every weak link is
+  judged — the safe default.
 
 @cpt-algo:cpt-studio-algo-eval-semantic:p1
 """
@@ -367,7 +369,10 @@ def build_semantic_request(ranked: Ranked) -> SemanticRequest:
         "advisory judgement; it never gates a build.\n\n"
         f"REQUIREMENT (id {pairing.block_id}):\n{_capped(requirement)}\n\n"
         f"CODE ({pairing.path}:{pairing.start_line}):\n{_capped(pairing.code)}\n\n"
-        "Answer with a verdict of 'covered', 'partial', or 'wrong', a one-line rationale, and an "
+        "Verdicts: 'covered' = the code fully implements the requirement; 'partial' = it implements "
+        "some of the requirement but omits or only partly satisfies part of it; 'wrong' = it "
+        "contradicts the requirement or implements something materially different.\n"
+        "Answer with one verdict ('covered', 'partial', or 'wrong'), a one-line rationale, and an "
         "evidence_quote copied verbatim from the CODE above that your verdict rests on.")
     return SemanticRequest(pairing.block_id, requirement, pairing.code, prompt)
 
