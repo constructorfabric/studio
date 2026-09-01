@@ -41,7 +41,7 @@ def _margin_threshold_arg(value: str) -> float:
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-cmd
 def cmd_retrieve(argv: List[str]) -> int:
     """Route a query against a Markdown file through the JIT-retrieval cascade."""
-    p = argparse.ArgumentParser(
+    p = ui.JsonSafeArgumentParser(
         prog="cfs retrieve",
         description="Route a query through the two-tier JIT-retrieval cascade and report the decision.",
     )
@@ -56,9 +56,7 @@ def cmd_retrieve(argv: List[str]) -> int:
         "--expected-future-queries", type=int, default=None,
         help="Expected future query volume against this document, for the OKF-vs-baseline break-even math",
     )
-    args = p.parse_args(argv)
-
-    filepath = ui.require_existing_file(args.file)
+    args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:
         return 2
 

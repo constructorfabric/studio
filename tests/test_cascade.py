@@ -186,6 +186,29 @@ class TestRouteTier2:
         result = route_tier2(f, tier1)
         assert "build_okf_break_even" not in result
 
+    def test_candidate_that_no_longer_matches_any_section_falls_back_to_baseline(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #111: if the document changed structurally between
+        Tier 1 picking a candidate and this re-derived status (a real,
+        if narrow, race), the candidate's line_start may no longer match
+        any current section. Silently dropping it would leave `relevant`
+        empty, and `any(... for entry in [])` is vacuously False --
+        recommending OKF on a candidate that was never actually verified."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        index = get_or_build_doc_index(f)
+        section_a = index["retrieval_sections"][0]
+        write_concept_file(f, section_a["line_start"], description="d", body="b")
+
+        bogus_tier1 = {
+            "tier": "escalate", "reason": "diffuse_margin",
+            "candidates": [{"heading": "Ghost", "line_start": 99999, "line_end": 99999}],
+        }
+        result = route_tier2(f, bogus_tier1)
+        assert result["recommendation"] == "baseline"
+        assert result["okf_needs_rebuild"] is True
+
 
 class TestRouteQuery:
     def test_resolved_at_tier1_never_calls_tier2(self, tmp_path: Path, monkeypatch):
@@ -234,28 +257,34 @@ class TestCmdRetrieve:
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"
 
-    def test_missing_required_argument_raises_system_exit(self):
-        """CodeRabbit PR #111: cmd_retrieve uses plain argparse (not
-        JsonSafeArgumentParser), so omitting a required positional exits
-        via SystemExit before the command's own logic ever runs -- a
-        distinct failure mode from "path given, file missing" above."""
-        with pytest.raises(SystemExit):
-            cmd_retrieve([])
+    def test_missing_required_argument_emits_json_error_not_a_plain_text_banner(self, capsys):
+        """CodeRabbit PR #111: cmd_retrieve now uses JsonSafeArgumentParser
+        (like every other single-file command), so omitting a required
+        positional must still emit the project's own --json ERROR
+        contract, not argparse's default usage banner + SystemExit."""
+        rc = cmd_retrieve([])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
 
     def test_margin_threshold_rejects_non_positive_values(self, capsys):
         """CodeRabbit PR #111: a negative or zero --margin-threshold would
         make the safety-relevant margin comparison fire on virtually any
         result, defeating the cascade's own documented safety margin."""
-        with pytest.raises(SystemExit):
-            cmd_retrieve(["doc.md", "query", "--margin-threshold", "-1"])
-        with pytest.raises(SystemExit):
-            cmd_retrieve(["doc.md", "query", "--margin-threshold", "0"])
+        rc = cmd_retrieve(["doc.md", "query", "--margin-threshold", "-1"])
+        assert rc == 2
+        assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
+        rc = cmd_retrieve(["doc.md", "query", "--margin-threshold", "0"])
+        assert rc == 2
+        assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
 
-    def test_margin_threshold_rejects_non_finite_values(self):
-        with pytest.raises(SystemExit):
-            cmd_retrieve(["doc.md", "query", "--margin-threshold", "nan"])
-        with pytest.raises(SystemExit):
-            cmd_retrieve(["doc.md", "query", "--margin-threshold", "inf"])
+    def test_margin_threshold_rejects_non_finite_values(self, capsys):
+        rc = cmd_retrieve(["doc.md", "query", "--margin-threshold", "nan"])
+        assert rc == 2
+        assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
+        rc = cmd_retrieve(["doc.md", "query", "--margin-threshold", "inf"])
+        assert rc == 2
+        assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
 
     def test_basic_json_output(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)

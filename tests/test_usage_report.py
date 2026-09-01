@@ -13,6 +13,16 @@ from studio.utils import decision_log as dl
 
 
 class TestCmdUsageReport:
+    def test_unknown_argument_emits_json_error_not_a_plain_text_banner(self, capsys):
+        """CodeRabbit PR #111: cmd_usage_report now uses
+        JsonSafeArgumentParser, so an unrecognized argument must still
+        emit the project's own --json ERROR contract, not argparse's
+        default usage banner + SystemExit."""
+        rc = cmd_usage_report(["--bogus"])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
     def test_no_project_reports_no_log_found(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
         rc = cmd_usage_report([])

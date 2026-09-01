@@ -160,7 +160,18 @@ def route_tier2(
     candidates = tier1_result.get("candidates", [])
     if candidates:
         by_line_start = {entry["line_start"]: entry for entry in status["entries"]}
-        relevant = [by_line_start[c["line_start"]] for c in candidates if c["line_start"] in by_line_start]
+        relevant = [by_line_start.get(c["line_start"]) for c in candidates]
+        # A candidate that no longer maps to a current section (the
+        # document changed structurally between Tier 1 picking it and this
+        # re-derived status) can't be verified at all -- silently dropping
+        # it would let an all-unresolved candidate list pass the "any
+        # stale/missing" check below vacuously (empty list, no False
+        # values), recommending OKF on a candidate that was never actually
+        # checked. Treat "can't verify" the same as "not current".
+        if any(entry is None for entry in relevant):
+            rec = _baseline_recommendation(expected_future_queries)
+            rec["okf_needs_rebuild"] = True
+            return rec
     else:
         # No named candidate (row 1): the external selector could land on
         # any section in the bundle, so every section must be trustworthy,

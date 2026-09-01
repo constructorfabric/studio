@@ -7,7 +7,6 @@ Thin CLI wrapper around ``studio.utils.heading_nav``.
 @cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
 """
 
-import argparse
 from typing import List
 
 from ..utils.heading_nav import find_sections
@@ -17,15 +16,13 @@ from ..utils.ui import ui
 # @cpt-begin:cpt-studio-algo-traceability-validation-heading-nav:p1:inst-heading-nav-cmd
 def cmd_heading_nav(argv: List[str]) -> int:
     """Find a Markdown file's retrieval sections containing a query literally."""
-    p = argparse.ArgumentParser(
+    p = ui.JsonSafeArgumentParser(
         prog="cfs heading-nav",
         description="Find a Markdown file's retrieval sections containing a query's literal text.",
     )
     p.add_argument("file", help="Markdown file path")
     p.add_argument("query", help="Query text to search for, literally")
-    args = p.parse_args(argv)
-
-    filepath = ui.require_existing_file(args.file)
+    args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:
         return 2
 

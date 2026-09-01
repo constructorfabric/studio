@@ -7,7 +7,6 @@ Thin CLI wrapper around ``studio.utils.decision_log``.
 @cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
 """
 
-import argparse
 from typing import List
 
 from ..utils import decision_log
@@ -17,11 +16,12 @@ from ..utils.ui import ui
 # @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-usage-report-cmd
 def cmd_usage_report(argv: List[str]) -> int:
     """Aggregate the local decision log into a per-method usage report."""
-    p = argparse.ArgumentParser(
+    p = ui.JsonSafeArgumentParser(
         prog="cfs usage-report",
         description="Aggregate the local decision log's read events into a per-method token table.",
     )
-    p.parse_args(argv)
+    if ui.parse_args_or_json_error(p, argv) is None:
+        return 2
 
     output = {
         "summary": decision_log.summarize(),

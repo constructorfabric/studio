@@ -7,7 +7,6 @@ Thin CLI wrapper around ``studio.utils.read_gate``.
 @cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
 """
 
-import argparse
 from typing import List
 
 from ..utils.doc_index import get_or_build_doc_index
@@ -18,7 +17,7 @@ from ..utils.ui import ui
 # @cpt-begin:cpt-studio-algo-traceability-validation-read-gate:p1:inst-read-gate-cmd
 def cmd_read_gate(argv: List[str]) -> int:
     """Check whether a Markdown file's line count needs read confirmation."""
-    p = argparse.ArgumentParser(
+    p = ui.JsonSafeArgumentParser(
         prog="cfs read-gate",
         description="Check whether a Markdown file's line count crosses the large-read confirmation threshold.",
     )
@@ -27,9 +26,7 @@ def cmd_read_gate(argv: List[str]) -> int:
         "--threshold", type=int, default=DEFAULT_GATE_THRESHOLD_LINES,
         help=f"Line-count threshold (default: {DEFAULT_GATE_THRESHOLD_LINES})",
     )
-    args = p.parse_args(argv)
-
-    filepath = ui.require_existing_file(args.file)
+    args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:
         return 2
 

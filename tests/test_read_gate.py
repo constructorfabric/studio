@@ -8,8 +8,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from studio.commands.read_gate import cmd_read_gate
 from studio.utils.read_gate import DEFAULT_GATE_THRESHOLD_LINES, check_gate
 
@@ -45,13 +43,15 @@ class TestCmdReadGate:
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"
 
-    def test_missing_required_argument_raises_system_exit(self):
-        """CodeRabbit PR #111: cmd_read_gate uses plain argparse, so
-        omitting a required positional exits via SystemExit before the
-        command's own logic ever runs -- a distinct failure mode from
-        "path given, file missing" above."""
-        with pytest.raises(SystemExit):
-            cmd_read_gate([])
+    def test_missing_required_argument_emits_json_error_not_a_plain_text_banner(self, capsys):
+        """CodeRabbit PR #111: cmd_read_gate now uses JsonSafeArgumentParser
+        (like every other single-file command), so omitting a required
+        positional must still emit the project's own --json ERROR contract,
+        not argparse's default usage banner + SystemExit."""
+        rc = cmd_read_gate([])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
 
     def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(self, tmp_path: Path, capsys):
         f = tmp_path / "bad.md"
