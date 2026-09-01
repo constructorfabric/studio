@@ -985,23 +985,149 @@ class TestJitRetrievalReadiness:
         codes = [w["code"] for w in result["warnings"]]
         assert "toc-missing-description" in codes
 
-    @pytest.mark.parametrize(
-        "description_line",
-        [
-            'description: ""',
-            "description: ''",
-            "description: # TODO",
-        ],
-        ids=["double-quoted-empty", "single-quoted-empty", "comment-only"],
-    )
-    def test_empty_or_comment_only_description_still_warns(self, description_line):
-        """CodeRabbit PR #108 (round 2): an empty quoted scalar or a bare
-        comment satisfies a naive "any character after the colon" check but
-        is not a real description -- each must still trigger the warning."""
+    def test_comment_only_description_value_still_warns(self):
+        """CodeRabbit PR #109: `description: # TODO` matched the old regex
+        (`#` is non-whitespace) but is a YAML comment, not a value -- the
+        field is exactly as absent as if it weren't there at all."""
         filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
         content = (
             "---\n"
-            f"{description_line}\n"
+            "description: # TODO write this\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    def test_empty_quoted_description_value_still_warns(self):
+        """CodeRabbit PR #109: `description: ""` matched the old regex (the
+        opening quote is non-whitespace) but carries no actual text."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            'description: ""\n'
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    def test_empty_single_quoted_description_value_still_warns(self):
+        """CodeRabbit PR #108 (round 2): single-quoted `description: ''` is
+        the same empty-scalar case as the double-quoted form and must warn
+        too -- not just the double-quoted variant."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: ''\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    def test_real_description_after_regex_tightening_still_suppresses_warning(self):
+        """Confirms the stricter check didn't overcorrect into rejecting a
+        genuinely populated, quoted description."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            'description: "A real, non-empty description."\n'
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" not in codes
+
+    def test_empty_block_scalar_description_still_warns(self):
+        """CodeRabbit PR #109 (second round): `description: |` is a YAML
+        block-scalar marker -- the real content (if any) belongs on
+        indented lines below it, not on the marker line itself. With
+        nothing indented beneath it, this frontmatter has no real
+        description, immediately followed by the closing `---`."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: |\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
+    def test_populated_block_scalar_description_suppresses_warning(self):
+        """The other side of the block-scalar fix: real indented content
+        under `description: |` must still count as a real description."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: |\n"
+            "  A real, multi-line\n"
+            "  block-scalar description.\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" not in codes
+
+    def test_block_scalar_with_leading_blank_line_before_content_still_counts(self):
+        """A blank line immediately under the block-scalar marker (before
+        the real indented content) must be skipped, not mistaken for "no
+        content"."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: |\n"
+            "\n"
+            "  Real content after a leading blank line.\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" not in codes
+
+    def test_folded_block_scalar_marker_variant_is_recognized(self):
+        """`>` (folded) and modifiers like `|-`/`>+` are all valid YAML
+        block-scalar indicators, not just the bare `|`."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            "description: >-\n"
             "---\n\n"
             "# Title\n\n"
             "## Table of Contents\n\n"
@@ -1121,6 +1247,34 @@ class TestCmdValidateToc:
         out = json.loads(capsys.readouterr().out)
         assert out["files_validated"] == 2
         assert out["error_count"] == 1
+
+    def test_a_read_failure_on_one_file_does_not_abort_the_batch(self, tmp_path: Path, capsys):
+        """CodeRabbit PR #109: an unhandled read failure on one file used to
+        raise out of the per-file loop, discarding results already
+        collected for files validated earlier in the same invocation and
+        never reaching the remaining files. A binary/non-UTF-8 file in the
+        middle of a batch must be recorded as its own ERROR result, and the
+        batch must still validate the file(s) after it."""
+        good = tmp_path / "good.md"
+        good.write_text(
+            "# T\n\n## Table of Contents\n\n1. [A](#a)\n\n---\n\n## A\n",
+            encoding="utf-8",
+        )
+        binary = tmp_path / "binary.md"
+        binary.write_bytes(b"\xff\xfe\x00\x01garbage")
+        good2 = tmp_path / "good2.md"
+        good2.write_text(
+            "# T\n\n## Table of Contents\n\n1. [B](#b)\n\n---\n\n## B\n",
+            encoding="utf-8",
+        )
+        rc = cmd_validate_toc(["--max-level", "2", str(good), str(binary), str(good2)])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["files_validated"] == 3
+        by_file = {r["file"]: r for r in out["results"]}
+        assert by_file[str(good)]["status"] == "PASS"
+        assert by_file[str(binary)]["status"] == "ERROR"
+        assert by_file[str(good2)]["status"] == "PASS"
 
     def test_verbose_flag(self, tmp_path: Path, capsys):
         f = tmp_path / "doc.md"

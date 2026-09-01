@@ -23,7 +23,10 @@ def cmd_doc_index(argv: List[str]) -> int:
         prog="cfs doc-index",
         description=(
             "Build or reuse a cached heading/section index for a Markdown file, "
-            "so navigation reads the file's structure once, not once per query."
+            "so navigation reads the file's structure once, not once per query. "
+            "section_level is inferred from the most frequently repeated heading "
+            "level (ties prefer the shallower level); a level used only once is "
+            "never chosen."
         ),
     )
     p.add_argument("file", help="Markdown file path")
@@ -58,6 +61,9 @@ def cmd_doc_index(argv: List[str]) -> int:
         "total_lines": index["total_lines"],
         "section_count": len(index["sections"]),
         "sections": index["sections"],
+        "section_level": index["section_level"],
+        "retrieval_section_count": len(index["retrieval_sections"]),
+        "retrieval_sections": index["retrieval_sections"],
     }
     ui.result(output, human_fn=_human_doc_index)
     return 0
@@ -74,5 +80,13 @@ def _human_doc_index(data: dict) -> None:
     for s in data["sections"]:
         summary = f" — {s['summary']}" if s.get("summary") else ""
         ui.substep(f"  H{s['level']} [{s['line_start']}-{s['line_end']}] {s['heading']}{summary}")
+    ui.blank()
+
+    level = data["section_level"]
+    ui.step(f"Retrieval sections (level {level}, {data['retrieval_section_count']} section(s))" if level is not None
+             else "Retrieval sections (no headings — none inferred)")
+    for s in data["retrieval_sections"]:
+        summary = f" — {s['summary']}" if s.get("summary") else ""
+        ui.substep(f"  [{s['line_start']}-{s['line_end']}] {s['heading']} ({s['hash'][:12]}){summary}")
     ui.blank()
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cmd-format

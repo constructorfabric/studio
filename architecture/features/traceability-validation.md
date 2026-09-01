@@ -403,6 +403,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for validate-toc command - `inst-toc-imports`
+- [x] - `p1` - Validate a single file, never raising: a missing file or a read failure (permission denied, binary/non-UTF-8 content, a TOCTOU race) is reported as its own ERROR result rather than aborting the whole batch and discarding results already collected for earlier files - `inst-toc-validate-one`
 - [x] - `p1` - Human-friendly formatter for validate-toc output: a WARN-only file prints its warnings the same way a FAIL file prints its errors, not just the bare status - `inst-toc-format`
 
 ### TOC Utilities
@@ -447,7 +448,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 **Input**: Markdown file path
 
-**Output**: `cfs doc-index`'s JSON is `{file, cache_hit, total_lines, section_count, sections}`, each `sections[]` entry `{level, heading, line_start, line_end, summary}`. The underlying index dict additionally carries `schema_version`, `path`, and `etag`.
+**Output**: `cfs doc-index`'s JSON is `{file, cache_hit, total_lines, section_count, sections, section_level, retrieval_section_count, retrieval_sections}` -- every heading's own line range in `sections[]` (`{level, heading, line_start, line_end, summary}`), plus a coarser "one chunk per real section" grouping in `retrieval_sections[]` at an inferred heading level, each with a content hash and a summary slot. The underlying cached index dict additionally carries `schema_version`, `path`, and `etag`.
 
 A cached, read-once-per-file structural index for Markdown JIT retrieval (see
 constructorfabric/studio#104): parsing a file's headings/section boundaries
@@ -456,19 +457,27 @@ size) changes.
 The cache-validity fingerprint is deliberately metadata-only (`mtime` + file
 size via `Path.stat()`), never a content hash â€” the point of the cache is to
 avoid reading the file at all on a hit, and a content hash would defeat that
-by requiring the read it's meant to save.
+by requiring the read it's meant to save. A build reads the content and
+takes that fingerprint bracketed by a stat snapshot on each side, so the
+fingerprint saved is provably the one that matches what was actually parsed
+even if a write lands in the narrow window during the read.
 
 1. [x] - `p1` - Build a fresh structural index: parse headings + line ranges from current content, compute the stat-based fingerprint, stamp the current schema version - `inst-doc-index-build`
 2. [x] - `p1` - Load a cached index for a file, validated against current stat metadata (no content read on a hit) and against the required-field shape at the current schema version; returns `None` if missing, stale, corrupt, or an incomplete/outdated shape - `inst-doc-index-load`
 3. [x] - `p1` - Persist an index to its cache location atomically (temp file + `os.replace`, so a concurrent reader never observes a torn write); no-ops silently outside a Studio-adapted project - `inst-doc-index-save`
 4. [x] - `p1` - Return the cached index or build-and-cache a fresh one; reports cache hit/miss for benchmarking - `inst-doc-index-get-or-build`
 5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, for a future per-section-summary caller - `inst-doc-index-annotate`
+6. [x] - `p1` - Infer which heading level represents one retrievable section: the most-recurring level wins over a level that appears only once (however shallow), since PDF-conversion heading levels don't reliably encode true nesting depth â€” a fixed level assumption silently produces a degenerate mega-section on such documents - `inst-doc-index-infer-level`
+7. [x] - `p1` - Group headings at exactly the inferred level into retrieval sections (off-level headings stay inside whichever section they fall under, never split one apart); hash each section's own text for section-granularity staleness detection - `inst-doc-index-retrieval-sections`
+8. [x] - `p1` - Diff the current file against its last cached build at section granularity: which retrieval sections are unchanged vs. changed, or whether the section count itself changed (a structural change, matched by position not heading text, since duplicate titles are real) - `inst-doc-index-diff-stale`
 
 **Supporting**:
 - [x] - `p1` - Stat-based cache-validity fingerprint (`mtime_ns` + size); resolved from the file's own path, never a content hash - `inst-doc-index-etag`
 - [x] - `p1` - Resolve the cache file location within the Studio directory owning the indexed file, resolved from the file's own path (not the process's working directory) - `inst-doc-index-cache-path`
 - [x] - `p1` - `cfs doc-index` CLI wrapper: parse arguments, build the JSON output payload, reporting a clean error for a missing or unreadable file - `inst-doc-index-cmd`
 - [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
+- [x] - `p1` - Read a file's content bracketed by an etag snapshot on each side, retrying on mismatch: closes the window where a write between the read and the fingerprint could save stale headings under a fresh-looking etag - `inst-doc-index-stable-read`
+- [x] - `p1` - Re-parse a file's current content into retrieval sections for staleness comparison, and build the `(heading, line_start)` identity pair that disambiguates a duplicate heading title in a diff result - `inst-doc-index-diff-stale-helpers`
 
 ### Markdown Parsing Utilities
 

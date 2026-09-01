@@ -867,22 +867,26 @@ def _check_section_lengths(
 
 
 _DESCRIPTION_FIELD_RE = re.compile(r"^description\s*:\s*(.*)$")
+_BLOCK_SCALAR_RE = re.compile(r"^[|>][+\-]?\d*$")
 
 
-def _is_real_description_value(raw_value: str) -> bool:
-    """``True`` only if *raw_value* (the text after ``description:``) is an
-    actual description, not an empty quoted scalar (``""``/``''``) or a
-    comment-only value (``# TODO``) -- both look non-blank to a naive
-    "any character after the colon" check but carry no real content.
-    """
-    value = raw_value.strip()
-    if not value or value.startswith("#"):
-        return False
-    if value[0] in "\"'":
-        quote = value[0]
-        end = value.find(quote, 1)
-        quoted = value[1:end] if end != -1 else value[1:]
-        return bool(quoted.strip())
+def _quoted_value_is_empty(value: str) -> bool:
+    """``value`` starts with a quote char -- True if the quoted text is empty."""
+    quote = value[0]
+    closing = value.find(quote, 1)
+    inner = value[1:closing] if closing != -1 else value[1:]
+    return not inner.strip()
+
+
+def _block_scalar_is_empty(body: List[str], start_index: int) -> bool:
+    """``value`` was a YAML block scalar marker (``|``, ``>``, ``|-``, ...) --
+    its real content, if any, is on indented lines below it, not on the
+    marker's own line. True if the first non-blank following line isn't
+    indented under it (i.e. the block scalar has no content at all)."""
+    for line in body[start_index:]:
+        if not line.strip():
+            continue
+        return not line[0].isspace()
     return True
 
 
@@ -892,11 +896,29 @@ def _frontmatter_has_description(lines: List[str], frontmatter_end: int) -> bool
     ``frontmatter_end`` is the index returned by :func:`_find_frontmatter_end`
     (one past the closing ``---``); the body being scanned is
     ``lines[1:frontmatter_end - 1]``, excluding both delimiter lines.
+
+    A field that's present but carries no real value doesn't satisfy this:
+    a YAML comment (``description: # TODO``), an empty quoted string
+    (``description: ""``), or a block-scalar marker
+    (``description: |``) with nothing indented beneath it all parse as "no
+    description" just as much as the field being absent entirely would --
+    the point of this check is to guarantee a caller gets something to
+    actually read, not just a matching key.
     """
-    for line in lines[1:frontmatter_end - 1]:
+    body = lines[1:frontmatter_end - 1]
+    for i, line in enumerate(body):
         match = _DESCRIPTION_FIELD_RE.match(line.strip())
-        if match and _is_real_description_value(match.group(1)):
-            return True
+        if not match:
+            continue
+        value = match.group(1).strip()
+        if not value or value.startswith("#"):
+            continue
+        if _BLOCK_SCALAR_RE.match(value):
+            if _block_scalar_is_empty(body, i + 1):
+                continue
+        elif value[0] in "\"'" and _quoted_value_is_empty(value):
+            continue
+        return True
     return False
 
 
