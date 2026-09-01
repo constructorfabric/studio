@@ -16,6 +16,7 @@ from ..utils.ui import ui
 logger = logging.getLogger(__name__)
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cmd
 def cmd_doc_index(argv: List[str]) -> int:
     """Build (or reuse the cached) structural index for a Markdown file."""
     p = argparse.ArgumentParser(
@@ -60,8 +61,10 @@ def cmd_doc_index(argv: List[str]) -> int:
     }
     ui.result(output, human_fn=_human_doc_index)
     return 0
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cmd
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cmd-format
 def _human_doc_index(data: dict) -> None:
     ui.header("Doc Index")
     ui.substep(data["file"])
@@ -72,3 +75,4 @@ def _human_doc_index(data: dict) -> None:
         summary = f" — {s['summary']}" if s.get("summary") else ""
         ui.substep(f"  H{s['level']} [{s['line_start']}-{s['line_end']}] {s['heading']}{summary}")
     ui.blank()
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cmd-format

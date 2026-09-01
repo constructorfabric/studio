@@ -467,6 +467,8 @@ by requiring the read it's meant to save.
 **Supporting**:
 - [x] - `p1` - Stat-based cache-validity fingerprint (`mtime_ns` + size); resolved from the file's own path, never a content hash - `inst-doc-index-etag`
 - [x] - `p1` - Resolve the cache file location within the Studio directory owning the indexed file, resolved from the file's own path (not the process's working directory) - `inst-doc-index-cache-path`
+- [x] - `p1` - `cfs doc-index` CLI wrapper: parse arguments, build the JSON output payload, reporting a clean error for a missing or unreadable file - `inst-doc-index-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
 
 ### Markdown Parsing Utilities
 
