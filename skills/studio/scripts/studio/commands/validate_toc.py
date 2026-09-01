@@ -14,7 +14,7 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from ..utils.toc import add_toc_max_level_argument, validate_toc
+from ..utils.toc import DEFAULT_MAX_SECTION_LINES, add_toc_max_level_argument, validate_toc
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-imports
 
@@ -31,6 +31,12 @@ def cmd_validate_toc(argv: List[str]) -> int:
         help="Markdown file path(s) to validate",
     )
     add_toc_max_level_argument(p)
+    p.add_argument(
+        "--max-section-lines",
+        type=int,
+        default=DEFAULT_MAX_SECTION_LINES,
+        help=f"Warn when a section exceeds this many lines (default: {DEFAULT_MAX_SECTION_LINES})",
+    )
     p.add_argument(
         "--verbose",
         action="store_true",
@@ -63,6 +69,7 @@ def cmd_validate_toc(argv: List[str]) -> int:
             content,
             artifact_path=filepath,
             max_heading_level=args.max_level,
+            max_section_lines=args.max_section_lines,
         )
 
         errors = report.get("errors", [])
@@ -121,6 +128,10 @@ def _human_validate_toc(data: dict) -> None:
             ui.warn(f"{path}: {errs} error(s), {warns} warning(s)")
             for e in r.get("errors", []):
                 ui.substep(f"  ✗ {e}")
+            for w in r.get("warnings", []):
+                ui.substep(f"  ⚠ {w}")
+        elif status == "WARN":
+            ui.warn(f"{path}: {warns} warning(s)")
             for w in r.get("warnings", []):
                 ui.substep(f"  ⚠ {w}")
         else:

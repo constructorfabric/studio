@@ -134,6 +134,10 @@ def _cmd_eval(argv: List[str]) -> int:
     from .commands.eval import cmd_eval
     return cmd_eval(argv)
 
+def _cmd_doc_index(argv: List[str]) -> int:
+    from .commands.doc_index import cmd_doc_index
+    return cmd_doc_index(argv)
+
 # =============================================================================
 # ADAPTER COMMAND
 # =============================================================================
@@ -216,6 +220,7 @@ _COMMAND_DESCRIPTIONS = {
     "resolve-vars": "Resolve template variables to absolute paths",
     "toc": "Generate/update Table of Contents",
     "chunk-input": "Chunk oversized workflow input into line-bounded Markdown files",
+    "doc-index": "Build/reuse a cached heading index for a Markdown file (read once, not per query)",
     "pdsl": "Validate PDSL prompt blocks",
     "workspace-init": "Initialize multi-repo workspace",
     "workspace-add": "Add a source to workspace config",
@@ -232,7 +237,7 @@ _COMMAND_SECTIONS = [
     ("Validation", ["validate", "validate-kits", "validate-toc", "spec-coverage", "check-language"]),
     ("Search & Navigation", ["list-ids", "list-id-kinds", "get-content", "where-defined", "where-used"]),
     ("Kit Management", ["kit"]),
-    ("Utility", ["toc", "chunk-input", "pdsl"]),
+    ("Utility", ["toc", "chunk-input", "doc-index", "pdsl"]),
     ("Workspace", ["workspace-init", "workspace-add", "workspace-info", "workspace-sync"]),
     ("Delegation", ["delegate"]),
     ("Diagnostics", ["doctor"]),
@@ -263,6 +268,7 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "validate-toc": "_cmd_validate_toc",
     "spec-coverage": "_cmd_spec_coverage",
     "chunk-input": "_cmd_chunk_input",
+    "doc-index": "_cmd_doc_index",
     "workspace-init": "_cmd_workspace_init",
     "workspace-add": "_cmd_workspace_add",
     "workspace-info": "_cmd_workspace_info",
@@ -296,6 +302,7 @@ _COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
     _cmd_validate_toc,
     _cmd_spec_coverage,
     _cmd_chunk_input,
+    _cmd_doc_index,
     _cmd_workspace_init,
     _cmd_workspace_add,
     _cmd_workspace_info,
