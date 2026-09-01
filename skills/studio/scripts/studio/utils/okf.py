@@ -62,7 +62,11 @@ def _okf_bundle_dir(path: Path) -> Optional[Path]:
     try:
         studio_dir = find_studio_directory(path.resolve().parent)
     except OSError as exc:
-        logger.debug("okf bundle dir lookup skipped for %s: %s", path, exc)
+        # A file whose parent can't be stat'd (permissions, a race) is not a
+        # reason to fail the caller -- just an unavailable bundle, like "no
+        # Studio directory found". Warning, not debug: this is a genuine
+        # anomaly, mirroring doc_index._index_cache_path's identical check.
+        logger.warning("okf bundle dir lookup failed for %s: %s", path, exc)
         studio_dir = None
     if studio_dir is None:
         return None
@@ -114,24 +118,39 @@ def _allocate_concept_filename(position: int, heading: Optional[str], manifest: 
 _REQUIRED_MANIFEST_ENTRY_FIELDS = ("line_start", "concept_file", "built_from_hash")
 
 
+def _is_valid_manifest_entry(entry: Any) -> bool:
+    """``True`` only if *entry* has every required field, of the type every
+    reader assumes. Presence alone isn't enough: ``line_start`` is used as
+    a dict key (``by_line_start``/hash-pool matching in
+    :func:`get_okf_status`) -- an unhashable value there (a list, a dict)
+    raises ``TypeError`` before this module's own malformed-manifest
+    fallback ever gets a chance to apply.
+    """
+    if not isinstance(entry, dict) or not all(field in entry for field in _REQUIRED_MANIFEST_ENTRY_FIELDS):
+        return False
+    return (
+        isinstance(entry["line_start"], int) and not isinstance(entry["line_start"], bool)
+        and isinstance(entry["concept_file"], str)
+        and isinstance(entry["built_from_hash"], str)
+    )
+
+
 def _is_valid_manifest_shape(manifest: Any) -> bool:
     """``True`` only if *manifest* has the shape every reader assumes: a
     dict with an ``entries`` list, each entry a dict carrying every field
-    :func:`get_okf_status`/:func:`write_concept_file` dereference by key.
-    A hand-edited or partially-written manifest missing one of these would
-    otherwise surface as an unhandled ``KeyError`` deep inside a reader,
-    instead of the clean "treat this bundle as absent, rebuild" fallback
-    every other malformed-cache case in this codebase already gets.
+    :func:`get_okf_status`/:func:`write_concept_file` dereference by key, of
+    the type each is actually used as. A hand-edited or partially-written
+    manifest missing or mistyping one of these would otherwise surface as
+    an unhandled ``KeyError``/``TypeError`` deep inside a reader, instead of
+    the clean "treat this bundle as absent, rebuild" fallback every other
+    malformed-cache case in this codebase already gets.
     """
     if not isinstance(manifest, dict):
         return False
     entries = manifest.get("entries")
     if not isinstance(entries, list):
         return False
-    return all(
-        isinstance(entry, dict) and all(field in entry for field in _REQUIRED_MANIFEST_ENTRY_FIELDS)
-        for entry in entries
-    )
+    return all(_is_valid_manifest_entry(entry) for entry in entries)
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-manifest-io
@@ -146,7 +165,11 @@ def load_okf_manifest(path: Path) -> Optional[Dict[str, Any]]:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("okf manifest unreadable for %s: %s", path, exc)
+        # Reached only once the caller has already confirmed the manifest
+        # file exists, so a failure here is real corruption or a
+        # permissions problem, not a routine miss -- warning, not debug,
+        # mirroring doc_index._read_cache_file's identical check.
+        logger.warning("okf manifest unreadable for %s: %s", path, exc)
         return None
     if not _is_valid_manifest_shape(manifest):
         logger.warning("okf manifest for %s has an invalid/incomplete shape; treating as absent", path)
@@ -185,9 +208,11 @@ def get_okf_status(path: Path) -> Dict[str, Any]:
     - ``"missing"`` -- no manifest entry exists for this section yet (never
       summarized, or a structural change added it since the last summary
       pass -- see :func:`studio.utils.doc_index.diff_stale_sections`), or a
-      manifest entry exists but its concept file was deleted out from under
-      it (a manual cleanup, say) -- the manifest's hash alone doesn't prove
-      the file it points at still exists.
+      manifest entry exists but its concept file was deleted, truncated, or
+      corrupted out from under it (a manual edit, a crash mid-write outside
+      this module's own atomic write path) -- the manifest's hash alone
+      doesn't prove the file it points at still exists or holds real
+      content (see :func:`_concept_file_is_valid`).
     - ``"stale"`` -- a manifest entry exists, but its recorded
       ``built_from_hash`` no longer matches the section's current hash
       (the source changed since the summary was written).
@@ -265,6 +290,23 @@ def _match_sections_by_hash(
     return matched_by_position
 
 
+def _concept_file_is_valid(concept_path: Path) -> bool:
+    """Minimal content-validity check for a concept file already confirmed
+    to exist on disk: real content always opens with the YAML frontmatter
+    block :func:`_build_frontmatter` writes. A physical-presence check
+    alone (``is_file()``) can't tell a genuine concept file from one
+    truncated, emptied, or corrupted after the fact -- this catches that
+    without needing full YAML parsing, which is more than this check needs
+    to answer "is there real content here at all".
+    """
+    try:
+        content = concept_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.debug("okf concept file unreadable at %s: %s", concept_path, exc)
+        return False
+    return content.startswith("---\n")
+
+
 def _resolve_section_status(
     section: Dict[str, Any],
     position: int,
@@ -279,7 +321,7 @@ def _resolve_section_status(
     matching rule."""
     if matched_entry is not None:
         concept_file = matched_entry["concept_file"]
-        status = "current" if (bundle_dir / concept_file).is_file() else "missing"
+        status = "current" if _concept_file_is_valid(bundle_dir / concept_file) else "missing"
     else:
         stale_entry = by_line_start.get(section["line_start"])
         # An entry already claimed by a different section during hash
@@ -295,7 +337,7 @@ def _resolve_section_status(
             # freshly derived from the *current* heading/position that was
             # never actually written to disk.
             concept_file = stale_entry["concept_file"]
-            status = "stale" if (bundle_dir / concept_file).is_file() else "missing"
+            status = "stale" if _concept_file_is_valid(bundle_dir / concept_file) else "missing"
         else:
             concept_file = _concept_filename(position, section["heading"])
             status = "missing"

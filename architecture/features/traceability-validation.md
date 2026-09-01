@@ -555,9 +555,10 @@ Shared by every local cache/bundle writer in this package (`doc_index.py`, `okf.
 
 Purely mechanical, no LLM call: a case-insensitive literal-substring search of the query against each retrieval section's own raw text, mirroring a real `grep -i "<query>"` against the content -- deliberately not tokenized or word-split, and sharing the Document Index's `retrieval_sections` for boundaries so this reads no more of the file than every other JIT-retrieval consumer already does. Has no semantic fallback by design: a query phrased differently than the source's own vocabulary returns zero hits everywhere, even when a related concept exists under different wording (a real, documented failure mode of this method on its own, not a defect) -- that hard failure is itself the useful signal a caller needs to decide whether to escalate past this method.
 
-1. [x] - `p1` - Find every retrieval section containing a query's literal text (case-insensitive), in document order, plus the first match - `inst-heading-nav-search`
+1. [x] - `p1` - Find every retrieval section containing a query's literal text (case-insensitive), in document order, plus the first match; excludes fenced code blocks from the match so an incidental code-sample hit can't count as a prose match - `inst-heading-nav-search`
 
 **Supporting**:
+- [x] - `p1` - Blank out fenced-code-block lines before counting hits, reusing `toc.py`'s own fence-tracking - `inst-heading-nav-strip-fences`
 - [x] - `p1` - `cfs heading-nav` CLI wrapper: parse arguments, build the JSON output payload - `inst-heading-nav-cmd`
 - [x] - `p1` - Human-friendly formatter for `cfs heading-nav` output - `inst-heading-nav-cmd-format`
 

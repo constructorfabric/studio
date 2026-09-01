@@ -435,6 +435,19 @@ class TestCachePersistence:
         assert loaded["etag"] == built["etag"]
         assert loaded["sections"] == built["sections"]
 
+    def test_save_returns_true_on_a_real_write(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: save_doc_index used to return None
+        unconditionally, giving a caller no way to distinguish an actual
+        write from a silent no-op outside a Studio project."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert save_doc_index(f, build_doc_index(f)) is True
+
+    def test_save_returns_false_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
+        f = _write(tmp_path)
+        assert save_doc_index(f, build_doc_index(f)) is False
+
     def test_load_returns_none_when_cache_is_stale(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
@@ -653,6 +666,24 @@ class TestAnnotateSectionSummary:
         get_or_build_doc_index(f)
         assert annotate_section_summary(f, line_start=999, expected_hash="anything", summary="x") is False
 
+    def test_propagates_a_persistence_failure_instead_of_reporting_true(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: annotate_section_summary used to return True
+        unconditionally after calling save_doc_index, discarding whatever
+        save_doc_index actually reported -- an external caller (e.g. an
+        LLM summarization pass) would believe a summary was persisted when
+        the underlying write silently failed/no-opped."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        line_start = index["sections"][0]["line_start"]
+        expected_hash = index["sections"][0]["hash"]
+
+        monkeypatch.setattr(di, "save_doc_index", lambda *_a, **_k: False)
+        result = annotate_section_summary(f, line_start=line_start, expected_hash=expected_hash, summary="x")
+        assert result is False
+
     def test_returns_false_on_hash_mismatch(self, tmp_path: Path, monkeypatch):
         """CodeRabbit PR #110: a caller's expected_hash must match the
         section's current hash, or the write is rejected -- otherwise a
@@ -732,7 +763,7 @@ class TestAnnotateSectionSummary:
 
         def slow_save(path, saved_index):
             time_module.sleep(0.1)
-            original_save(path, saved_index)
+            return original_save(path, saved_index)
 
         monkeypatch.setattr(di, "save_doc_index", slow_save)
 
@@ -799,6 +830,16 @@ class TestReadWithStableEtag:
 class TestCmdDocIndex:
     def test_missing_file(self, tmp_path: Path, capsys):
         rc = cmd_doc_index([str(tmp_path / "nope.md")])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
+    def test_missing_required_argument_emits_json_error_not_a_plain_text_banner(self, capsys):
+        """CodeRabbit PR #111: cmd_doc_index uses JsonSafeArgumentParser, so
+        omitting the required positional must still emit the project's own
+        --json ERROR contract (via parse_args_or_json_error), not argparse's
+        default usage banner + SystemExit."""
+        rc = cmd_doc_index([])  # file omitted
         assert rc == 2
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"

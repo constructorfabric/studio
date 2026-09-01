@@ -77,3 +77,23 @@ class TestCmdUsageReport:
         out = capsys.readouterr().out
         assert "tfidf" in out
         assert "49676" in out
+
+    def test_human_output_surfaces_event_counts_and_time_range(self, tmp_path: Path, capsys, monkeypatch):
+        """CodeRabbit PR #111: the JSON summary includes event_counts/
+        first_ts/last_ts, but the human renderer used to print neither --
+        an interactive user saw strictly less than a --json caller."""
+        from studio.utils.ui import is_json_mode, set_json_mode
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        dl.record_read("tfidf", "doc.md", 8925, 49676)
+
+        orig = is_json_mode()
+        set_json_mode(False)
+        try:
+            rc = cmd_usage_report([])
+        finally:
+            set_json_mode(orig)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "read" in out  # event type name from event_counts
+        assert "time range" in out

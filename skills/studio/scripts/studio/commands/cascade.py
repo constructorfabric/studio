@@ -8,10 +8,34 @@ Thin CLI wrapper around ``studio.utils.cascade``.
 """
 
 import argparse
+import math
 from typing import List
 
 from ..utils.cascade import route_query
 from ..utils.ui import ui
+
+
+def _margin_threshold_arg(value: str) -> float:
+    """argparse type for --margin-threshold: a finite number > 0.
+
+    cascade.py's own module docstring states the design basis: the only
+    real evidence measured for this design is that an *infinite* margin is
+    safe, while finite margins of 1.06x-1.58x still occurred on two
+    independently wrong picks -- no finite value is yet proven safe. A
+    non-finite (nan/inf), negative, or zero threshold would make
+    ``tfidf_result["margin"] >= margin_threshold`` fire on virtually any
+    result, defeating that safety margin entirely; only a genuine positive
+    finite number is accepted, mirroring ``commands/eval.py``'s
+    ``_compliance_arg`` validator for the same class of hazard.
+    """
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid float value: {value!r}") from exc
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError(
+            f"--margin-threshold must be a finite number > 0, got {value!r}")
+    return parsed
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-cmd
@@ -24,9 +48,9 @@ def cmd_retrieve(argv: List[str]) -> int:
     p.add_argument("file", help="Markdown file path")
     p.add_argument("query", help="Query text")
     p.add_argument(
-        "--margin-threshold", type=float, default=None,
+        "--margin-threshold", type=_margin_threshold_arg, default=None,
         help="Enable a numeric TF-IDF margin cutoff for a large-margin Tier 1 resolution "
-        "(default: disabled -- only an unambiguous score counts)",
+        "(default: disabled -- only an unambiguous score counts). Must be a finite number > 0.",
     )
     p.add_argument(
         "--expected-future-queries", type=int, default=None,
@@ -38,11 +62,16 @@ def cmd_retrieve(argv: List[str]) -> int:
     if filepath is None:
         return 2
 
-    result = route_query(
-        filepath, args.query,
-        margin_threshold=args.margin_threshold,
-        expected_future_queries=args.expected_future_queries,
+    result, rc = ui.call_with_read_error_handling(
+        filepath,
+        lambda: route_query(
+            filepath, args.query,
+            margin_threshold=args.margin_threshold,
+            expected_future_queries=args.expected_future_queries,
+        ),
     )
+    if rc is not None:
+        return rc
 
     output = {"file": str(filepath), **result}
     ui.result(output, human_fn=_human_retrieve)

@@ -398,15 +398,20 @@ def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
     if cached.get("etag") != current_etag:
         return None
     if not _has_schema_current_index(cached):
-        logger.debug("doc-index cache for %s is malformed or predates the current schema; rebuilding", path)
+        # A matching etag but a stale/malformed shape means a hand-edited
+        # or pre-schema-bump cache slipped past the etag check -- a real
+        # anomaly, not a routine miss, so warning rather than debug.
+        logger.warning("doc-index cache for %s is malformed or predates the current schema; rebuilding", path)
         return None
     return cached
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-save
-def save_doc_index(path: Path, index: Dict[str, Any]) -> None:
-    """Persist an index to its cache location. No-ops outside a Studio project.
+def save_doc_index(path: Path, index: Dict[str, Any]) -> bool:
+    """Persist an index to its cache location. No-ops (returns ``False``)
+    outside a Studio project, so a caller can tell an actual write from a
+    silent no-op instead of assuming success unconditionally.
 
     Written atomically (temp file + ``os.replace``): a reader racing a
     concurrent writer sees either the old complete file or the new complete
@@ -414,8 +419,9 @@ def save_doc_index(path: Path, index: Dict[str, Any]) -> None:
     """
     cache_path = _index_cache_path(path)
     if cache_path is None:
-        return
+        return False
     atomic_write_text(cache_path, json.dumps(index, indent=2))
+    return True
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-save
 
 
@@ -609,8 +615,7 @@ def annotate_section_summary(path: Path, line_start: int, expected_hash: str, su
                 retrieval_section["summary"] = summary
                 break
 
-        save_doc_index(path, index)
-        return True
+        return save_doc_index(path, index)
 
     return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _read_modify_write)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate

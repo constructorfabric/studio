@@ -42,6 +42,11 @@ def _human_usage_report(data: dict) -> None:
         return
     ui.substep(f"log: {summary['path']}")
     ui.substep(f"{summary['total_events']} event(s) across {summary['runs']} run(s)")
+    if summary["first_ts"] or summary["last_ts"]:
+        ui.substep(f"time range: {summary['first_ts']} .. {summary['last_ts']}")
+    if summary["event_counts"]:
+        counts = ", ".join(f"{name}: {count}" for name, count in sorted(summary["event_counts"].items()))
+        ui.substep(f"by event type: {counts}")
 
     reads = data["reads"]
     if not reads["methods"]:

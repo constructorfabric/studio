@@ -90,6 +90,25 @@ class TestGetOkfStatus:
         by_heading = {e["heading"]: e for e in status["entries"]}
         assert by_heading["Introduction"]["status"] == "missing"
 
+    def test_corrupted_concept_file_reports_missing_not_current(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: a manifest entry's hash still matches even
+        after its concept file is truncated/corrupted in place -- physical
+        presence alone can't prove the content is real, so status must
+        fall back to missing rather than trusting a file never read."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        intro = index["retrieval_sections"][0]
+        write_concept_file(f, intro["line_start"], description="d", body="b")
+        assert get_okf_status(f)["entries"][0]["status"] == "current"
+
+        bundle_dir = _okf_bundle_dir(f)
+        (bundle_dir / "01-introduction.md").write_text("garbage, not frontmatter", encoding="utf-8")
+
+        status = get_okf_status(f)
+        by_heading = {e["heading"]: e for e in status["entries"]}
+        assert by_heading["Introduction"]["status"] == "missing"
+
     def test_editing_the_source_after_writing_reports_stale(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
@@ -271,6 +290,20 @@ class TestWriteConceptFile:
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         assert write_concept_file(f, 9999, description="d", body="b") is False
+
+    def test_propagates_a_persistence_failure_instead_of_reporting_true(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: write_concept_file used to return True
+        unconditionally after calling save_okf_manifest, discarding
+        whatever save_okf_manifest actually reported."""
+        import studio.utils.okf as okf_module
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        line_start = index["retrieval_sections"][0]["line_start"]
+
+        monkeypatch.setattr(okf_module, "save_okf_manifest", lambda *_a, **_k: False)
+        assert write_concept_file(f, line_start, description="d", body="b") is False
 
     def test_writes_concept_file_with_frontmatter_and_body(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -520,6 +553,24 @@ class TestLoadOkfManifest:
         f = _write(tmp_path)
         assert save_okf_manifest(f, {"entries": []}) is True
         assert load_okf_manifest(f) == {"entries": []}
+
+    def test_returns_none_when_a_field_has_the_wrong_type(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: {"line_start": [], ...} passes a presence-only
+        shape check but then raises TypeError when get_okf_status() uses
+        the unhashable list as a dict key -- field values must be
+        type-checked, not just present."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        write_concept_file(f, index["retrieval_sections"][0]["line_start"], description="d", body="b")
+        status = get_okf_status(f)
+        manifest_path = Path(status["bundle_dir"]) / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["entries"][0]["line_start"] = []
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        assert load_okf_manifest(f) is None
+        # get_okf_status must not crash either -- it falls back to "no manifest".
+        assert all(e["status"] == "missing" for e in get_okf_status(f)["entries"])
 
 
 class TestGetOkfStatusReorderTolerance:

@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from studio.commands.heading_nav import cmd_heading_nav
 from studio.utils.heading_nav import find_sections
 
@@ -76,10 +78,46 @@ class TestFindSections:
         f = _write(tmp_path)
         assert find_sections(f, "   ") == {"matches": [], "first_match": None}
 
+    def test_hit_inside_a_fenced_code_block_does_not_count(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: a term appearing only inside a fenced code
+        sample (a command, a variable name) must not count as a prose hit
+        -- otherwise an incidental code-sample match could make this
+        method pick a section on nothing but a coincidental identifier."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = "## A\n\nSome prose here.\n\n```bash\nwidget --flag\n```\n"
+        f = _write(tmp_path, content)
+        result = find_sections(f, "widget")
+        assert result == {"matches": [], "first_match": None}
+
+    def test_hit_outside_a_fenced_code_block_still_counts(self, tmp_path: Path, monkeypatch):
+        """The other side of the fence fix: a real prose hit alongside an
+        unrelated code block must still be found."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = "## A\n\nThe widget is mentioned here in prose.\n\n```bash\necho hello\n```\n"
+        f = _write(tmp_path, content)
+        result = find_sections(f, "widget")
+        assert result["matches"][0]["hit_count"] == 1
+
 
 class TestCmdHeadingNav:
     def test_missing_file(self, tmp_path: Path, capsys):
         rc = cmd_heading_nav([str(tmp_path / "nope.md"), "query"])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
+    def test_missing_required_argument_raises_system_exit(self):
+        """CodeRabbit PR #111: cmd_heading_nav uses plain argparse, so
+        omitting a required positional exits via SystemExit before the
+        command's own logic ever runs -- a distinct failure mode from
+        "path given, file missing" above."""
+        with pytest.raises(SystemExit):
+            cmd_heading_nav([])
+
+    def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(self, tmp_path: Path, capsys):
+        f = tmp_path / "bad.md"
+        f.write_bytes(b"# Title\n\xff\xfe not valid utf-8\n")
+        rc = cmd_heading_nav([str(f), "query"])
         assert rc == 2
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"

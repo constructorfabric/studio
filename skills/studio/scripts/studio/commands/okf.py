@@ -28,7 +28,9 @@ def cmd_okf_status(argv: List[str]) -> int:
     if filepath is None:
         return 2
 
-    status = get_okf_status(filepath)
+    status, rc = ui.call_with_read_error_handling(filepath, lambda: get_okf_status(filepath))
+    if rc is not None:
+        return rc
     output = {"file": str(filepath), **status}
     ui.result(output, human_fn=_human_okf_status)
     return 0

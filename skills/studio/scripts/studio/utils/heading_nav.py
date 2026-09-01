@@ -15,9 +15,29 @@ See constructorfabric/studio#104.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 from .doc_index import get_or_build_doc_index, section_text
+from .toc import _fence_update
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-heading-nav:p1:inst-heading-nav-strip-fences
+def _strip_fenced_code_lines(lines: List[str]) -> List[str]:
+    """Blank out every line inside (or opening/closing) a fenced code block,
+    so a query match inside a code sample (a command, a variable name) isn't
+    counted the same as a genuine prose hit. Reuses ``toc.py``'s own fence-
+    tracking rather than a second implementation of "what counts as a fence"
+    that could silently drift from it.
+    """
+    result: List[str] = []
+    fence: Optional[Tuple[str, int]] = None
+    for line in lines:
+        new_fence = _fence_update(line, fence)
+        blank = new_fence != fence or fence is not None
+        fence = new_fence
+        result.append("" if blank else line)
+    return result
+# @cpt-end:cpt-studio-algo-traceability-validation-heading-nav:p1:inst-heading-nav-strip-fences
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-heading-nav:p1:inst-heading-nav-search
@@ -42,6 +62,12 @@ def find_sections(path: Path, query: str) -> Dict[str, Any]:
 
     An empty query, or a headingless document (no retrieval sections at
     all), returns ``{"matches": [], "first_match": None}``.
+
+    A hit inside a fenced code block (a command, a variable name in a
+    sample) doesn't count -- code blocks are excluded before counting, the
+    same fence-tracking ``toc.py`` uses elsewhere, so an incidental code-
+    sample match can't make this method pick a section on nothing but a
+    coincidental identifier.
     """
     if not query.strip():
         return {"matches": [], "first_match": None}
@@ -51,7 +77,7 @@ def find_sections(path: Path, query: str) -> Dict[str, Any]:
     if not sections:
         return {"matches": [], "first_match": None}
 
-    lines = path.resolve().read_text(encoding="utf-8").split("\n")
+    lines = _strip_fenced_code_lines(path.resolve().read_text(encoding="utf-8").split("\n"))
     query_lower = query.lower()
 
     matches = []

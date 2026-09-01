@@ -25,7 +25,9 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
+
+T = TypeVar("T")
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +372,28 @@ def report_read_error(filepath: Path, exc: BaseException) -> None:
 # @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-report-read-error
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-call-with-read-error-handling
+def call_with_read_error_handling(filepath: Path, fn: Callable[[], T]) -> Tuple[Optional[T], Optional[int]]:
+    """Call ``fn()`` -- a zero-arg callable that reads *filepath*'s content
+    -- catching ``OSError``/``UnicodeDecodeError`` and reporting via
+    :func:`report_read_error`.
+
+    Returns ``(result, None)`` on success, or ``(None, 2)`` on a caught
+    read failure; callers should ``return exit_code`` when it isn't
+    ``None``. Extracted once the identical "call the thing that reads a
+    file, catch its two read-failure exceptions, report, return 2" block
+    appeared across four commands (``heading-nav``, ``retrieve``,
+    ``read-gate``, ``okf-status``) -- the same duplicate-code trigger
+    every other shared helper in this module was extracted for.
+    """
+    try:
+        return fn(), None
+    except (OSError, UnicodeDecodeError) as exc:
+        report_read_error(filepath, exc)
+        return None, 2
+# @cpt-end:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-call-with-read-error-handling
+
+
 # @cpt-begin:cpt-studio-algo-core-infra-render-info-human:p1:inst-ui-display-heading
 def display_heading(heading: Optional[str]) -> str:
     """Render a retrieval section's heading for human/text display.
@@ -422,6 +446,7 @@ class _UI:  # pylint: disable=too-few-public-methods
     require_existing_file = staticmethod(require_existing_file)
     parse_file_command = staticmethod(parse_file_command)
     report_read_error = staticmethod(report_read_error)
+    call_with_read_error_handling = staticmethod(call_with_read_error_handling)
     display_heading = staticmethod(display_heading)
     JsonSafeArgumentParser = JsonSafeArgumentParser
     parse_args_or_json_error = staticmethod(parse_args_or_json_error)

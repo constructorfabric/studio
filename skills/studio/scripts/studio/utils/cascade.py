@@ -191,6 +191,18 @@ def route_query(
     the integration point this cascade exists to close, so a baseline
     fallback never happens without the caller seeing whether it crosses the
     confirmation threshold.
+
+    Returned shape is a stable contract, not incidental: top-level ``query``,
+    ``tier``, ``reason``, ``candidates`` (:func:`route_tier1`'s own return,
+    merged in) are always present; ``tier2`` (:func:`route_tier2`'s return,
+    with ``recommendation``/``reason``/optional ``okf_needs_rebuild``) is
+    added only when Tier 1 escalated; ``read_gate``
+    (:func:`studio.utils.read_gate.check_gate`'s return, with
+    ``needs_confirmation``/``total_lines``/``threshold``) is added only when
+    Tier 2 recommends ``"baseline"``. ``commands/cascade.py``'s
+    ``_human_retrieve`` and ``tests/test_cascade.py`` both key into these
+    fields by name -- changing a key here is a breaking change for both and
+    should be treated as one (versioned or coordinated), not a routine edit.
     """
     tier1 = route_tier1(path, query, margin_threshold=margin_threshold)
     result: Dict[str, Any] = {"query": query, **tier1}

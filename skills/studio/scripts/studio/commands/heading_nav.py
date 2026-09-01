@@ -29,7 +29,9 @@ def cmd_heading_nav(argv: List[str]) -> int:
     if filepath is None:
         return 2
 
-    result = find_sections(filepath, args.query)
+    result, rc = ui.call_with_read_error_handling(filepath, lambda: find_sections(filepath, args.query))
+    if rc is not None:
+        return rc
 
     output = {
         "file": str(filepath),

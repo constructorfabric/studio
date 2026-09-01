@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from studio.commands.cascade import cmd_retrieve
 from studio.utils.cascade import route_query, route_tier1, route_tier2
 from studio.utils.doc_index import get_or_build_doc_index
@@ -231,6 +233,29 @@ class TestCmdRetrieve:
         assert rc == 2
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"
+
+    def test_missing_required_argument_raises_system_exit(self):
+        """CodeRabbit PR #111: cmd_retrieve uses plain argparse (not
+        JsonSafeArgumentParser), so omitting a required positional exits
+        via SystemExit before the command's own logic ever runs -- a
+        distinct failure mode from "path given, file missing" above."""
+        with pytest.raises(SystemExit):
+            cmd_retrieve([])
+
+    def test_margin_threshold_rejects_non_positive_values(self, capsys):
+        """CodeRabbit PR #111: a negative or zero --margin-threshold would
+        make the safety-relevant margin comparison fire on virtually any
+        result, defeating the cascade's own documented safety margin."""
+        with pytest.raises(SystemExit):
+            cmd_retrieve(["doc.md", "query", "--margin-threshold", "-1"])
+        with pytest.raises(SystemExit):
+            cmd_retrieve(["doc.md", "query", "--margin-threshold", "0"])
+
+    def test_margin_threshold_rejects_non_finite_values(self):
+        with pytest.raises(SystemExit):
+            cmd_retrieve(["doc.md", "query", "--margin-threshold", "nan"])
+        with pytest.raises(SystemExit):
+            cmd_retrieve(["doc.md", "query", "--margin-threshold", "inf"])
 
     def test_basic_json_output(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)

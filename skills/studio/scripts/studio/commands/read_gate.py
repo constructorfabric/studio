@@ -33,7 +33,9 @@ def cmd_read_gate(argv: List[str]) -> int:
     if filepath is None:
         return 2
 
-    index = get_or_build_doc_index(filepath)
+    index, rc = ui.call_with_read_error_handling(filepath, lambda: get_or_build_doc_index(filepath))
+    if rc is not None:
+        return rc
     gate = check_gate(index["total_lines"], args.threshold)
 
     output = {"file": str(filepath), **gate}
