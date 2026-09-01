@@ -851,6 +851,22 @@ class TestJitRetrievalReadiness:
         headings = parse_headings_with_lines(content)
         assert [text for _level, text, _line in headings] == ["Real Title", "Section A"]
 
+    def test_indented_opening_delimiter_is_not_mistaken_for_frontmatter(self):
+        """CodeRabbit PR #110 (round 4): an indented `  ---` on the first
+        line is a valid Markdown indented thematic break, not a YAML
+        frontmatter opener. Treating it as one would mis-scope everything
+        up to the next real `---` as frontmatter, skipping any headings in
+        between."""
+        content = (
+            "  ---\n"
+            "# Real Title\n\n"
+            "## Section A\n\n"
+            "---\n\n"
+            "## Section B\n"
+        ).split("\n")
+        headings = parse_headings_with_lines(content)
+        assert [text for _level, text, _line in headings] == ["Real Title", "Section A", "Section B"]
+
     def test_depth_jump_warned(self):
         content = (
             "# Title\n\n"

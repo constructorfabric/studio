@@ -149,6 +149,45 @@ class TestGetOkfStatus:
         status = get_okf_status(f)
         assert status["entries"][0]["status"] == "missing"
 
+    def test_new_section_landing_on_a_moved_sections_old_line_start_is_not_stale(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110 (round 4): a moved section's manifest entry is
+        only removed from the hash pool, not from by_line_start -- a
+        completely different, brand-new section that lands exactly on that
+        vacated line_start could inherit the moved section's concept_file
+        and report "stale" instead of "missing", pointing index.md at a
+        summary that was never written for it."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = (
+            "## Alpha\n\nAlpha body line one.\nAlpha body line two.\n\n"
+            "## Beta\n\nBeta body.\n"
+        )
+        f = _write(tmp_path, content)
+        index = get_or_build_doc_index(f)
+        beta = index["retrieval_sections"][1]
+        assert beta["heading"] == "Beta"
+        write_concept_file(f, beta["line_start"], description="d", body="b")
+        beta_concept_file = get_okf_status(f)["entries"][1]["concept_file"]
+
+        # Insert a new section ("Gamma") the same size as what it displaces,
+        # so it lands precisely on Beta's *old* line_start while Beta itself
+        # (unchanged content) shifts further down.
+        moved = content.replace(
+            "## Beta", "## Gamma\n\nGamma body.\n\n## Beta"
+        )
+        f.write_text(moved, encoding="utf-8")
+        new_index = get_or_build_doc_index(f)
+        gamma = next(s for s in new_index["retrieval_sections"] if s["heading"] == "Gamma")
+        assert gamma["line_start"] == beta["line_start"]  # landed exactly on Beta's old spot
+
+        status = get_okf_status(f)
+        by_heading = {e["heading"]: e for e in status["entries"]}
+        assert by_heading["Gamma"]["status"] == "missing"
+        assert by_heading["Gamma"]["concept_file"] != beta_concept_file
+        assert by_heading["Beta"]["status"] == "current"
+        assert by_heading["Beta"]["concept_file"] == beta_concept_file
+
     def test_a_section_that_moved_without_changing_reports_current_not_missing(
         self, tmp_path: Path, monkeypatch
     ):
@@ -317,6 +356,57 @@ class TestWriteConceptFile:
         index_md = (Path(status["bundle_dir"]) / "index.md").read_text(encoding="utf-8")
         assert "Covers details." in index_md
         assert "(no summary yet)" not in index_md
+
+    def test_new_section_does_not_steal_a_moved_sections_concept_filename(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110 (round 4): concept_filename was derived purely
+        from the section's *current* position/heading, computed outside the
+        lock. If a reorder leaves a brand-new section at the same
+        position+heading a different, already-written (moved) section now
+        occupies, the naive filename collides and atomic_write_text
+        silently replaces the moved section's real summary."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = (
+            "## Alpha\n\nAlpha body one.\nAlpha body two.\n\n"
+            "## Details\n\nDetails body A.\n"
+        )
+        f = _write(tmp_path, content)
+        index = get_or_build_doc_index(f)
+        details = index["retrieval_sections"][1]
+        assert details["heading"] == "Details"
+        write_concept_file(f, details["line_start"], description="Original.", body="a")
+        original_concept_file = get_okf_status(f)["entries"][1]["concept_file"]
+        assert original_concept_file == "02-details.md"
+
+        # Insert a brand-new "Details" section ahead of the original --
+        # the new one now sits at position 2 (the exact position/heading
+        # combination that used to name the original's file), while the
+        # original (unchanged content) shifts to position 3 and resolves
+        # via hash match, keeping its own file.
+        reordered = content.replace(
+            "## Details", "## Details\n\nDetails body NEW.\n\n## Details", 1
+        )
+        f.write_text(reordered, encoding="utf-8")
+        new_index = get_or_build_doc_index(f)
+        new_details = new_index["retrieval_sections"][1]
+        moved_original = new_index["retrieval_sections"][2]
+        assert new_details["line_start"] == details["line_start"]  # took over the old slot
+        assert moved_original["line_start"] != details["line_start"]  # original shifted
+
+        write_concept_file(f, new_details["line_start"], description="New one.", body="b")
+
+        status = get_okf_status(f)
+        by_line_start = {e["line_start"]: e for e in status["entries"]}
+        original_after = next(e for e in status["entries"] if e["status"] == "current"
+                               and e["concept_file"] == original_concept_file)
+        assert original_after["status"] == "current"
+        new_entry = by_line_start[new_details["line_start"]]
+        assert new_entry["concept_file"] != original_concept_file
+
+        bundle_dir = _okf_bundle_dir(f)
+        original_content = (bundle_dir / original_concept_file).read_text(encoding="utf-8")
+        assert "Original." in original_content  # not clobbered by the new write
 
     def test_second_write_does_not_duplicate_manifest_entries(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)

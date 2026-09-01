@@ -32,7 +32,7 @@ import re
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from .atomic_io import atomic_write_text, with_file_lock
 from .doc_index import get_or_build_doc_index
@@ -90,6 +90,25 @@ def _slugify(heading: Optional[str]) -> str:
 
 def _concept_filename(position: int, heading: Optional[str]) -> str:
     return f"{position:02d}-{_slugify(heading)}.md"
+
+
+def _allocate_concept_filename(position: int, heading: Optional[str], manifest: Dict[str, Any]) -> str:
+    """Choose a concept filename for a genuinely new (never-before-written)
+    section, guaranteed not to collide with any filename already recorded
+    in the manifest. A naive position/heading-derived name alone could
+    otherwise coincide with a different, already-written section's own
+    file (e.g. duplicate headings after a reorder), letting
+    :func:`write_concept_file` silently overwrite that section's summary.
+    """
+    existing = {e["concept_file"] for e in manifest.get("entries", [])}
+    base = _concept_filename(position, heading)
+    if base not in existing:
+        return base
+    stem, _, ext = base.rpartition(".")
+    suffix = 2
+    while f"{stem}-{suffix}.{ext}" in existing:
+        suffix += 1
+    return f"{stem}-{suffix}.{ext}"
 
 
 _REQUIRED_MANIFEST_ENTRY_FIELDS = ("line_start", "concept_file", "built_from_hash")
@@ -198,46 +217,78 @@ def get_okf_status(path: Path) -> Dict[str, Any]:
         return {"available": False, "bundle_dir": None, "entries": []}
 
     index = get_or_build_doc_index(path)
+    sections = index["retrieval_sections"]
     manifest_entries = (load_okf_manifest(path) or {"entries": []}).get("entries", [])
     by_line_start = {entry["line_start"]: entry for entry in manifest_entries}
     pool: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for entry in manifest_entries:
         pool[entry["built_from_hash"]].append(entry)
 
+    # Hash matching runs to completion for every section *before* any
+    # stale/missing fallback lookup -- interleaving them would let a
+    # section that moves *away* from a line_start (still unconsumed in
+    # `by_line_start` at that point in document order) leak its entry to
+    # a completely different, newly-added section that later happens to
+    # occupy that same old line_start.
+    matched_by_position = _match_sections_by_hash(sections, pool)
+    consumed_ids = {id(entry) for entry in matched_by_position.values()}
+
     entries = [
-        _resolve_section_status(section, position, pool, by_line_start, bundle_dir)
-        for position, section in enumerate(index["retrieval_sections"], start=1)
+        _resolve_section_status(
+            section, position, matched_by_position.get(position), by_line_start, consumed_ids, bundle_dir,
+        )
+        for position, section in enumerate(sections, start=1)
     ]
     return {"available": True, "bundle_dir": str(bundle_dir), "entries": entries}
+
+
+def _match_sections_by_hash(
+    sections: List[Dict[str, Any]], pool: Dict[str, List[Dict[str, Any]]],
+) -> Dict[int, Dict[str, Any]]:
+    """Pass 1 of :func:`get_okf_status`'s matching: resolve every section's
+    hash match (consuming ``pool`` as it goes) before any section's stale
+    fallback runs, so consumption never depends on document-order timing
+    between a moved section and whatever unrelated section now occupies
+    its old line_start. Returns matched entries keyed by position (1-based).
+    """
+    matched_by_position: Dict[int, Dict[str, Any]] = {}
+    for position, section in enumerate(sections, start=1):
+        candidates = pool.get(section["hash"])
+        if not candidates:
+            continue
+        same_slot = next(
+            (c for c in candidates if c["line_start"] == section["line_start"]),
+            candidates[0],
+        )
+        candidates.remove(same_slot)
+        matched_by_position[position] = same_slot
+    return matched_by_position
 
 
 def _resolve_section_status(
     section: Dict[str, Any],
     position: int,
-    pool: Dict[str, List[Dict[str, Any]]],
+    matched_entry: Optional[Dict[str, Any]],
     by_line_start: Dict[int, Dict[str, Any]],
+    consumed_ids: Set[int],
     bundle_dir: Path,
 ) -> Dict[str, Any]:
     """Resolve one retrieval section's OKF entry -- the per-section half of
     :func:`get_okf_status`'s hash-primary matching, extracted so that
     function's own local-variable count doesn't grow with each new
     matching rule."""
-    candidates = pool.get(section["hash"])
-    matched_entry = None
-    if candidates:
-        same_slot = next(
-            (c for c in candidates if c["line_start"] == section["line_start"]),
-            candidates[0],
-        )
-        candidates.remove(same_slot)
-        matched_entry = same_slot
-
     if matched_entry is not None:
         concept_file = matched_entry["concept_file"]
         status = "current" if (bundle_dir / concept_file).is_file() else "missing"
     else:
         stale_entry = by_line_start.get(section["line_start"])
-        if stale_entry is not None:
+        # An entry already claimed by a different section during hash
+        # matching (id() tracked in consumed_ids) "belongs" to whichever
+        # section moved away with it, not to whatever unrelated section
+        # now sits at its old line_start -- reusing it here would link
+        # this section to a concept file that was actually written for
+        # the moved one.
+        if stale_entry is not None and id(stale_entry) not in consumed_ids:
             # The section at this line_start was actually summarized before
             # (e.g. a heading rename with the body otherwise untouched) --
             # its real, already-written concept_file, not a filename
@@ -383,23 +434,48 @@ def write_concept_file(
         return False
 
     position = sections.index(matched) + 1
-    concept_filename = _concept_filename(position, matched["heading"])
     frontmatter = _build_frontmatter(matched, index["path"], description, generated_by)
 
     def _read_modify_write() -> bool:
+        manifest = load_okf_manifest(path) or {"source_path": index["path"], "entries": []}
+        manifest_entries = manifest.get("entries", [])
+
+        # Reuse the resolved manifest entry's own concept_file when one
+        # already exists for this section's identity (matched by content
+        # hash, so a reorder/rename resolves to the same entry it always
+        # has) -- a filename freshly derived from just this section's
+        # *current* position/heading could otherwise collide with a
+        # different, already-written section's own file after a reorder,
+        # letting this write silently replace that section's summary.
+        current_status = get_okf_status(path)
+        existing_entry = next(
+            (e for e in current_status["entries"] if e["line_start"] == line_start and e["status"] != "missing"),
+            None,
+        )
+        concept_filename = (
+            existing_entry["concept_file"] if existing_entry is not None
+            else _allocate_concept_filename(position, matched["heading"], manifest)
+        )
         atomic_write_text(bundle_dir / concept_filename, frontmatter + body)
 
-        manifest = load_okf_manifest(path) or {"source_path": index["path"], "entries": []}
-        entries_by_line_start = {e["line_start"]: e for e in manifest.get("entries", [])}
-        entries_by_line_start[line_start] = {
+        new_entry = {
             "heading": matched["heading"],
             "line_start": line_start,
             "concept_file": concept_filename,
             "description": description,
             "built_from_hash": matched["hash"],
         }
-        manifest["entries"] = sorted(entries_by_line_start.values(), key=lambda e: e["line_start"])
-        save_okf_manifest(path, manifest)
+        # Replace by concept_file identity, not by raw line_start: a
+        # section resolved via hash match keeps its concept_file across a
+        # move even though the manifest's own recorded line_start for it
+        # is now stale. Keying the update by *this write's* line_start
+        # alone would silently orphan that entry whenever a different,
+        # newly-added section legitimately lands on that same line_start.
+        manifest["entries"] = sorted(
+            [e for e in manifest_entries if e["concept_file"] != concept_filename] + [new_entry],
+            key=lambda e: e["line_start"],
+        )
+        manifest_saved = save_okf_manifest(path, manifest)
 
         status = get_okf_status(path)
         descriptions_by_concept_file = {e["concept_file"]: e.get("description") for e in manifest["entries"]}
@@ -407,7 +483,7 @@ def write_concept_file(
             bundle_dir / _INDEX_NAME,
             _render_index_md(Path(index["path"]), status["entries"], descriptions_by_concept_file),
         )
-        return True
+        return manifest_saved
 
     return with_file_lock(bundle_dir / f"{_MANIFEST_NAME}.lock", _read_modify_write)
 # @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-write-concept
