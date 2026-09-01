@@ -33,6 +33,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .atomic_io import atomic_write_text, with_file_lock
 from .doc_index import get_or_build_doc_index
 
 logger = logging.getLogger(__name__)
@@ -70,18 +71,23 @@ def _okf_bundle_dir(path: Path) -> Optional[Path]:
 # @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-bundle-dir
 
 
-def _slugify(heading: str) -> str:
+def _slugify(heading: Optional[str]) -> str:
     """Kebab-case a heading for a concept-file name. Collisions between two
     headings that slugify identically (e.g. duplicate titles, or titles
     differing only in punctuation) are resolved by the caller prefixing
     each filename with the section's document position, which is already
     guaranteed unique -- this function doesn't need to be collision-free on
-    its own."""
+    its own. ``None`` (the synthetic preamble section -- content before a
+    document's first real heading, see doc_index.py's
+    ``_build_retrieval_sections``) slugifies to a fixed, readable label
+    rather than crashing on a heading that was never a real string."""
+    if heading is None:
+        return "preamble"
     slug = _SLUG_RE.sub("-", heading.strip().lower()).strip("-")
     return slug or "section"
 
 
-def _concept_filename(position: int, heading: str) -> str:
+def _concept_filename(position: int, heading: Optional[str]) -> str:
     return f"{position:02d}-{_slugify(heading)}.md"
 
 
@@ -102,12 +108,20 @@ def load_okf_manifest(path: Path) -> Optional[Dict[str, Any]]:
 
 
 def save_okf_manifest(path: Path, manifest: Dict[str, Any]) -> bool:
-    """Persist the OKF bundle manifest. No-ops (returns ``False``) outside a Studio project."""
+    """Persist the OKF bundle manifest atomically. No-ops (returns
+    ``False``) outside a Studio project.
+
+    Atomic (temp file + ``os.replace``) so a crash mid-write leaves the
+    previous valid manifest in place instead of a torn/corrupt file --
+    without this, a corrupt manifest is treated as "no manifest" by
+    :func:`load_okf_manifest`, collapsing every previously-current
+    section's status back to "missing" over a single interrupted write to
+    one section.
+    """
     bundle_dir = _okf_bundle_dir(path)
     if bundle_dir is None:
         return False
-    bundle_dir.mkdir(parents=True, exist_ok=True)
-    (bundle_dir / _MANIFEST_NAME).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    atomic_write_text(bundle_dir / _MANIFEST_NAME, json.dumps(manifest, indent=2))
     return True
 # @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-manifest-io
 
@@ -167,23 +181,76 @@ def get_okf_status(path: Path) -> Dict[str, Any]:
 # @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-status
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-yaml-quote
+def _yaml_quote(value: str) -> str:
+    """Render ``value`` as a YAML double-quoted scalar, safe against
+    embedded colons, quotes, backslashes, or newlines. Unescaped
+    interpolation would let any of those turn a frontmatter value into
+    invalid YAML, or -- for an embedded ``\\n---\\n`` -- prematurely close
+    the frontmatter block and let the rest of the value inject new
+    top-level keys. ``description`` is external-caller-supplied content
+    (an LLM's own summary text), so it can't be assumed free of any of
+    these.
+    """
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    escaped = escaped.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    return f'"{escaped}"'
+# @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-yaml-quote
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-render-index
-def _render_index_md(source_path: Path, entries: List[Dict[str, Any]]) -> str:
+def _render_index_md(
+    source_path: Path,
+    status_entries: List[Dict[str, Any]],
+    descriptions_by_line_start: Dict[int, str],
+) -> str:
     """Deterministic template, not an LLM call: the same bullet-list-of-
     files-with-descriptions shape as the real OKF bundle this design was
-    validated against (``experiments/okf-full-166-pages/index.md``)."""
+    validated against (``experiments/okf-full-166-pages/index.md``).
+
+    Takes :func:`get_okf_status`'s own status entries -- the single
+    authoritative source for missing/stale/current -- rather than the raw
+    manifest, so this listing can't disagree with what ``cfs okf-status``
+    reports: every current retrieval section appears (not just ones ever
+    written), a section whose concept file was deleted out from under it
+    shows as missing rather than a dead link, and a stale entry is
+    visibly marked rather than rendered identically to a current one.
+    """
     lines = [
         f"# OKF Bundle — {source_path.name}",
         "",
         f"Local, regenerable bundle for `{source_path}`. Not committed -- see `.gitignore`.",
         "",
     ]
-    for entry in entries:
-        description = entry.get("description") or "(no summary yet)"
-        lines.append(f"* [{entry['heading']}]({entry['concept_file']}) - {description}")
+    for entry in status_entries:
+        heading = entry["heading"] if entry["heading"] is not None else "(preamble)"
+        if entry["status"] == "missing":
+            lines.append(f"* {heading} - not yet summarized")
+            continue
+        description = descriptions_by_line_start.get(entry["line_start"]) or "(no summary yet)"
+        marker = " _(stale -- source changed since written)_" if entry["status"] == "stale" else ""
+        lines.append(f"* [{heading}]({entry['concept_file']}) - {description}{marker}")
     lines.append("")
     return "\n".join(lines)
 # @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-render-index
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-build-frontmatter
+def _build_frontmatter(matched: Dict[str, Any], source_path: str, description: str, generated_by: str) -> str:
+    """Build a concept file's YAML frontmatter block, every value safely
+    quoted (see :func:`_yaml_quote`)."""
+    title = matched["heading"] if matched["heading"] is not None else "(preamble)"
+    resource = f"{source_path}#L{matched['line_start']}-L{matched['line_end']}"
+    generated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return (
+        "---\n"
+        f"title: {_yaml_quote(title)}\n"
+        f"description: {_yaml_quote(description)}\n"
+        f"resource: {_yaml_quote(resource)}\n"
+        f"generated: {{ by: {_yaml_quote(generated_by)}, at: {_yaml_quote(generated_at)} }}\n"
+        "---\n\n"
+    )
+# @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-build-frontmatter
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-write-concept
@@ -209,6 +276,16 @@ def write_concept_file(
     Records the section's *current* hash as ``built_from_hash`` in the
     manifest -- this is what lets :func:`get_okf_status` later tell
     "current" from "stale" without re-reading the summary itself.
+
+    The manifest's read-modify-write cycle, the concept-file write, and
+    the index.md regeneration all run under one exclusive lock (mirroring
+    :func:`studio.utils.doc_index.annotate_section_summary`'s own use of
+    the same primitive), so two concurrent calls writing different
+    sections of the same document's bundle can't each load the same base
+    manifest and have whichever saves last silently discard the other's
+    entry. Both file writes are atomic (temp file + ``os.replace``), so a
+    crash mid-write leaves the previous valid file in place instead of a
+    torn one.
     """
     bundle_dir = _okf_bundle_dir(path)
     if bundle_dir is None:
@@ -222,31 +299,30 @@ def write_concept_file(
 
     position = sections.index(matched) + 1
     concept_filename = _concept_filename(position, matched["heading"])
-    bundle_dir.mkdir(parents=True, exist_ok=True)
-    frontmatter = (
-        "---\n"
-        f"title: {matched['heading']}\n"
-        f"description: {description}\n"
-        f"resource: {index['path']}#L{matched['line_start']}-L{matched['line_end']}\n"
-        f"generated: {{ by: {generated_by}, at: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} }}\n"
-        "---\n\n"
-    )
-    (bundle_dir / concept_filename).write_text(frontmatter + body, encoding="utf-8")
+    frontmatter = _build_frontmatter(matched, index["path"], description, generated_by)
 
-    manifest = load_okf_manifest(path) or {"source_path": index["path"], "entries": []}
-    entries_by_line_start = {e["line_start"]: e for e in manifest.get("entries", [])}
-    entries_by_line_start[line_start] = {
-        "heading": matched["heading"],
-        "line_start": line_start,
-        "concept_file": concept_filename,
-        "description": description,
-        "built_from_hash": matched["hash"],
-    }
-    manifest["entries"] = sorted(entries_by_line_start.values(), key=lambda e: e["line_start"])
-    save_okf_manifest(path, manifest)
+    def _read_modify_write() -> bool:
+        atomic_write_text(bundle_dir / concept_filename, frontmatter + body)
 
-    (bundle_dir / _INDEX_NAME).write_text(
-        _render_index_md(Path(index["path"]), manifest["entries"]), encoding="utf-8"
-    )
-    return True
+        manifest = load_okf_manifest(path) or {"source_path": index["path"], "entries": []}
+        entries_by_line_start = {e["line_start"]: e for e in manifest.get("entries", [])}
+        entries_by_line_start[line_start] = {
+            "heading": matched["heading"],
+            "line_start": line_start,
+            "concept_file": concept_filename,
+            "description": description,
+            "built_from_hash": matched["hash"],
+        }
+        manifest["entries"] = sorted(entries_by_line_start.values(), key=lambda e: e["line_start"])
+        save_okf_manifest(path, manifest)
+
+        status = get_okf_status(path)
+        descriptions_by_line_start = {e["line_start"]: e.get("description") for e in manifest["entries"]}
+        atomic_write_text(
+            bundle_dir / _INDEX_NAME,
+            _render_index_md(Path(index["path"]), status["entries"], descriptions_by_line_start),
+        )
+        return True
+
+    return with_file_lock(bundle_dir / f"{_MANIFEST_NAME}.lock", _read_modify_write)
 # @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-write-concept

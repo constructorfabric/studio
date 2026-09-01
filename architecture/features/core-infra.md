@@ -597,6 +597,9 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - `result` JSON branch: serialize result dict as JSON to stdout in `--json` mode - `inst-ui-result-json`
 - [x] - `p1` - `result` human branch: invoke `human_fn` or generic status/message fallback to stderr - `inst-ui-result-human`
 - [x] - `p1` - `require_existing_file`: resolve a CLI file-path argument, emitting the standard "File not found" ERROR result and returning `None` when it doesn't exist -- shared by every single-file-argument command - `inst-ui-require-existing-file`
+- [x] - `p1` - `JsonSafeArgumentParser`/`parse_args_or_json_error`: an `ArgumentParser` whose parsing failures raise instead of printing a plain-text usage banner and exiting directly, so a missing/malformed argument still honors the `--json` output contract (`--help`/`--version` are unaffected, since those exit via a different path) - `inst-ui-json-safe-argparse`
+- [x] - `p1` - `parse_file_command`: the combined "parse args safely, then require an existing file" two-step every single-file-argument command needs, extracted once a third command repeated the pattern identically enough for pylint's duplicate-code check to catch it - `inst-ui-parse-file-command`
+- [x] - `p1` - `display_heading`: render a retrieval section's heading for human display, substituting a readable label for the synthetic preamble section's `None` heading instead of the literal string "None" - `inst-ui-display-heading`
 - [x] - `p1` - Create a temporary stderr-bound logger handler with plain-message formatting for UI diagnostics - `inst-ui-stderr-handler`
 - [x] - `p1` - Emit one plain-text stderr message through the dedicated helper, allowing a logger-backed implementation internally, then close the handler - `inst-ui-stderr-emit`
 - [x] - `p1` - `relpath`: convert absolute path to cwd-relative path with fallback - `inst-ui-relpath`

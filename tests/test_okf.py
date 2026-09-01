@@ -128,10 +128,31 @@ class TestWriteConceptFile:
         concept_path = bundle_dir / "01-introduction.md"
         assert concept_path.is_file()
         content = concept_path.read_text(encoding="utf-8")
-        assert "title: Introduction" in content
-        assert "description: Covers the intro." in content
-        assert "by: claude" in content
+        assert 'title: "Introduction"' in content
+        assert 'description: "Covers the intro."' in content
+        assert 'by: "claude"' in content
         assert "Real summary body." in content
+
+    def test_writes_a_concept_file_for_the_preamble_section(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #110: the synthetic preamble section (heading=None,
+        content before a document's first real heading) must slugify to a
+        real, readable filename/title instead of crashing on a heading
+        that was never a real string."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = "# Title\n\nAn intro paragraph.\n\n" + _SAMPLE
+        f = _write(tmp_path, content)
+        index = get_or_build_doc_index(f)
+        preamble = index["retrieval_sections"][0]
+        assert preamble["heading"] is None
+        assert write_concept_file(
+            f, preamble["line_start"], description="The preamble.", body="Body.", generated_by="claude"
+        ) is True
+
+        status = get_okf_status(f)
+        bundle_dir = Path(status["bundle_dir"])
+        concept_path = bundle_dir / "01-preamble.md"
+        assert concept_path.is_file()
+        assert 'title: "(preamble)"' in concept_path.read_text(encoding="utf-8")
 
     def test_writes_and_updates_index_md(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -216,6 +237,29 @@ class TestCmdOkfStatus:
         assert rc == 2
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"
+
+    def test_directory_as_file_argument_is_rejected(self, tmp_path: Path, capsys):
+        rc = cmd_okf_status([str(tmp_path)])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
+    def test_missing_required_argument_emits_json_error_not_a_plain_text_banner(self, capsys):
+        """CodeRabbit PR #110: an argparse parsing failure used to bypass
+        this project's own --json output contract entirely."""
+        rc = cmd_okf_status([])  # file omitted
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
+    def test_headingless_document_reports_zero_entries(self, tmp_path: Path, capsys, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, "Just a paragraph, no headings at all.\n")
+        rc = cmd_okf_status([str(f)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["available"] is True
+        assert out["entries"] == []
 
     def test_basic_json_output(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)

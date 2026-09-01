@@ -24,6 +24,7 @@
   - [Document Index](#document-index)
   - [TF-IDF Scoring](#tf-idf-scoring)
   - [OKF Bundle](#okf-bundle)
+  - [Atomic File I/O](#atomic-file-io)
   - [Markdown Parsing Utilities](#markdown-parsing-utilities)
   - [Fixing Prompt Enrichment](#fixing-prompt-enrichment)
   - [Headings Contract Validation](#headings-contract-validation)
@@ -460,18 +461,22 @@ The cache-validity fingerprint is deliberately metadata-only (`mtime` + file
 size via `Path.stat()`), never a content hash — the point of the cache is to
 avoid reading the file at all on a hit, and a content hash would defeat that
 by requiring the read it's meant to save. A build reads the content and
-takes that fingerprint bracketed by a stat snapshot on each side, so the
-fingerprint saved is provably the one that matches what was actually parsed
-even if a write lands in the narrow window during the read.
+takes that fingerprint bracketed by a stat snapshot on each side: when the
+two snapshots agree, the fingerprint saved is provably the one that
+matches what was actually parsed even if a write lands in the narrow
+window during the read; under sustained contention past a bounded retry
+limit, it falls back to the last read paired with its own trailing,
+unverified fingerprint -- safe because that content will simply be
+detected as stale again on the very next check, never silently wrong.
 
 1. [x] - `p1` - Build a fresh structural index: parse headings + line ranges from current content, compute the stat-based fingerprint, stamp the current schema version - `inst-doc-index-build`
 2. [x] - `p1` - Load a cached index for a file, validated against current stat metadata (no content read on a hit) and against the required-field shape at the current schema version; returns `None` if missing, stale, corrupt, or an incomplete/outdated shape - `inst-doc-index-load`
 3. [x] - `p1` - Persist an index to its cache location atomically (temp file + `os.replace`, so a concurrent reader never observes a torn write); no-ops silently outside a Studio-adapted project - `inst-doc-index-save`
 4. [x] - `p1` - Return the cached index or build-and-cache a fresh one; reports cache hit/miss for benchmarking - `inst-doc-index-get-or-build`
-5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, for a future per-section-summary caller - `inst-doc-index-annotate`
+5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, only once the caller's `expected_hash` matches that section's current hash -- rejecting the write on mismatch instead of silently attaching the summary to whatever content now occupies that position - `inst-doc-index-annotate`
 6. [x] - `p1` - Infer which heading level represents one retrievable section: the most-recurring level wins over a level that appears only once (however shallow), since PDF-conversion heading levels don't reliably encode true nesting depth — a fixed level assumption silently produces a degenerate mega-section on such documents - `inst-doc-index-infer-level`
-7. [x] - `p1` - Group headings at exactly the inferred level into retrieval sections (off-level headings stay inside whichever section they fall under, never split one apart); hash each section's own text for section-granularity staleness detection - `inst-doc-index-retrieval-sections`
-8. [x] - `p1` - Diff the current file against its last cached build at section granularity: which retrieval sections are unchanged vs. changed, or whether the section count itself changed (a structural change, matched by position not heading text, since duplicate titles are real) - `inst-doc-index-diff-stale`
+7. [x] - `p1` - Group headings at exactly the inferred level into retrieval sections (off-level headings stay inside whichever section they fall under, never split one apart); hash each section's own text, trailing-whitespace-stripped per line, for section-granularity staleness detection; flag a section with nothing between it and the next same-level heading as `empty`; when real content (not just blank lines) precedes the first section-level heading, capture it as a leading synthetic entry (`heading=None`) instead of leaving it invisible to every entry here - `inst-doc-index-retrieval-sections`
+8. [x] - `p1` - Diff the current file against its last cached build at section granularity: which retrieval sections are unchanged vs. changed, or whether the section count itself changed (a structural change). Matched primarily by content hash (a multiset match, so duplicate-content sections pair up correctly) rather than position, so a pure reorder with no text edits reports every section unchanged instead of misreporting the whole document as edited; a returned entry's `line_start` (not its hash) is what a caller uses to address "this specific section" afterwards, since duplicate heading titles are real - `inst-doc-index-diff-stale`
 
 **Supporting**:
 - [x] - `p1` - Stat-based cache-validity fingerprint (`mtime_ns` + size); resolved from the file's own path, never a content hash - `inst-doc-index-etag`
@@ -512,14 +517,29 @@ Purely mechanical, no LLM call: reuses the Document Index's `retrieval_sections`
 Deterministic infrastructure only, matching `doc_index.py`/`tfidf.py`: no LLM call happens in this module. Writing an actual section summary is an external caller's job (an agent, dispatched outside this codebase) -- this module tracks which concept files should exist relative to the document's *current* retrieval sections, detects when a written one is stale (its recorded `built_from_hash` no longer matches the section's current hash from the Document Index), and persists whatever the caller writes. The whole bundle is local-only and gitignored (`.cache/okf/` — see `.gitignore`): unlike the content of a summary, which is expensive to regenerate (real LLM tokens), the bundle not surviving a fresh clone just means it rebuilds from scratch the same way `doc_index.py`'s own cache does — nothing here assumes it survives across clones, only across calls on the same machine.
 
 1. [x] - `p1` - Resolve the local bundle directory for a source file within its Studio directory, resolved from the file's own path - `inst-okf-bundle-dir`
-2. [x] - `p1` - Load/persist the bundle manifest (`manifest.json`): which concept file exists per section, its description, and the section hash it was built from - `inst-okf-manifest-io`
-3. [x] - `p1` - Report the bundle's state against the document's *current* retrieval sections: missing (never summarized), stale (source changed since summary was written), or current - `inst-okf-status`
-4. [x] - `p1` - Write (or overwrite) one section's concept file with frontmatter + body, update its manifest entry with the section's current hash, and regenerate `index.md` from the full manifest - `inst-okf-write-concept`
+2. [x] - `p1` - Load/persist the bundle manifest (`manifest.json`) atomically; loading validates every entry carries the fields every consumer reads by subscript, treating a malformed/pre-schema manifest as absent rather than returned broken - `inst-okf-manifest-io`
+3. [x] - `p1` - Report the bundle's state against the document's *current* retrieval sections: missing (never summarized, or its concept file was deleted out from under it), stale (source changed since summary was written), or current - `inst-okf-status`
+4. [x] - `p1` - Write (or overwrite) one section's concept file (YAML frontmatter values safely quoted against embedded colons/quotes/newlines) and its manifest entry under one exclusive lock spanning the whole read-modify-write-and-reindex cycle, then regenerate `index.md` from the bundle's real current status (not the raw manifest), so a deleted concept file drops out instead of becoming a dead link and a stale entry is visibly marked - `inst-okf-write-concept`
 
 **Supporting**:
-- [x] - `p1` - Deterministic `index.md` template: a bullet list of concept files with their descriptions, the same shape as a real, previously-built OKF bundle - `inst-okf-render-index`
+- [x] - `p1` - YAML double-quoted-scalar escaper for frontmatter values, safe against caller-supplied content (an LLM's own summary text) containing colons, quotes, backslashes, or an embedded block-close sequence - `inst-okf-yaml-quote`
+- [x] - `p1` - Concept-file frontmatter builder: title/description/resource/generated-by, every value safely quoted - `inst-okf-build-frontmatter`
+- [x] - `p1` - Deterministic `index.md` template driven by real per-section status (missing/stale/current), not just the raw manifest, so it never disagrees with `cfs okf-status` - `inst-okf-render-index`
 - [x] - `p1` - `cfs okf-status` CLI wrapper: parse arguments, build the JSON output payload - `inst-okf-cmd`
-- [x] - `p1` - Human-friendly formatter for `cfs okf-status` output - `inst-okf-cmd-format`
+- [x] - `p1` - Human-friendly formatter for `cfs okf-status` output, including the concept file path - `inst-okf-cmd-format`
+
+### Atomic File I/O
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-atomic-io`
+
+**Input**: A file path and content to write; a lock path and a read-modify-write callback
+
+**Output**: A file written without any observable torn/partial state; a callback run with cross-call exclusivity
+
+Shared by every local cache/bundle writer in this package (`doc_index.py`, `okf.py`) once a second consumer needed the exact same two behaviors a first implementation had already solved once -- extracted rather than reimplemented a second time. Mirrors the fallback shape `decision_log.py`'s own locking already established for this codebase (exclusive `fcntl` lock where available, unlocked elsewhere), kept separate since that module also bakes in log-rotation behavior these callers don't need.
+
+1. [x] - `p1` - Write text to a path atomically: temp file + `os.replace`, so a reader racing a concurrent writer sees either the old complete file or the new complete one, never a torn write - `inst-atomic-write`
+2. [x] - `p1` - Run a read-modify-write callback under an exclusive lock on a sibling lock file, serializing concurrent callers so two overlapping cycles can't each read the same base state and have whichever writes last silently discard the other's update - `inst-atomic-lock`
 
 ### Markdown Parsing Utilities
 

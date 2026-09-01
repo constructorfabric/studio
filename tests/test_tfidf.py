@@ -45,6 +45,25 @@ class TestScoreSections:
         result = score_sections(f, "anything")
         assert result == {"ranked": [], "margin": None, "unambiguous": False}
 
+    def test_exact_score_tie_has_margin_one_and_is_not_unambiguous(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #110: two sections with identical positive scores
+        fall through to margin == top/second == 1.0, unambiguous == False
+        -- correct by inspection, but previously unpinned by any test."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        content = "## A\n\nshared\n\n## B\n\nshared\n"
+        f = _write(tmp_path, content)
+        result = score_sections(f, "shared")
+        assert result["margin"] == 1.0
+        assert result["unambiguous"] is False
+
+    def test_empty_query_scores_everything_zero(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        result = score_sections(f, "")
+        assert result["margin"] is None
+        assert result["unambiguous"] is False
+        assert all(r["score"] == 0 for r in result["ranked"])
+
     def test_distinctive_rare_term_is_unambiguous(self, tmp_path: Path, monkeypatch):
         """Mirrors the real KAPING case from findings.md: a rare term that
         appears in exactly one section scores that section positively and
@@ -100,6 +119,38 @@ class TestCmdTfidfScore:
         assert rc == 2
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"
+
+    def test_directory_as_file_argument_is_rejected(self, tmp_path: Path, capsys):
+        """CodeRabbit PR #110: require_existing_file's .is_file() check
+        (not .exists()) correctly rejects a directory, but this exact case
+        was never exercised by a test."""
+        rc = cmd_tfidf_score([str(tmp_path), "query"])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
+    def test_missing_required_argument_emits_json_error_not_a_plain_text_banner(
+        self, tmp_path: Path, capsys
+    ):
+        """CodeRabbit PR #110: an argparse parsing failure (a required
+        positional omitted) used to bypass this project's own --json
+        output contract entirely, printing a plain-text usage banner to
+        stderr instead of a JSON ERROR result to stdout."""
+        f = _write(tmp_path)
+        rc = cmd_tfidf_score([str(f)])  # query omitted
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
+    def test_empty_string_query(self, tmp_path: Path, capsys, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        rc = cmd_tfidf_score([str(f), ""])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["margin"] is None
+        assert out["unambiguous"] is False
+        assert all(r["score"] == 0 for r in out["ranked"])
 
     def test_basic_json_output(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)

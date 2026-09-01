@@ -5,7 +5,6 @@ not once per query.
 Thin CLI wrapper around ``studio.utils.doc_index``.
 """
 
-import argparse
 import logging
 from typing import List
 
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cmd
 def cmd_doc_index(argv: List[str]) -> int:
     """Build (or reuse the cached) structural index for a Markdown file."""
-    p = argparse.ArgumentParser(
+    p = ui.JsonSafeArgumentParser(
         prog="cfs doc-index",
         description=(
             "Build or reuse a cached heading/section index for a Markdown file, "
@@ -34,9 +33,7 @@ def cmd_doc_index(argv: List[str]) -> int:
         action="store_true",
         help="Force a fresh build even if a valid cached index exists",
     )
-    args = p.parse_args(argv)
-
-    filepath = ui.require_existing_file(args.file)
+    args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:
         return 2
 
@@ -82,6 +79,7 @@ def _human_doc_index(data: dict) -> None:
              else "Retrieval sections (no headings — none inferred)")
     for s in data["retrieval_sections"]:
         summary = f" — {s['summary']}" if s.get("summary") else ""
-        ui.substep(f"  [{s['line_start']}-{s['line_end']}] {s['heading']} ({s['hash'][:12]}){summary}")
+        heading = ui.display_heading(s["heading"])
+        ui.substep(f"  [{s['line_start']}-{s['line_end']}] {heading} ({s['hash'][:12]}){summary}")
     ui.blank()
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cmd-format

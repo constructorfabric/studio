@@ -8,11 +8,8 @@ that has actually produced a summary) via
 LLM itself.
 
 Thin CLI wrapper around ``studio.utils.okf``.
-
-@cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
 """
 
-import argparse
 from typing import List
 
 from ..utils.okf import get_okf_status
@@ -22,14 +19,12 @@ from ..utils.ui import ui
 # @cpt-begin:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-cmd
 def cmd_okf_status(argv: List[str]) -> int:
     """Report an OKF bundle's state for a Markdown file."""
-    p = argparse.ArgumentParser(
+    p = ui.JsonSafeArgumentParser(
         prog="cfs okf-status",
         description="Report which OKF concept files exist, are stale, or are missing for a Markdown file.",
     )
     p.add_argument("file", help="Markdown file path")
-    args = p.parse_args(argv)
-
-    filepath = ui.require_existing_file(args.file)
+    _args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:
         return 2
 
@@ -54,6 +49,10 @@ def _human_okf_status(data: dict) -> None:
     summary = ", ".join(f"{count} {status}" for status, count in sorted(counts.items())) or "no sections"
     ui.substep(summary)
     for entry in data["entries"]:
-        ui.substep(f"  [{entry['status']:>7}] [{entry['line_start']}-{entry['line_end']}] {entry['heading']}")
+        heading = ui.display_heading(entry["heading"])
+        ui.substep(
+            f"  [{entry['status']:>7}] [{entry['line_start']}-{entry['line_end']}] "
+            f"{heading} -> {entry['concept_file']}"
+        )
     ui.blank()
 # @cpt-end:cpt-studio-algo-traceability-validation-okf:p1:inst-okf-cmd-format

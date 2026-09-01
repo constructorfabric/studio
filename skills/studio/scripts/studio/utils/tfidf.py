@@ -4,6 +4,17 @@ Purely mechanical, no LLM call: tokenize each retrieval section's text,
 weight terms by rarity across the whole document, score a query as the sum
 of term-frequency x inverse-document-frequency over the query's own terms.
 
+Scale assumption: this is JIT-retrieval infrastructure for a single real
+document's worth of sections (the real corpus this was validated against
+was a 166-page technical document, ~9 top-level sections) -- there's
+deliberately no hard cap on section count or file size here, since any
+concrete number would be an arbitrary guess with no real document behind
+it, the same "real numbers, not assumptions" standard the rest of this
+feature holds itself to. A caller feeding this an adversarially large or
+malformed file is a resource-management concern for that caller, not
+something this module should silently paper over with an unvalidated
+threshold.
+
 See constructorfabric/studio#104.
 
 @cpt-algo:cpt-studio-algo-traceability-validation-tfidf:p1

@@ -3,11 +3,8 @@ against a query via TF-IDF, for inspecting/benchmarking the JIT-retrieval
 mechanical gate independent of any cascade routing logic built on top of it.
 
 Thin CLI wrapper around ``studio.utils.tfidf``.
-
-@cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
 """
 
-import argparse
 from typing import List
 
 from ..utils.tfidf import score_sections
@@ -17,15 +14,18 @@ from ..utils.ui import ui
 # @cpt-begin:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-cmd
 def cmd_tfidf_score(argv: List[str]) -> int:
     """Score a Markdown file's retrieval sections against a query via TF-IDF."""
-    p = argparse.ArgumentParser(
+    p = ui.JsonSafeArgumentParser(
         prog="cfs tfidf-score",
-        description="Rank a Markdown file's retrieval sections against a query via TF-IDF.",
+        description=(
+            "Rank a Markdown file's retrieval sections against a query via TF-IDF. "
+            "The result includes a margin/unambiguous confidence signal -- check it "
+            "before trusting the top-ranked section, since a nonzero score is never "
+            "a correctness guarantee on its own."
+        ),
     )
     p.add_argument("file", help="Markdown file path")
     p.add_argument("query", help="Query text to score sections against")
-    args = p.parse_args(argv)
-
-    filepath = ui.require_existing_file(args.file)
+    args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:
         return 2
 
@@ -58,6 +58,7 @@ def _human_tfidf_score(data: dict) -> None:
     else:
         ui.substep("confidence: none (top score is 0 -- no query term matched anywhere)")
     for entry in data["ranked"]:
-        ui.substep(f"  {entry['score']:.6f}  [{entry['line_start']}-{entry['line_end']}] {entry['heading']}")
+        heading = ui.display_heading(entry["heading"])
+        ui.substep(f"  {entry['score']:.6f}  [{entry['line_start']}-{entry['line_end']}] {heading}")
     ui.blank()
 # @cpt-end:cpt-studio-algo-traceability-validation-tfidf:p1:inst-tfidf-cmd-format
