@@ -3,8 +3,6 @@ Markdown file, so heading-based JIT retrieval reads a file's structure once,
 not once per query.
 
 Thin CLI wrapper around ``studio.utils.doc_index``.
-
-@cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
 """
 
 import argparse
@@ -55,6 +53,7 @@ def cmd_doc_index(argv: List[str]) -> int:
 
 def _human_doc_index(data: dict) -> None:
     ui.header("Doc Index")
+    ui.substep(data["file"])
     hit = "cache hit — reused existing index" if data["cache_hit"] else "cache miss — built fresh index"
     ui.substep(hit)
     ui.substep(f"{data['section_count']} section(s), {data['total_lines']} total lines")

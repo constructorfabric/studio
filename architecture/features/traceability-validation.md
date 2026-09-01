@@ -399,11 +399,11 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
    2. [x] - `p1` - Generate expected TOC from headings - `inst-toc-generate-expected`
    3. [x] - `p1` - Compare existing vs expected: check anchor validity, heading coverage, staleness - `inst-toc-compare`
    4. [x] - `p1` - **IF** mismatch, record error with diff details - `inst-toc-if-mismatch`
-4. [x] - `p1` - **RETURN** JSON: `{status, files_checked, errors}` - `inst-toc-return`
+4. [x] - `p1` - **RETURN** JSON: `{status, files_validated, error_count, warning_count, results}`, each `results[]` entry `{file, status, error_count, warning_count}` plus `errors`/`warnings` arrays when `--verbose` or non-empty - `inst-toc-return`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for validate-toc command - `inst-toc-imports`
-- [x] - `p1` - Human-friendly formatter for validate-toc output - `inst-toc-format`
+- [x] - `p1` - Human-friendly formatter for validate-toc output: a WARN-only file prints its warnings the same way a FAIL file prints its errors, not just the bare status - `inst-toc-format`
 
 ### TOC Utilities
 
@@ -417,9 +417,9 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 4. [x] - `p1` - Insert/update TOC using heading-based insertion (`## Table of Contents`) for kit file generator - `inst-toc-util-insert-heading`
 5. [x] - `p1` - Process file: strip manual TOC, insert marker-based TOC, write if changed - `inst-toc-util-process-file`
 6. [x] - `p1` - Validate TOC: check existence, anchor validity, completeness, staleness - `inst-toc-util-validate`
-7. [x] - `p1` - Parse headings with line numbers, fence-aware (shared by doc-index and the JIT-retrieval readiness checks, which need section boundaries the plain heading list doesn't carry) - `inst-toc-util-parse-headings-lines`
+7. [x] - `p1` - Parse headings with line numbers, fence-aware and front-matter-aware (skips a leading YAML block so a `#`-prefixed front-matter line is never mistaken for a heading); shared by doc-index and the JIT-retrieval readiness checks, which need section boundaries the plain heading list doesn't carry -- `parse_headings` itself now delegates here, stripping the line number, so both share one fence/heading-match implementation - `inst-toc-util-parse-headings-lines`
 8. [x] - `p1` - Collect JIT-retrieval readiness warnings for a document: gathers all four signals below over *every* heading level, independent of whatever level cap the caller configured for TOC-completeness checking - `inst-toc-jit-readiness-collect`
-9. [x] - `p1` - Compute the four JIT-retrieval readiness signals -- duplicate heading titles, heading depth jumps, oversized sections (`--max-section-lines`), and a missing top-of-file description/frontmatter block -- all warning-only, never errors (see constructorfabric/studio#104) - `inst-toc-jit-readiness`
+9. [x] - `p1` - Compute the four JIT-retrieval readiness signals -- duplicate heading titles (compared case-insensitively, with internal whitespace collapsed and Unicode-normalized, though the original text is still shown in the warning), heading depth jumps, oversized sections (`--max-section-lines`, default 300, validated against non-finite/non-positive input independent of the CLI's own argparse guard), and a missing top-of-file description/frontmatter block -- all warning-only, never errors (see constructorfabric/studio#104) - `inst-toc-jit-readiness`
 
 **Supporting**:
 - [x] - `p1` - Imports, constants, fence tracking, GitHub anchor slug generation - `inst-toc-util-datamodel`
@@ -447,7 +447,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 **Input**: Markdown file path
 
-**Output**: A structural index (headings, section line ranges, per-section summary slots) cached per file, keyed by a stat-based fingerprint
+**Output**: `cfs doc-index`'s JSON is `{file, cache_hit, total_lines, section_count, sections}`, each `sections[]` entry `{level, heading, line_start, line_end, summary}`. The underlying index dict additionally carries `schema_version`, `path`, and `etag`.
 
 A cached, read-once-per-file structural index for Markdown JIT retrieval (see
 constructorfabric/studio#104): parsing a file's headings/section boundaries
@@ -457,9 +457,9 @@ size via `Path.stat()`), never a content hash â€” the point of the cache is to
 avoid reading the file at all on a hit, and a content hash would defeat that
 by requiring the read it's meant to save.
 
-1. [x] - `p1` - Build a fresh structural index: parse headings + line ranges from current content, compute the stat-based fingerprint - `inst-doc-index-build`
-2. [x] - `p1` - Load a cached index for a file, validated against current stat metadata (no content read on a hit); returns `None` if missing, stale, or corrupt - `inst-doc-index-load`
-3. [x] - `p1` - Persist an index to its cache location; no-ops silently outside a Studio-adapted project - `inst-doc-index-save`
+1. [x] - `p1` - Build a fresh structural index: parse headings + line ranges from current content, compute the stat-based fingerprint, stamp the current schema version - `inst-doc-index-build`
+2. [x] - `p1` - Load a cached index for a file, validated against current stat metadata (no content read on a hit) and against the required-field shape at the current schema version; returns `None` if missing, stale, corrupt, or an incomplete/outdated shape - `inst-doc-index-load`
+3. [x] - `p1` - Persist an index to its cache location atomically (temp file + `os.replace`, so a concurrent reader never observes a torn write); no-ops silently outside a Studio-adapted project - `inst-doc-index-save`
 4. [x] - `p1` - Return the cached index or build-and-cache a fresh one; reports cache hit/miss for benchmarking - `inst-doc-index-get-or-build`
 5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, for a future per-section-summary caller - `inst-doc-index-annotate`
 

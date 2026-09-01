@@ -744,6 +744,74 @@ class TestJitRetrievalReadiness:
         codes = [w["code"] for w in result["warnings"]]
         assert "toc-heading-duplicate" not in codes
 
+    def test_duplicate_detection_is_case_insensitive(self):
+        """CodeRabbit PR #108: "Section" and "section" render identically
+        to a reader but compared unequal under a raw dict key."""
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [Section](#section)\n"
+            "2. [section](#section-1)\n\n"
+            "---\n\n"
+            "## Section\n\n"
+            "## section\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-heading-duplicate" in codes
+
+    def test_duplicate_detection_collapses_internal_whitespace(self):
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [Setup  Guide](#setup--guide)\n"
+            "2. [Setup Guide](#setup-guide)\n\n"
+            "---\n\n"
+            "## Setup  Guide\n\n"
+            "## Setup Guide\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-heading-duplicate" in codes
+
+    def test_duplicate_warning_still_shows_the_original_heading_text(self):
+        """Normalizing the comparison key must not leak into the warning's
+        display text -- a reader needs to see the heading as written."""
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [SECTION](#section)\n"
+            "2. [section](#section-1)\n\n"
+            "---\n\n"
+            "## SECTION\n\n"
+            "## section\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        dup = [w for w in result["warnings"] if w["code"] == "toc-heading-duplicate"][0]
+        assert dup["heading_text"] == "section"
+
+    def test_frontmatter_hash_line_is_not_parsed_as_a_heading(self):
+        """CodeRabbit PR #108: a `#`-prefixed line inside YAML front-matter
+        (a comment, or a value starting with `#`) must not be mistaken for
+        a real heading. Diagnostic: the front-matter line's text matches
+        the one real heading below it -- if front-matter weren't skipped,
+        it would register as a fake first occurrence and the real heading
+        would incorrectly warn as its "duplicate"."""
+        content = (
+            "---\n"
+            "title: Foo\n"
+            "# Section\n"
+            "---\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [Section](#section)\n\n"
+            "---\n\n"
+            "## Section\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-heading-duplicate" not in codes
+
     def test_depth_jump_warned(self):
         content = (
             "# Title\n\n"
@@ -807,6 +875,27 @@ class TestJitRetrievalReadiness:
         long_section = [w for w in result["warnings"] if w["code"] == "toc-section-too-long"][0]
         assert long_section["heading_text"] == "A"
         assert long_section["section_length"] > 300
+
+    def test_nan_max_section_lines_falls_back_to_the_default_instead_of_disabling_the_check(self):
+        """CodeRabbit PR #108: float('nan') > anything is always False, so
+        an unguarded nan silently disabled the oversized-section check
+        entirely for a direct library caller (bypassing the CLI's
+        argparse(type=int) guard)."""
+        body = "\n".join(f"line {i}" for i in range(400))
+        content = (
+            "# Title\n\n## Table of Contents\n\n1. [A](#a)\n\n---\n\n## A\n\n" + body + "\n"
+        )
+        result = validate_toc(content, max_heading_level=2, max_section_lines=float("nan"))
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-section-too-long" in codes
+
+    def test_negative_max_section_lines_falls_back_to_the_default_instead_of_flagging_everything(self):
+        content = (
+            "# Title\n\n## Table of Contents\n\n1. [A](#a)\n\n---\n\n## A\n\nShort content.\n"
+        )
+        result = validate_toc(content, max_heading_level=2, max_section_lines=-1)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-section-too-long" not in codes
 
     def test_section_within_limit_not_warned(self):
         content = (
@@ -1034,6 +1123,66 @@ class TestCmdValidateToc:
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "WARN"
         assert out["warning_count"] >= 1
+
+    def test_warn_only_file_prints_warnings_in_human_output(self, tmp_path: Path, capsys, monkeypatch):
+        """CodeRabbit PR #108: a WARN-only file's human-mode output used to
+        print just "path: WARN" with no indication of what's wrong -- the
+        FAIL branch already iterated warnings, but the WARN branch (the
+        default `else`) never did, making this PR's own headline feature
+        (JIT-readiness warnings) invisible outside --json."""
+        from studio.utils.ui import is_json_mode, set_json_mode
+
+        f = tmp_path / "stale.md"
+        f.write_text(
+            "# T\n\n"
+            "## Table of Contents\n\n"
+            "1. [B](#b)\n"
+            "2. [A](#a)\n\n"
+            "---\n\n"
+            "## A\n\n"
+            "## B\n",
+            encoding="utf-8",
+        )
+        orig = is_json_mode()
+        set_json_mode(False)
+        try:
+            rc = cmd_validate_toc(["--max-level", "2", str(f)])
+        finally:
+            set_json_mode(orig)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "warning(s)" in out
+        assert "⚠" in out
+
+    def test_all_four_jit_warnings_zero_errors_exits_clean_via_cli(self, tmp_path: Path, capsys):
+        """CodeRabbit PR #108: prove the warn-only guarantee end to end
+        through cmd_validate_toc, not just validate_toc() directly -- a
+        document tripping JIT-readiness codes with an otherwise complete
+        TOC must still return rc == 0 and status WARN, zero errors.
+        --max-level 2 keeps the deeper H4 "Sub" heading (which trips the
+        depth-jump and section-too-long checks -- those see every heading
+        regardless of max_heading_level, per the readiness checks' own
+        design) out of TOC-completeness scope, so it needs no TOC entry."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [Intro](#intro)\n"
+            "2. [Intro](#intro-1)\n\n"
+            "---\n\n"
+            "## Intro\n\n"
+            f"{filler}\n\n"
+            "#### Sub\n\n"
+            "## Intro\n"
+        )
+        f = tmp_path / "warnonly.md"
+        f.write_text(content, encoding="utf-8")
+        rc = cmd_validate_toc([str(f), "--max-level", "2"])
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "WARN"
+        assert out["warning_count"] >= 3
+        assert out["error_count"] == 0
+        assert rc == 0
 
 
 class TestCmdTocValidation:

@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -33,6 +34,12 @@ logger = logging.getLogger(__name__)
 _CACHE_SUBDIR = ".cache"
 _INDEX_CACHE_DIR = "doc-index"
 
+#: Bumped whenever the index's own shape changes incompatibly. Checked
+#: alongside the etag so a future schema change invalidates an
+#: old-format cache instead of silently returning old-shape data past a
+#: matching etag.
+_SCHEMA_VERSION = 1
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-etag
 def _compute_etag(path: Path) -> str:
@@ -41,12 +48,18 @@ def _compute_etag(path: Path) -> str:
     Deliberately *not* a content hash: ``Path.stat()`` is metadata-only (no
     file read), which is what lets a cache *hit* stay free of a full read --
     the whole point of a read-once-per-file index. mtime + size changes on
-    any real edit (including a same-size, same-line-count text swap, since
-    a write always advances mtime), so it still catches content changes; a
-    byte-count/line-count-only fingerprint would not (two edits that happen
-    to preserve both would silently look unchanged, and computing either
-    requires reading the entire file that this check exists to avoid
-    reading).
+    a same-size, same-line-count text swap too, since a write ordinarily
+    advances mtime -- a byte-count/line-count-only fingerprint would miss
+    that edit outright, and computing either requires reading the entire
+    file this check exists to avoid reading.
+
+    Known, accepted limitation: on a filesystem with coarse mtime
+    resolution (e.g. some FAT32/older-HFS+/NFS configurations), two
+    same-size edits landing within one mtime tick can share an identical
+    etag, and a cache hit would then return the first edit's stale data.
+    Trading that narrow, filesystem-dependent risk for never reading the
+    file on a cache hit is this module's whole reason to exist; closing it
+    fully would mean a content hash, which defeats the point.
     """
     st = path.stat()
     return f"{st.st_mtime_ns}:{st.st_size}"
@@ -108,6 +121,7 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
         })
 
     return {
+        "schema_version": _SCHEMA_VERSION,
         "path": str(canonical_path),
         "etag": _compute_etag(canonical_path),
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -118,6 +132,22 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load
+_REQUIRED_INDEX_FIELDS = ("total_lines", "sections")
+
+
+def _has_schema_current_index(cached: Dict[str, Any]) -> bool:
+    """``True`` only if ``cached`` carries every field a consumer
+    (``commands/doc_index.py``, :func:`annotate_section_summary`) reads by
+    subscript, at the schema version this module currently writes --
+    treated the same as a stale/corrupt cache otherwise, so a partially
+    written, hand-edited, or pre-schema-bump cache triggers a clean rebuild
+    instead of a ``KeyError`` deep in a consumer.
+    """
+    if cached.get("schema_version") != _SCHEMA_VERSION:
+        return False
+    return all(field in cached for field in _REQUIRED_INDEX_FIELDS)
+
+
 def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
     """Load a cached index for ``path``, or ``None`` if missing/stale/absent.
 
@@ -146,18 +176,28 @@ def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
 
     if cached.get("etag") != current_etag:
         return None
+    if not _has_schema_current_index(cached):
+        logger.debug("doc-index cache for %s is malformed or predates the current schema; rebuilding", path)
+        return None
     return cached
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-save
 def save_doc_index(path: Path, index: Dict[str, Any]) -> None:
-    """Persist an index to its cache location. No-ops outside a Studio project."""
+    """Persist an index to its cache location. No-ops outside a Studio project.
+
+    Written atomically (temp file + ``os.replace``): a reader racing a
+    concurrent writer sees either the old complete file or the new complete
+    one, never a torn/partial write.
+    """
     cache_path = _index_cache_path(path)
     if cache_path is None:
         return
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+    tmp_path = cache_path.with_name(f"{cache_path.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+    os.replace(tmp_path, cache_path)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-save
 
 

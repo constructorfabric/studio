@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 import argparse
+import math
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -134,13 +136,54 @@ def parse_headings(
         max_level: Maximum heading level to include.
         skip_first: If True, skip the very first heading (document title).
         skip_toc_heading: If True, skip headings named "Table of Contents" or "TOC".
+
+    Thin wrapper over :func:`parse_headings_with_lines` (stripping the line
+    number): one fence-tracking/heading-matching implementation instead of
+    two that could silently diverge.
     """
-    headings: List[Tuple[int, str]] = []
+    return [
+        (level, text)
+        for level, text, _line in parse_headings_with_lines(
+            lines,
+            min_level=min_level,
+            max_level=max_level,
+            skip_first=skip_first,
+            skip_toc_heading=skip_toc_heading,
+        )
+    ]
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings-lines
+def parse_headings_with_lines(
+    lines: List[str],
+    *,
+    min_level: int = 1,
+    max_level: int = 6,
+    skip_first: bool = False,
+    skip_toc_heading: bool = False,
+) -> List[Tuple[int, str, int]]:
+    """Extract ``(level, text, line_number)`` triples from markdown lines.
+
+    Fence-aware like :func:`parse_headings` (which delegates here), and
+    skips a leading YAML front-matter block (see
+    :func:`_find_frontmatter_end`) so a ``#``-prefixed line inside
+    front-matter data (a comment, a value) is never mistaken for a real
+    heading. ``line_number`` is 1-based.
+
+    ``skip_first``/``skip_toc_heading`` mirror :func:`parse_headings`'s own
+    options: ``skip_first`` drops the very first heading matched
+    (regardless of level, checked before the level filter, same order as
+    the original standalone implementation), ``skip_toc_heading`` drops
+    headings named "Table of Contents"/"TOC" after the level filter.
+    """
+    headings: List[Tuple[int, str, int]] = []
     fence: Optional[Tuple[str, int]] = None
+    frontmatter_end = _find_frontmatter_end(lines)
     first_skipped = False
 
-    for line in lines:
-        # Track fenced code blocks (``` or ~~~ with 3+ chars)
+    for idx, line in enumerate(lines):
+        if idx < frontmatter_end:
+            continue
         new_fence = _fence_update(line, fence)
         if new_fence != fence:
             fence = new_fence
@@ -165,44 +208,7 @@ def parse_headings(
         if skip_toc_heading and text.lower() in _TOC_HEADING_NAMES:
             continue
 
-        headings.append((level, text))
-
-    return headings
-# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings
-
-# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings-lines
-def parse_headings_with_lines(
-    lines: List[str],
-    *,
-    min_level: int = 1,
-    max_level: int = 6,
-) -> List[Tuple[int, str, int]]:
-    """Extract ``(level, text, line_number)`` triples from markdown lines.
-
-    Fence-aware like :func:`parse_headings`. ``line_number`` is 1-based.
-    Kept as a separate function (rather than adding a flag to
-    ``parse_headings``) so existing 2-tuple call sites are unaffected.
-    """
-    headings: List[Tuple[int, str, int]] = []
-    fence: Optional[Tuple[str, int]] = None
-
-    for idx, line in enumerate(lines):
-        new_fence = _fence_update(line, fence)
-        if new_fence != fence:
-            fence = new_fence
-            continue
-        if fence is not None:
-            continue
-
-        m = _HEADING_RE.match(line)
-        if not m:
-            continue
-
-        level = len(m.group(1))
-        if level < min_level or level > max_level:
-            continue
-
-        headings.append((level, m.group(2).strip(), idx + 1))
+        headings.append((level, text, idx + 1))
 
     return headings
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings-lines
@@ -740,6 +746,18 @@ DEFAULT_MAX_SECTION_LINES = 300
 MIN_LINES_FOR_DESCRIPTION_CHECK = 100
 
 
+def _normalize_heading_key(text: str) -> str:
+    """Fold a heading's text to a comparison key for duplicate detection.
+
+    Casefolds, collapses internal whitespace runs to a single space, and
+    NFC-normalizes so two headings that render identically -- differing
+    only in case, incidental whitespace, or Unicode composition -- are
+    still recognized as the same title. The original text is kept for
+    display; only the comparison key is normalized.
+    """
+    return unicodedata.normalize("NFC", " ".join(text.split())).casefold()
+
+
 def _check_duplicate_heading_titles(
     headings_with_lines: List[Tuple[int, str, int]],
     path: Path,
@@ -756,18 +774,19 @@ def _check_duplicate_heading_titles(
     seen: Dict[str, int] = {}
     warnings: List[Dict[str, Any]] = []
     for _level, text, line in headings_with_lines:
-        if text in seen:
+        key = _normalize_heading_key(text)
+        if key in seen:
             warnings.append(error(
                 "toc",
-                f"Heading `{text}` duplicates an earlier heading (first seen at line {seen[text]})",
+                f"Heading `{text}` duplicates an earlier heading (first seen at line {seen[key]})",
                 code=EC.TOC_HEADING_DUPLICATE,
                 path=path,
                 line=line,
                 heading_text=text,
-                first_seen_line=seen[text],
+                first_seen_line=seen[key],
             ))
         else:
-            seen[text] = line
+            seen[key] = line
     return warnings
 
 
@@ -812,9 +831,18 @@ def _check_section_lengths(
 
     An oversized section with no sub-headings defeats heading-based JIT
     retrieval: reading "one section" still means reading the whole thing.
+
+    ``max_section_lines`` is validated here, independent of any CLI
+    argparse guard: a non-finite value (``nan``/``inf``) or a non-positive
+    one falls back to :data:`DEFAULT_MAX_SECTION_LINES` rather than
+    silently disabling the check (``nan``) or flagging virtually every
+    section (a negative threshold) for a direct library caller.
     """
     from . import error_codes as EC
     from .constraints import error
+
+    if not math.isfinite(max_section_lines) or max_section_lines <= 0:
+        max_section_lines = DEFAULT_MAX_SECTION_LINES
 
     warnings: List[Dict[str, Any]] = []
     for i, (_level, text, line) in enumerate(headings_with_lines):

@@ -130,6 +130,10 @@ def _human_validate_toc(data: dict) -> None:
                 ui.substep(f"  ✗ {e}")
             for w in r.get("warnings", []):
                 ui.substep(f"  ⚠ {w}")
+        elif status == "WARN":
+            ui.warn(f"{path}: {warns} warning(s)")
+            for w in r.get("warnings", []):
+                ui.substep(f"  ⚠ {w}")
         else:
             ui.substep(f"{path}: {status}")
     overall = data.get("status", "")

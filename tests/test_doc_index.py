@@ -153,6 +153,60 @@ class TestCachePersistence:
             cache_file.write_text("{not valid json", encoding="utf-8")
         assert load_doc_index(f) is None
 
+    def test_cmd_doc_index_rebuilds_cleanly_after_corrupt_cache(self, tmp_path: Path, capsys, monkeypatch):
+        """CodeRabbit PR #108: prove the corrupt-cache fallback at the
+        CLI/exit-code level, not just load_doc_index() in isolation."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        save_doc_index(f, build_doc_index(f))
+        cache_dir = tmp_path / ".cache" / "doc-index"
+        for cache_file in cache_dir.glob("*.json"):
+            cache_file.write_text("{not valid json", encoding="utf-8")
+
+        rc = cmd_doc_index([str(f)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["cache_hit"] is False
+
+    def test_cache_missing_a_required_field_is_rebuilt_not_returned(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #108: a matching-etag cache missing "sections"
+        (hand-edited, or truncated mid-write) used to pass load_doc_index's
+        etag-only check and reach cmd_doc_index()'s len(index["sections"])
+        as an unhandled KeyError."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        incomplete = build_doc_index(f)
+        del incomplete["sections"]
+        save_doc_index(f, incomplete)
+
+        assert load_doc_index(f) is None
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False
+        assert "sections" in index
+
+    def test_cache_from_an_older_schema_version_is_rebuilt_not_returned(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        old_schema = build_doc_index(f)
+        old_schema["schema_version"] = 0
+        save_doc_index(f, old_schema)
+
+        assert load_doc_index(f) is None
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False
+
+    def test_save_does_not_leave_a_temp_file_behind(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #108: save_doc_index() writes atomically (temp
+        file + os.replace) -- the temp file must not survive a successful
+        write."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        save_doc_index(f, build_doc_index(f))
+        cache_dir = tmp_path / ".cache" / "doc-index"
+        names = [p.name for p in cache_dir.iterdir()]
+        assert all(name.endswith(".json") for name in names)
+        assert load_doc_index(f) is not None
+
     def test_no_studio_directory_means_no_crash_and_always_none(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
         f = _write(tmp_path)
