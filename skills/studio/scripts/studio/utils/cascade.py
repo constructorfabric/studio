@@ -126,6 +126,22 @@ def _as_candidate(section: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _validate_margin_threshold(margin_threshold: Optional[float]) -> None:
+    """Reject a non-finite or non-positive ``margin_threshold`` before it can
+    reach row 4's comparison.
+
+    ``commands/cascade.py``'s ``_margin_threshold_arg`` enforces this same
+    rule for the CLI, but a direct Python caller of :func:`route_tier1`/
+    :func:`route_query` bypasses argparse entirely -- without this check
+    here too, a non-positive or non-finite threshold would make
+    ``tfidf_result["margin"] >= margin_threshold`` fire on virtually any
+    finite margin, silently defeating the "no finite value is yet proven
+    safe" design basis this module's own docstring documents.
+    """
+    if margin_threshold is not None and not (math.isfinite(margin_threshold) and margin_threshold > 0):
+        raise ValueError(f"margin_threshold must be a finite number > 0, got {margin_threshold!r}")
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-tier1
 def _route_tier1_heading_nav_miss(
     tfidf_ranked: List[Dict[str, Any]], has_tfidf_signal: bool, tfidf_result: Dict[str, Any],
@@ -177,6 +193,7 @@ def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = N
     assumption (validated against a single ~166-page, ~9-section document,
     deliberately no cap on section count or file size) this cost relies on.
     """
+    _validate_margin_threshold(margin_threshold)
     nav_first_match = find_sections(path, query)["first_match"]
     # Unconditional, even when heading-nav already found a hit: fusing the
     # two signals (this function's whole purpose, see the module docstring)
