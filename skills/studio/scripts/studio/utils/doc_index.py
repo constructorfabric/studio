@@ -104,6 +104,12 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
     as ``None`` and are filled in later via :func:`annotate_section_summary`.
     """
     canonical_path = path.resolve()
+    # Fingerprint before read: if a write lands between the two, the stored
+    # etag describes content older than (never newer than) what got parsed,
+    # so a mismatch is always detected on the next load -- computing it
+    # after the read could instead capture a fingerprint newer than the
+    # content actually parsed, which a later stat comparison can't catch.
+    etag = _compute_etag(canonical_path)
     content = canonical_path.read_text(encoding="utf-8")
     lines = content.split("\n")
     line_count = len(lines)
@@ -123,7 +129,7 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
     return {
         "schema_version": _SCHEMA_VERSION,
         "path": str(canonical_path),
-        "etag": _compute_etag(canonical_path),
+        "etag": etag,
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "total_lines": line_count,
         "sections": sections,

@@ -985,6 +985,34 @@ class TestJitRetrievalReadiness:
         codes = [w["code"] for w in result["warnings"]]
         assert "toc-missing-description" in codes
 
+    @pytest.mark.parametrize(
+        "description_line",
+        [
+            'description: ""',
+            "description: ''",
+            "description: # TODO",
+        ],
+        ids=["double-quoted-empty", "single-quoted-empty", "comment-only"],
+    )
+    def test_empty_or_comment_only_description_still_warns(self, description_line):
+        """CodeRabbit PR #108 (round 2): an empty quoted scalar or a bare
+        comment satisfies a naive "any character after the colon" check but
+        is not a real description -- each must still trigger the warning."""
+        filler = "\n\n".join(f"Paragraph {i} of filler text." for i in range(60))
+        content = (
+            "---\n"
+            f"{description_line}\n"
+            "---\n\n"
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "1. [A](#a)\n\n"
+            "---\n\n"
+            f"## A\n\n{filler}\n"
+        )
+        result = validate_toc(content, max_heading_level=2)
+        codes = [w["code"] for w in result["warnings"]]
+        assert "toc-missing-description" in codes
+
     def test_jit_readiness_warnings_are_never_errors(self):
         # All four signals are additive warnings; they must never appear
         # in `errors`, regardless of how badly a document scores. (This

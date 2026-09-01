@@ -6,11 +6,14 @@ Thin CLI wrapper around ``studio.utils.doc_index``.
 """
 
 import argparse
+import logging
 from pathlib import Path
 from typing import List
 
 from ..utils.doc_index import get_or_build_doc_index
 from ..utils.ui import ui
+
+logger = logging.getLogger(__name__)
 
 
 def cmd_doc_index(argv: List[str]) -> int:
@@ -38,7 +41,15 @@ def cmd_doc_index(argv: List[str]) -> int:
         )
         return 2
 
-    index = get_or_build_doc_index(filepath, force_rebuild=args.rebuild)
+    try:
+        index = get_or_build_doc_index(filepath, force_rebuild=args.rebuild)
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("doc-index: cannot read %s: %s", filepath, exc)
+        ui.result(
+            {"file": str(filepath), "status": "ERROR", "message": f"Cannot read file: {exc}"},
+            human_fn=lambda d: ui.error(f"{d['file']}: {d['message']}"),
+        )
+        return 2
 
     output = {
         "file": str(filepath),

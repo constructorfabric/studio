@@ -67,6 +67,36 @@ class TestBuildDocIndex:
         idx2 = build_doc_index(f)
         assert idx1["etag"] != idx2["etag"]
 
+    def test_etag_is_computed_before_reading_content(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #108 (round 2): the etag must be captured before the
+        content read, not after -- a write landing between the two calls
+        would otherwise let the stored etag describe content newer than
+        what got parsed, and no later stat comparison could ever detect
+        that mismatch. Computing the etag first means a race can only make
+        it look older than the parsed content, which a later check always
+        catches."""
+        from studio.utils import doc_index as doc_index_module
+
+        f = _write(tmp_path)
+        call_order = []
+
+        real_compute_etag = doc_index_module._compute_etag
+        real_read_text = Path.read_text
+
+        def _tracked_compute_etag(path):
+            call_order.append("etag")
+            return real_compute_etag(path)
+
+        def _tracked_read_text(self, *args, **kwargs):
+            call_order.append("read")
+            return real_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(doc_index_module, "_compute_etag", _tracked_compute_etag)
+        monkeypatch.setattr(Path, "read_text", _tracked_read_text)
+
+        doc_index_module.build_doc_index(f)
+        assert call_order == ["etag", "read"]
+
     def test_skips_headings_in_fenced_code(self, tmp_path: Path):
         content = "# Title\n\n## Real\n\n```bash\n# not a heading\n```\n\n## Also Real\n"
         f = _write(tmp_path, content)
@@ -301,6 +331,40 @@ class TestAnnotateSectionSummary:
 class TestCmdDocIndex:
     def test_missing_file(self, tmp_path: Path, capsys):
         rc = cmd_doc_index([str(tmp_path / "nope.md")])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
+    def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(
+        self, tmp_path: Path, capsys, monkeypatch
+    ):
+        """CodeRabbit PR #108 (round 2): a non-UTF-8 file raises
+        UnicodeDecodeError inside build_doc_index's read_text -- this must
+        surface as a clean exit-code-2 JSON error, the same contract a
+        missing file already gets, not an unhandled traceback."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = tmp_path / "bad.md"
+        f.write_bytes(b"# Title\n\xff\xfe not valid utf-8\n")
+        rc = cmd_doc_index([str(f)])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+
+    def test_unreadable_file_reports_a_clean_error_not_a_raw_traceback(
+        self, tmp_path: Path, capsys, monkeypatch
+    ):
+        """CodeRabbit PR #108 (round 2): an OSError from get_or_build_doc_index
+        (e.g. a permissions failure or a race where the file vanishes after
+        the is_file() check) must use the same clean error contract as a
+        UnicodeDecodeError, not escape as a raw traceback."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        def _raise_os_error(*_a, **_k):
+            raise OSError("permission denied")
+
+        monkeypatch.setattr("studio.commands.doc_index.get_or_build_doc_index", _raise_os_error)
+        rc = cmd_doc_index([str(f)])
         assert rc == 2
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"

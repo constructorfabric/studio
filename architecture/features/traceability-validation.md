@@ -451,7 +451,8 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 A cached, read-once-per-file structural index for Markdown JIT retrieval (see
 constructorfabric/studio#104): parsing a file's headings/section boundaries
-happens once, not once per query, until the file's content actually changes.
+happens once, not once per query, until its stat fingerprint (`mtime_ns` +
+size) changes.
 The cache-validity fingerprint is deliberately metadata-only (`mtime` + file
 size via `Path.stat()`), never a content hash â€” the point of the cache is to
 avoid reading the file at all on a hit, and a content hash would defeat that

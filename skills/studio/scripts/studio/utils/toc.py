@@ -866,7 +866,24 @@ def _check_section_lengths(
     return warnings
 
 
-_DESCRIPTION_FIELD_RE = re.compile(r"^description\s*:\s*\S")
+_DESCRIPTION_FIELD_RE = re.compile(r"^description\s*:\s*(.*)$")
+
+
+def _is_real_description_value(raw_value: str) -> bool:
+    """``True`` only if *raw_value* (the text after ``description:``) is an
+    actual description, not an empty quoted scalar (``""``/``''``) or a
+    comment-only value (``# TODO``) -- both look non-blank to a naive
+    "any character after the colon" check but carry no real content.
+    """
+    value = raw_value.strip()
+    if not value or value.startswith("#"):
+        return False
+    if value[0] in "\"'":
+        quote = value[0]
+        end = value.find(quote, 1)
+        quoted = value[1:end] if end != -1 else value[1:]
+        return bool(quoted.strip())
+    return True
 
 
 def _frontmatter_has_description(lines: List[str], frontmatter_end: int) -> bool:
@@ -876,10 +893,11 @@ def _frontmatter_has_description(lines: List[str], frontmatter_end: int) -> bool
     (one past the closing ``---``); the body being scanned is
     ``lines[1:frontmatter_end - 1]``, excluding both delimiter lines.
     """
-    return any(
-        _DESCRIPTION_FIELD_RE.match(line.strip())
-        for line in lines[1:frontmatter_end - 1]
-    )
+    for line in lines[1:frontmatter_end - 1]:
+        match = _DESCRIPTION_FIELD_RE.match(line.strip())
+        if match and _is_real_description_value(match.group(1)):
+            return True
+    return False
 
 
 def _check_missing_description(
