@@ -99,6 +99,19 @@ class TestBuildDocIndex:
         assert by_heading_before["Section A"] != by_heading_after["Section A"]
         assert by_heading_before["Section B"] == by_heading_after["Section B"]
 
+    def test_trailing_whitespace_only_edit_does_not_change_the_hash(self, tmp_path: Path):
+        """CodeRabbit PR #109: a "trim trailing whitespace on save" editor
+        default changes no meaningful content and must not look like a
+        real edit to diff_stale_sections -- the whole point of hashing at
+        section granularity."""
+        f = _write(tmp_path)
+        before = build_doc_index(f)
+        f.write_text(_SAMPLE.replace("Body of A.\n", "Body of A.   \n"), encoding="utf-8")
+        after = build_doc_index(f)
+        by_heading_before = {s["heading"]: s["hash"] for s in before["retrieval_sections"]}
+        by_heading_after = {s["heading"]: s["hash"] for s in after["retrieval_sections"]}
+        assert by_heading_before["Section A"] == by_heading_after["Section A"]
+
 
 class TestInferSectionLevel:
     def test_uniform_level_is_chosen(self):
@@ -311,7 +324,7 @@ class TestCachePersistence:
         assert seen_paths, "find_studio_directory was never called"
         assert seen_paths[0] == f.resolve().parent
 
-    def test_load_returns_none_on_corrupt_cache_file(self, tmp_path: Path, monkeypatch):
+    def test_load_returns_none_on_corrupt_cache_file(self, tmp_path: Path, monkeypatch, caplog):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         save_doc_index(f, build_doc_index(f))
@@ -319,7 +332,12 @@ class TestCachePersistence:
         cache_dir = tmp_path / ".cache" / "doc-index"
         for cache_file in cache_dir.glob("*.json"):
             cache_file.write_text("{not valid json", encoding="utf-8")
-        assert load_doc_index(f) is None
+        with caplog.at_level("WARNING"):
+            assert load_doc_index(f) is None
+        # CodeRabbit PR #109: real corruption is a genuine anomaly, not a
+        # routine cache miss -- must be visible at the CLI's default log
+        # level (WARNING), not buried at debug.
+        assert any(r.levelname == "WARNING" for r in caplog.records)
 
     def test_cmd_doc_index_rebuilds_cleanly_after_corrupt_cache(self, tmp_path: Path, capsys, monkeypatch):
         """CodeRabbit PR #108: prove the corrupt-cache fallback at the
@@ -382,18 +400,23 @@ class TestCachePersistence:
         assert load_doc_index(f) is None
 
     def test_studio_directory_lookup_error_means_no_crash_and_no_cache(
-        self, tmp_path: Path, monkeypatch
+        self, tmp_path: Path, monkeypatch, caplog
     ):
         """An OSError from find_studio_directory (e.g. an unreadable parent
         directory) must degrade to 'no cache', not raise -- and it must be
-        logged, not silently swallowed (see PR #108 review / pylint W9001)."""
+        logged, not silently swallowed (see PR #108 review / pylint W9001).
+        CodeRabbit PR #109: this is a genuine anomaly, distinct from the
+        ordinary (unlogged) "no Studio directory found" case, so it must
+        log at WARNING, visible at the CLI's default level, not DEBUG."""
         def _raise(_start_path):
             raise OSError("permission denied")
 
         monkeypatch.setattr("studio.utils.files.find_studio_directory", _raise)
         f = _write(tmp_path)
-        save_doc_index(f, build_doc_index(f))  # must no-op, not raise
-        assert load_doc_index(f) is None
+        with caplog.at_level("WARNING"):
+            save_doc_index(f, build_doc_index(f))  # must no-op, not raise
+            assert load_doc_index(f) is None
+        assert any(r.levelname == "WARNING" for r in caplog.records)
 
     def test_load_returns_none_when_file_deleted_after_caching(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -492,6 +515,53 @@ class TestAnnotateSectionSummary:
         assert a1["summary"] == "About A.1."
         assert all(s["summary"] is None for s in index["retrieval_sections"])
 
+    def test_concurrent_annotations_of_different_sections_do_not_lose_either_update(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #109: two concurrent read-modify-write cycles
+        annotating different sections of the same document must not race --
+        without the lock, thread B's load could happen before thread A's
+        save, so thread B's own save would overwrite thread A's summary
+        with a stale base index. Injects a delay inside the locked section
+        (between load and save) to force a real overlap window if the lock
+        weren't actually serializing the two calls."""
+        import threading
+        import time as time_module
+
+        from studio.utils import doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        line_a = index["sections"][1]["line_start"]  # "Section A"
+        line_b = index["sections"][3]["line_start"]  # "Section B"
+
+        original_save = di.save_doc_index
+
+        def slow_save(path, saved_index):
+            time_module.sleep(0.1)
+            original_save(path, saved_index)
+
+        monkeypatch.setattr(di, "save_doc_index", slow_save)
+
+        results: dict = {}
+
+        def run(line_start: int, summary: str) -> None:
+            results[line_start] = di.annotate_section_summary(f, line_start, summary)
+
+        t1 = threading.Thread(target=run, args=(line_a, "Summary A"))
+        t2 = threading.Thread(target=run, args=(line_b, "Summary B"))
+        t1.start()
+        t2.start()
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+
+        assert results == {line_a: True, line_b: True}
+        final = di.load_doc_index(f)
+        by_line = {s["line_start"]: s["summary"] for s in final["sections"]}
+        assert by_line[line_a] == "Summary A"
+        assert by_line[line_b] == "Summary B"
+
 
 class TestReadWithStableEtag:
     def test_retries_when_the_file_changes_mid_read(self, tmp_path: Path, monkeypatch):
@@ -540,21 +610,6 @@ class TestCmdDocIndex:
         out = json.loads(capsys.readouterr().out)
         assert out["status"] == "ERROR"
 
-    def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(
-        self, tmp_path: Path, capsys, monkeypatch
-    ):
-        """CodeRabbit PR #108 (round 2): a non-UTF-8 file raises
-        UnicodeDecodeError inside build_doc_index's read_text -- this must
-        surface as a clean exit-code-2 JSON error, the same contract a
-        missing file already gets, not an unhandled traceback."""
-        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
-        f = tmp_path / "bad.md"
-        f.write_bytes(b"# Title\n\xff\xfe not valid utf-8\n")
-        rc = cmd_doc_index([str(f)])
-        assert rc == 2
-        out = json.loads(capsys.readouterr().out)
-        assert out["status"] == "ERROR"
-
     def test_unreadable_file_reports_a_clean_error_not_a_raw_traceback(
         self, tmp_path: Path, capsys, monkeypatch
     ):
@@ -596,6 +651,31 @@ class TestCmdDocIndex:
         assert out["retrieval_section_count"] == 2
         assert [s["heading"] for s in out["retrieval_sections"]] == ["Section A", "Section B"]
         assert "hash" in out["retrieval_sections"][0]
+
+    def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(self, tmp_path: Path, capsys, monkeypatch):
+        """CodeRabbit PR #109: a binary/non-UTF-8 file used to crash with an
+        unhandled UnicodeDecodeError; must now report a clean ERROR result,
+        consistent with the existing "File not found" pattern."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = tmp_path / "binary.md"
+        f.write_bytes(b"\xff\xfe\x00\x01garbage")
+        rc = cmd_doc_index([str(f)])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+        assert "utf-8" in out["message"].lower() or "UTF-8" in out["message"]
+
+    def test_help_explains_how_section_level_is_inferred(self):
+        """CodeRabbit PR #109: --help gave no indication that section_level
+        is a heuristic, not simply "H1/H2"."""
+        import io
+        from contextlib import redirect_stdout
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with pytest.raises(SystemExit):
+                cmd_doc_index(["--help"])
+        assert "most frequently" in buf.getvalue()
 
     def test_human_output_lists_retrieval_sections(self, tmp_path: Path, capsys, monkeypatch):
         from studio.utils.ui import is_json_mode, set_json_mode

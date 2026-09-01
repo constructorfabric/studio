@@ -12,6 +12,18 @@ re-derived each time.
 Scope: Markdown only. PDF/DOCX conversion is a separate concern (Layer 1);
 this module operates purely on already-plain-text content (Layer 2).
 
+Schema contract: adding a new top-level key to the index dict is always
+additive and does not require bumping ``_SCHEMA_VERSION`` -- an older
+build of this module simply never wrote that key, which
+``_has_schema_current_index``'s required-field check already treats as
+"predates the current schema" and rebuilds. ``_SCHEMA_VERSION`` exists for
+the other kind of change: an existing key's *meaning* or *shape* changing
+incompatibly (e.g. what ``retrieval_sections`` entries contain), which a
+field-presence check alone can't detect since the field is still there,
+just holding something a new reader would misinterpret. Bump
+``_SCHEMA_VERSION`` for that kind of change; a plain new field needs only
+listing in ``_REQUIRED_INDEX_FIELDS`` if a consumer reads it unconditionally.
+
 See constructorfabric/studio#104.
 
 @cpt-algo:cpt-studio-algo-traceability-validation-doc-index:p1
@@ -85,8 +97,11 @@ def _index_cache_path(path: Path) -> Optional[Path]:
     except OSError as exc:
         # A file whose parent can't be stat'd (permissions, a race) is not a
         # reason to fail the caller -- just an uncached build, like "no
-        # Studio directory found".
-        logger.debug("doc-index cache path lookup skipped for %s: %s", path, exc)
+        # Studio directory found". Warning, not debug: this is a genuine
+        # anomaly (unlike the ordinary, unlogged "no Studio directory"
+        # case below), and should be visible at the CLI's default log
+        # level rather than indistinguishable from a routine cache miss.
+        logger.warning("doc-index cache path lookup failed for %s: %s", path, exc)
         studio_dir = None
     if studio_dir is None:
         return None
@@ -149,10 +164,15 @@ def _build_retrieval_sections(
     whichever ``section_level`` section it falls under, rather than
     splitting a real section apart.
 
-    Each section's ``hash`` is a SHA-256 of its own text slice -- the
-    per-section granularity :func:`diff_stale_sections` needs to tell "this
-    one section changed" from "the whole file changed", which a whole-file
-    fingerprint structurally cannot do.
+    Each section's ``hash`` is a SHA-256 of its own text slice, with each
+    line's trailing whitespace stripped before hashing -- a harmless
+    "trim trailing whitespace on save" edit (a common editor/IDE default)
+    changes no meaningful content and must not look like a real edit to
+    :func:`diff_stale_sections`, which is the whole point of hashing at
+    section granularity in the first place. The per-section granularity
+    :func:`diff_stale_sections` needs to tell "this one section changed"
+    from "the whole file changed", which a whole-file fingerprint
+    structurally cannot do.
     """
     if section_level is None:
         return []
@@ -161,12 +181,12 @@ def _build_retrieval_sections(
     sections: List[Dict[str, Any]] = []
     for i, (text, line_start) in enumerate(marks):
         line_end = marks[i + 1][1] - 1 if i + 1 < len(marks) else line_count
-        section_text = "\n".join(lines[line_start - 1:line_end])
+        hash_text = "\n".join(line.rstrip() for line in lines[line_start - 1:line_end])
         sections.append({
             "heading": text,
             "line_start": line_start,
             "line_end": line_end,
-            "hash": hashlib.sha256(section_text.encode("utf-8")).hexdigest(),
+            "hash": hashlib.sha256(hash_text.encode("utf-8")).hexdigest(),
             "summary": None,
         })
     return sections
@@ -264,7 +284,12 @@ def _read_cache_file(cache_path: Path) -> Optional[Dict[str, Any]]:
     try:
         return json.loads(cache_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("doc-index cache unreadable at %s: %s", cache_path, exc)
+        # Reached only once the caller has already confirmed the cache file
+        # exists, so a failure here is real corruption or a permissions
+        # problem, not a routine cache miss -- warning, not debug, so it's
+        # visible at the CLI's default log level instead of masquerading
+        # as an ordinary first-time build.
+        logger.warning("doc-index cache unreadable at %s: %s", cache_path, exc)
         return None
 
 
@@ -313,7 +338,10 @@ def load_doc_index(path: Path) -> Optional[Dict[str, Any]]:
     try:
         current_etag = _compute_etag(canonical_path)
     except OSError as exc:
-        logger.debug("doc-index staleness check failed for %s: %s", path, exc)
+        # The cache file was just confirmed to exist, so a stat() failure
+        # on the *source* file here means it vanished or became unreadable
+        # since -- a real anomaly, not a routine miss.
+        logger.warning("doc-index staleness check failed for %s: %s", path, exc)
         return None
 
     if cached.get("etag") != current_etag:
@@ -374,7 +402,13 @@ def _compute_fresh_retrieval_sections(path: Path) -> Optional[List[Dict[str, Any
     canonical_path = path.resolve()
     try:
         content = canonical_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        # Deliberately still debug, unlike this module's other fallback
+        # logs: this one path has a genuinely expected trigger ("the file
+        # was deleted after it was cached", per this function's own
+        # contract) alongside the anomalous ones, so promoting it would
+        # make a normal outcome noisy rather than making a real anomaly
+        # visible.
         logger.debug("doc-index section diff failed for %s: %s", path, exc)
         return None
 
@@ -451,6 +485,31 @@ def diff_stale_sections(path: Path) -> Optional[Dict[str, Any]]:
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-diff-stale
 
 
+def _with_cache_lock(cache_path: Path, fn):
+    """Run ``fn()`` -- a read-modify-write cycle against ``cache_path`` --
+    under an exclusive lock on a sibling ``.lock`` file, serializing
+    concurrent callers so two overlapping read-modify-write cycles (e.g.
+    two :func:`annotate_section_summary` calls for different sections of
+    the same document, running from separate processes) can't each load
+    the same base index, mutate their own part, and have whichever writes
+    last silently discard the other's update. Mirrors
+    :func:`studio.utils.decision_log._append_locked`'s exact fallback: an
+    exclusive ``fcntl`` lock where available (POSIX), otherwise runs
+    ``fn()`` unlocked on platforms without it (e.g. Windows) -- atomicity
+    of each individual write is already guaranteed by :func:`save_doc_index`
+    regardless; only the cross-call serialization is best-effort there.
+    """
+    try:
+        import fcntl  # pylint: disable=import-outside-toplevel
+    except ImportError:
+        return fn()
+    lock_path = cache_path.with_name(f"{cache_path.name}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a", encoding="utf-8") as lock_fh:
+        fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+        return fn()
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate
 def annotate_section_summary(path: Path, line_start: int, summary: str) -> bool:
     """Attach a one-line summary to a cached section, keyed by its line_start.
@@ -468,25 +527,37 @@ def annotate_section_summary(path: Path, line_start: int, summary: str) -> bool:
     heading that isn't itself a retrieval section's start) updates only
     that list, which is correct: there is no corresponding retrieval
     section to update.
+
+    The read-modify-write cycle (load, mutate one section, save) runs
+    under :func:`_with_cache_lock`, so two concurrent calls annotating
+    different sections of the same document don't race and silently drop
+    one side's update.
     """
-    index = load_doc_index(path)
-    if index is None:
+    cache_path = _index_cache_path(path)
+    if cache_path is None:
         return False
 
-    matched = False
-    for section in index["sections"]:
-        if section["line_start"] == line_start:
-            section["summary"] = summary
-            matched = True
-            break
-    if not matched:
-        return False
+    def _read_modify_write() -> bool:
+        index = load_doc_index(path)
+        if index is None:
+            return False
 
-    for retrieval_section in index.get("retrieval_sections", []):
-        if retrieval_section["line_start"] == line_start:
-            retrieval_section["summary"] = summary
-            break
+        matched = False
+        for section in index["sections"]:
+            if section["line_start"] == line_start:
+                section["summary"] = summary
+                matched = True
+                break
+        if not matched:
+            return False
 
-    save_doc_index(path, index)
-    return True
+        for retrieval_section in index.get("retrieval_sections", []):
+            if retrieval_section["line_start"] == line_start:
+                retrieval_section["summary"] = summary
+                break
+
+        save_doc_index(path, index)
+        return True
+
+    return _with_cache_lock(cache_path, _read_modify_write)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate

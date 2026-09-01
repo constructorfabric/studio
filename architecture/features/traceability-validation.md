@@ -403,6 +403,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for validate-toc command - `inst-toc-imports`
+- [x] - `p1` - Validate a single file, never raising: a missing file or a read failure (permission denied, binary/non-UTF-8 content, a TOCTOU race) is reported as its own ERROR result rather than aborting the whole batch and discarding results already collected for earlier files - `inst-toc-validate-one`
 - [x] - `p1` - Human-friendly formatter for validate-toc output: a WARN-only file prints its warnings the same way a FAIL file prints its errors, not just the bare status - `inst-toc-format`
 
 ### TOC Utilities

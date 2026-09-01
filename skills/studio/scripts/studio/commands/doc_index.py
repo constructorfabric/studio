@@ -23,7 +23,10 @@ def cmd_doc_index(argv: List[str]) -> int:
         prog="cfs doc-index",
         description=(
             "Build or reuse a cached heading/section index for a Markdown file, "
-            "so navigation reads the file's structure once, not once per query."
+            "so navigation reads the file's structure once, not once per query. "
+            "section_level is inferred from the most frequently repeated heading "
+            "level (ties prefer the shallower level); a level used only once is "
+            "never chosen."
         ),
     )
     p.add_argument("file", help="Markdown file path")

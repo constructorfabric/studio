@@ -1248,6 +1248,34 @@ class TestCmdValidateToc:
         assert out["files_validated"] == 2
         assert out["error_count"] == 1
 
+    def test_a_read_failure_on_one_file_does_not_abort_the_batch(self, tmp_path: Path, capsys):
+        """CodeRabbit PR #109: an unhandled read failure on one file used to
+        raise out of the per-file loop, discarding results already
+        collected for files validated earlier in the same invocation and
+        never reaching the remaining files. A binary/non-UTF-8 file in the
+        middle of a batch must be recorded as its own ERROR result, and the
+        batch must still validate the file(s) after it."""
+        good = tmp_path / "good.md"
+        good.write_text(
+            "# T\n\n## Table of Contents\n\n1. [A](#a)\n\n---\n\n## A\n",
+            encoding="utf-8",
+        )
+        binary = tmp_path / "binary.md"
+        binary.write_bytes(b"\xff\xfe\x00\x01garbage")
+        good2 = tmp_path / "good2.md"
+        good2.write_text(
+            "# T\n\n## Table of Contents\n\n1. [B](#b)\n\n---\n\n## B\n",
+            encoding="utf-8",
+        )
+        rc = cmd_validate_toc(["--max-level", "2", str(good), str(binary), str(good2)])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["files_validated"] == 3
+        by_file = {r["file"]: r for r in out["results"]}
+        assert by_file[str(good)]["status"] == "PASS"
+        assert by_file[str(binary)]["status"] == "ERROR"
+        assert by_file[str(good2)]["status"] == "PASS"
+
     def test_verbose_flag(self, tmp_path: Path, capsys):
         f = tmp_path / "doc.md"
         f.write_text(
