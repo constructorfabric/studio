@@ -22,6 +22,7 @@ from studio.utils.toc import (
     insert_toc_heading,
     insert_toc_markers,
     parse_headings,
+    parse_headings_with_lines,
     validate_toc,
 )
 
@@ -830,6 +831,25 @@ class TestJitRetrievalReadiness:
         # A TOC-less document with real headings should trip a missing-TOC
         # error -- it can only do that if headings after `...` are seen.
         assert "toc-missing" in codes
+
+    def test_indented_terminator_inside_a_block_scalar_is_not_a_real_terminator(self):
+        """CodeRabbit PR #110 (round 3): an indented `---`/`...` is valid
+        content *inside* a YAML block scalar (e.g. `description: |`), not
+        a document terminator -- ending frontmatter early there would let
+        a later, still-inside-frontmatter `#`-prefixed line get mistaken
+        for a real Markdown heading."""
+        content = (
+            "---\n"
+            "description: |\n"
+            "  ...\n"
+            "## not a real heading -- still frontmatter content\n"
+            "title: Foo\n"
+            "---\n\n"
+            "# Real Title\n\n"
+            "## Section A\n"
+        ).split("\n")
+        headings = parse_headings_with_lines(content)
+        assert [text for _level, text, _line in headings] == ["Real Title", "Section A"]
 
     def test_depth_jump_warned(self):
         content = (

@@ -102,6 +102,53 @@ class TestGetOkfStatus:
         by_heading = {e["heading"]: e for e in status["entries"]}
         assert by_heading["Introduction"]["status"] == "stale"
 
+    def test_stale_entry_keeps_its_own_written_concept_file_not_a_new_name(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110 (round 3): a heading rename changes the
+        section's hash (stale), but the *old* concept file, written under
+        the *old* heading's filename, still exists on disk. Reporting a
+        freshly-derived filename from the new heading would point
+        okf-status/index.md at a file that was never written."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        intro = index["retrieval_sections"][0]
+        write_concept_file(f, intro["line_start"], description="d", body="b")
+        original_concept_file = get_okf_status(f)["entries"][0]["concept_file"]
+        assert original_concept_file == "01-introduction.md"
+
+        renamed = _SAMPLE.replace("## Introduction", "## Intro")
+        f.write_text(renamed, encoding="utf-8")
+
+        status = get_okf_status(f)
+        renamed_entry = status["entries"][0]
+        assert renamed_entry["heading"] == "Intro"
+        assert renamed_entry["status"] == "stale"
+        assert renamed_entry["concept_file"] == original_concept_file
+        bundle_dir = _okf_bundle_dir(f)
+        assert (bundle_dir / renamed_entry["concept_file"]).is_file()
+
+    def test_stale_entry_with_a_deleted_concept_file_reports_missing(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The other side of the fix above: if the stale entry's own
+        concept file is gone (or corrupted), it must report missing, not
+        stale -- a caller can't be pointed at a file that isn't there."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        intro = index["retrieval_sections"][0]
+        write_concept_file(f, intro["line_start"], description="d", body="b")
+        bundle_dir = _okf_bundle_dir(f)
+        (bundle_dir / "01-introduction.md").unlink()
+
+        renamed = _SAMPLE.replace("## Introduction", "## Intro")
+        f.write_text(renamed, encoding="utf-8")
+
+        status = get_okf_status(f)
+        assert status["entries"][0]["status"] == "missing"
+
     def test_a_section_that_moved_without_changing_reports_current_not_missing(
         self, tmp_path: Path, monkeypatch
     ):
@@ -236,6 +283,40 @@ class TestWriteConceptFile:
         status = get_okf_status(f)
         index_md = (Path(status["bundle_dir"]) / "index.md").read_text(encoding="utf-8")
         assert "[Introduction](01-introduction.md) - Covers the intro." in index_md
+
+    def test_index_md_keeps_a_moved_sections_description_after_reorder(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """CodeRabbit PR #110 (round 3): index.md's description lookup used
+        to be keyed by the *current* line_start, but a section resolved as
+        "current" after a reorder keeps its *original* manifest entry
+        (see get_okf_status) -- whose line_start is the *old* one. Looking
+        it up by the new line_start silently misses it and index.md shows
+        "(no summary yet)" for a section that really has a description."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        details = index["retrieval_sections"][1]
+        assert details["heading"] == "Details"
+        write_concept_file(f, details["line_start"], description="Covers details.", body="b")
+
+        # Grow the Introduction section (position 1) -- Details' line_start
+        # shifts, its content (and hash) don't, so it resolves as current
+        # via the reorder-tolerant hash match, keeping its own entry.
+        grown = _SAMPLE.replace(
+            "Body of the introduction.\n\n", "Body of the introduction.\n\nMore intro text.\n\n"
+        )
+        f.write_text(grown, encoding="utf-8")
+
+        # Trigger an index.md regeneration via an unrelated write.
+        new_index = get_or_build_doc_index(f)
+        intro = new_index["retrieval_sections"][0]
+        write_concept_file(f, intro["line_start"], description="Covers the intro.", body="a")
+
+        status = get_okf_status(f)
+        index_md = (Path(status["bundle_dir"]) / "index.md").read_text(encoding="utf-8")
+        assert "Covers details." in index_md
+        assert "(no summary yet)" not in index_md
 
     def test_second_write_does_not_duplicate_manifest_entries(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)

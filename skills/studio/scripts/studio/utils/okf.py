@@ -236,8 +236,18 @@ def _resolve_section_status(
         concept_file = matched_entry["concept_file"]
         status = "current" if (bundle_dir / concept_file).is_file() else "missing"
     else:
-        concept_file = _concept_filename(position, section["heading"])
-        status = "stale" if by_line_start.get(section["line_start"]) is not None else "missing"
+        stale_entry = by_line_start.get(section["line_start"])
+        if stale_entry is not None:
+            # The section at this line_start was actually summarized before
+            # (e.g. a heading rename with the body otherwise untouched) --
+            # its real, already-written concept_file, not a filename
+            # freshly derived from the *current* heading/position that was
+            # never actually written to disk.
+            concept_file = stale_entry["concept_file"]
+            status = "stale" if (bundle_dir / concept_file).is_file() else "missing"
+        else:
+            concept_file = _concept_filename(position, section["heading"])
+            status = "missing"
     return {
         "heading": section["heading"],
         "line_start": section["line_start"],
@@ -269,7 +279,7 @@ def _yaml_quote(value: str) -> str:
 def _render_index_md(
     source_path: Path,
     status_entries: List[Dict[str, Any]],
-    descriptions_by_line_start: Dict[int, str],
+    descriptions_by_concept_file: Dict[str, str],
 ) -> str:
     """Deterministic template, not an LLM call: the same bullet-list-of-
     files-with-descriptions shape as the real OKF bundle this design was
@@ -282,6 +292,14 @@ def _render_index_md(
     written), a section whose concept file was deleted out from under it
     shows as missing rather than a dead link, and a stale entry is
     visibly marked rather than rendered identically to a current one.
+
+    ``descriptions_by_concept_file`` is keyed by ``concept_file``, not
+    ``line_start``: a section resolved by content hash after a move keeps
+    its *original* manifest entry's ``concept_file`` (see
+    :func:`_resolve_section_status`), but reports its *current* line_start
+    -- keying by the current line_start would miss that entry's
+    description entirely and render "(no summary yet)" for a section that
+    genuinely has one.
     """
     lines = [
         f"# OKF Bundle — {source_path.name}",
@@ -294,7 +312,7 @@ def _render_index_md(
         if entry["status"] == "missing":
             lines.append(f"* {heading} - not yet summarized")
             continue
-        description = descriptions_by_line_start.get(entry["line_start"]) or "(no summary yet)"
+        description = descriptions_by_concept_file.get(entry["concept_file"]) or "(no summary yet)"
         marker = " _(stale -- source changed since written)_" if entry["status"] == "stale" else ""
         lines.append(f"* [{heading}]({entry['concept_file']}) - {description}{marker}")
     lines.append("")
@@ -384,10 +402,10 @@ def write_concept_file(
         save_okf_manifest(path, manifest)
 
         status = get_okf_status(path)
-        descriptions_by_line_start = {e["line_start"]: e.get("description") for e in manifest["entries"]}
+        descriptions_by_concept_file = {e["concept_file"]: e.get("description") for e in manifest["entries"]}
         atomic_write_text(
             bundle_dir / _INDEX_NAME,
-            _render_index_md(Path(index["path"]), status["entries"], descriptions_by_line_start),
+            _render_index_md(Path(index["path"]), status["entries"], descriptions_by_concept_file),
         )
         return True
 

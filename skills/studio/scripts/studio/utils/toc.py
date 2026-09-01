@@ -378,11 +378,18 @@ def _find_frontmatter_end(lines: List[str]) -> int:
     frontmatter closed with ``...`` was never recognized as closed at all,
     so every line after it (including every real heading) was treated as
     still inside frontmatter and skipped entirely.
+
+    A terminator must start at column zero: ``rstrip()`` (trailing
+    whitespace only), never ``strip()``, so an indented ``---``/``...``
+    inside a YAML block-scalar value (e.g. ``description: |\\n  ...``) is
+    left as block-scalar content, not mistaken for the real terminator --
+    which would otherwise end frontmatter early and let the rest of it
+    parse as Markdown (a stray ``# note`` becoming a heading).
     """
     if not lines or lines[0].strip() != "---":
         return 0
     idx = 1
-    while idx < len(lines) and lines[idx].strip() not in ("---", "..."):
+    while idx < len(lines) and lines[idx].rstrip() not in ("---", "..."):
         idx += 1
     if idx < len(lines):
         idx += 1
