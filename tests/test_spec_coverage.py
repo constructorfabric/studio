@@ -17,7 +17,12 @@ from studio.utils.artifacts_meta import (
     Kit,
     SystemNode,
 )
-from studio.commands.spec_coverage import cmd_spec_coverage, _output
+from studio.commands.spec_coverage import (
+    cmd_spec_coverage,
+    _output,
+    _filter_ignored_files,
+    _rel_path,
+)
 
 
 class TestOutput(unittest.TestCase):
@@ -75,6 +80,26 @@ class TestCmdSpecCoverage(unittest.TestCase):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(args)
             return ret, json.loads(mock_out.getvalue())
+
+    def test_symlinked_project_root_is_reconciled(self):
+        # Regression for the macOS /var -> /private/var case: file paths resolve through the symlink
+        # while project_root may be unresolved/symlinked. Both sides must resolve, or every file is
+        # wrongly judged "outside project root" (and its relative key never forms -> KeyError).
+        # Reproduced on any OS via an explicit symlink.
+        with TemporaryDirectory() as d:
+            real = Path(d) / "real"
+            (real / "src").mkdir(parents=True)
+            f = real / "src" / "mod.py"
+            f.write_text("x = 1\n", encoding="utf-8")
+            link = Path(d) / "link"
+            link.symlink_to(real)                       # project_root as an unresolved symlink
+            meta = MagicMock()
+            meta.is_ignored.return_value = False
+            # _filter_ignored_files: the file survives with a clean relative path (not rel=None)
+            self.assertEqual(_filter_ignored_files([f], link, meta), [f])
+            meta.is_ignored.assert_called_once_with("src/mod.py")
+            # _rel_path: a resolved file maps to its relative key, not the absolute path
+            self.assertEqual(_rel_path(str(f.resolve()), link), "src/mod.py")
 
     def test_no_context(self):
         with patch("studio.utils.context.get_context", return_value=None):

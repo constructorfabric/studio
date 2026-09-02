@@ -194,9 +194,10 @@ def _collect_selected_system_files(
 def _filter_ignored_files(code_files_to_scan: List[Path], project_root: Path, meta) -> List[Path]:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-filter-ignored-files
     filtered_files: List[Path] = []
-    for file_path in code_files_to_scan:
+    root = project_root.resolve()   # resolve both sides so a symlinked/unresolved root
+    for file_path in code_files_to_scan:   # (e.g. macOS /var -> /private/var) still matches
         try:
-            rel = file_path.resolve().relative_to(project_root).as_posix()
+            rel = file_path.resolve().relative_to(root).as_posix()
         except ValueError as exc:
             _warn_spec_coverage(f"code file {file_path} is outside project root {project_root}: {exc}")
             rel = None
@@ -495,7 +496,7 @@ def _rel_path(p: str, project_root: Path) -> str:
     """Return path relative to project_root, or original if not possible."""
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-rel-path
     try:
-        return str(Path(p).relative_to(project_root))
+        return Path(p).resolve().relative_to(project_root.resolve()).as_posix()
     except ValueError as exc:
         _warn_spec_coverage(f"path {p} is outside project root {project_root}: {exc}")
         return p
