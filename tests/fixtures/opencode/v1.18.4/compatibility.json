@@ -24,7 +24,9 @@
     "project_path": ".opencode/agents/{name}.md",
     "name_prefix": "cf-",
     "required_frontmatter": [
-      "description",
+      "description"
+    ],
+    "studio_emitted_frontmatter": [
       "mode: subagent"
     ],
     "model_inheritance": "subagents inherit the invoking primary agent model when model is omitted"

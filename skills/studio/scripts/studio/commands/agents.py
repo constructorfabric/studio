@@ -5737,16 +5737,25 @@ def _write_opencode_subagent_or_preserve(
     sentinel_existed_before_run: bool,
     unowned_outputs: Set[str],
 ) -> None:
-    """Write only marker-owned OpenCode agent files; preserve collisions."""
+    """Write only marker-owned OpenCode agent files; preserve collisions.
+
+    Isolates path-traversal and write failures as a per-item error on
+    `subagents_result` rather than raising — an uncaught exception here would
+    abort the entire `generate-agents` run for every agent being processed,
+    not just this one OpenCode file.
+    """
     root_resolved = project_root.resolve()
     canonical = out_path.resolve()
     try:
         canonical.relative_to(root_resolved)
     except ValueError as exc:
-        raise ValueError(
+        message = (
             f"Output path '{out_path}' escapes project root '{project_root}' — "
             "path traversal is not allowed"
-        ) from exc
+        )
+        subagents_result["errors"].append(message)
+        _warn_agents(message)
+        return
 
     rel_path = _safe_relpath(canonical, root_resolved)
     install_marker = _opencode_install_marker_path(project_root)
@@ -5781,7 +5790,13 @@ def _write_opencode_subagent_or_preserve(
                 dry_run,
             )
             return
-    _write_or_skip(canonical, content, subagents_result, project_root, dry_run)
+    try:
+        _write_or_skip(canonical, content, subagents_result, project_root, dry_run)
+    except OSError as exc:
+        message = f"failed to write OpenCode agent {rel_path}: {exc}"
+        subagents_result["errors"].append(message)
+        _warn_agents(message)
+        return
     _forget_opencode_unowned_output(
         rel_path,
         project_root,
@@ -5908,6 +5923,14 @@ def _process_opencode_subagents(
     for kit_agent in kit_agents:
         name = kit_agent["name"]
         if not name.startswith("cf-"):
+            message = (
+                f"kit agent {name!r} has no 'cf-' prefix; skipping OpenCode subagent "
+                "generation for it"
+            )
+            subagents_result["outputs"].append(
+                {"path": name, "action": "skipped", "reason": "opencode_non_cf_prefix"}
+            )
+            _warn_agents(message)
             continue
         target_agent_rel = target_agent_paths.get(name, "")
         if not target_agent_rel:
@@ -6357,7 +6380,8 @@ def _build_agents_arg_parser(
         default=None,
         help=(
             "Agent/IDE key (e.g., windsurf, cursor, claude, copilot, openai, opencode). "
-            "Omit to target all supported agents."
+            "Omit to target the default agent set (excludes opencode — "
+            "use --agent opencode or --opencode to opt in)."
         ),
     )
     agent_group.add_argument("--openai", action="store_true", help="Shortcut for --agent openai (OpenAI Codex)")
@@ -6865,14 +6889,15 @@ def _add_legacy_preview_counts(preview: Dict[str, Any], legacy_preview: Dict[str
         preview["delete"] += len(section_result.get("deleted", []))
     if legacy_preview.get("agent") != "opencode":
         return
+    # Count every preserved OpenCode output regardless of reason
+    # ("opencode_unowned_collision", "opencode_stale_unowned",
+    # "opencode_stale_delete_failed", ...) — filtering to one specific reason
+    # understated the preview when the only pending action was a different
+    # kind of preserved output.
     preview["preserved"] += sum(
         1
         for output in legacy_preview.get("subagents", {}).get("outputs", [])
-        if (
-            isinstance(output, dict)
-            and output.get("action") == "preserved"
-            and output.get("reason") == "opencode_unowned_collision"
-        )
+        if isinstance(output, dict) and output.get("action") == "preserved"
     )
 
 
@@ -7875,8 +7900,11 @@ def _human_agents_list(  # pylint: disable=too-many-branches,too-many-locals
                     ui.substep(f"  {path}")
             else:
                 ui.step("opencode: no native agent files")
+            ui.substep(f"  sentinel present: {bool(r.get('sentinel'))}")
             for collision in collisions:
-                ui.warn(f"  collision: {collision.get('path', '?')}")
+                path = collision.get("path", "?")
+                reason = collision.get("reason", "unknown")
+                ui.warn(f"  collision: {path} ({reason})")
             continue
         wf = r.get("workflows", {})
         sk = r.get("skills", {})
@@ -8147,6 +8175,14 @@ def _render_generate_agents_footer(data: Dict[str, Any], dry_run: bool) -> None:
                     else "unspecified"
                 )
                 ui.warn(f"  partial reason for {agent_name}: {category_text}")
+                for preserved in item.get("preserved_outputs") or []:
+                    if not isinstance(preserved, dict):
+                        continue
+                    path = preserved.get("path", "?")
+                    reason = preserved.get("reason", "unknown")
+                    ui.hint(f"    preserved: {path} ({reason})")
+                for error_message in item.get("errors") or []:
+                    ui.hint(f"    error: {error_message}")
     ui.blank()
 
 

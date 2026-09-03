@@ -614,8 +614,16 @@ class TestSubagentIntegration(unittest.TestCase):
             for agent_path in generated_agents:
                 content = agent_path.read_text(encoding="utf-8")
                 self.assertIn(_GENERATED_MARKER, content)
+                # OpenCode's own documented requirement (independent of what
+                # this generator happens to emit).
                 for required_field in compatibility["agents"]["required_frontmatter"]:
                     self.assertIn(required_field, content)
+                # Studio's own template choice, not an OpenCode requirement —
+                # checked separately so a future template change that drops
+                # `mode: subagent` doesn't get conflated with a real
+                # OpenCode-schema regression.
+                for emitted_field in compatibility["agents"]["studio_emitted_frontmatter"]:
+                    self.assertIn(emitted_field, content)
                 self.assertNotIn("model:", content)
                 self.assertNotIn("provider:", content)
             self.assertEqual(shared_skill.read_text(encoding="utf-8"), shared_skill_content)
@@ -806,6 +814,28 @@ class TestSubagentIntegration(unittest.TestCase):
                     for output in result["subagents"]["outputs"]
                     if output.get("path") == ".opencode/agents/cf-stale.md"
                 ],
+            )
+
+    def test_opencode_required_frontmatter_check_is_schema_aware_not_circular(self):
+        """The required-frontmatter check must distinguish compliant from non-compliant input (PR #71 review comment).
+
+        Checking a generator's own hard-coded output against a description
+        of that same hard-coded output is circular — it can never fail. This
+        proves the required field (per OpenCode's own documented schema) is
+        actually load-bearing: a rendered file missing it is detected as
+        non-compliant, while a compliant one is not.
+        """
+        compatibility = _load_opencode_compatibility_fixture()
+        required_fields = compatibility["agents"]["required_frontmatter"]
+
+        compliant = "---\nname: cf-x\ndescription: does a thing\nmode: subagent\n---\n"
+        non_compliant = "---\nname: cf-x\nmode: subagent\n---\n"
+
+        for field in required_fields:
+            self.assertIn(field, compliant, f"fixture claims {field!r} is required but compliant sample lacks it")
+            self.assertNotIn(
+                field, non_compliant,
+                f"non-compliant sample must not accidentally contain required field {field!r}",
             )
 
     def test_opencode_idempotent_second_run_recognizes_real_ownership(self):

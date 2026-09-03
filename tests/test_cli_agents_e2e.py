@@ -178,6 +178,45 @@ class TestCLIAgentsE2E(unittest.TestCase):
             self.assertTrue((root / ".opencode" / ".cf-studio-installed").is_file())
             self.assertTrue((root / ".opencode" / "agents" / "cf-pr-review.md").is_file())
 
+    def test_generate_agents_opencode_clean_scope_succeeds_through_cli_entry_point(self):
+        """The plain success path (no collisions) must be covered through the real CLI entry point (PR #71 review comment).
+
+        Every other OpenCode generate-agents e2e test seeds a pre-existing
+        collision and asserts PARTIAL; the unit-level success test bypasses
+        argument parsing/exit-code emission entirely. This covers the
+        zero-collision, non-empty-scope combination through argv -> main().
+        """
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_generator_project(root)
+            _bootstrap_opencode_registry(root)
+            (root / "config" / "core.toml").write_text(
+                '[install]\nagent_tracking = "ignored"\n',
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, _stderr = _run_main(
+                [
+                    "--json",
+                    "generate-agents",
+                    "--opencode",
+                    "--yes",
+                    "--root",
+                    str(root),
+                    "--cf-constructor-root",
+                    str(root),
+                ],
+                cwd=root,
+            )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["status"], "PASS")
+            self.assertEqual(payload["results"]["opencode"]["status"], "PASS")
+            self.assertTrue((root / ".opencode" / ".cf-studio-installed").is_file())
+            self.assertTrue((root / ".opencode" / "agents" / "cf-codegen.md").is_file())
+            self.assertTrue((root / ".opencode" / "agents" / "cf-pr-review.md").is_file())
+
     def test_agents_specific_windsurf_flag_is_read_only(self):
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"

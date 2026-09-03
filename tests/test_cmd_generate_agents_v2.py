@@ -729,7 +729,13 @@ class TestBuildProvenanceReportAbsoluteSource(unittest.TestCase):
 
 
 class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
-    """v2 preview/dry-run must count legacy workflow proxy writes from _process_single_agent."""
+    """v2 preview/dry-run must count legacy workflow proxy writes from _process_single_agent.
+
+    OpenCode-vs-v2-manifest-bypass coverage is intentionally maintained in
+    tests/test_agents_coverage.py::test_v2_pipeline_bypasses_opencode_manifest_translation
+    rather than duplicated here; this file's only OpenCode-adjacent change
+    is the confirmation-spy signature/return-value fix below.
+    """
 
     def _make_v2_project_with_workflows(self, tmpdir: str, agent: str = "cursor"):
         """Create a v2 manifest project that also has legacy workflow files.
