@@ -101,6 +101,32 @@ class TestCmdSpecCoverage(unittest.TestCase):
             # _rel_path: a resolved file maps to its relative key, not the absolute path
             self.assertEqual(_rel_path(str(f.resolve()), link), "src/mod.py")
 
+    def test_generate_report_files_key_survives_a_symlinked_project_root(self):
+        # generate_report() had its own unresolved copy of the relative-path logic
+        # (coverage.py's `_rel`), separate from `_rel_path` above: it compared an
+        # unresolved project_root against a resolved file path, so `is_relative_to`
+        # was always False through a symlink and every "files" key fell back to the
+        # full absolute path instead of the intended project-relative one.
+        with TemporaryDirectory() as d:
+            real = Path(d) / "real"
+            (real / "src").mkdir(parents=True)
+            (real / "src" / "mod.py").write_text(
+                "# @cpt-scope:cpt-my-algo:p1\nfrom .a import b\n", encoding="utf-8"
+            )
+            link = Path(d) / "link"
+            link.symlink_to(real)
+            meta = ArtifactsMeta(version=1, project_root=".", kits={"test": Kit("test", "CFS", "kits/test")},
+                                  systems=[SystemNode(name="sys1", slug="sys1", kit="test", artifacts=[], children=[],
+                                                       codebase=[CodebaseEntry(path="src", extensions=[".py"])])])
+            ctx = MagicMock()
+            ctx.meta = meta
+            ctx.project_root = link
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("sys.stdout", new_callable=StringIO) as mock_out:
+                    cmd_spec_coverage([])
+            parsed = json.loads(mock_out.getvalue())
+            self.assertIn("src/mod.py", parsed["files"])
+
     def test_no_context(self):
         with patch("studio.utils.context.get_context", return_value=None):
             with patch("sys.stdout", new_callable=StringIO) as mock_out:

@@ -475,11 +475,13 @@ def calculate_metrics(file_coverages: List[FileCoverage]) -> CoverageReport:
 # @cpt-begin:cpt-studio-algo-spec-coverage-report:p1:inst-report-datamodel
 def generate_report(report: CoverageReport, *, verbose: bool = False, project_root: Optional[Path] = None) -> Dict:
     """Generate JSON report matching coverage.py structure."""
+    resolved_root = project_root.resolve() if project_root is not None else None
+
     def _rel(p: str) -> str:
-        if project_root is not None:
-            candidate = Path(p)
-            if candidate.is_relative_to(project_root):
-                return str(candidate.relative_to(project_root))
+        if resolved_root is not None:
+            candidate = Path(p).resolve()
+            if candidate.is_relative_to(resolved_root):
+                return str(candidate.relative_to(resolved_root))
         return p
     # @cpt-end:cpt-studio-algo-spec-coverage-report:p1:inst-report-datamodel
 

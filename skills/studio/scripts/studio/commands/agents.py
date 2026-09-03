@@ -3486,6 +3486,7 @@ _INSTALL_MARKERS: Dict[str, Tuple[str, str]] = {
 _OPENCODE_UNOWNED_OUTPUTS = ".opencode/.cf-studio-unowned-outputs.json"
 _OPENCODE_UNOWNED_OUTPUTS_LOCK = _OPENCODE_UNOWNED_OUTPUTS + ".lock"
 _OPENCODE_UNOWNED_OUTPUTS_SCHEMA = "cf-studio-opencode-unowned-outputs-v1"
+_OPENCODE_AGENTS_DIRNAME = ".opencode"
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-install-markers-table
 
 
@@ -5569,7 +5570,7 @@ def _load_opencode_unowned_outputs(project_root: Path) -> Set[str]:
         return set()
 
     root_resolved = project_root.resolve()
-    output_dir = (project_root / ".opencode" / "agents").resolve()
+    output_dir = (project_root / _OPENCODE_AGENTS_DIRNAME / "agents").resolve()
     valid_paths: Set[str] = set()
     for raw_path in paths:
         if not isinstance(raw_path, str):
@@ -5995,7 +5996,7 @@ def _process_opencode_subagents(
     sentinel_existed_before_run: bool,
 ) -> None:
     """Generate only cf-namespaced, marker-owned OpenCode subagents."""
-    output_dir = (project_root / ".opencode" / "agents").resolve()
+    output_dir = (project_root / _OPENCODE_AGENTS_DIRNAME / "agents").resolve()
     unowned_outputs = _load_opencode_unowned_outputs(project_root)
     desired_names: Set[str] = set()
     for kit_agent in kit_agents:
@@ -6633,7 +6634,7 @@ def _resolve_agents_context(
 def _inspect_opencode_agent(project_root: Path) -> Dict[str, Any]:
     """Return the current OpenCode installation state without previewing writes."""
     install_marker = _opencode_install_marker_path(project_root)
-    agents_dir = project_root / ".opencode" / "agents"
+    agents_dir = project_root / _OPENCODE_AGENTS_DIRNAME / "agents"
     root_resolved = project_root.resolve()
     generated: List[str] = []
     collisions: List[Dict[str, str]] = []
@@ -7961,7 +7962,51 @@ def _emit_generate_agents_aborted() -> int:
 # ---------------------------------------------------------------------------
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
-def _human_agents_list(  # pylint: disable=too-many-branches,too-many-locals
+def _human_agents_list_render_opencode(r: Dict[str, Any]) -> bool:
+    """Render the OpenCode row of `cfs agents list`. Returns whether any file exists."""
+    generated = r.get("generated", [])
+    collisions = r.get("collision", [])
+    any_files = False
+    if generated:
+        any_files = True
+        ui.step(f"opencode: {len(generated)} native agent file(s) installed")
+        for path in generated:
+            ui.substep(f"  {path}")
+    else:
+        ui.step("opencode: no native agent files")
+    ui.substep(f"  sentinel present: {bool(r.get('sentinel'))}")
+    for collision in collisions:
+        path = collision.get("path", "?")
+        reason = collision.get("reason", "unknown")
+        ui.warn(f"  collision: {path} ({reason})")
+    return any_files
+
+
+def _human_agents_list_render_row(agent_name: str, r: Dict[str, Any], project_root: Path) -> bool:
+    """Render one non-OpenCode agent row of `cfs agents list`. Returns whether any file exists."""
+    wf = r.get("workflows", {})
+    sk = r.get("skills", {})
+    existing_wf = wf.get("updated", []) + wf.get("unchanged", [])
+    existing_sk = list(sk.get("updated", []))
+    for o in sk.get("outputs", []):
+        if o.get("action") == "unchanged":
+            existing_sk.append(o.get("path", ""))
+    total_existing = len(existing_wf) + len(existing_sk)
+    total_missing = len(wf.get("created", [])) + len(sk.get("created", []))
+
+    if total_existing > 0:
+        ui.step(f"{agent_name}: {total_existing} file(s) installed")
+        for path in existing_wf + existing_sk:
+            ui.substep(f"  {_safe_relpath(Path(path), project_root)}")
+        return True
+    if total_missing > 0:
+        ui.step(f"{agent_name}: not configured ({total_missing} file(s) available)")
+    else:
+        ui.step(f"{agent_name}: no files")
+    return False
+
+
+def _human_agents_list(
     _data: Dict[str, Any],
     _agents_to_process: List[str],
     results: Dict[str, Any],
@@ -7972,43 +8017,9 @@ def _human_agents_list(  # pylint: disable=too-many-branches,too-many-locals
     any_files = False
     for agent_name, r in results.items():
         if agent_name == "opencode" and r.get("selected") is True:
-            generated = r.get("generated", [])
-            collisions = r.get("collision", [])
-            if generated:
-                any_files = True
-                ui.step(f"opencode: {len(generated)} native agent file(s) installed")
-                for path in generated:
-                    ui.substep(f"  {path}")
-            else:
-                ui.step("opencode: no native agent files")
-            ui.substep(f"  sentinel present: {bool(r.get('sentinel'))}")
-            for collision in collisions:
-                path = collision.get("path", "?")
-                reason = collision.get("reason", "unknown")
-                ui.warn(f"  collision: {path} ({reason})")
-            continue
-        wf = r.get("workflows", {})
-        sk = r.get("skills", {})
-        existing_wf = wf.get("updated", []) + wf.get("unchanged", [])
-        existing_sk = list(sk.get("updated", []))
-        for o in sk.get("outputs", []):
-            if o.get("action") == "unchanged":
-                existing_sk.append(o.get("path", ""))
-        created_wf = wf.get("created", [])
-        created_sk = sk.get("created", [])
-
-        total_existing = len(existing_wf) + len(existing_sk)
-        total_missing = len(created_wf) + len(created_sk)
-
-        if total_existing > 0:
-            any_files = True
-            ui.step(f"{agent_name}: {total_existing} file(s) installed")
-            for path in existing_wf + existing_sk:
-                ui.substep(f"  {_safe_relpath(Path(path), project_root)}")
-        elif total_missing > 0:
-            ui.step(f"{agent_name}: not configured ({total_missing} file(s) available)")
+            any_files = _human_agents_list_render_opencode(r) or any_files
         else:
-            ui.step(f"{agent_name}: no files")
+            any_files = _human_agents_list_render_row(agent_name, r, project_root) or any_files
 
     ui.blank()
     if not any_files:
