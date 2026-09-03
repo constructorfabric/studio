@@ -860,6 +860,49 @@ class TestSubagentIntegration(unittest.TestCase):
             for output in result2["subagents"]["outputs"]:
                 self.assertIn(output["action"], ("unchanged", "updated", "created"))
 
+    def test_opencode_marker_written_despite_first_run_record_write_failure(self):
+        """The install marker must be written even when the collision record write fails (PR #71 review comment).
+
+        Gating the sentinel write on `ownership_recording_failed` left the
+        marker permanently unwritten after any first-run record-write
+        failure, causing every subsequent run to misclassify Studio's own
+        already-generated files as ownership-unproven collisions.
+        """
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cypilot = self._setup_opencode_tree(root)
+            agents_dir = root / ".opencode" / "agents"
+            agents_dir.mkdir(parents=True)
+            # Seed one collision so a real-run's error path actually calls
+            # _save_opencode_unowned_outputs (a clean run with zero
+            # collisions never reaches that call).
+            collision_path = agents_dir / "cf-collision.md"
+            collision_path.write_text("# User-owned OpenCode agent\n", encoding="utf-8")
+
+            with patch("tempfile.mkstemp", side_effect=OSError("disk full")):
+                result1 = self._run_agents(root, cypilot, "opencode")
+
+            self.assertEqual(result1["status"], "PARTIAL")
+            marker = root / ".opencode" / ".cf-studio-installed"
+            self.assertTrue(
+                marker.is_file(),
+                "install marker must be written even though the record write failed",
+            )
+            codegen_path = agents_dir / "cf-codegen.md"
+            self.assertTrue(codegen_path.is_file())
+
+            result2 = self._run_agents(root, cypilot, "opencode")
+
+            self.assertFalse(result2["subagents"].get("partial"))
+            for output in result2["subagents"]["outputs"]:
+                if output["path"] == "cf-collision.md" or output["path"].endswith("cf-collision.md"):
+                    continue
+                self.assertIn(
+                    output["action"],
+                    ("unchanged", "updated", "created"),
+                    f"Studio-generated output {output} must not be misclassified as a collision",
+                )
+
     def test_opencode_reclaims_ownership_after_sentinel_restored(self):
         """A transiently-missing sentinel must not permanently disable ownership (PR #71 review comment).
 

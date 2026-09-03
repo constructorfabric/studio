@@ -5661,21 +5661,9 @@ class TestOpenCodeUnownedOutputsRecordRobustness(unittest.TestCase):
             os.close(fd)
             self.assertEqual(attempts["count"], 1)
 
-    def test_clear_stale_lock_removes_old_lock_file(self):
-        from studio.commands.agents import _clear_stale_opencode_lock
-
-        with TemporaryDirectory() as tmpdir:
-            lock_path = Path(tmpdir) / "record.json.lock"
-            lock_path.write_text("", encoding="utf-8")
-            old_time = time.time() - 20.0
-            os.utime(lock_path, (old_time, old_time))
-
-            _clear_stale_opencode_lock(lock_path)
-
-            self.assertFalse(lock_path.exists())
-
-    def test_clear_stale_lock_warns_on_unlink_failure(self):
-        from studio.commands.agents import _clear_stale_opencode_lock
+    def test_sentinel_lock_does_not_delete_active_writers_lock_on_timeout(self):
+        """A slow-but-live writer's lock must never be stolen by age alone (PR #71 review comment)."""
+        from studio.commands.agents import _acquire_opencode_sentinel_lock
 
         with TemporaryDirectory() as tmpdir:
             lock_path = Path(tmpdir) / "record.json.lock"
@@ -5685,11 +5673,14 @@ class TestOpenCodeUnownedOutputsRecordRobustness(unittest.TestCase):
 
             with (
                 self.assertLogs("studio.commands.agents", level="WARNING") as captured,
-                patch("pathlib.Path.unlink", side_effect=OSError("boom")),
+                patch("time.sleep", return_value=None),
+                patch("time.monotonic", side_effect=[0.0] + [20.0] * 10),
             ):
-                _clear_stale_opencode_lock(lock_path)
+                fd = _acquire_opencode_sentinel_lock(lock_path, timeout_seconds=10.0)
 
-            self.assertIn("failed to clear stale OpenCode lock", "\n".join(captured.output))
+            self.assertIsNone(fd)
+            self.assertTrue(lock_path.exists(), "an active writer's sentinel must not be removed")
+            self.assertIn("refusing to proceed unlocked", "\n".join(captured.output))
 
     def test_release_lock_warns_on_flock_unlock_failure(self):
         from studio.commands.agents import (

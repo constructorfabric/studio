@@ -291,8 +291,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - The compatibility fixture resides at `tests/fixtures/opencode/v1.18.4/` and its attribution-preserving `compatibility.json` identifies the source tag or commit and evidence - `inst-opencode-fixture-boundary`
 - [x] - `p1` - Initial checks use only deterministic, network-free fixture inputs and never install or execute OpenCode - `inst-opencode-network-free-checks`
 - [x] - `p1` - Serialize concurrent writers to the unowned-outputs record with an exclusive advisory lock before reading or writing it - `inst-opencode-acquire-lock`
-- [x] - `p1` - **IF** no POSIX `fcntl` is available (Windows), serialize via an `O_CREAT|O_EXCL` sentinel with a bounded retry instead of proceeding unlocked - `inst-opencode-sentinel-lock-fallback`
-- [x] - `p1` - Clear a sentinel lock older than the retry deadline so a crashed process cannot block all future writers indefinitely - `inst-opencode-clear-stale-lock`
+- [x] - `p1` - **IF** no POSIX `fcntl` is available (Windows), serialize via an `O_CREAT|O_EXCL` sentinel with a bounded retry instead of proceeding unlocked; never remove the sentinel by age alone, since a slow live writer is indistinguishable from a crashed one by mtime - `inst-opencode-sentinel-lock-fallback`
 - [x] - `p1` - Release the acquired lock (POSIX unlock or sentinel removal) in a `finally` block regardless of write outcome - `inst-opencode-release-lock`
 - [x] - `p1` - Write the unowned-outputs record via a unique temp file plus atomic replace, cleaning up the temp file and warning on any failure - `inst-opencode-atomic-write-record`
 - [x] - `p1` - Record a preserved ownership-unproven OpenCode output (collision or stale file) with its path and reason, shared by both the write and reconcile paths - `inst-opencode-preserve-collision-helper`

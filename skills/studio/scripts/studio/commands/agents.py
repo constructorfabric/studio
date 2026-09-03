@@ -5616,7 +5616,16 @@ def _acquire_opencode_unowned_outputs_lock(lock_path: Path) -> Tuple[Optional[in
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-sentinel-lock-fallback
 def _acquire_opencode_sentinel_lock(lock_path: Path, timeout_seconds: float = 10.0) -> Optional[int]:
-    """Windows fallback: serialize via an O_CREAT|O_EXCL sentinel + bounded retry."""
+    """Windows fallback: serialize via an O_CREAT|O_EXCL sentinel + bounded retry.
+
+    Never removes an existing sentinel based on its age: the lock file's
+    mtime reflects when it was *created*, not whether its owner is still
+    actively working, so an age-based auto-clear could steal an active
+    writer's lock out from under it (a slow but live writer looks
+    identical to a crashed one by mtime alone). On timeout this refuses
+    to proceed and leaves the sentinel in place; a lock abandoned by a
+    genuinely crashed process requires explicit/external cleanup.
+    """
     started = time.monotonic()
     attempted_fd: Optional[int] = None
     while attempted_fd is None:
@@ -5627,7 +5636,6 @@ def _acquire_opencode_sentinel_lock(lock_path: Path, timeout_seconds: float = 10
             if elapsed <= timeout_seconds:
                 time.sleep(0.05)
                 continue
-            _clear_stale_opencode_lock(lock_path)
             _warn_agents(
                 f"could not acquire OpenCode unowned-output lock {lock_path} "
                 f"within {timeout_seconds:.0f}s; refusing to proceed unlocked"
@@ -5635,16 +5643,6 @@ def _acquire_opencode_sentinel_lock(lock_path: Path, timeout_seconds: float = 10
             return None
     return attempted_fd
 # @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-sentinel-lock-fallback
-
-
-# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-clear-stale-lock
-def _clear_stale_opencode_lock(lock_path: Path) -> None:
-    try:
-        if time.time() - lock_path.stat().st_mtime > 10.0:
-            lock_path.unlink(missing_ok=True)
-    except OSError as exc:
-        _warn_agents(f"failed to clear stale OpenCode lock {lock_path}: {exc}")
-# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-clear-stale-lock
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-release-lock
@@ -6356,7 +6354,17 @@ def _process_opencode_agent(
         dry_run,
         opencode_sentinel_existed_before_run=sentinel_existed_before_run,
     )
-    if not dry_run and not subagents_result.get("ownership_recording_failed"):
+    # Write the sentinel independently of whether the unowned-outputs
+    # collision record could be saved: the marker only certifies "Studio ran
+    # and generated files here," not "the collision record is complete."
+    # Gating it on ownership_recording_failed left the marker permanently
+    # unwritten after any first-run record-write failure, which then made
+    # every subsequent run misclassify Studio's own already-generated files
+    # as ownership-unproven collisions (sentinel_existed_before_run=False
+    # short-circuits _is_opencode_owned_subagent to False regardless of
+    # content). The record's own incompleteness is already surfaced via
+    # `partial=True` and `ownership_recording_failed`.
+    if not dry_run:
         _write_install_marker("opencode", project_root)
     all_errors = subagents_result.get("errors", [])
     return _build_process_single_agent_result(
