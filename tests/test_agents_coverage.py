@@ -11,7 +11,9 @@ Covers:
 
 import io
 import json
+import os
 import sys
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -5529,6 +5531,77 @@ class TestOpenCodeUnownedOutputsRecordRobustness(unittest.TestCase):
 
             self.assertFalse(ok)
             self.assertEqual(unowned_outputs, {"cf-existing.md"})
+
+    def test_owned_subagent_name_match_is_exact_not_substring(self):
+        """`expected_name` must match the full frontmatter name line (PR #71 review comment).
+
+        `cf-pr` must not match a file whose frontmatter reads `name: cf-pr-review`
+        merely because the shorter name is a substring of the longer one.
+        """
+        from studio.commands.agents import _GENERATED_MARKER, _is_opencode_owned_subagent
+
+        content = f"name: cf-pr-review\n{_GENERATED_MARKER}\n"
+
+        with TemporaryDirectory() as tmpdir:
+            install_marker = Path(tmpdir) / ".cf-studio-installed"
+
+            self.assertFalse(
+                _is_opencode_owned_subagent(
+                    content, install_marker, "cf-pr", sentinel_existed=True
+                ),
+                "a shorter name must not match via substring containment",
+            )
+            self.assertTrue(
+                _is_opencode_owned_subagent(
+                    content, install_marker, "cf-pr-review", sentinel_existed=True
+                ),
+                "the exact matching name must still be recognized as owned",
+            )
+
+    def test_save_falls_back_to_sentinel_lock_when_fcntl_unavailable(self):
+        """The Windows fallback path must still serialize writers, not skip locking (PR #71 review comment)."""
+        from studio.commands.agents import _save_opencode_unowned_outputs
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+
+            with patch.dict("sys.modules", {"fcntl": None}):
+                ok = _save_opencode_unowned_outputs(root, set(), add="cf-x.md")
+
+            self.assertTrue(ok)
+            lock_path = root / ".opencode" / ".cf-studio-unowned-outputs.json.lock"
+            self.assertFalse(
+                lock_path.exists(), "sentinel lock must be cleaned up after a successful save"
+            )
+
+    def test_save_windows_fallback_refuses_to_proceed_when_lock_held(self):
+        """A held sentinel lock must block the writer rather than let it proceed unlocked."""
+        from studio.commands.agents import _save_opencode_unowned_outputs
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lock_path = root / ".opencode" / ".cf-studio-unowned-outputs.json.lock"
+            lock_path.parent.mkdir(parents=True)
+            lock_path.write_text("", encoding="utf-8")
+            # Make the held lock look fresh (not stale) for the whole 10s
+            # deadline the fallback waits before giving up.
+            os.utime(lock_path, (time.time(), time.time()))
+
+            with (
+                patch.dict("sys.modules", {"fcntl": None}),
+                patch("time.sleep", return_value=None),
+                patch(
+                    "time.monotonic",
+                    side_effect=[0.0] + [20.0] * 10,
+                ),
+                self.assertLogs("studio.commands.agents", level="WARNING") as captured,
+            ):
+                ok = _save_opencode_unowned_outputs(root, set(), add="cf-x.md")
+
+            self.assertFalse(ok)
+            self.assertIn(
+                "refusing to proceed unlocked", "\n".join(captured.output)
+            )
 
 
 if __name__ == "__main__":

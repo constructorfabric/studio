@@ -452,6 +452,7 @@ build/
 .github/prompts/cf.prompt.md
 .opencode/.cf-studio-installed
 .opencode/.cf-studio-unowned-outputs.json
+.opencode/.cf-studio-unowned-outputs.json.lock
 .opencode/agents/cf-analyze-planner.md
 .opencode/agents/cf-brainstorm-expert.md
 .opencode/agents/cf-brainstorm-facilitator.md

@@ -39,6 +39,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -3483,6 +3484,7 @@ _INSTALL_MARKERS: Dict[str, Tuple[str, str]] = {
     "opencode": (".opencode/.cf-studio-installed", "# Constructor Studio OpenCode integration marker\n"),
 }
 _OPENCODE_UNOWNED_OUTPUTS = ".opencode/.cf-studio-unowned-outputs.json"
+_OPENCODE_UNOWNED_OUTPUTS_LOCK = _OPENCODE_UNOWNED_OUTPUTS + ".lock"
 _OPENCODE_UNOWNED_OUTPUTS_SCHEMA = "cf-studio-opencode-unowned-outputs-v1"
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-install-markers-table
 
@@ -5052,6 +5054,11 @@ def _collect_marker_and_configured_outputs(cfg: Dict[str, Any]) -> Dict[str, Man
         provider="opencode",
         owner_kind="ownership-record",
     )
+    managed[_OPENCODE_UNOWNED_OUTPUTS_LOCK] = ManagedOutput(
+        path=_OPENCODE_UNOWNED_OUTPUTS_LOCK,
+        provider="opencode",
+        owner_kind="ownership-record-lock",
+    )
     for agent in _ALL_RECOGNIZED_AGENTS:
         agent_cfg = cfg.get("agents", {}).get(agent, {})
         skills_cfg = agent_cfg.get("skills", {}) if isinstance(agent_cfg, dict) else {}
@@ -5588,16 +5595,37 @@ def _save_opencode_unowned_outputs(
     except ImportError:
         _fcntl = None
     lock_fd = None
-    if _fcntl is not None:
-        try:
-            record_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        if _fcntl is not None:
             lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
             _fcntl.flock(lock_fd, _fcntl.LOCK_EX)
-        except OSError as exc:
-            _warn_agents(f"failed to lock OpenCode unowned-output record {lock_path}: {exc}")
-            if lock_fd is not None:
-                os.close(lock_fd)
-            return False
+        else:
+            # Windows: no fcntl. Serialize with an O_CREAT|O_EXCL sentinel and
+            # a bounded retry, breaking a stale lock left by a crashed
+            # process rather than blocking forever or proceeding unlocked.
+            deadline = time.monotonic() + 10.0
+            while lock_fd is None:
+                try:
+                    lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                except FileExistsError:
+                    if time.monotonic() > deadline:
+                        try:
+                            if time.time() - lock_path.stat().st_mtime > 10.0:
+                                lock_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        _warn_agents(
+                            f"could not acquire OpenCode unowned-output lock {lock_path} "
+                            "within 10s; refusing to proceed unlocked"
+                        )
+                        return False
+                    time.sleep(0.05)
+    except OSError as exc:
+        _warn_agents(f"failed to lock OpenCode unowned-output record {lock_path}: {exc}")
+        if lock_fd is not None:
+            os.close(lock_fd)
+        return False
     try:
         current = set(paths)
         if record_path.exists():
@@ -5646,11 +5674,18 @@ def _save_opencode_unowned_outputs(
         return True
     finally:
         if lock_fd is not None:
-            try:
-                _fcntl.flock(lock_fd, _fcntl.LOCK_UN)
-            except OSError:
-                pass
-            os.close(lock_fd)
+            if _fcntl is not None:
+                try:
+                    _fcntl.flock(lock_fd, _fcntl.LOCK_UN)
+                except OSError:
+                    pass
+                os.close(lock_fd)
+            else:
+                os.close(lock_fd)
+                try:
+                    lock_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
 
 def _remember_opencode_unowned_output(
@@ -5779,7 +5814,9 @@ def _is_opencode_owned_subagent(
         (install_marker.is_file() if sentinel_existed is None else sentinel_existed)
         and content is not None
         and _GENERATED_MARKER in content
-        and f"name: {expected_name}" in content
+        and any(
+            line.strip() == f"name: {expected_name}" for line in content.splitlines()
+        )
     )
 
 
