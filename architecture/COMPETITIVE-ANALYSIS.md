@@ -3,15 +3,28 @@
 **Methodology**: Passes 1–2 used cf-analyze with parallel freeform reviewers on local
 tracked files. Pass 3 used web research and public product announcements (April 2026).
 - **Pass 1** (Rf-001–021): README.md, DESIGN.md, PRD.md, DECOMPOSITION.md
-- **Pass 2** (Rf-022–037): all `workflows/` files + guides/PROJECT-EXTENSIBILITY.md
+- **Pass 2** (Rf-022–037): all `workflows/` files + guides/PROJECT-EXTENSIBILITY.md, as
+  they stood at commit `d19da56` (47 files under `workflows/` at that commit)
 - **Pass 3** (Rf-038–045): adjacent-category scan — enterprise agentic BPM /
   process-orchestration platforms (Ring B) and developer agent-orchestration
   frameworks (Ring C), added because these categories are converging on Studio's
-  space but were absent from the original tiering. Based on web research and
-  product announcements reviewed April 2026; analyst coverage of this emerging
-  category is limited.
-- **Research base**: 14 direct competitors across 3 tiers, plus 16 adjacent players
+  space but were absent from the original tiering. Ring A = Tier 1–3 (direct
+  AI-SDLC competitors, analyzed in Passes 1–2); Ring B and Ring C are the
+  adjacent categories added in Pass 3. Based on web research and product
+  announcements reviewed April 2026 (see Sources below); analyst coverage of
+  this emerging category is limited.
+- **Research base**: 14 direct competitors across 3 tiers, plus 17 adjacent players
   across 2 new tiers, identified via web research.
+- **Sources and selection criteria (Pass 3)**: Ring B/C players were sourced from each
+  vendor's own product pages, press releases, and public announcements dated on or
+  before April 2026 (e.g., Appian Composer launch materials, AWS re:Invent 2024
+  Bedrock AgentCore announcement, Microsoft AutoGen release notes). Inclusion
+  criterion: a vendor was added to Ring B if it combines a business-process/case
+  engine with governed agent orchestration marketed at enterprise buyers, and to
+  Ring C if it is a developer-facing library/framework providing multi-agent
+  orchestration plumbing without an opinionated SDLC or business-process layer.
+  No third-party analyst report (Gartner/Forrester/IDC) was used as a source,
+  consistent with the note below that none had named this segment as of April 2026.
 
 **Overall verdict** (Tier 1–3 direct competitors, Passes 1–2 only): Constructor Studio is
 the **most comprehensive workflow-level SDLC system among open-source alternatives** with
@@ -28,8 +41,14 @@ directly toward Studio's space — enterprise **agentic BPM platforms** (Appian,
 ServiceNow, etc.) that added spec-driven development and governed agent orchestration in
 2026, and **agent-orchestration frameworks** (LangGraph, CrewAI, Microsoft Agent
 Framework) that supply the execution plumbing. Neither is a direct competitor today, but
-the boundary is blurring fast. 8 new findings (Rf-038–045) cover this in detail — see
-"Adjacent Category Analysis (Pass 3)" below.
+the boundary is blurring fast. **How the verdict changes**: within Tier 1–3, Studio's
+"most comprehensive" status and its 8 unique capabilities hold as stated above. Once
+Ring B/C are included, that status is contextually intact but strategically
+threatened — spec-driven development is no longer a standalone differentiator once
+Ring B is in view (Rf-039), Studio's governance story is being told at far larger
+scale by BPM incumbents (Rf-040), and Ring B's installed base gives it a distribution
+advantage Studio cannot replicate (Rf-044). 8 new findings (Rf-038–045) cover this in
+detail — see "Adjacent Category Analysis (Pass 3)" below.
 
 ---
 
@@ -58,9 +77,6 @@ OrchStack, Nagent — visual canvas builders; not direct competitors.
 
 #### Tier 4 — Enterprise agentic BPM / process-orchestration platforms (Ring B, adjacent & converging)
 
-Ring A = Tier 1–3 (direct AI-SDLC competitors, analyzed in Passes 1–2, above). Ring B and
-Ring C below are adjacent categories added in Pass 3.
-
 Enterprise platforms that automate business processes and, as of 2026, embed AI agents as
 governed steps inside those processes. "Enterprise agentic BPM" is an editorial grouping
 used in this analysis, not an established analyst-defined category (Gartner, Forrester,
@@ -79,8 +95,9 @@ against by large buyers.
 | **UiPath (Maestro)** | RPA installed base pivoting to agentic orchestration | Orchestrator + robots | RPA-to-agentic migration path |
 | **IBM watsonx Orchestrate** | Regulated multi-system orchestration | Hosted runtime | Very strong governance; enterprise-only |
 | **Camunda** | BPMN 2.0 engine pivoting to agentic workflows | BPMN process engine | The truest "workflow engine"; audit-ready, heavy infra |
-| **Google Vertex AI Agent Builder / Agentspace** | Cloud-vendor agent platform | Managed runtime | Substrate for building governed agents at scale |
-| **Amazon Bedrock Agents** | Cloud-vendor agent platform | Managed runtime | Substrate for building governed agents at scale |
+| **Google Vertex AI Agent Builder** | Cloud-vendor developer platform for constructing and deploying agents | Managed runtime | Substrate for building governed agents at scale |
+| **Google Agentspace** | Enterprise search/assistant for employees to discover and act on enterprise information via agents | Managed runtime | Employee-facing knowledge layer, not a developer agent substrate — closer to Studio's users' downstream consumers than to Studio itself |
+| **Amazon Bedrock AgentCore** | Managed agent runtime (memory, tooling, sandboxed code execution) layered under the broader Bedrock Agents build/orchestration API | Managed runtime | Substrate for running governed agents at scale, with strong traction in regulated US enterprise accounts |
 
 #### Tier 5 — Developer agent-orchestration frameworks (Ring C, adjacent substrate)
 
@@ -92,7 +109,7 @@ top of these, or compete with hand-rolled orchestration.
 |------|----------------|---------|------------------------|
 | **LangGraph** | Stateful, graph-based orchestration (branches, loops, retries, human-in-the-loop checkpoints); production standard | In-process library execution | Full control, zero built-in governance/UI — teams build what Studio ships |
 | **CrewAI** | Role-based multi-agent ("researcher/writer/reviewer"); rapid prototyping | In-process library execution | Role model resembles Studio sub-agents; no artifact model or determinism |
-| **Microsoft AutoGen** | Unified AutoGen + Semantic Kernel SDK (GA Q1 2026); graph-based orchestration | In-process library execution | Microsoft-anchored substrate, not an SDLC layer |
+| **Microsoft AutoGen** | Unified AutoGen + Semantic Kernel SDK (GA Q1 2026); graph-based orchestration | In-process library (distributed runtime available; AutoGen Studio hosts agents server-side) | Microsoft-anchored substrate, not an SDLC layer |
 | **n8n / Pipedream / Activepieces** | Workflow composition across APIs; fast, self-hostable | Hosted or self-hosted workflow engine | Integration plumbing; not design-to-code traceability |
 
 ---
@@ -100,7 +117,8 @@ top of these, or compete with hand-rolled orchestration.
 ## Full Competitive Feature Matrix
 
 Scope: Tier 1–3 direct competitors (Passes 1–2). Ring B/C tools are covered separately in
-the Adjacent Category Analysis section below.
+the Adjacent Category Analysis section below. Note: devflo and autonomous-sdlc are listed
+in the Tier 1 landscape table above but were not analyzed at full matrix depth below.
 
 ### Core platform dimensions
 
@@ -143,7 +161,8 @@ the Adjacent Category Analysis section below.
 
 ## Capabilities Unique to Constructor Studio
 
-The following 8 capabilities have no direct equivalent in any identified competitor:
+The following 8 capabilities have no direct equivalent among Tier 1–3 direct competitors;
+Ring B/C adjacent players are evaluated separately in the Adjacent Category Analysis below:
 
 1. **Brainstorm-within-generate** — multi-round expert panel (3-6 personas, topic+challenge
    rounds, user-editable panel composition, cf-explorer context loaded for experts) embedded
@@ -201,9 +220,9 @@ sentence, the categories are on a collision course.
 
 ### The convergence thesis
 
-In the author's analysis, based on product announcements and marketing materials reviewed
-April 2026 (analyst coverage of this emerging category is limited), two movements are
-closing the gap from opposite directions:
+Based on product announcements and marketing materials reviewed April 2026 (analyst
+coverage limited, see Methodology above), two movements are closing the gap from
+opposite directions:
 
 1. **BPM platforms are moving "up" into software creation.** Appian **Composer** (launched
    April 2026) is "AI-assisted spec-driven development... conversational and iterative,"
@@ -218,9 +237,9 @@ closing the gap from opposite directions:
    competitors' autonomous-execution features are the mirror image: adding the governed,
    long-running execution that BPM engines have always had.
 
-**Connective tissue for both:** the Model Context Protocol. Appian, Kiro, and Studio's
-supported hosts all speak MCP, which means the "model of the estate" and the tool layer are
-becoming standardized across categories.
+**Connective tissue for both:** the Model Context Protocol. Appian and Studio's supported
+hosts — and reportedly Kiro — all speak MCP, which means the "model of the estate" and the
+tool layer are becoming standardized across categories.
 
 ### Cross-category comparison
 
@@ -243,7 +262,7 @@ becoming standardized across categories.
 
 Studio is **not** a competitor to Appian/Pega/ServiceNow for business-process automation, and
 it is **not** a general agent framework. Its defensible position is the intersection none of
-them own well. In the author's words, Studio's defensible position is:
+them own well. Studio's defensible position:
 
 A **developer-facing, repo-local, open, deterministic** layer that governs the *software
 delivery* process specifically — with design-to-code traceability that a business-process
@@ -717,8 +736,9 @@ the convergence thesis and Studio's defensible intersection explicitly.
 Address after Priorities 1–3; these items are longer-horizon and require external
 positioning work rather than code or doc changes.
 
-1. **Re-anchor the pitch** away from "spec-driven" (now table stakes — Appian Composer, and
-   reportedly Kiro per its public specs feature) toward Studio's still-unique claims:
+1. **Re-anchor the pitch** away from "spec-driven" (now table stakes — Appian Composer,
+   and reportedly Kiro based on its publicly announced Specs feature) toward Studio's
+   still-unique claims:
    deterministic offline validation, CPT design-to-code traceability, multi-repo federation,
    single-manifest multi-host generation (Rf-039).
 2. **Own "governance without the platform tax"** — governance that lives in the repo and CI,
