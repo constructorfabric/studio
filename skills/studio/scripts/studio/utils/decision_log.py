@@ -45,7 +45,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -113,21 +113,41 @@ def opt_out_sentinel_path() -> Path:
     return _brand_dir() / _OPT_OUT_SENTINEL
 
 
-def default_log_path() -> Optional[Path]:
-    """Resolve the log location, or ``None`` when there is nowhere to write.
+def override_log_path() -> Optional[Path]:
+    """Return the log named by ``$CFS_DECISION_LOG``, or ``None`` when unset or an off-value.
 
-    Order:
-      1. ``$CFS_DECISION_LOG`` if it names a path (an off-value there disables logging).
-      2. ``<studio-dir>/.cache/decisions.jsonl`` for the project containing the cwd.
-      3. ``None`` — outside a project, so the writer no-ops.
+    The override is process-wide: the writer honours it in every project the process
+    runs in, so a reader that wants to read what the writer wrote must honour it too —
+    and may want to know that it did, since one shared log cannot be attributed to any
+    single project.
     """
     override = os.environ.get(_ENV_PATH, "").strip()
     if override and override.lower() not in _OFF_VALUES:
         return Path(override).expanduser()
+    return None
+
+
+def default_log_path(start: Optional[Path] = None) -> Optional[Path]:
+    """Resolve the log location, or ``None`` when there is nowhere to write.
+
+    Order:
+      1. ``$CFS_DECISION_LOG`` if it names a path (an off-value there disables logging).
+      2. ``<studio-dir>/.cache/decisions.jsonl`` for the project containing ``start``.
+      3. ``None`` — outside a project, so the writer no-ops.
+
+    ``start`` defaults to the cwd, which is right for the writer: it logs whatever
+    project the command is running in. A *reader* working against an explicitly named
+    project must pass that root, or it can resolve a different project's log than the
+    one it is reporting on. The override wins over ``start`` deliberately — see
+    :func:`override_log_path`.
+    """
+    override = override_log_path()
+    if override is not None:
+        return override
 
     try:
         from .files import find_studio_directory
-        studio_dir = find_studio_directory(Path.cwd())
+        studio_dir = find_studio_directory(start or Path.cwd())
     except Exception:  # pylint: disable=broad-except
         studio_dir = None
     if studio_dir is None:
@@ -380,6 +400,28 @@ def record_read(method: str, target: str, lines: int, tokens: int, source: str =
 # Reading
 # ---------------------------------------------------------------------------
 # @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-read
+def parse_events(lines: Iterable[str]) -> Iterator[Dict[str, Any]]:
+    """Yield the event objects among ``lines``, skipping any line that will not parse.
+
+    The parsing rules of :func:`read_events`, on their own. A reader that has taken its
+    own snapshot of the file — to count lines and select events from the *same* bytes,
+    so nothing appended between two reads can be mistaken for corruption — parses that
+    snapshot the way this module does, rather than growing a second copy of the rules.
+    """
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError) as exc:
+            logger.debug("decision log: skipping unparseable line: %s", exc)
+            continue
+        if not isinstance(obj, dict):
+            continue
+        yield obj
+
+
 def read_events(path: Optional[Path] = None, *, event: str = "",
                 run_id: str = "", decision_id: str = "",
                 limit: int = 0) -> Iterator[Dict[str, Any]]:
@@ -401,17 +443,7 @@ def read_events(path: Optional[Path] = None, *, event: str = "",
         return
 
     matched: List[Dict[str, Any]] = []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except (ValueError, TypeError) as exc:
-            logger.debug("decision log: skipping unparseable line: %s", exc)
-            continue
-        if not isinstance(obj, dict):
-            continue
+    for obj in parse_events(lines):
         if event and obj.get("event") != event:
             continue
         if run_id and obj.get("run_id") != run_id:
