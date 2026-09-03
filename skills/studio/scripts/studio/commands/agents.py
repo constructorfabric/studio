@@ -5371,6 +5371,19 @@ def _mark_missing_subagent_target(
     )
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-skip-non-cf-prefix
+def _mark_skipped_non_cf_subagent(agent_name: str, subagents_result: Dict[str, Any]) -> None:
+    """Record a visible skip when a kit agent's name lacks the 'cf-' prefix OpenCode requires."""
+    _warn_agents(
+        f"kit agent {agent_name!r} has no 'cf-' prefix; skipping OpenCode subagent "
+        "generation for it"
+    )
+    subagents_result["outputs"].append(
+        {"path": agent_name, "action": "skipped", "reason": "opencode_non_cf_prefix"}
+    )
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-skip-non-cf-prefix
+
+
 def _process_toml_subagents(
     kit_agents: List[Dict[str, Any]],
     output_dir: Path,
@@ -5573,6 +5586,116 @@ def _load_opencode_unowned_outputs(project_root: Path) -> Set[str]:
     return valid_paths
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-acquire-lock
+def _acquire_opencode_unowned_outputs_lock(lock_path: Path) -> Tuple[Optional[int], Any]:
+    """Acquire an exclusive advisory lock on *lock_path*.
+
+    Uses POSIX `fcntl.flock` when available; falls back to an
+    `O_CREAT|O_EXCL` sentinel with a bounded retry and stale-lock recovery on
+    platforms without `fcntl` (Windows), rather than proceeding unlocked.
+    Returns `(lock_fd, fcntl_module)`; `lock_fd` is `None` on failure
+    (already warned), and `fcntl_module` is `None` when the sentinel
+    fallback was used.
+    """
+    try:
+        import fcntl as fcntl_module  # POSIX only; unavailable on Windows
+    except ImportError:
+        fcntl_module = None
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        if fcntl_module is not None:
+            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+            fcntl_module.flock(lock_fd, fcntl_module.LOCK_EX)
+            return lock_fd, fcntl_module
+        return _acquire_opencode_sentinel_lock(lock_path), None
+    except OSError as exc:
+        _warn_agents(f"failed to lock OpenCode unowned-output record {lock_path}: {exc}")
+        return None, fcntl_module
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-acquire-lock
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-sentinel-lock-fallback
+def _acquire_opencode_sentinel_lock(lock_path: Path, timeout_seconds: float = 10.0) -> Optional[int]:
+    """Windows fallback: serialize via an O_CREAT|O_EXCL sentinel + bounded retry."""
+    started = time.monotonic()
+    attempted_fd: Optional[int] = None
+    while attempted_fd is None:
+        try:
+            attempted_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            elapsed = time.monotonic() - started
+            if elapsed <= timeout_seconds:
+                time.sleep(0.05)
+                continue
+            _clear_stale_opencode_lock(lock_path)
+            _warn_agents(
+                f"could not acquire OpenCode unowned-output lock {lock_path} "
+                f"within {timeout_seconds:.0f}s; refusing to proceed unlocked"
+            )
+            return None
+    return attempted_fd
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-sentinel-lock-fallback
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-clear-stale-lock
+def _clear_stale_opencode_lock(lock_path: Path) -> None:
+    try:
+        if time.time() - lock_path.stat().st_mtime > 10.0:
+            lock_path.unlink(missing_ok=True)
+    except OSError as exc:
+        _warn_agents(f"failed to clear stale OpenCode lock {lock_path}: {exc}")
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-clear-stale-lock
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-release-lock
+def _release_opencode_unowned_outputs_lock(
+    lock_fd: Optional[int], fcntl_module: Any, lock_path: Path
+) -> None:
+    if lock_fd is None:
+        return
+    if fcntl_module is not None:
+        try:
+            fcntl_module.flock(lock_fd, fcntl_module.LOCK_UN)
+        except OSError as exc:
+            _warn_agents(f"failed to unlock OpenCode unowned-output lock {lock_path}: {exc}")
+        os.close(lock_fd)
+        return
+    os.close(lock_fd)
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError as exc:
+        _warn_agents(f"failed to remove OpenCode unowned-output lock sentinel {lock_path}: {exc}")
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-release-lock
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-atomic-write-record
+def _write_opencode_unowned_outputs_atomically(record_path: Path, current: Set[str]) -> bool:
+    tmp_path = None
+    try:
+        payload = (
+            json.dumps(
+                {"schema": _OPENCODE_UNOWNED_OUTPUTS_SCHEMA, "paths": sorted(current)},
+                indent=2,
+            )
+            + "\n"
+        )
+        tmp_fd, tmp_name = tempfile.mkstemp(dir=record_path.parent, prefix=record_path.name + ".")
+        tmp_path = Path(tmp_name)
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_file:
+            tmp_file.write(payload)
+        os.replace(tmp_path, record_path)
+        return True
+    except OSError as exc:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError as cleanup_exc:
+                _warn_agents(f"failed to clean up temp file {tmp_path}: {cleanup_exc}")
+        _warn_agents(f"failed to save OpenCode unowned-output record {record_path}: {exc}")
+        return False
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-atomic-write-record
+
+
 def _save_opencode_unowned_outputs(
     project_root: Path,
     paths: Set[str],
@@ -5590,41 +5713,8 @@ def _save_opencode_unowned_outputs(
     """
     record_path = _opencode_unowned_outputs_path(project_root)
     lock_path = record_path.with_name(record_path.name + ".lock")
-    try:
-        import fcntl as _fcntl  # POSIX only; unavailable on Windows
-    except ImportError:
-        _fcntl = None
-    lock_fd = None
-    try:
-        record_path.parent.mkdir(parents=True, exist_ok=True)
-        if _fcntl is not None:
-            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
-            _fcntl.flock(lock_fd, _fcntl.LOCK_EX)
-        else:
-            # Windows: no fcntl. Serialize with an O_CREAT|O_EXCL sentinel and
-            # a bounded retry, breaking a stale lock left by a crashed
-            # process rather than blocking forever or proceeding unlocked.
-            deadline = time.monotonic() + 10.0
-            while lock_fd is None:
-                try:
-                    lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                except FileExistsError:
-                    if time.monotonic() > deadline:
-                        try:
-                            if time.time() - lock_path.stat().st_mtime > 10.0:
-                                lock_path.unlink(missing_ok=True)
-                        except OSError:
-                            pass
-                        _warn_agents(
-                            f"could not acquire OpenCode unowned-output lock {lock_path} "
-                            "within 10s; refusing to proceed unlocked"
-                        )
-                        return False
-                    time.sleep(0.05)
-    except OSError as exc:
-        _warn_agents(f"failed to lock OpenCode unowned-output record {lock_path}: {exc}")
-        if lock_fd is not None:
-            os.close(lock_fd)
+    lock_fd, fcntl_module = _acquire_opencode_unowned_outputs_lock(lock_path)
+    if lock_fd is None:
         return False
     try:
         current = set(paths)
@@ -5640,52 +5730,13 @@ def _save_opencode_unowned_outputs(
             current.add(add)
         if remove is not None:
             current.discard(remove)
-        tmp_path = None
-        try:
-            payload = (
-                json.dumps(
-                    {
-                        "schema": _OPENCODE_UNOWNED_OUTPUTS_SCHEMA,
-                        "paths": sorted(current),
-                    },
-                    indent=2,
-                )
-                + "\n"
-            )
-            tmp_fd, tmp_name = tempfile.mkstemp(
-                dir=record_path.parent, prefix=record_path.name + "."
-            )
-            tmp_path = Path(tmp_name)
-            with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_file:
-                tmp_file.write(payload)
-            os.replace(tmp_path, record_path)
-        except OSError as exc:
-            if tmp_path is not None:
-                try:
-                    tmp_path.unlink(missing_ok=True)
-                except OSError as cleanup_exc:
-                    _warn_agents(
-                        f"failed to clean up temp file {tmp_path}: {cleanup_exc}"
-                    )
-            _warn_agents(f"failed to save OpenCode unowned-output record {record_path}: {exc}")
+        if not _write_opencode_unowned_outputs_atomically(record_path, current):
             return False
         paths.clear()
         paths.update(current)
         return True
     finally:
-        if lock_fd is not None:
-            if _fcntl is not None:
-                try:
-                    _fcntl.flock(lock_fd, _fcntl.LOCK_UN)
-                except OSError:
-                    pass
-                os.close(lock_fd)
-            else:
-                os.close(lock_fd)
-                try:
-                    lock_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+        _release_opencode_unowned_outputs_lock(lock_fd, fcntl_module, lock_path)
 
 
 def _remember_opencode_unowned_output(
@@ -5726,6 +5777,27 @@ def _forget_opencode_unowned_output(
         subagents_result["ownership_recording_failed"] = True
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-preserve-collision-helper
+def _preserve_opencode_collision(
+    rel_path: str,
+    project_root: Path,
+    subagents_result: Dict[str, Any],
+    unowned_outputs: Set[str],
+    dry_run: bool,
+    *,
+    reason: str = "opencode_unowned_collision",
+    log_label: str = "collision",
+) -> None:
+    """Record *rel_path* as a preserved, ownership-unproven OpenCode output."""
+    subagents_result["partial"] = True
+    subagents_result["outputs"].append({"path": rel_path, "action": "preserved", "reason": reason})
+    _warn_agents(f"preserved unowned OpenCode agent {log_label}: {rel_path}")
+    _remember_opencode_unowned_output(
+        rel_path, project_root, unowned_outputs, subagents_result, dry_run
+    )
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-preserve-collision-helper
+
+
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-preserve-ownership-unproven-collision
 # @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-preserve-ownership-unproven-collision
 def _write_opencode_subagent_or_preserve(
@@ -5748,7 +5820,7 @@ def _write_opencode_subagent_or_preserve(
     canonical = out_path.resolve()
     try:
         canonical.relative_to(root_resolved)
-    except ValueError as exc:
+    except ValueError:
         message = (
             f"Output path '{out_path}' escapes project root '{project_root}' — "
             "path traversal is not allowed"
@@ -5776,18 +5848,8 @@ def _write_opencode_subagent_or_preserve(
                 rel_path, project_root, unowned_outputs, subagents_result, dry_run
             )
         if not is_owned:
-            message = f"preserved unowned OpenCode agent collision: {rel_path}"
-            subagents_result["partial"] = True
-            subagents_result["outputs"].append(
-                {"path": rel_path, "action": "preserved", "reason": "opencode_unowned_collision"}
-            )
-            _warn_agents(message)
-            _remember_opencode_unowned_output(
-                rel_path,
-                project_root,
-                unowned_outputs,
-                subagents_result,
-                dry_run,
+            _preserve_opencode_collision(
+                rel_path, project_root, subagents_result, unowned_outputs, dry_run
             )
             return
     try:
@@ -5861,50 +5923,68 @@ def _reconcile_opencode_subagents(
     for agent_file in stale_files:
         if agent_file.name in desired_names:
             continue
-        rel_path = _safe_relpath(agent_file.resolve(), root_resolved)
-        content = _read_existing_text_file(agent_file)
-        is_owned = _is_opencode_owned_subagent(
-            content,
+        _reconcile_one_stale_opencode_agent(
+            agent_file,
+            root_resolved,
             install_marker,
-            agent_file.stem,
-            sentinel_existed=sentinel_existed_before_run,
-        )
-        if is_owned and rel_path in unowned_outputs:
-            _forget_opencode_unowned_output(
-                rel_path, project_root, unowned_outputs, subagents_result, dry_run
-            )
-        if not is_owned:
-            message = f"preserved unowned stale OpenCode agent: {rel_path}"
-            subagents_result["partial"] = True
-            subagents_result["outputs"].append(
-                {"path": rel_path, "action": "preserved", "reason": "opencode_stale_unowned"}
-            )
-            _warn_agents(message)
-            _remember_opencode_unowned_output(
-                rel_path,
-                project_root,
-                unowned_outputs,
-                subagents_result,
-                dry_run,
-            )
-            continue
-        if not dry_run:
-            try:
-                agent_file.unlink()
-            except OSError as exc:
-                message = f"failed to delete stale OpenCode agent {rel_path}: {exc}"
-                subagents_result["errors"].append(message)
-                subagents_result["outputs"].append(
-                    {"path": rel_path, "action": "preserved", "reason": "opencode_stale_delete_failed"}
-                )
-                _warn_agents(message)
-                continue
-        subagents_result["deleted"].append(agent_file.as_posix())
-        subagents_result["outputs"].append(
-            {"path": rel_path, "action": "deleted", "reason": "opencode_stale_cleanup"}
+            subagents_result,
+            project_root,
+            dry_run,
+            sentinel_existed_before_run,
+            unowned_outputs,
         )
 # @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-rebuild-owned
 # @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-owned-rebuild-only
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-reconcile-one-stale
+def _reconcile_one_stale_opencode_agent(
+    agent_file: Path,
+    root_resolved: Path,
+    install_marker: Path,
+    subagents_result: Dict[str, Any],
+    project_root: Path,
+    dry_run: bool,
+    sentinel_existed_before_run: bool,
+    unowned_outputs: Set[str],
+) -> None:
+    """Preserve, reclaim, or delete one stale (no-longer-desired) OpenCode agent file."""
+    rel_path = _safe_relpath(agent_file.resolve(), root_resolved)
+    content = _read_existing_text_file(agent_file)
+    is_owned = _is_opencode_owned_subagent(
+        content, install_marker, agent_file.stem, sentinel_existed=sentinel_existed_before_run
+    )
+    if is_owned and rel_path in unowned_outputs:
+        _forget_opencode_unowned_output(
+            rel_path, project_root, unowned_outputs, subagents_result, dry_run
+        )
+    if not is_owned:
+        _preserve_opencode_collision(
+            rel_path,
+            project_root,
+            subagents_result,
+            unowned_outputs,
+            dry_run,
+            reason="opencode_stale_unowned",
+            log_label="stale agent",
+        )
+        return
+    if not dry_run:
+        try:
+            agent_file.unlink()
+        except OSError as exc:
+            message = f"failed to delete stale OpenCode agent {rel_path}: {exc}"
+            subagents_result["errors"].append(message)
+            subagents_result["outputs"].append(
+                {"path": rel_path, "action": "preserved", "reason": "opencode_stale_delete_failed"}
+            )
+            _warn_agents(message)
+            return
+    subagents_result["deleted"].append(agent_file.as_posix())
+    subagents_result["outputs"].append(
+        {"path": rel_path, "action": "deleted", "reason": "opencode_stale_cleanup"}
+    )
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-reconcile-one-stale
 
 
 def _process_opencode_subagents(
@@ -5923,14 +6003,7 @@ def _process_opencode_subagents(
     for kit_agent in kit_agents:
         name = kit_agent["name"]
         if not name.startswith("cf-"):
-            message = (
-                f"kit agent {name!r} has no 'cf-' prefix; skipping OpenCode subagent "
-                "generation for it"
-            )
-            subagents_result["outputs"].append(
-                {"path": name, "action": "skipped", "reason": "opencode_non_cf_prefix"}
-            )
-            _warn_agents(message)
+            _mark_skipped_non_cf_subagent(name, subagents_result)
             continue
         target_agent_rel = target_agent_paths.get(name, "")
         if not target_agent_rel:

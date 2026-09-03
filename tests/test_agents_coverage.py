@@ -5603,6 +5603,186 @@ class TestOpenCodeUnownedOutputsRecordRobustness(unittest.TestCase):
                 "refusing to proceed unlocked", "\n".join(captured.output)
             )
 
+    def test_load_rejects_invalid_record_schema(self):
+        from studio.commands.agents import (
+            _load_opencode_unowned_outputs,
+            _opencode_unowned_outputs_path,
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            record_path = _opencode_unowned_outputs_path(root)
+            record_path.parent.mkdir(parents=True, exist_ok=True)
+            record_path.write_text(json.dumps({"schema": "wrong-schema", "paths": []}), encoding="utf-8")
+
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
+                result = _load_opencode_unowned_outputs(root)
+
+            self.assertEqual(result, set())
+            self.assertIn("invalid OpenCode unowned-output record", "\n".join(captured.output))
+
+    def test_acquire_lock_warns_and_returns_none_on_oserror(self):
+        from studio.commands.agents import _acquire_opencode_unowned_outputs_lock
+
+        with TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / ".opencode" / "record.json.lock"
+
+            with (
+                self.assertLogs("studio.commands.agents", level="WARNING") as captured,
+                patch("os.open", side_effect=OSError("boom")),
+            ):
+                lock_fd, _fcntl_module = _acquire_opencode_unowned_outputs_lock(lock_path)
+
+            self.assertIsNone(lock_fd)
+            self.assertIn("failed to lock OpenCode unowned-output record", "\n".join(captured.output))
+
+    def test_sentinel_lock_retries_then_succeeds(self):
+        from studio.commands.agents import _acquire_opencode_sentinel_lock
+
+        attempts = {"count": 0}
+        real_open = os.open
+
+        def _flaky_open(path, flags, *args, **kwargs):
+            if flags & os.O_EXCL and attempts["count"] == 0:
+                attempts["count"] += 1
+                raise FileExistsError("locked")
+            return real_open(path, flags, *args, **kwargs)
+
+        with TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "record.json.lock"
+
+            with (
+                patch("os.open", side_effect=_flaky_open),
+                patch("time.sleep", return_value=None),
+            ):
+                fd = _acquire_opencode_sentinel_lock(lock_path, timeout_seconds=10.0)
+
+            self.assertIsNotNone(fd)
+            os.close(fd)
+            self.assertEqual(attempts["count"], 1)
+
+    def test_clear_stale_lock_removes_old_lock_file(self):
+        from studio.commands.agents import _clear_stale_opencode_lock
+
+        with TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "record.json.lock"
+            lock_path.write_text("", encoding="utf-8")
+            old_time = time.time() - 20.0
+            os.utime(lock_path, (old_time, old_time))
+
+            _clear_stale_opencode_lock(lock_path)
+
+            self.assertFalse(lock_path.exists())
+
+    def test_clear_stale_lock_warns_on_unlink_failure(self):
+        from studio.commands.agents import _clear_stale_opencode_lock
+
+        with TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "record.json.lock"
+            lock_path.write_text("", encoding="utf-8")
+            old_time = time.time() - 20.0
+            os.utime(lock_path, (old_time, old_time))
+
+            with (
+                self.assertLogs("studio.commands.agents", level="WARNING") as captured,
+                patch("pathlib.Path.unlink", side_effect=OSError("boom")),
+            ):
+                _clear_stale_opencode_lock(lock_path)
+
+            self.assertIn("failed to clear stale OpenCode lock", "\n".join(captured.output))
+
+    def test_release_lock_warns_on_flock_unlock_failure(self):
+        from studio.commands.agents import (
+            _acquire_opencode_unowned_outputs_lock,
+            _release_opencode_unowned_outputs_lock,
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / ".opencode" / "record.json.lock"
+            lock_fd, fcntl_module = _acquire_opencode_unowned_outputs_lock(lock_path)
+            self.assertIsNotNone(lock_fd)
+
+            with (
+                self.assertLogs("studio.commands.agents", level="WARNING") as captured,
+                patch("fcntl.flock", side_effect=OSError("boom")),
+            ):
+                _release_opencode_unowned_outputs_lock(lock_fd, fcntl_module, lock_path)
+
+            self.assertIn("failed to unlock OpenCode unowned-output lock", "\n".join(captured.output))
+
+    def test_release_sentinel_lock_warns_on_unlink_failure(self):
+        from studio.commands.agents import _release_opencode_unowned_outputs_lock
+
+        with TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "record.json.lock"
+            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_WRONLY)
+
+            with (
+                self.assertLogs("studio.commands.agents", level="WARNING") as captured,
+                patch("pathlib.Path.unlink", side_effect=OSError("boom")),
+            ):
+                _release_opencode_unowned_outputs_lock(lock_fd, None, lock_path)
+
+            self.assertIn(
+                "failed to remove OpenCode unowned-output lock sentinel", "\n".join(captured.output)
+            )
+
+    def test_write_atomically_warns_on_cleanup_failure_too(self):
+        from studio.commands.agents import _write_opencode_unowned_outputs_atomically
+
+        with TemporaryDirectory() as tmpdir:
+            record_path = Path(tmpdir) / ".opencode" / "record.json"
+            record_path.parent.mkdir(parents=True)
+
+            with (
+                self.assertLogs("studio.commands.agents", level="WARNING") as captured,
+                patch("os.replace", side_effect=OSError("disk full")),
+                patch("pathlib.Path.unlink", side_effect=OSError("also broken")),
+            ):
+                ok = _write_opencode_unowned_outputs_atomically(record_path, {"cf-x.md"})
+
+            self.assertFalse(ok)
+            joined = "\n".join(captured.output)
+            self.assertIn("failed to clean up temp file", joined)
+            self.assertIn("failed to save OpenCode unowned-output record", joined)
+
+    def test_save_refuses_to_replace_record_with_wrong_schema(self):
+        from studio.commands.agents import (
+            _save_opencode_unowned_outputs,
+            _opencode_unowned_outputs_path,
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            record_path = _opencode_unowned_outputs_path(root)
+            record_path.parent.mkdir(parents=True, exist_ok=True)
+            record_path.write_text(json.dumps({"schema": "wrong-schema", "paths": []}), encoding="utf-8")
+
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
+                ok = _save_opencode_unowned_outputs(root, set(), add="cf-x.md")
+
+            self.assertFalse(ok)
+            self.assertIn("refusing to replace unowned OpenCode record", "\n".join(captured.output))
+
+    def test_remember_unowned_output_records_failure_through_wrapper(self):
+        from studio.commands.agents import _remember_opencode_unowned_output
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            unowned_outputs = set()
+            subagents_result = {"errors": []}
+
+            with patch("os.replace", side_effect=OSError("disk full")):
+                _remember_opencode_unowned_output(
+                    "cf-x.md", root, unowned_outputs, subagents_result, dry_run=False
+                )
+
+            self.assertTrue(subagents_result.get("ownership_recording_failed"))
+            self.assertTrue(
+                any("failed to record unowned OpenCode agent" in msg for msg in subagents_result["errors"])
+            )
+            self.assertNotIn("cf-x.md", unowned_outputs)
+
 
 if __name__ == "__main__":
     unittest.main()
