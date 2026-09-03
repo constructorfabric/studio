@@ -9,20 +9,41 @@ an external caller's job, same as every other module in this package.
 
 Tier 1 routing table (real evidence, see the design session's findings):
 
-| # | Pattern                                             | Resolution              |
-|---|------------------------------------------------------|--------------------------|
-| 1 | heading-nav: 0 hits                                   | escalate                |
-| 2 | heading-nav>0, TF-IDF agrees, unambiguous             | resolved (Tier 1)       |
-| 3 | heading-nav>0, TF-IDF disagrees                       | resolved_multi (Tier 1) |
-| 4 | heading-nav>0, TF-IDF agrees, margin not unambiguous  | escalate                |
+| # | Pattern                                                    | Resolution              |
+|---|-------------------------------------------------------------|--------------------------|
+| 1 | heading-nav: 0 hits, TF-IDF: no positive score anywhere      | escalate                |
+| 2 | heading-nav: 0 hits, TF-IDF: unambiguous                     | resolved (Tier 1)       |
+| 3 | heading-nav: 0 hits, TF-IDF: positive but not unambiguous    | escalate                |
+| 4 | heading-nav>0, TF-IDF agrees, unambiguous                    | resolved (Tier 1)       |
+| 5 | heading-nav>0, TF-IDF disagrees                              | resolved_multi (Tier 1) |
+| 6 | heading-nav>0, TF-IDF agrees, margin not unambiguous         | escalate                |
 
-Row 2's "large margin" is deliberately restricted to ``unambiguous=True``
+Rows 1-3 (constructorfabric/studio#134, Oleg67's suggestion #4) fixed a real
+single-signal failure: earlier, a zero-hit heading-nav result escalated
+immediately without ever running TF-IDF at all, discarding a second,
+genuinely different signal -- heading-nav needs the query's exact literal
+substring to appear somewhere in a section's raw text, while TF-IDF
+tokenizes on individual words, so a query that differs from the source only
+in punctuation/spacing/hyphenation (heading-nav: 0 hits) can still score
+unambiguously on TF-IDF's word-level match. Every Tier 1 call now runs both
+methods unconditionally; only their *outcome* determines whether the query
+needed one signal, two, or must escalate.
+
+Row 4's "large margin" is deliberately restricted to ``unambiguous=True``
 rather than a numeric margin cutoff: the only two real data points measured
 for this design (an infinite margin on a correct pick, and 1.06x-1.58x
 margins on two independently wrong picks) support "unambiguous is safe,
 anything finite isn't yet proven safe" -- not a specific numeric threshold.
 ``margin_threshold`` exists so a numeric cutoff can be enabled later, once
-there's real evidence for one, without an API change.
+there's real evidence for one, without an API change. Row 2 applies the same
+"only trust an unambiguous signal" standard to TF-IDF running alone.
+
+Deliberately out of scope here: folding OKF concept-file summaries into
+Tier 1 as a fourth ranked signal. Tier 1's whole value is being free and
+deterministic without ever touching the OKF bundle; querying OKF status
+from inside Tier 1 would blur that guarantee for every query, not just the
+ones that end up escalating anyway. Tier 2 already consults OKF -- see
+:func:`route_tier2`.
 
 Tier 2 never recommends an OKF concept file known to be stale/missing for
 the candidate section Tier 1 identified (see :func:`route_tier2`) -- this is
@@ -67,24 +88,46 @@ def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = N
 
     Returns ``{"tier": "resolved" | "resolved_multi" | "escalate", "reason":
     str, "candidates": [...]}``. ``candidates`` is the section(s) a caller
-    should actually read: one for rows 2/4 (row 4 despite escalating, since
-    it's still the best Tier-1 guess to hand Tier 2), two for row 3, none
-    for row 1 (heading-nav found nothing to anchor a guess to at all).
+    should actually read: one for rows 2/4/6 (rows 3/6 despite escalating,
+    since a signal's own top pick is still the best Tier-1 guess to hand
+    Tier 2), two for row 5, none for row 1 (neither method found anything to
+    anchor a guess to at all).
+
+    Both heading-nav and TF-IDF always run, regardless of either one's
+    outcome -- see this module's docstring for why a zero-hit heading-nav
+    result used to skip TF-IDF entirely, discarding a genuinely different
+    signal (word-level match vs. heading-nav's exact-phrase match).
     """
     nav_first_match = find_sections(path, query)["first_match"]
+    tfidf_result = score_sections(path, query)
+    tfidf_ranked = tfidf_result["ranked"]
+    has_tfidf_signal = bool(tfidf_ranked) and tfidf_ranked[0]["score"] > 0
+
     if nav_first_match is None:
-        return {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        if not has_tfidf_signal:
+            return {"tier": "escalate", "reason": "no_signal_from_either_method", "candidates": []}
+        tfidf_only_pick = tfidf_ranked[0]
+        if tfidf_result["unambiguous"]:
+            return {
+                "tier": "resolved",
+                "reason": "tfidf_only_unambiguous",
+                "candidates": [_as_candidate(tfidf_only_pick)],
+            }
+        return {
+            "tier": "escalate",
+            "reason": "heading_nav_no_hits_diffuse_tfidf",
+            "candidates": [_as_candidate(tfidf_only_pick)],
+        }
     # pylint's astroid inference traces find_sections()'s "matches[0] if matches
     # else None" ternary and keeps treating this as Optional even after the
     # None-check above narrows it -- a known astroid limitation across module
     # boundaries (github.com/pylint-dev/pylint/issues/3162), not a real risk here.
     nav_pick = cast(Dict[str, Any], nav_first_match)
 
-    tfidf_result = score_sections(path, query)
     # find_sections and score_sections both read retrieval_sections from the
     # same get_or_build_doc_index(path) call: a heading-nav match guarantees
     # at least one section exists, so TF-IDF always has one to rank too.
-    tfidf_pick = tfidf_result["ranked"][0]
+    tfidf_pick = tfidf_ranked[0]
 
     if tfidf_pick["line_start"] != nav_pick["line_start"]:  # pylint: disable=unsubscriptable-object
         return {
@@ -135,10 +178,12 @@ def route_tier2(
 ) -> Dict[str, Any]:
     """Choose OKF vs. baseline once Tier 1 has escalated.
 
-    Only called for rows 1/4 (see :func:`route_tier1`). When Tier 1 named a
-    candidate section (row 4), only that section's concept file must be
-    current. Row 1 has no candidate section to narrow to -- heading-nav
-    found nothing, so the query could need any section -- and OKF's own
+    Only called for the escalating rows (see :func:`route_tier1`): row 1
+    (neither method found anything), row 3 (heading-nav found nothing, TF-IDF
+    diffuse), and row 6 (both agree, but not unambiguously). Rows 3/6 name a
+    candidate section, so only that section's concept file must be current.
+    Row 1 has no candidate section to narrow to -- neither method found
+    anything, so the query could need any section -- and OKF's own
     (external, LLM-driven) file-selection step picks among *whatever this
     function hands it*; recommending OKF there while some other section is
     stale or missing would let that external step land on exactly the

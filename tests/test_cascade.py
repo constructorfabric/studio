@@ -39,6 +39,26 @@ _DISAGREEMENT_SAMPLE = (
     "## SectionB\n\ngadget gadget gadget.\n"
 )
 
+# constructorfabric/studio#134, Oleg67's suggestion #4: a real single-signal
+# failure -- the source hyphenates "KAPING-framework", so the literal
+# two-word query substring "KAPING framework" never appears anywhere
+# (heading-nav: 0 hits), but TF-IDF tokenizes on `[a-z0-9]+` regardless of
+# the hyphen, so "kaping"/"framework" both land as real, distinctive terms
+# scoring 0 everywhere except Introduction -- unambiguous.
+_TFIDF_ONLY_UNAMBIGUOUS_SAMPLE = (
+    "## Introduction\n\nThis section introduces the KAPING-framework for knowledge graphs.\n\n"
+    "## Related Work\n\nThis section covers unrelated background material with no overlap.\n"
+)
+
+# Same hyphenation gap (heading-nav: 0 hits for "gizmo thing" -- the exact
+# two-word phrase never appears contiguously in either section), but this
+# time both terms independently occur in *both* sections, so TF-IDF scores
+# positively on both -- a real signal, just not an unambiguous one.
+_TFIDF_ONLY_DIFFUSE_SAMPLE = (
+    "## SectionA\n\nA gizmo-thing sits here alone.\n\n"
+    "## SectionB\n\nThe gizmo hums. " + ("filler word text here. " * 30) + "A thing rattles.\n"
+)
+
 
 def _write(tmp_path: Path, content: str = _SAMPLE, name: str = "doc.md") -> Path:
     f = tmp_path / name
@@ -47,11 +67,41 @@ def _write(tmp_path: Path, content: str = _SAMPLE, name: str = "doc.md") -> Path
 
 
 class TestRouteTier1:
-    def test_row1_heading_nav_no_hits_escalates(self, tmp_path: Path, monkeypatch):
+    def test_row1_neither_method_has_signal_escalates(self, tmp_path: Path, monkeypatch):
+        """"making up" is tfidf.py's own documented adversarial case: "up" is
+        filtered by the 3-char minimum, and "making" never appears anywhere
+        in this fixture, so TF-IDF has nothing either -- both methods
+        genuinely have zero signal, not just heading-nav."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         result = route_tier1(f, "making up")
-        assert result == {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        assert result == {"tier": "escalate", "reason": "no_signal_from_either_method", "candidates": []}
+
+    def test_row2_tfidf_only_unambiguous_resolves_at_tier1(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#134, Oleg67's suggestion #4: heading-nav's
+        exact-phrase match misses on a hyphenation difference, but TF-IDF's
+        word-level tokenization doesn't -- and its own unambiguous signal is
+        enough to resolve at Tier 1 without ever reaching Tier 2/OKF."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE)
+        result = route_tier1(f, "KAPING framework")
+        assert result == {
+            "tier": "resolved",
+            "reason": "tfidf_only_unambiguous",
+            "candidates": [{"heading": "Introduction", "line_start": 1, "line_end": 4}],
+        }
+
+    def test_row3_tfidf_only_diffuse_escalates_with_tfidf_pick_as_candidate(self, tmp_path: Path, monkeypatch):
+        """Heading-nav still has nothing, and TF-IDF has a real but diffuse
+        signal (both sections score positively) -- escalates, but hands
+        along TF-IDF's own top pick as the best Tier-1 guess, the same way
+        row 6 hands along heading-nav's pick despite escalating."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE)
+        result = route_tier1(f, "gizmo thing")
+        assert result["tier"] == "escalate"
+        assert result["reason"] == "heading_nav_no_hits_diffuse_tfidf"
+        assert result["candidates"] == [{"heading": "SectionA", "line_start": 1, "line_end": 4}]
 
     def test_row2_agree_unambiguous_resolves_at_tier1(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
