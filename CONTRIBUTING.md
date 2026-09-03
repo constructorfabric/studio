@@ -237,7 +237,7 @@ The project uses Apache-2.0 license. DCO certifies that you wrote the contributi
 
 ### Running CI Locally
 
-`make ci` runs the **exact same workflow** as GitHub Actions, locally via [act](https://github.com/nektos/act) in Docker. Single source of truth — `.github/workflows/ci.yml`.
+`make ci` runs the **same workflow** as GitHub Actions, locally via [act](https://github.com/nektos/act) in Docker, excluding jobs that require GitHub-hosted context `act` cannot reconstruct: **SonarQube** (needs `SONAR_TOKEN`) and **code-ranker** (a GitHub-only reusable workflow needing checkout/event context). Single source of truth — `.github/workflows/ci.yml`.
 
 ```bash
 # Run full CI (auto-detects arm64/amd64)

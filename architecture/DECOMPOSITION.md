@@ -266,9 +266,9 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 - **Scope**:
   - Agent Generator: produce entry points in each agent's native format
-  - Supported agents: Windsurf, Cursor, Claude, Copilot, OpenAI
+  - Supported agents: Windsurf, Cursor, Claude, Copilot, OpenAI, and explicitly selected OpenCode (v1.18.4)
   - SKILL.md composition: collect `@cpt:skill` sections and assemble into main SKILL.md
-  - Full overwrite on each invocation; `--agent` flag for single-agent regeneration
+  - Full overwrite on each invocation; `--agent` flag for single-agent regeneration; OpenCode selected only via `--agent opencode` or `--opencode`
   - Generic workflows: `{cf-studio-path}/.core/workflows/generate.md` and `{cf-studio-path}/.core/workflows/analyze.md` with common execution protocol
 
 - **Out of scope**:
@@ -278,6 +278,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 - **Requirements Covered**:
 
   - `p1` - `cpt-studio-fr-core-agents`
+  - `p1` - `cpt-studio-fr-core-opencode`
   - `p1` - `cpt-studio-fr-core-workflows`
 
 - **Design Principles Covered**:
@@ -307,7 +308,8 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 - **Data**:
   - Workflow entry points: `.windsurf/workflows/`, `.cursor/commands/`, `.claude/commands/`, `.github/prompts/`
   - Shared skill stubs (non-Claude): `.agents/skills/`
-  - Agent-specific subagents: `.cursor/agents/`, `.claude/agents/`, `.github/agents/`, `.codex/agents/`
+  - Agent-specific subagents: `.cursor/agents/`, `.claude/agents/`, `.github/agents/`, `.codex/agents/`, `.opencode/agents/`
+  - OpenCode metadata: `.opencode/.cf-studio-installed` (marker), `.opencode/.cf-studio-unowned-outputs.json` (collision record)
 
 
 ### 2.6 PR Workflows (EXTRACTED) IN PROGRESS MEDIUM

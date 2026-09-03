@@ -5432,5 +5432,104 @@ class TestResultHasFatalErrors(unittest.TestCase):
         self.assertTrue(_result_has_fatal_errors(result))
 
 
+class TestOpenCodeUnownedOutputsRecordRobustness(unittest.TestCase):
+    """Cover the invalid-path warning branch and the write-failure/cleanup path
+    for the OpenCode unowned-outputs record (deep-review findings F-004/F-006)."""
+
+    def test_load_rejects_and_warns_on_out_of_project_root_path(self):
+        from studio.commands.agents import (
+            _OPENCODE_UNOWNED_OUTPUTS_SCHEMA,
+            _load_opencode_unowned_outputs,
+            _opencode_unowned_outputs_path,
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            record_path = _opencode_unowned_outputs_path(root)
+            record_path.parent.mkdir(parents=True, exist_ok=True)
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "schema": _OPENCODE_UNOWNED_OUTPUTS_SCHEMA,
+                        "paths": ["../outside.md", "cf-good.md"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
+                result = _load_opencode_unowned_outputs(root)
+
+            self.assertNotIn("../outside.md", result)
+            self.assertIn(
+                "ignoring invalid OpenCode unowned-output path", "\n".join(captured.output)
+            )
+
+    def test_load_rejects_and_warns_on_path_outside_output_dir(self):
+        from studio.commands.agents import (
+            _OPENCODE_UNOWNED_OUTPUTS_SCHEMA,
+            _load_opencode_unowned_outputs,
+            _opencode_unowned_outputs_path,
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            record_path = _opencode_unowned_outputs_path(root)
+            record_path.parent.mkdir(parents=True, exist_ok=True)
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "schema": _OPENCODE_UNOWNED_OUTPUTS_SCHEMA,
+                        "paths": ["some/other/dir/cf-x.md"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
+                result = _load_opencode_unowned_outputs(root)
+
+            self.assertEqual(result, set())
+            self.assertIn(
+                "ignoring invalid OpenCode unowned-output path", "\n".join(captured.output)
+            )
+
+    def test_save_cleans_up_tmp_and_warns_on_write_failure(self):
+        from studio.commands.agents import _save_opencode_unowned_outputs
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+
+            with (
+                self.assertLogs("studio.commands.agents", level="WARNING") as captured,
+                patch("os.replace", side_effect=OSError("disk full")),
+            ):
+                ok = _save_opencode_unowned_outputs(root, set(), add="cf-x.md")
+
+            self.assertFalse(ok)
+            self.assertIn(
+                "failed to save OpenCode unowned-output record", "\n".join(captured.output)
+            )
+            leftover_tmp = [
+                p
+                for p in (root / ".opencode").glob(".cf-studio-unowned-outputs.json*")
+                if not p.name.endswith(".lock")
+            ]
+            self.assertEqual(leftover_tmp, [], f"expected no leftover tmp file, found {leftover_tmp}")
+
+    def test_save_rollback_on_failure_leaves_caller_set_unchanged(self):
+        from studio.commands.agents import _save_opencode_unowned_outputs
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            unowned_outputs = {"cf-existing.md"}
+
+            with patch("os.replace", side_effect=OSError("disk full")):
+                ok = _save_opencode_unowned_outputs(root, unowned_outputs, add="cf-new.md")
+
+            self.assertFalse(ok)
+            self.assertEqual(unowned_outputs, {"cf-existing.md"})
+
+
 if __name__ == "__main__":
     unittest.main()

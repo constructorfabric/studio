@@ -34,9 +34,11 @@ from dataclasses import dataclass
 import functools
 import json
 import logging
+import os
 import re
 import shutil
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -1608,8 +1610,8 @@ def _agent_template_copilot(agent: Dict[str, Any]) -> List[str]:
     return lines
 
 
-# @cpt-begin:cpt-studio-fr-core-opencode:p1:inst-render-native-subagent
-def _agent_template_opencode(agent: Dict[str, Any]) -> List[str]:
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-render-subagents
+def _agent_template_opencode(_agent: Dict[str, Any]) -> List[str]:
     """Build an OpenCode native subagent without provider/model defaults."""
     return [
         "---",
@@ -1622,7 +1624,7 @@ def _agent_template_opencode(agent: Dict[str, Any]) -> List[str]:
         _ENDPOINT_POINTER,
         "",
     ]
-# @cpt-end:cpt-studio-fr-core-opencode:p1:inst-render-native-subagent
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-render-subagents
 
 
 _TOOL_AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
@@ -1761,6 +1763,9 @@ def _agents_skill_outputs() -> list:
     ]
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-reuse-native-skills
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-fixture-boundary
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-network-free-checks
 def _default_agents_config() -> dict:
     """Unified config for both workflows and skills registration per agent.
 
@@ -1985,6 +1990,9 @@ def _default_agents_config() -> dict:
             "opencode": {},
         },
     }
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-network-free-checks
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-fixture-boundary
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-reuse-native-skills
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-define-registry
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-parse-frontmatter
@@ -3477,6 +3485,10 @@ _INSTALL_MARKERS: Dict[str, Tuple[str, str]] = {
 _OPENCODE_UNOWNED_OUTPUTS = ".opencode/.cf-studio-unowned-outputs.json"
 _OPENCODE_UNOWNED_OUTPUTS_SCHEMA = "cf-studio-opencode-unowned-outputs-v1"
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-install-markers-table
+
+
+def _opencode_install_marker_path(project_root: Path) -> Path:
+    return project_root / _INSTALL_MARKERS["opencode"][0]
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-create-proxy
 # ---------------------------------------------------------------------------
@@ -5547,36 +5559,98 @@ def _load_opencode_unowned_outputs(project_root: Path) -> Set[str]:
             candidate.relative_to(output_dir)
             candidate.relative_to(root_resolved)
         except ValueError:
+            _warn_agents(f"ignoring invalid OpenCode unowned-output path: {raw_path}")
             continue
         if candidate.suffix == ".md" and candidate.name.startswith("cf-"):
             valid_paths.add(_safe_relpath(candidate, root_resolved))
     return valid_paths
 
 
-def _save_opencode_unowned_outputs(project_root: Path, paths: Set[str]) -> bool:
-    """Persist OpenCode ownership exclusions without replacing user state."""
+def _save_opencode_unowned_outputs(
+    project_root: Path,
+    paths: Set[str],
+    *,
+    add: Optional[str] = None,
+    remove: Optional[str] = None,
+) -> bool:
+    """Persist OpenCode ownership exclusions without replacing user state.
+
+    Serializes concurrent writers with an advisory lock and re-reads the
+    on-disk record under that lock, applying only the caller's single
+    `add`/`remove` delta rather than blindly overwriting with `paths` — this
+    prevents one process's write from silently discarding another
+    concurrent process's exclusion (lost-update).
+    """
     record_path = _opencode_unowned_outputs_path(project_root)
-    if record_path.exists():
-        record = _load_json_file(record_path)
-        if not isinstance(record, dict) or record.get("schema") != _OPENCODE_UNOWNED_OUTPUTS_SCHEMA:
-            _warn_agents(f"refusing to replace unowned OpenCode record: {record_path}")
+    lock_path = record_path.with_name(record_path.name + ".lock")
+    try:
+        import fcntl as _fcntl  # POSIX only; unavailable on Windows
+    except ImportError:
+        _fcntl = None
+    lock_fd = None
+    if _fcntl is not None:
+        try:
+            record_path.parent.mkdir(parents=True, exist_ok=True)
+            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+            _fcntl.flock(lock_fd, _fcntl.LOCK_EX)
+        except OSError as exc:
+            _warn_agents(f"failed to lock OpenCode unowned-output record {lock_path}: {exc}")
+            if lock_fd is not None:
+                os.close(lock_fd)
             return False
     try:
-        record_path.parent.mkdir(parents=True, exist_ok=True)
-        record_path.write_text(
-            json.dumps(
-                {
-                    "schema": _OPENCODE_UNOWNED_OUTPUTS_SCHEMA,
-                    "paths": sorted(paths),
-                },
-                indent=2,
-            ) + "\n",
-            encoding="utf-8",
-        )
-    except OSError as exc:
-        _warn_agents(f"failed to save OpenCode unowned-output record {record_path}: {exc}")
-        return False
-    return True
+        current = set(paths)
+        if record_path.exists():
+            record = _load_json_file(record_path)
+            if not isinstance(record, dict) or record.get("schema") != _OPENCODE_UNOWNED_OUTPUTS_SCHEMA:
+                _warn_agents(f"refusing to replace unowned OpenCode record: {record_path}")
+                return False
+            existing_paths = record.get("paths")
+            if isinstance(existing_paths, list):
+                current = {p for p in existing_paths if isinstance(p, str)}
+        if add is not None:
+            current.add(add)
+        if remove is not None:
+            current.discard(remove)
+        tmp_path = None
+        try:
+            payload = (
+                json.dumps(
+                    {
+                        "schema": _OPENCODE_UNOWNED_OUTPUTS_SCHEMA,
+                        "paths": sorted(current),
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+            tmp_fd, tmp_name = tempfile.mkstemp(
+                dir=record_path.parent, prefix=record_path.name + "."
+            )
+            tmp_path = Path(tmp_name)
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_file:
+                tmp_file.write(payload)
+            os.replace(tmp_path, record_path)
+        except OSError as exc:
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError as cleanup_exc:
+                    _warn_agents(
+                        f"failed to clean up temp file {tmp_path}: {cleanup_exc}"
+                    )
+            _warn_agents(f"failed to save OpenCode unowned-output record {record_path}: {exc}")
+            return False
+        paths.clear()
+        paths.update(current)
+        return True
+    finally:
+        if lock_fd is not None:
+            try:
+                _fcntl.flock(lock_fd, _fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(lock_fd)
 
 
 def _remember_opencode_unowned_output(
@@ -5589,9 +5663,9 @@ def _remember_opencode_unowned_output(
     """Remember a first-run collision so a later sentinel cannot claim it."""
     if rel_path in unowned_outputs or dry_run:
         return
-    unowned_outputs.add(rel_path)
-    if not _save_opencode_unowned_outputs(project_root, unowned_outputs):
-        unowned_outputs.remove(rel_path)
+    # _save_opencode_unowned_outputs applies `add` under lock and, on success,
+    # updates `unowned_outputs` in place to the merged on-disk state.
+    if not _save_opencode_unowned_outputs(project_root, unowned_outputs, add=rel_path):
         subagents_result["errors"].append(
             f"failed to record unowned OpenCode agent: {rel_path}"
         )
@@ -5608,15 +5682,17 @@ def _forget_opencode_unowned_output(
     """Release an exclusion only after Studio creates that path from scratch."""
     if rel_path not in unowned_outputs or dry_run:
         return
-    unowned_outputs.remove(rel_path)
-    if not _save_opencode_unowned_outputs(project_root, unowned_outputs):
-        unowned_outputs.add(rel_path)
+    # _save_opencode_unowned_outputs applies `remove` under lock and, on
+    # success, updates `unowned_outputs` in place to the merged on-disk state.
+    if not _save_opencode_unowned_outputs(project_root, unowned_outputs, remove=rel_path):
         subagents_result["errors"].append(
             f"failed to update unowned OpenCode agent record: {rel_path}"
         )
         subagents_result["ownership_recording_failed"] = True
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-preserve-ownership-unproven-collision
+# @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-preserve-ownership-unproven-collision
 def _write_opencode_subagent_or_preserve(
     out_path: Path,
     content: str,
@@ -5638,14 +5714,24 @@ def _write_opencode_subagent_or_preserve(
         ) from exc
 
     rel_path = _safe_relpath(canonical, root_resolved)
-    install_marker = project_root / ".opencode" / ".cf-studio-installed"
+    install_marker = _opencode_install_marker_path(project_root)
     if canonical.exists():
         existing = _read_existing_text_file(canonical)
-        if rel_path in unowned_outputs or not _is_opencode_owned_subagent(
+        is_owned = _is_opencode_owned_subagent(
             existing,
             install_marker,
+            canonical.stem,
             sentinel_existed=sentinel_existed_before_run,
-        ):
+        )
+        # A path recorded as unowned during a past run (e.g. a transient
+        # missing sentinel) must not stay permanently excluded once live
+        # ownership can be re-proven — re-check the live signals every run
+        # rather than trusting the recorded exclusion unconditionally.
+        if is_owned and rel_path in unowned_outputs:
+            _forget_opencode_unowned_output(
+                rel_path, project_root, unowned_outputs, subagents_result, dry_run
+            )
+        if not is_owned:
             message = f"preserved unowned OpenCode agent collision: {rel_path}"
             subagents_result["partial"] = True
             subagents_result["outputs"].append(
@@ -5668,22 +5754,37 @@ def _write_opencode_subagent_or_preserve(
         subagents_result,
         dry_run,
     )
+# @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-preserve-ownership-unproven-collision
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-preserve-ownership-unproven-collision
 
 
 def _is_opencode_owned_subagent(
     content: Optional[str],
     install_marker: Path,
+    expected_name: str,
     *,
     sentinel_existed: Optional[bool] = None,
 ) -> bool:
-    """Return whether both OpenCode ownership markers prove file ownership."""
+    """Return whether ownership markers prove THIS specific file's ownership.
+
+    `_GENERATED_MARKER` is a single literal shared by every agent adapter
+    (Claude, Cursor, Windsurf, Copilot, OpenCode), so its presence alone
+    cannot prove a given `.opencode/agents/cf-*.md` file was produced by the
+    OpenCode template rather than copied/pasted by a user from elsewhere.
+    Requiring the file's own frontmatter `name:` line to match the filename
+    this specific path is expected to carry ties the proof to this file's
+    identity, not just to a generic substring.
+    """
     return bool(
         (install_marker.is_file() if sentinel_existed is None else sentinel_existed)
         and content is not None
         and _GENERATED_MARKER in content
+        and f"name: {expected_name}" in content
     )
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-owned-rebuild-only
+# @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-rebuild-owned
 def _reconcile_opencode_subagents(
     desired_names: Set[str],
     output_dir: Path,
@@ -5697,7 +5798,7 @@ def _reconcile_opencode_subagents(
     if not output_dir.is_dir():
         return
     root_resolved = project_root.resolve()
-    install_marker = project_root / ".opencode" / ".cf-studio-installed"
+    install_marker = _opencode_install_marker_path(project_root)
     try:
         stale_files = sorted(output_dir.glob("cf-*.md"))
     except OSError as exc:
@@ -5710,11 +5811,17 @@ def _reconcile_opencode_subagents(
             continue
         rel_path = _safe_relpath(agent_file.resolve(), root_resolved)
         content = _read_existing_text_file(agent_file)
-        if rel_path in unowned_outputs or not _is_opencode_owned_subagent(
+        is_owned = _is_opencode_owned_subagent(
             content,
             install_marker,
+            agent_file.stem,
             sentinel_existed=sentinel_existed_before_run,
-        ):
+        )
+        if is_owned and rel_path in unowned_outputs:
+            _forget_opencode_unowned_output(
+                rel_path, project_root, unowned_outputs, subagents_result, dry_run
+            )
+        if not is_owned:
             message = f"preserved unowned stale OpenCode agent: {rel_path}"
             subagents_result["partial"] = True
             subagents_result["outputs"].append(
@@ -5744,6 +5851,8 @@ def _reconcile_opencode_subagents(
         subagents_result["outputs"].append(
             {"path": rel_path, "action": "deleted", "reason": "opencode_stale_cleanup"}
         )
+# @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-rebuild-owned
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-owned-rebuild-only
 
 
 def _process_opencode_subagents(
@@ -6076,6 +6185,16 @@ def _process_single_agent(
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-create-proxy
 
 
+# @cpt-algo:cpt-studio-algo-agent-integration-generate-opencode:p1
+# @cpt-flow:cpt-studio-flow-agent-integration-generate-opencode:p1
+# @cpt-state:cpt-studio-state-agent-integration-opencode:p1
+# @cpt-dod:cpt-studio-dod-agent-integration-opencode:p1
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-write-sentinel
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-return-deterministic-result
+# @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-resolve-compatibility
+# @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-inspect-ownership
+# @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-rebuild-owned
+# @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-return-generation
 def _process_opencode_agent(
     project_root: Path,
     studio_root: Path,
@@ -6084,7 +6203,7 @@ def _process_opencode_agent(
     dry_run: bool,
 ) -> Dict[str, Any]:
     """Generate only the OpenCode sentinel and native marker-owned agents."""
-    install_marker = project_root / ".opencode" / ".cf-studio-installed"
+    install_marker = _opencode_install_marker_path(project_root)
     sentinel_existed_before_run = install_marker.is_file()
     workflows_result = _init_workflows_result()
     skills_result: Dict[str, Any] = {
@@ -6115,6 +6234,12 @@ def _process_opencode_agent(
         rules_result,
         all_errors,
     )
+# @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-return-generation
+# @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-rebuild-owned
+# @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-inspect-ownership
+# @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-resolve-compatibility
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-return-deterministic-result
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-write-sentinel
 
 # @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-context-helper
 def _find_studio_root_from_file() -> Path:
@@ -6188,6 +6313,7 @@ def _build_agents_arg_parser(
     read_only: bool,
 ) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description=description)
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-explicit-select
     agent_group = parser.add_mutually_exclusive_group(required=False)
     agent_group.add_argument(
         "--agent",
@@ -6198,9 +6324,8 @@ def _build_agents_arg_parser(
         ),
     )
     agent_group.add_argument("--openai", action="store_true", help="Shortcut for --agent openai (OpenAI Codex)")
-    # @cpt-begin:cpt-studio-fr-core-opencode:p1:inst-select-explicit-target
     agent_group.add_argument("--opencode", action="store_true", help="Shortcut for --agent opencode")
-    # @cpt-end:cpt-studio-fr-core-opencode:p1:inst-select-explicit-target
+    # @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-explicit-select
     parser.add_argument(
         "--root",
         metavar="PATH",
@@ -6246,6 +6371,8 @@ def _build_agents_arg_parser(
     return parser
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-accept-explicit-target
+# @cpt-begin:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-if-explicit-selection
 def _resolve_requested_agents(args: argparse.Namespace) -> List[str]:
     if bool(getattr(args, "openai", False)):
         return ["openai"]
@@ -6259,6 +6386,8 @@ def _resolve_requested_agents(args: argparse.Namespace) -> List[str]:
     # OpenCode is an opt-in compatibility target, not part of the established
     # default generation/listing set.
     return list(_DEFAULT_RECOGNIZED_AGENTS)
+# @cpt-end:cpt-studio-flow-agent-integration-generate-opencode:p1:inst-opencode-if-explicit-selection
+# @cpt-end:cpt-studio-algo-agent-integration-generate-opencode:p1:inst-opencode-accept-explicit-target
 
 
 def _emit_project_root_not_found(start_path: Path) -> None:
@@ -6356,12 +6485,14 @@ def _resolve_agents_context(
     return args, agents_to_process, project_root, studio_root, copy_report, cfg_path, cfg
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-context
 
+# @cpt-flow:cpt-studio-flow-agent-integration-inspect-opencode:p1
+# @cpt-begin:cpt-studio-flow-agent-integration-inspect-opencode:p1:inst-opencode-status-read-only
+# @cpt-begin:cpt-studio-flow-agent-integration-inspect-opencode:p1:inst-opencode-status-return
 def _inspect_opencode_agent(project_root: Path) -> Dict[str, Any]:
     """Return the current OpenCode installation state without previewing writes."""
-    install_marker = project_root / ".opencode" / ".cf-studio-installed"
+    install_marker = _opencode_install_marker_path(project_root)
     agents_dir = project_root / ".opencode" / "agents"
     root_resolved = project_root.resolve()
-    unowned_outputs = _load_opencode_unowned_outputs(project_root)
     generated: List[str] = []
     collisions: List[Dict[str, str]] = []
     if agents_dir.is_dir():
@@ -6376,7 +6507,10 @@ def _inspect_opencode_agent(project_root: Path) -> Dict[str, Any]:
         for agent_file in agent_files:
             rel_path = _safe_relpath(agent_file.resolve(), root_resolved)
             content = _read_existing_text_file(agent_file)
-            if rel_path not in unowned_outputs and _is_opencode_owned_subagent(content, install_marker):
+            # Mirror the write path's live-ownership check: a path recorded
+            # as unowned in a past run must not be reported as a permanent
+            # collision once live ownership signals prove it again.
+            if _is_opencode_owned_subagent(content, install_marker, agent_file.stem):
                 generated.append(rel_path)
             else:
                 collisions.append({"path": rel_path, "reason": "unowned_or_missing_marker"})
@@ -6389,9 +6523,12 @@ def _inspect_opencode_agent(project_root: Path) -> Dict[str, Any]:
         "partial": bool(collisions),
         "collision": collisions,
     }
+# @cpt-end:cpt-studio-flow-agent-integration-inspect-opencode:p1:inst-opencode-status-return
+# @cpt-end:cpt-studio-flow-agent-integration-inspect-opencode:p1:inst-opencode-status-read-only
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cmd-agents-list
+# @cpt-begin:cpt-studio-flow-agent-integration-inspect-opencode:p1:inst-opencode-status-invoke
 def cmd_agents(argv: List[str]) -> int:
     """Read-only command: list generated agent integration files."""
     ctx = _resolve_agents_context(
@@ -6427,6 +6564,7 @@ def cmd_agents(argv: List[str]) -> int:
         human_fn=lambda d: _human_agents_list(d, agents_to_process, results, project_root),
     )
     return 0
+# @cpt-end:cpt-studio-flow-agent-integration-inspect-opencode:p1:inst-opencode-status-invoke
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cmd-agents-list
 
 # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-user-agents-entry
@@ -7680,7 +7818,7 @@ def _emit_generate_agents_aborted() -> int:
 # ---------------------------------------------------------------------------
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
-def _human_agents_list(  # pylint: disable=too-many-branches
+def _human_agents_list(  # pylint: disable=too-many-branches,too-many-locals
     _data: Dict[str, Any],
     _agents_to_process: List[str],
     results: Dict[str, Any],

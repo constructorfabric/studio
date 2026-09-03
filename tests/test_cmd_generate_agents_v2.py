@@ -812,7 +812,7 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
 
         def _spy_confirm(args, preview_create, preview_update, preview_delete=0, **_kwargs):
             confirm_args.append((preview_create, preview_update, preview_delete))
-            return True  # proceed
+            return "PROCEED"
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, cypilot_root = self._make_v2_project_with_workflows(tmpdir, agent="cursor")
@@ -830,7 +830,7 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
                     mock_ui.hint = lambda *a, **kw: None
                     mock_ui.blank = lambda *a, **kw: None
 
-                    cmd_generate_agents([
+                    ret = cmd_generate_agents([
                         "--root", str(project_root),
                         "--cf-constructor-root", str(cypilot_root),
                         "--agent", "cursor",
@@ -843,6 +843,21 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
             self.assertGreater(
                 preview_create, 0,
                 f"preview_create should include legacy workflow proxies, got {preview_create}",
+            )
+
+            # Non-vacuity guard (deep-review F-005): the above two assertions
+            # only inspect what was passed INTO _confirm_v2_generation, which
+            # is populated before its "PROCEED" return value is even consumed
+            # by _run_v2_generate_path — they pass identically whether or not
+            # _run_v2_pipeline actually executes afterward. Assert the real
+            # post-confirmation outcome so a regression that skips the
+            # pipeline after confirmation is caught.
+            self.assertEqual(ret, 0, "cmd_generate_agents must succeed after PROCEED")
+            workflow_proxy = project_root / ".cursor" / "commands" / "cf-test-wf.md"
+            self.assertTrue(
+                workflow_proxy.is_file(),
+                f"legacy workflow proxy must be written to disk after PROCEED, "
+                f"expected {workflow_proxy}",
             )
 
 

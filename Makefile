@@ -367,11 +367,13 @@ lint-ci:
 	@echo "Linting GitHub Actions workflows..."
 	actionlint
 
-# Run CI via act in Docker (mirrors .github/workflows/ci.yml exactly)
+# Run deterministic CI via act in Docker.
+# code-ranker is a GitHub-only reusable workflow: it requires the checkout and
+# event context that act cannot reconstruct for a linked worktree.
 # Runs jobs sequentially — stops on first failure.
 # Auto-detects arm64/amd64. Override: make ci ACT_FLAGS="--your-flags"
 ci: lint-ci
-	@for job in $$(act push --list $(ACT_FLAGS) 2>/dev/null | tail -n +2 | awk '{print $$2}' | grep -v '^sonarqube$$'); do \
+	@for job in $$(act push --list $(ACT_FLAGS) 2>/dev/null | tail -n +2 | awk '{print $$2}' | grep -Ev '^(sonarqube|code-ranker)$$'); do \
 		echo "▶ Running job: $$job"; \
 		act push -j $$job $(ACT_FLAGS) || exit 1; \
 	done
