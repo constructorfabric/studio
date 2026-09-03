@@ -265,6 +265,35 @@ def _read_with_stable_etag(path: Path) -> Tuple[str, str]:
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-stable-read
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-carry-forward-escalations
+def _carry_forward_tier2_escalations(path: Path) -> int:
+    """Best-effort read of a previous build's ``tier2_escalations`` count.
+
+    A content edit invalidates the whole-file etag and forces a fresh
+    :func:`build_doc_index` call, which would otherwise reset this counter
+    to 0 on every edit -- silently discarding a real observed signal (how
+    often this document's queries have escalated past Tier 1) about the
+    *document*, not about the specific bytes currently cached. The escalation
+    history is real usage evidence that outlives any one edit, so a rebuild
+    carries it forward from whatever cache file is already on disk (even a
+    now-stale one -- the same "read a cache the etag already considers
+    stale, on purpose" move :func:`diff_stale_sections` makes) rather than
+    starting back at 0.
+
+    Returns 0 for a missing/corrupt/pre-this-field cache -- the same value
+    a first-ever build already starts from, so this is never a regression.
+    """
+    cache_path = _index_cache_path(path)
+    if cache_path is None or not cache_path.is_file():
+        return 0
+    cached = _read_cache_file(cache_path)
+    if cached is None:
+        return 0
+    count = cached.get("tier2_escalations", 0)
+    return count if isinstance(count, int) and not isinstance(count, bool) else 0
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-carry-forward-escalations
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-build
 def build_doc_index(path: Path) -> Dict[str, Any]:
     """Build a fresh structural index for a Markdown file.
@@ -279,6 +308,12 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
     "one chunk per real chapter" grouping a future TF-IDF/cascade/OKF
     caller should read against instead -- see :func:`infer_section_level`
     for why a fixed heading level can't be assumed.
+
+    ``tier2_escalations`` is a new, purely additive field (see this
+    module's schema-contract docstring -- no ``_SCHEMA_VERSION`` bump
+    needed) carried forward across rebuilds by
+    :func:`_carry_forward_tier2_escalations` rather than reset here; see
+    :func:`record_tier2_escalation` for who writes to it.
     """
     canonical_path = path.resolve()
     content, etag = _read_with_stable_etag(canonical_path)
@@ -310,6 +345,7 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
         "sections": sections,
         "section_level": section_level,
         "retrieval_sections": _build_retrieval_sections(headings, lines, section_level),
+        "tier2_escalations": _carry_forward_tier2_escalations(canonical_path),
     }
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-build
 
@@ -619,3 +655,38 @@ def annotate_section_summary(path: Path, line_start: int, expected_hash: str, su
 
     return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _read_modify_write)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation
+def record_tier2_escalation(path: Path) -> Optional[int]:
+    """Increment and persist ``path``'s ``tier2_escalations`` counter,
+    returning the new count (``None`` outside a Studio project, the same
+    "nowhere to persist to" contract :func:`save_doc_index` already uses).
+
+    This is the real, observed-usage signal
+    :func:`studio.utils.cascade.route_tier2` needs to decide whether
+    building an OKF bundle for a document has crossed the point where it
+    pays for itself, without a human supplying an ``expected_future_queries``
+    guess -- see constructorfabric/studio#134. Counts Tier-1 *escalations*
+    specifically (calls where heading-nav/TF-IDF couldn't resolve
+    confidently on their own), not every query against the document: the
+    OKF-vs-baseline choice this counter feeds is only ever made for the
+    queries that actually reach Tier 2, so that is the population its
+    break-even math (and this counter) needs to describe.
+
+    Runs under the same :func:`with_file_lock` read-modify-write pattern as
+    :func:`annotate_section_summary`, so two concurrent escalations don't
+    race and drop one increment.
+    """
+    cache_path = _index_cache_path(path)
+    if cache_path is None:
+        return None
+
+    def _read_modify_write() -> int:
+        index = get_or_build_doc_index(path)
+        index["tier2_escalations"] = index.get("tier2_escalations", 0) + 1
+        save_doc_index(path, index)
+        return index["tier2_escalations"]
+
+    return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _read_modify_write)
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation

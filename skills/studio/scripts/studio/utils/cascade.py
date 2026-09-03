@@ -38,10 +38,11 @@ option that fits what this codebase can actually guarantee.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
-from .doc_index import get_or_build_doc_index
+from .doc_index import get_or_build_doc_index, record_tier2_escalation
 from .heading_nav import find_sections
 from .okf import get_okf_status
 from .read_gate import check_gate
@@ -51,6 +52,22 @@ from .tfidf import score_sections
 _OKF_BUILD_COST_TOKENS = 301_187
 _OKF_PER_QUERY_TOKENS = 45_735
 _BASELINE_PER_QUERY_TOKENS = 333_573
+
+#: The escalation count at which building an OKF bundle stops costing more
+#: than continuing to fall back to baseline, derived from the three real
+#: measured rates above rather than a second hardcoded guess: solves
+#: ``_OKF_BUILD_COST_TOKENS + _OKF_PER_QUERY_TOKENS * n <=
+#: _BASELINE_PER_QUERY_TOKENS * n`` for the smallest integer ``n``. This is
+#: deliberately *not* the ~15-48 query figures discussed in
+#: constructorfabric/studio#104's earlier comments -- those measured
+#: break-even over a document's *total* query volume (most of which
+#: resolve cheaply at Tier 1 and never reach this module at all); this
+#: constant instead answers the narrower question route_tier2 actually
+#: faces: for queries that *do* escalate to Tier 2, when does paying to
+#: build OKF beat continuing to fall back to baseline for each one.
+_TIER2_BREAK_EVEN_ESCALATIONS = math.ceil(
+    _OKF_BUILD_COST_TOKENS / (_BASELINE_PER_QUERY_TOKENS - _OKF_PER_QUERY_TOKENS)
+)
 
 
 def _as_candidate(section: Dict[str, Any]) -> Dict[str, Any]:
@@ -114,7 +131,18 @@ def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = N
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-tier2
-def _baseline_recommendation(expected_future_queries: Optional[int]) -> Dict[str, Any]:
+def _baseline_recommendation(
+    expected_future_queries: Optional[int], tier2_escalations: Optional[int],
+) -> Dict[str, Any]:
+    """``tier2_escalations`` is the real, persisted count of Tier 1
+    escalations against this document (``None`` only outside a Studio
+    project, where nothing can be persisted at all) -- this is what drives
+    ``should_build_okf`` automatically, replacing the human-supplied
+    ``expected_future_queries`` guess :func:`route_query` still accepts (and
+    still reports ``build_okf_break_even`` for) for backward compatibility
+    and for a caller that wants to reason about a *specific* future volume
+    rather than the actually-observed-so-far count.
+    """
     rec: Dict[str, Any] = {"recommendation": "baseline", "reason": "no_current_okf_bundle"}
     if expected_future_queries is not None and expected_future_queries > 0:
         okf_total = _OKF_BUILD_COST_TOKENS + _OKF_PER_QUERY_TOKENS * expected_future_queries
@@ -124,6 +152,10 @@ def _baseline_recommendation(expected_future_queries: Optional[int]) -> Dict[str
             "baseline_total_tokens": baseline_total,
             "building_okf_would_pay_off": okf_total < baseline_total,
         }
+    rec["tier2_escalations"] = tier2_escalations
+    rec["should_build_okf"] = (
+        tier2_escalations is not None and tier2_escalations >= _TIER2_BREAK_EVEN_ESCALATIONS
+    )
     return rec
 
 
@@ -147,7 +179,13 @@ def route_tier2(
     ``okf_needs_rebuild: True`` rather than risking a known-wrong summary --
     see this module's docstring for why that's the only coherent choice
     here.
+
+    Every call here is itself one Tier 1 escalation, so this is where that
+    real usage gets recorded (:func:`studio.utils.doc_index.record_tier2_escalation`)
+    -- regardless of which branch below the call ends up taking, since the
+    escalation already happened by the time this function runs at all.
     """
+    tier2_escalations = record_tier2_escalation(path)
     status = get_okf_status(path)
     # get_okf_status() returns one entry per retrieval section regardless of
     # whether anything was ever summarized -- an "available" bundle_dir with
@@ -155,7 +193,7 @@ def route_tier2(
     # yet, which is "no bundle" for this decision, not "bundle exists."
     bundle_exists = status["available"] and any(entry["status"] != "missing" for entry in status["entries"])
     if not bundle_exists:
-        return _baseline_recommendation(expected_future_queries)
+        return _baseline_recommendation(expected_future_queries, tier2_escalations)
 
     candidates = tier1_result.get("candidates", [])
     if candidates:
@@ -169,7 +207,7 @@ def route_tier2(
         # values), recommending OKF on a candidate that was never actually
         # checked. Treat "can't verify" the same as "not current".
         if any(entry is None for entry in relevant):
-            rec = _baseline_recommendation(expected_future_queries)
+            rec = _baseline_recommendation(expected_future_queries, tier2_escalations)
             rec["okf_needs_rebuild"] = True
             return rec
     else:
@@ -179,7 +217,7 @@ def route_tier2(
         relevant = status["entries"]
 
     if any(entry["status"] != "current" for entry in relevant):
-        rec = _baseline_recommendation(expected_future_queries)
+        rec = _baseline_recommendation(expected_future_queries, tier2_escalations)
         rec["okf_needs_rebuild"] = True
         return rec
 
@@ -206,8 +244,10 @@ def route_query(
     Returned shape is a stable contract, not incidental: top-level ``query``,
     ``tier``, ``reason``, ``candidates`` (:func:`route_tier1`'s own return,
     merged in) are always present; ``tier2`` (:func:`route_tier2`'s return,
-    with ``recommendation``/``reason``/optional ``okf_needs_rebuild``) is
-    added only when Tier 1 escalated; ``read_gate``
+    with ``recommendation``/``reason``/optional ``okf_needs_rebuild``, plus
+    -- whenever ``recommendation`` is ``"baseline"`` --
+    ``tier2_escalations``/``should_build_okf``, see
+    :func:`_baseline_recommendation`) is added only when Tier 1 escalated; ``read_gate``
     (:func:`studio.utils.read_gate.check_gate`'s return, with
     ``needs_confirmation``/``total_lines``/``threshold``) is added only when
     Tier 2 recommends ``"baseline"``. ``commands/cascade.py``'s

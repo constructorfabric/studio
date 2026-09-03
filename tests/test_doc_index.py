@@ -20,6 +20,7 @@ from studio.utils.doc_index import (
     get_or_build_doc_index,
     infer_section_level,
     load_doc_index,
+    record_tier2_escalation,
     save_doc_index,
 )
 from studio.utils.toc import parse_headings_with_lines
@@ -785,6 +786,80 @@ class TestAnnotateSectionSummary:
         by_line = {s["line_start"]: s["summary"] for s in final["sections"]}
         assert by_line[line_a] == "Summary A"
         assert by_line[line_b] == "Summary B"
+
+
+class TestRecordTier2Escalation:
+    """constructorfabric/studio#134: an automatic, persisted per-document
+    signal for whether building an OKF bundle has crossed its break-even
+    point, replacing a human-supplied query-volume guess."""
+
+    def test_first_call_builds_the_index_and_starts_the_counter_at_one(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert record_tier2_escalation(f) == 1
+
+    def test_repeated_calls_increment_and_persist(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        record_tier2_escalation(f)
+        assert record_tier2_escalation(f) == 3
+        assert load_doc_index(f)["tier2_escalations"] == 3
+
+    def test_returns_none_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
+        f = _write(tmp_path)
+        assert record_tier2_escalation(f) is None
+
+    def test_a_fresh_build_starts_the_counter_at_zero(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        assert index["tier2_escalations"] == 0
+
+    def test_content_edit_carries_the_escalation_count_forward_instead_of_resetting_it(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The counter tracks real observed usage against the *document*,
+        which outlives any one edit -- a rebuild triggered by a content
+        change (a new etag) must not silently zero out that history, the
+        same way section summaries are dropped on edit but usage counts
+        are not."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        record_tier2_escalation(f)
+
+        f.write_text(_SAMPLE + "\n## Section C\n")
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False  # confirms this really is a rebuild, not a stale hit
+        assert index["tier2_escalations"] == 2
+
+    def test_concurrent_escalations_do_not_lose_either_increment(self, tmp_path: Path, monkeypatch):
+        import threading
+        import time as time_module
+
+        from studio.utils import doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        get_or_build_doc_index(f)
+
+        original_save = di.save_doc_index
+
+        def slow_save(path, saved_index):
+            time_module.sleep(0.05)
+            return original_save(path, saved_index)
+
+        monkeypatch.setattr(di, "save_doc_index", slow_save)
+
+        threads = [threading.Thread(target=di.record_tier2_escalation, args=(f,)) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        assert load_doc_index(f)["tier2_escalations"] == 5
 
 
 class TestReadWithStableEtag:

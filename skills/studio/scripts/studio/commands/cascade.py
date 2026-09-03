@@ -89,6 +89,11 @@ def _human_retrieve(data: dict) -> None:
         ui.substep(f"tier 2 recommendation: {tier2['recommendation']} ({tier2['reason']})")
         if tier2.get("okf_needs_rebuild"):
             ui.substep("  OKF bundle exists but is stale/missing for this candidate -- needs a rebuild")
+        if tier2.get("should_build_okf"):
+            ui.substep(
+                f"  {tier2['tier2_escalations']} Tier-2 escalations recorded for this document -- "
+                "building an OKF bundle now would pay for itself"
+            )
     if "read_gate" in data and data["read_gate"]["needs_confirmation"]:
         gate = data["read_gate"]
         ui.substep(f"read gate: needs confirmation ({gate['total_lines']} lines > {gate['threshold']})")
