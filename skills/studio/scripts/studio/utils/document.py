@@ -134,11 +134,21 @@ def scan_cpt_ids(path: Path) -> List[Dict[str, object]]:
     lines = read_text_safe(path)
     if lines is None:
         return []
+    return scan_cpt_id_lines(lines)
     # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-read-file
 
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-foreach-line
+def scan_cpt_id_lines(lines: List[str]) -> List[Dict[str, object]]:
+    """Scan already-read document lines for Studio IDs — :func:`scan_cpt_ids` without
+    the read.
+
+    For a caller that has the file's content in hand and wants the document-side scan
+    to see the *same* bytes another parser just saw, rather than re-opening a file that
+    may have changed in between.
+    """
     hits: List[Dict[str, object]] = []
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-foreach-line
     for idx0, raw, stripped in _iter_non_fenced_lines(lines):
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-def
         m = _ID_DEF_RE.match(stripped)

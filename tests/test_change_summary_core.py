@@ -503,10 +503,11 @@ class TestPrivacy:
         monkeypatch.setattr(cs.subprocess, "run", _capture)
         cs.resolve_window(repo)
         # The linkage half lives in a later change; exercise it when present so this
-        # test covers every git call site on whichever branch it runs.
+        # test covers every git call site on whichever branch it runs. It takes its
+        # root from the window, which is why the window above carries one.
         linker = getattr(cs, "link_changed_files", None)
         if linker is not None:
-            linker(repo, window)
+            linker(window)
 
         assert issued, "the helper must actually have been exercised"
         for argv in issued:

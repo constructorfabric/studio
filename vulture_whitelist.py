@@ -21,8 +21,10 @@ from studio.utils.change_summary import (
     resolve_window,
     select_events,
     group_by_run,
+    link_changed_files,
     ChangeWindow,
     EventSelection,
+    LinkReport,
     RUN_UNATTRIBUTED,
 )
 
@@ -157,6 +159,14 @@ ChangeWindow.base_sha  # noqa: B018
 EventSelection.scanned  # noqa: B018
 EventSelection.undated  # noqa: B018
 EventSelection.skipped_lines  # noqa: B018
+link_changed_files  # noqa: B018
+LinkReport.linked  # noqa: B018
+LinkReport.declaring  # noqa: B018
+LinkReport.deleted  # noqa: B018
+LinkReport.unreadable  # noqa: B018
+LinkReport.not_a_file  # noqa: B018
+LinkReport.examined  # noqa: B018
+LinkReport.truncated  # noqa: B018
 EventSelection.runless  # noqa: B018
 EventSelection.log_overridden  # noqa: B018
 RUN_UNATTRIBUTED  # noqa: B018

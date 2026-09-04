@@ -345,6 +345,8 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 7. [x] - `p1` - Define code data model: regex patterns, ScopeMarker, BlockMarker, CodeReference, CodeFile dataclasses, error factory - `inst-code-datamodel`
 8. [x] - `p1` - Query and validation methods: list_ids, get by ID/inst, validate duplicate scopes - `inst-code-query-validate`
 9. [x] - `p1` - Convenience wrappers: load_code_file, validate_code_file entry points - `inst-code-wrappers`
+10. [x] - `p1` - Read a code file's text with the size ceiling applied to the bytes actually read rather than to a prior stat, reporting too-large under its own error code so a caller can branch on it instead of measuring the file again - `inst-code-read-bounded`
+11. [x] - `p1` - Parse already-read text as a code file, so a caller holding one snapshot can hand the same bytes to a second parser instead of reopening a file that may have changed in between - `inst-code-from-text`
 
 ### Cross-Validate Code
 

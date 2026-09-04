@@ -479,6 +479,41 @@ class TestLoadCodeFile:
         assert cf is None
         assert len(errs) == 1
         assert errs[0]["type"] == "file"
+        assert errs[0]["code"] == EC.FILE_READ_ERROR
+
+    def test_an_oversized_file_has_its_own_error_code(self, tmp_path: Path):
+        """Distinct from a read failure, so a caller can branch on the code instead of
+        re-measuring the file or parsing the message."""
+        code_file = tmp_path / "big.py"
+        code_file.write_text("x = 1\n" * 100)
+
+        cf, errs = load_code_file(code_file, max_bytes=16)
+
+        assert cf is None
+        assert [e["code"] for e in errs] == [EC.FILE_TOO_LARGE]
+
+    def test_the_ceiling_bounds_the_bytes_read_not_a_prior_stat(self, tmp_path: Path, monkeypatch):
+        """stat-then-read let a file growing in between slip past the limit it had just
+        been checked against. The reader no longer measures the file at all."""
+        code_file = tmp_path / "test.py"
+        code_file.write_text("# @cpt-flow:cpt-myapp-flow-test:p1\ndef foo(): pass\n")
+        real_stat = Path.stat
+
+        def _stat_fails(self, *a, **k):
+            if self == code_file:
+                raise OSError("stat refused")
+            return real_stat(self, *a, **k)
+        monkeypatch.setattr(Path, "stat", _stat_fails)
+
+        cf, errs = load_code_file(code_file, max_bytes=1000)
+        assert cf is not None and not errs
+        assert load_code_file(code_file, max_bytes=8)[1][0]["code"] == EC.FILE_TOO_LARGE
+
+    def test_from_text_parses_without_touching_the_file(self, tmp_path: Path):
+        cf, errs = CodeFile.from_text(tmp_path / "ghost.py", "# @cpt-flow:cpt-myapp-flow-test:p1\n")
+
+        assert cf is not None and not errs
+        assert len(cf.scope_markers) == 1
 
 
 class TestValidateCodeFile:
