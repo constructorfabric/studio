@@ -99,7 +99,12 @@ class TestRouteTier2:
         f = _write(tmp_path)
         tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
         result = route_tier2(f, tier1)
-        assert result == {"recommendation": "baseline", "reason": "no_current_okf_bundle"}
+        assert result == {
+            "recommendation": "baseline",
+            "reason": "no_current_okf_bundle",
+            "tier2_escalations": 1,
+            "should_build_okf": False,
+        }
 
     def test_bundle_exists_but_only_missing_entries_is_treated_as_no_bundle(self, tmp_path: Path, monkeypatch):
         """Real bug caught during manual verification: get_okf_status()
@@ -185,6 +190,50 @@ class TestRouteTier2:
         tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
         result = route_tier2(f, tier1)
         assert "build_okf_break_even" not in result
+
+    def test_tier2_escalations_counts_up_across_calls_without_a_human_supplied_guess(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """constructorfabric/studio#134: should_build_okf must derive from
+        real, observed escalations against this document, not a human-typed
+        `expected_future_queries` guess -- no such guess is passed here at
+        all."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+
+        first = route_tier2(f, tier1)
+        assert first["tier2_escalations"] == 1
+
+        second = route_tier2(f, tier1)
+        assert second["tier2_escalations"] == 2
+
+    def test_should_build_okf_flips_true_once_escalations_cross_the_real_break_even(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The break-even point is derived from cascade.py's own hardcoded,
+        measured per-query rates -- 301_187 / (333_573 - 45_735), which
+        rounds up to 2 -- not the ~15-48 total-query-volume figures from
+        constructorfabric/studio#104's earlier comments (those measured a
+        different population: total queries against a document, most of
+        which resolve at Tier 1 and never reach this function)."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+
+        assert route_tier2(f, tier1)["should_build_okf"] is False  # 1st escalation
+        assert route_tier2(f, tier1)["should_build_okf"] is True  # 2nd escalation, at break-even
+
+    def test_should_build_okf_is_false_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
+        """No cache location means no way to persist a real escalation
+        count, so this must never fabricate a True recommendation from
+        nothing -- None (untracked), not 0, and never above the threshold."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
+        f = _write(tmp_path)
+        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        result = route_tier2(f, tier1)
+        assert result["tier2_escalations"] is None
+        assert result["should_build_okf"] is False
 
     def test_candidate_that_no_longer_matches_any_section_falls_back_to_baseline(
         self, tmp_path: Path, monkeypatch

@@ -80,15 +80,17 @@ def _compute_etag(path: Path) -> str:
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cache-path
-def _index_cache_path(path: Path) -> Optional[Path]:
-    """Resolve ``<studio-dir>/.cache/doc-index/<slug>.json`` for a file.
+def _cache_dir_for(path: Path) -> Optional[Path]:
+    """Resolve ``<studio-dir>/.cache/doc-index/`` for the Studio project
+    owning ``path``, or ``None`` outside one (e.g. no Studio directory can
+    be found) -- the shared lookup every per-document cache file under this
+    directory reuses (the structural index itself, and any sidecar file
+    like :func:`_escalation_cache_path`'s), so a future addition doesn't
+    re-implement this resolution.
 
     Resolved from ``path`` itself (not the process's current working
     directory), so indexing a file outside the caller's cwd still resolves
     -- and always resolves -- the Studio directory that actually owns it.
-
-    Returns ``None`` when no Studio directory can be found (e.g. outside a
-    Studio-adapted project) -- callers should fall back to an uncached build.
     """
     from .files import find_studio_directory
 
@@ -101,13 +103,28 @@ def _index_cache_path(path: Path) -> Optional[Path]:
         # anomaly (unlike the ordinary, unlogged "no Studio directory"
         # case below), and should be visible at the CLI's default log
         # level rather than indistinguishable from a routine cache miss.
-        logger.warning("doc-index cache path lookup failed for %s: %s", path, exc)
-        studio_dir = None
+        logger.warning("doc-index cache dir lookup failed for %s: %s", path, exc)
+        return None
     if studio_dir is None:
         return None
+    return studio_dir / _CACHE_SUBDIR / _INDEX_CACHE_DIR
 
-    slug = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:16]
-    return studio_dir / _CACHE_SUBDIR / _INDEX_CACHE_DIR / f"{slug}.json"
+
+def _cache_slug(path: Path) -> str:
+    """The filename-safe identity a per-document cache file is keyed by."""
+    return hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:16]
+
+
+def _index_cache_path(path: Path) -> Optional[Path]:
+    """Resolve ``<studio-dir>/.cache/doc-index/<slug>.json`` for a file.
+
+    Returns ``None`` when no Studio directory can be found (e.g. outside a
+    Studio-adapted project) -- callers should fall back to an uncached build.
+    """
+    cache_dir = _cache_dir_for(path)
+    if cache_dir is None:
+        return None
+    return cache_dir / f"{_cache_slug(path)}.json"
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cache-path
 
 
@@ -279,6 +296,15 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
     "one chunk per real chapter" grouping a future TF-IDF/cascade/OKF
     caller should read against instead -- see :func:`infer_section_level`
     for why a fixed heading level can't be assumed.
+
+    Deliberately does *not* carry any real-usage counters (e.g. Tier-2
+    escalation volume, see :func:`record_tier2_escalation`): this index is
+    the "read once per file" *structural* cache, rebuilt wholesale on any
+    content edit -- a counter tracking usage of the *document* (which
+    outlives any one edit) has no business living inside a cache keyed by
+    the exact bytes currently on disk, and doing so would mean every
+    single-counter increment pays to re-serialize this entire dict just to
+    change one integer.
     """
     canonical_path = path.resolve()
     content, etag = _read_with_stable_etag(canonical_path)
@@ -619,3 +645,91 @@ def annotate_section_summary(path: Path, line_start: int, expected_hash: str, su
 
     return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _read_modify_write)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-cache-path
+def _escalation_cache_path(path: Path) -> Optional[Path]:
+    """Resolve ``<studio-dir>/.cache/doc-index/<slug>.escalations.json`` --
+    a tiny, standalone counter file, deliberately *not* a field inside the
+    structural ``doc_index.json`` cache (see :func:`record_tier2_escalation`
+    for why): incrementing it must never require rewriting a document's
+    full section/summary payload, and it must never share a lock (and
+    therefore never race) with that cache's own build-and-save path -- a
+    real bug caught in review (constructorfabric/studio#136), since
+    :func:`get_or_build_doc_index`'s cache-miss rebuild took no lock at
+    all, while a counter living inside that same file did.
+    """
+    cache_dir = _cache_dir_for(path)
+    if cache_dir is None:
+        return None
+    return cache_dir / f"{_cache_slug(path)}.escalations.json"
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-cache-path
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-escalations
+def get_tier2_escalations(path: Path) -> int:
+    """Read ``path``'s persisted Tier-2-escalation count without
+    incrementing it -- ``0`` for a document never escalated, outside a
+    Studio project, or whose counter file is missing/corrupt.
+
+    Read-only, so this never takes the counter's lock: a concurrent
+    increment mid-read is, at worst, a one-query-stale read of a
+    monotonically increasing count -- never a wrong *kind* of answer, just
+    possibly one behind, and resolved by whichever caller reads next.
+    """
+    cache_path = _escalation_cache_path(path)
+    if cache_path is None or not cache_path.is_file():
+        return 0
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("doc-index escalation counter unreadable at %s: %s", cache_path, exc)
+        return 0
+    count = data.get("tier2_escalations", 0) if isinstance(data, dict) else 0
+    return count if isinstance(count, int) and not isinstance(count, bool) else 0
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-escalations
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation
+def record_tier2_escalation(path: Path) -> Optional[int]:
+    """Increment and persist ``path``'s Tier-2-escalation counter, returning
+    the new count (``None`` outside a Studio project, or when persisting
+    the increment itself fails -- the same "can't confirm this was really
+    saved" contract :func:`annotate_section_summary` already uses, rather
+    than reporting a fabricated success count).
+
+    This is the real, observed-usage signal
+    :func:`studio.utils.cascade.route_tier2` needs to decide whether
+    building an OKF bundle for a document has crossed the point where it
+    pays for itself, without a human supplying an ``expected_future_queries``
+    guess -- see constructorfabric/studio#134. Counts Tier-1 *escalations*
+    specifically (calls where heading-nav/TF-IDF couldn't resolve
+    confidently on their own), not every query against the document: the
+    OKF-vs-baseline choice this counter feeds is only ever made for the
+    queries that actually reach Tier 2, so that is the population its
+    break-even math (and this counter) needs to describe.
+
+    Kept in its own tiny file (see :func:`_escalation_cache_path`) rather
+    than as a field inside the structural ``doc_index.json`` cache: a
+    document's real usage history outlives any one content edit, so it
+    can't be reset on rebuild the way the structural cache correctly is --
+    and it must never require rewriting that cache's full section/summary
+    payload just to change one integer. Its own lock, on its own file,
+    means it also never races :func:`get_or_build_doc_index`'s unlocked
+    cache-miss rebuild, the way a shared file would.
+    """
+    cache_path = _escalation_cache_path(path)
+    if cache_path is None:
+        return None
+
+    def _read_modify_write() -> Optional[int]:
+        new_count = get_tier2_escalations(path) + 1
+        try:
+            atomic_write_text(cache_path, json.dumps({"tier2_escalations": new_count}))
+        except OSError as exc:
+            logger.warning("doc-index escalation counter write failed for %s: %s", cache_path, exc)
+            return None
+        return new_count
+
+    return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _read_modify_write)
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation

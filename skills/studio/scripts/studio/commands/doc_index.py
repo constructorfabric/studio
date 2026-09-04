@@ -8,7 +8,7 @@ Thin CLI wrapper around ``studio.utils.doc_index``.
 import logging
 from typing import List
 
-from ..utils.doc_index import get_or_build_doc_index
+from ..utils.doc_index import get_or_build_doc_index, get_tier2_escalations
 from ..utils.ui import ui
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,11 @@ def cmd_doc_index(argv: List[str]) -> int:
         "section_level": index["section_level"],
         "retrieval_section_count": len(index["retrieval_sections"]),
         "retrieval_sections": index["retrieval_sections"],
+        # Not a field of `index` itself -- tier2_escalations lives in its own
+        # counter file, independent of the structural cache above (see
+        # doc_index.py's record_tier2_escalation), so it's fetched
+        # separately here rather than read off `index`.
+        "tier2_escalations": get_tier2_escalations(filepath),
     }
     ui.result(output, human_fn=_human_doc_index)
     return 0
@@ -66,6 +71,8 @@ def _human_doc_index(data: dict) -> None:
     hit = "cache hit — reused existing index" if data["cache_hit"] else "cache miss — built fresh index"
     ui.substep(hit)
     ui.substep(f"{data['section_count']} section(s), {data['total_lines']} total lines")
+    if data["tier2_escalations"]:
+        ui.substep(f"{data['tier2_escalations']} Tier-2 escalation(s) recorded for this document")
     for s in data["sections"]:
         summary = f" — {s['summary']}" if s.get("summary") else ""
         ui.substep(f"  H{s['level']} [{s['line_start']}-{s['line_end']}] {s['heading']}{summary}")

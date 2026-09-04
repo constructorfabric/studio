@@ -43,7 +43,12 @@ def cmd_retrieve(argv: List[str]) -> int:
     """Route a query against a Markdown file through the JIT-retrieval cascade."""
     p = ui.JsonSafeArgumentParser(
         prog="cfs retrieve",
-        description="Route a query through the two-tier JIT-retrieval cascade and report the decision.",
+        description=(
+            "Route a query through the two-tier JIT-retrieval cascade and report the decision. "
+            "Every escalation to Tier 2 is counted per document (cfs doc-index's tier2_escalations); "
+            "once that count crosses its real break-even point, the response's tier2.should_build_okf "
+            "flag turns on automatically -- no --expected-future-queries guess required."
+        ),
     )
     p.add_argument("file", help="Markdown file path")
     p.add_argument("query", help="Query text")
@@ -54,7 +59,10 @@ def cmd_retrieve(argv: List[str]) -> int:
     )
     p.add_argument(
         "--expected-future-queries", type=int, default=None,
-        help="Expected future query volume against this document, for the OKF-vs-baseline break-even math",
+        help="Expected future query volume against this document, for the OKF-vs-baseline break-even math "
+        "-- optional: tier2.should_build_okf is computed automatically from real recorded Tier-2 "
+        "escalations regardless of whether this is passed; use this only to reason about a hypothetical "
+        "future volume instead of the actually-observed-so-far count.",
     )
     args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:
@@ -89,6 +97,11 @@ def _human_retrieve(data: dict) -> None:
         ui.substep(f"tier 2 recommendation: {tier2['recommendation']} ({tier2['reason']})")
         if tier2.get("okf_needs_rebuild"):
             ui.substep("  OKF bundle exists but is stale/missing for this candidate -- needs a rebuild")
+        if tier2.get("should_build_okf"):
+            ui.substep(
+                f"  {tier2['tier2_escalations']} Tier-2 escalations recorded for this document -- "
+                "building an OKF bundle now would pay for itself"
+            )
     if "read_gate" in data and data["read_gate"]["needs_confirmation"]:
         gate = data["read_gate"]
         ui.substep(f"read gate: needs confirmation ({gate['total_lines']} lines > {gate['threshold']})")
