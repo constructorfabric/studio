@@ -101,7 +101,7 @@ class TestRouteTier1:
     #: direct-Python-caller case its docstring exists for. bool is checked
     #: separately from the numeric cases since it subclasses int and would
     #: otherwise slip past a bare isinstance(x, (int, float)) check.
-    _BAD_MARGIN_THRESHOLDS = [0, -1, float("nan"), float("inf"), "0.5", True]
+    _BAD_MARGIN_THRESHOLDS = (0, -1, float("nan"), float("inf"), "0.5", True)
 
     @pytest.mark.parametrize("bad_threshold", _BAD_MARGIN_THRESHOLDS)
     def test_margin_threshold_rejects_invalid_values_at_the_callable_api(
