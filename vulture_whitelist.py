@@ -15,6 +15,11 @@ from studio.utils.context import LoadedKit
 from studio.utils.doc_index import annotate_section_summary, diff_stale_sections
 from studio.utils.eval_harness import ReferencePresenceScorer, Scenario, ScorerKind, run_suite
 from studio.utils.eval_judge import Gold
+from studio.utils.artifact_quality import (
+    ArtifactFinding,
+    finding_json_schema,
+    VERDICT_UNJUDGEABLE,
+)
 from studio.utils.manifest import ManifestLayerState
 from studio.utils.okf import write_concept_file
 from studio.utils.change_summary import (
@@ -160,3 +165,13 @@ EventSelection.skipped_lines  # noqa: B018
 EventSelection.runless  # noqa: B018
 EventSelection.log_overridden  # noqa: B018
 RUN_UNATTRIBUTED  # noqa: B018
+
+# Artifact-quality finding model — public API consumed by detectors + the presentation layer,
+# which land in later tasks (see architecture/features/artifact-quality.md §2 Actor Flows / §6),
+# so these are unreferenced within the scanned scope until then. REMOVAL TRIGGER — delete each entry
+# once a real consumer imports it: ArtifactFinding / finding_json_schema when the first detector or
+# the `cfs artifact-quality` command lands; VERDICT_UNJUDGEABLE when the first judged detector lands.
+# If a later refactor leaves one genuinely unused, delete its line rather than keep suppressing it.
+ArtifactFinding  # noqa: B018
+finding_json_schema  # noqa: B018
+VERDICT_UNJUDGEABLE  # noqa: B018
