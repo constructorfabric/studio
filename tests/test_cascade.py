@@ -66,6 +66,18 @@ def _write(tmp_path: Path, content: str = _SAMPLE, name: str = "doc.md") -> Path
     return f
 
 
+# route_tier2 never reads tier1_result["reason"] -- these TestRouteTier2
+# fixtures only need the row-1 *shape* (escalate, no candidates), so the
+# exact reason string doesn't affect what's under test. Kept as one named
+# constant rather than a literal repeated across every fixture: a bare
+# string copy-pasted five times silently drifted out of sync with
+# route_tier1's real reason ("heading_nav_no_hits" was retired and renamed
+# to "no_signal_from_either_method" without any of these being updated --
+# constructorfabric/studio#137 review) with nothing to catch it, since nothing
+# here actually exercises route_tier1 itself.
+_NO_CANDIDATE_ESCALATION = {"tier": "escalate", "reason": "no_signal_from_either_method", "candidates": []}
+
+
 class TestRouteTier1:
     def test_row1_neither_method_has_signal_escalates(self, tmp_path: Path, monkeypatch):
         """"making up" is tfidf.py's own documented adversarial case: "up" is
@@ -95,7 +107,7 @@ class TestRouteTier1:
         """Heading-nav still has nothing, and TF-IDF has a real but diffuse
         signal (both sections score positively) -- escalates, but hands
         along TF-IDF's own top pick as the best Tier-1 guess, the same way
-        row 6 hands along heading-nav's pick despite escalating."""
+        row 4/7 hand along heading-nav's pick despite escalating."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE)
         result = route_tier1(f, "gizmo thing")
@@ -103,7 +115,26 @@ class TestRouteTier1:
         assert result["reason"] == "heading_nav_no_hits_diffuse_tfidf"
         assert result["candidates"] == [{"heading": "SectionA", "line_start": 1, "line_end": 4}]
 
-    def test_row2_agree_unambiguous_resolves_at_tier1(self, tmp_path: Path, monkeypatch):
+    def test_row4_heading_nav_hit_but_tfidf_has_no_signal_escalates(self, tmp_path: Path, monkeypatch):
+        """Real bug caught during review (constructorfabric/studio#137):
+        `tfidf_ranked[0]` is still a real dict entry when every section
+        scores exactly 0 -- just an arbitrary document-order tie-break, not
+        a genuine pick. The old code compared it against heading-nav's real
+        pick unconditionally, fabricating a "disagreement" (`resolved_multi`
+        with a bogus second candidate TF-IDF never actually found relevant)
+        out of a signal that was never there. Must escalate on heading-nav's
+        single, unconfirmed signal instead."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, "## Alpha\n\nNo relevant terms here besides filler filler filler.\n\n"
+                             "## Beta\n\nThis talks about it up here too.\n")
+        result = route_tier1(f, "it up")
+        assert result == {
+            "tier": "escalate",
+            "reason": "heading_nav_only_no_tfidf_signal",
+            "candidates": [{"heading": "Beta", "line_start": 5, "line_end": 8}],
+        }
+
+    def test_row6_agree_unambiguous_resolves_at_tier1(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         result = route_tier1(f, "KAPING")
@@ -111,7 +142,7 @@ class TestRouteTier1:
         assert result["reason"] == "heading_nav_tfidf_agree_large_margin"
         assert result["candidates"] == [{"heading": "Introduction", "line_start": 1, "line_end": 4}]
 
-    def test_row3_disagreement_resolves_multi_with_both_candidates(self, tmp_path: Path, monkeypatch):
+    def test_row5_disagreement_resolves_multi_with_both_candidates(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path, _DISAGREEMENT_SAMPLE)
         result = route_tier1(f, "gadget")
@@ -120,7 +151,7 @@ class TestRouteTier1:
         headings = {c["heading"] for c in result["candidates"]}
         assert headings == {"SectionA", "SectionB"}
 
-    def test_row4_agree_diffuse_margin_escalates(self, tmp_path: Path, monkeypatch):
+    def test_row7_agree_diffuse_margin_escalates(self, tmp_path: Path, monkeypatch):
         """Real, reproduced shape of findings.md's "zero-shot" adversarial
         test: heading-nav and TF-IDF agree on the same section, but the
         margin is finite (not unambiguous) -- and that agreed pick is
@@ -147,7 +178,7 @@ class TestRouteTier2:
     def test_no_bundle_at_all_recommends_baseline(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert result == {"recommendation": "baseline", "reason": "no_current_okf_bundle"}
 
@@ -178,7 +209,7 @@ class TestRouteTier2:
         section_a = index["retrieval_sections"][0]
         write_concept_file(f, section_a["line_start"], description="d", body="b")  # SectionB left missing
 
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "baseline"
         assert result["okf_needs_rebuild"] is True
@@ -190,7 +221,7 @@ class TestRouteTier2:
         for section in index["retrieval_sections"]:
             write_concept_file(f, section["line_start"], description="d", body="b")
 
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
 
@@ -222,7 +253,7 @@ class TestRouteTier2:
     def test_expected_future_queries_adds_break_even_math(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1, expected_future_queries=20)
         breakeven = result["build_okf_break_even"]
         assert breakeven["okf_total_tokens"] == 301_187 + 45_735 * 20
@@ -232,7 +263,7 @@ class TestRouteTier2:
     def test_no_expected_future_queries_omits_break_even_math(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert "build_okf_break_even" not in result
 
