@@ -74,7 +74,22 @@ def _validate_margin_threshold(margin_threshold: Optional[float]) -> None:
     finite margin, silently defeating the "no finite value is yet proven
     safe" design basis this module's own docstring documents.
     """
-    if margin_threshold is not None and not (math.isfinite(margin_threshold) and margin_threshold > 0):
+    if margin_threshold is None:
+        return
+    # isinstance guards math.isfinite() itself: it raises TypeError for any
+    # non-numeric argument, which would propagate out before the ValueError
+    # below ever runs -- defeating this function's own documented contract
+    # for exactly the direct-Python-caller case its docstring exists for
+    # (the CLI's argparse type already coerces to float before this is
+    # ever reached, so only a direct caller can hit this). bool is
+    # deliberately excluded even though it subclasses int: True/False are
+    # not meaningful margin thresholds, and isfinite(True) would otherwise
+    # silently accept one.
+    if (
+        isinstance(margin_threshold, bool)
+        or not isinstance(margin_threshold, (int, float))
+        or not (math.isfinite(margin_threshold) and margin_threshold > 0)
+    ):
         raise ValueError(f"margin_threshold must be a finite number > 0, got {margin_threshold!r}")
 
 
