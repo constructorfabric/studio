@@ -142,6 +142,16 @@ def _baseline_recommendation(
     still reports ``build_okf_break_even`` for) for backward compatibility
     and for a caller that wants to reason about a *specific* future volume
     rather than the actually-observed-so-far count.
+
+    Expected caller action on ``should_build_okf: True`` (this module never
+    takes it itself -- by design, nothing here ever calls an LLM): read each
+    of the document's ``retrieval_sections`` (:func:`studio.utils.doc_index.get_or_build_doc_index`),
+    summarize each one, and call :func:`studio.utils.okf.write_concept_file`
+    per section -- the same one-time enrichment pass OKF bundles are always
+    built by, just triggered by this signal instead of a human's judgment
+    call. Nothing in this codebase currently performs that pass
+    automatically; a caller (a skill, an agent, a scheduled job) has to
+    notice the flag and act on it.
     """
     rec: Dict[str, Any] = {"recommendation": "baseline", "reason": "no_current_okf_bundle"}
     if expected_future_queries is not None and expected_future_queries > 0:
