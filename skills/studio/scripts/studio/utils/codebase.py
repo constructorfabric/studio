@@ -121,6 +121,23 @@ class CodeFile:
         if errs:
             return None, errs
         return cf, []
+
+    # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-from-text
+    @classmethod
+    def from_text(cls, code_path: Path, text: str) -> Tuple[Optional["CodeFile"], List[Dict[str, object]]]:
+        """Parse already-read text as ``code_path``, returning (CodeFile, errors).
+
+        For a caller that holds the file's content — because it read it once under a
+        size ceiling, or needs a second parser to see the *same* bytes — so the file is
+        not opened again between two reads that are meant to describe one state.
+        """
+        cf = cls(path=code_path)
+        cf._parse_markers(text.splitlines())
+        cf._loaded = True
+        if cf._errors:
+            return None, list(cf._errors)
+        return cf, []
+    # @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-from-text
     # @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-datamodel
 
     def load(self) -> List[Dict[str, object]]:
@@ -615,9 +632,24 @@ def _build_orphan_instruction_error(
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-orphan
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
-def load_code_file(code_path: Path) -> Tuple[Optional[CodeFile], List[Dict[str, object]]]:
-    """Convenience wrapper returning (CodeFile|None, errors)."""
-    return CodeFile.from_path(code_path)
+def load_code_file(
+    code_path: Path,
+    *,
+    max_bytes: Optional[int] = None,
+) -> Tuple[Optional[CodeFile], List[Dict[str, object]]]:
+    """Convenience wrapper returning (CodeFile|None, errors).
+
+    Applies the same size ceiling the bulk-scan path enforces. Without it a caller
+    reaching this directly reads an arbitrarily large file whole into memory, while the
+    same file routed through ``_scan_code_file_references`` would be skipped — one
+    entry point honouring a limit the other ignores. ``max_bytes`` of 0 or less
+    disables the check for callers that genuinely want the whole file; ``None`` selects
+    the module default. See :func:`read_code_text` for how the ceiling is applied.
+    """
+    text, errors = read_code_text(code_path, max_bytes=max_bytes)
+    if text is None:
+        return None, errors
+    return CodeFile.from_text(code_path, text)
 
 def validate_code_file(code_path: Path) -> Dict[str, List[Dict[str, object]]]:
     """Validate a single code file's marker structure."""
@@ -639,6 +671,49 @@ def validate_code_file(code_path: Path) -> Dict[str, List[Dict[str, object]]]:
     return cf.validate()
 # @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
 
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-read-bounded
+def read_code_text(
+    code_path: Path,
+    *,
+    max_bytes: Optional[int] = None,
+) -> Tuple[Optional[str], List[Dict[str, object]]]:
+    """Read a code file's text with the size ceiling applied to the bytes actually read.
+
+    Returns ``(text, [])`` or ``(None, [error])``. The ceiling bounds what is *read*,
+    not what a prior ``stat`` reported: the first version measured the file and then
+    read it whole, and a file growing in between slipped past the limit it was just
+    checked against. Reading ``limit + 1`` bytes needs no second look at the file and
+    cannot be raced.
+
+    Too large is :data:`EC.FILE_TOO_LARGE`, distinct from :data:`EC.FILE_READ_ERROR`, so
+    a caller can branch on the code instead of re-measuring the file or parsing the
+    message. ``max_bytes`` of 0 or less disables the ceiling; ``None`` selects the module
+    default, resolved here because the constant is defined further down this module.
+    """
+    limit = _MAX_CODE_FILE_BYTES if max_bytes is None else max_bytes
+    try:
+        with code_path.open("rb") as handle:
+            data = handle.read(limit + 1) if limit > 0 else handle.read()
+    except OSError as exc:
+        return None, [error(
+            "file", f"Failed to read `{code_path}`: {exc}",
+            code=EC.FILE_READ_ERROR, path=code_path, line=1,
+        )]
+    if 0 < limit < len(data):
+        return None, [error(
+            "file", f"`{code_path}` exceeds the {limit}-byte scan limit",
+            code=EC.FILE_TOO_LARGE, path=code_path, line=1,
+        )]
+    try:
+        return data.decode("utf-8"), []
+    except UnicodeDecodeError as exc:
+        return None, [error(
+            "file", f"Failed to read `{code_path}`: {exc}",
+            code=EC.FILE_READ_ERROR, path=code_path, line=1,
+        )]
+# @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-read-bounded
+
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 # Conventional non-source directories excluded from every scan, independent of
 # the project's own `artifacts.toml` `ignore` config.
@@ -646,7 +721,9 @@ _DEFAULT_IGNORED_DIR_NAMES = frozenset(
     {"node_modules", ".git", ".venv", "venv", "build", "dist", "vendor", ".tox", "__pycache__"}
 )
 
-# Files larger than this are skipped (with a warning) rather than fully read.
+# Files larger than this are skipped (with a warning) rather than fully read. A
+# consumer learns that a file was declined from `read_code_file`'s FILE_TOO_LARGE
+# error code, so no public alias of the number is needed.
 _MAX_CODE_FILE_BYTES = 2_000_000
 
 

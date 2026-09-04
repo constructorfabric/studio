@@ -1,10 +1,10 @@
-"""Change-summary core — resolve the window a digest covers, and select the
-decision-log events recorded inside it.
+"""Change-summary core — resolve the window a digest covers, the decision-log events
+recorded inside it, and the requirements the changed files declare.
 
-The digest answers "what changed on this branch, and why". This module owns the two
-halves that have no output format: **which span of work counts as "the run"**, and
-**which recorded decisions fall inside it**. Rendering belongs to the command
-wrapper; linking changed files to requirements is separate again.
+The digest answers "what changed on this branch, and why". This module owns the three
+halves that have no output format: **which span of work counts as "the run"**, **which
+recorded decisions fall inside it**, and **which requirement each changed file serves**.
+Rendering belongs to the command wrapper.
 
 Three deliberate choices:
 
@@ -30,6 +30,14 @@ private ``_run_git`` helpers in this package have incompatible contracts — one
 copy would duplicate both. ``_git_query`` answers only "one line of stdout, or nothing —
 and whether git itself failed to answer".
 
+Requirement linkage reads markers through :func:`codebase.load_code_file`, the parser
+``validate`` uses and the only one that yields identifiers. ``coverage.py`` measures
+marker *density* — counts and line ranges, no IDs — so it cannot answer "which
+requirement does this file serve" at all. A referenced ID is reported as-is rather than
+resolved back to its declaring artifact: ``cfs validate`` already fails when a code
+marker names an ID no artifact defines, so in a green tree every reported ID is known
+to be declared, and re-resolving it here would duplicate that gate for cosmetic gain.
+
 @cpt-algo:cpt-studio-algo-developer-experience-change-summary:p1
 """
 
@@ -44,7 +52,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import codebase
 from . import decision_log
+from . import document
+from . import error_codes as EC
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +120,32 @@ REASON_NOT_A_PROJECT = "not inside a Studio project"
 REASON_LOG_DISABLED = "decision log disabled"
 REASON_LOG_ABSENT = "no decision log yet"
 REASON_LOG_UNREADABLE = "decision log unreadable"
+REASON_NO_BASE_COMMIT = "window has no base commit to compare against"
+REASON_DIFF_UNAVAILABLE = "git could not list changed files"
+REASON_FILE_GONE = "file no longer present"
+REASON_FILE_UNREADABLE = "file could not be read"
 REASON_INVALID_SINCE = "the supplied lower bound is not an absolute timestamp"
+REASON_FILE_TOO_LARGE = "file exceeds the shared scan size limit"
+REASON_NOT_A_FILE = "not a regular file"
+REASON_SCOPE_UNKNOWN = "scope could not be determined"
+#: One entry's classification raised something no arm anticipated. The row says so and
+#: the rest of the report stands; the alternative was one bad file discarding everything.
+REASON_SCAN_FAILED = "marker scan failed unexpectedly"
+#: The file was read fine; its markers do not parse — a dangling ``@cpt-end``, a
+#: mismatched id. Reporting that as "could not be read" named the wrong failure.
+REASON_MARKERS_INVALID = "requirement markers could not be parsed"
+#: A hand-built window with a base commit but no root: there is nothing to diff *in*.
+REASON_NO_PROJECT_ROOT = "window carries no project root"
+
+#: Most changed entries examined in one report.
+#:
+#: A bound is needed because the entry list is not bounded by the diff: the untracked
+#: sweep can return an arbitrary number of paths (an unignored dependency tree), and
+#: each entry costs a stat plus two full reads. The number is chosen from the feature's
+#: own premise rather than picked arbitrarily — a change set larger than this is not
+#: summarisable in ten lines, so examining more of it buys nothing a reader can use.
+#: Entries beyond the ceiling are counted in ``truncated`` rather than dropped quietly.
+MAX_CHANGED_ENTRIES = 1000
 
 #: Bucket name for selected events whose ``run_id`` is missing or unusable. Grouping
 #: used to build buckets only for truthy ids, so such events sat in ``events`` and in no
@@ -632,3 +668,420 @@ def group_by_run(selection: EventSelection) -> Dict[str, List[Dict[str, Any]]]:
         grouped.setdefault(run_id, []).append(event)
     return grouped
 # @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-group-runs
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-link-datamodel
+@dataclass(frozen=True)
+class FileLink:
+    """One changed file and what it does with requirement IDs.
+
+    Two directions, deliberately separate. ``references`` are IDs the file *points at*
+    — code serving a requirement. ``defines`` are IDs the file *declares* — an artifact
+    that **is** a requirement. Code can only reference and artifacts normally only
+    define, so collapsing them into one list would report a changed specification as
+    "traces to nothing", which is precisely backwards.
+
+    ``reason`` separates *"checked, and it carries no markers"* (empty) from *"could
+    not check"* — deleted or unreadable. A digest that merges those implies a file
+    serves no requirement when in truth it was never read.
+
+    Frozen, with tuple fields, like the window and selection records: a link is what
+    one read of one file found, and nothing may edit that after the fact.
+    """
+
+    path: str = ""
+    status: str = ""
+    references: Tuple[str, ...] = ()
+    defines: Tuple[str, ...] = ()
+    reason: str = REASON_OK
+
+
+@dataclass(frozen=True)
+class LinkReport:
+    """What every file changed inside a window does with requirement IDs.
+
+    The counters exist so a renderer can print its denominator. ``linked`` alone is a
+    number without a scope; ``linked`` of ``changed``, with ``declaring``, ``excluded``
+    and ``unreadable`` broken out, is checkable — which is only true while ``files``
+    cannot be grown or shrunk underneath them, hence frozen and a tuple.
+
+    ``changed`` counts every entry git reported; ``examined`` counts the ones this
+    report classified, which is fewer when the ceiling bit (``truncated`` is the
+    difference). Every tally and every row is over ``examined``, so the arithmetic a
+    renderer checks is ``examined == len(files) + excluded``, and every row that carries
+    no marker is in exactly one of ``deleted``, ``unreadable`` or ``not_a_file`` — or is
+    a regular file that was read and simply carries none.
+    """
+
+    files: Tuple[FileLink, ...] = ()
+    changed: int = 0
+    examined: int = 0
+    linked: int = 0
+    declaring: int = 0
+    deleted: int = 0
+    excluded: int = 0
+    unreadable: int = 0
+    not_a_file: int = 0
+    truncated: int = 0
+    available: bool = False
+    reason: str = REASON_NOT_A_REPO
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-link-datamodel
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-lines
+def _git_records(project_root: Path, args: List[str]) -> Optional[List[str]]:
+    """Run a read-only git query with ``-z`` output and split it on NUL.
+
+    The multi-record sibling of :func:`_git_query`. ``None`` here means "no answer" for
+    every failure mode, so callers report rather than diagnose. Never raises.
+
+    Line-splitting is not usable here. Without ``-z``, git *quotes and escapes* any
+    path containing a control character, a quote or a non-ASCII byte — a file legally
+    named ``we<TAB>ird.py`` arrives as the literal 12 characters ``"we\\tird.py"``.
+    Splitting that on tab yields fragments that match nothing on disk, so the file
+    would be reported as deleted while sitting right there. NUL records are the only
+    unambiguous form, since NUL is the one byte a path cannot contain.
+
+    Runs with the same sanitised environment as :func:`_git_query`. This helper was
+    written before that sanitising existed and did not pick it up, so an ambient
+    ``GIT_DIR`` could resolve the window against one repository and then list the
+    changed files of another — half a digest about the wrong project.
+    """
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            cwd=str(project_root),
+            env=_git_env(),
+            capture_output=True,
+            text=True,
+            # Filesystem paths are bytes on POSIX and are not guaranteed to be UTF-8,
+            # so `text=True`'s strict default raises UnicodeDecodeError on a legal but
+            # undecodable filename -- escaping past the handler below and breaking the
+            # never-raises contract. `surrogateescape` is the handler Python itself uses
+            # for paths, so the value round-trips back to the same bytes when reopened.
+            errors="surrogateescape",
+            timeout=_GIT_TIMEOUT,
+            check=False,
+        )
+    except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
+        logger.debug("change-summary git query failed: %s", exc)
+        return None
+    if result.returncode:
+        logger.debug("change-summary git query exited %d", result.returncode)
+        return None
+    # A trailing NUL leaves one empty tail record; drop it without dropping
+    # legitimately empty interior records, which would desynchronise the walk.
+    records = result.stdout.split("\0")
+    if records and not records[-1]:
+        records.pop()
+    return records
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-lines
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-parse-name-status
+def _walk_name_status(records: List[str]) -> List[Tuple[str, str]]:
+    """Walk ``git diff --name-status -z`` records into ``(status, path)`` pairs.
+
+    Under ``-z`` the output is a flat record stream, not one record per change: a
+    status is followed by **one** path, except renames and copies which are followed by
+    **two** — the old name then the new one. So the stream has to be walked with that
+    arity in mind rather than zipped in pairs; getting it wrong desynchronises every
+    subsequent entry, not just the rename.
+
+    The *new* path is the one that exists to be read, so it is the one kept. Taking the
+    old name would send every rename to the unreadable branch and silently drop its
+    requirement links. Truncated output stops the walk instead of raising.
+    """
+    entries: List[Tuple[str, str]] = []
+    index = 0
+    while index < len(records):
+        status_field = records[index]
+        index += 1
+        if not status_field:
+            continue
+        status = status_field[0]
+        wanted = 2 if status in ("R", "C") else 1
+        paths = records[index:index + wanted]
+        index += wanted
+        if len(paths) < wanted or not paths[-1]:
+            continue
+        entries.append((status, paths[-1]))
+    return entries
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-parse-name-status
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-classify-path
+def _in_project_scope(candidate: Path, project_root: Path) -> Optional[bool]:
+    """Report whether a changed path is one this project owns.
+
+    Three answers, not two. ``None`` means the question could not be answered, which
+    used to be folded into "excluded by policy" — a policy decision reported for what
+    was actually a filesystem error, so the report claimed a judgement it never made.
+
+    Delegates to :func:`codebase.resolve_entry_code_files`, the single shared exclusion
+    policy, rather than re-deriving containment rules that already exist in one place.
+    Two things that delegation does *not* handle, both guarded here:
+
+    * **A directory-shaped entry.** A changed submodule appears in the diff as a
+      gitlink, which is a directory on disk, so the shared resolver takes its ``rglob``
+      branch and walks the entire nested tree purely to answer a boolean. Regular files
+      are the only linkable entries, so anything else is refused before that walk.
+    * **Conventional non-source directory names**, which the resolver applies to
+      traversal-discovered candidates but not to an explicitly named file. So a tracked
+      change under a vendored path is reported rather than hidden — the safer direction
+      for a review digest, since over-reporting costs a reader a moment while
+      under-reporting hides work that really did change.
+    """
+    try:
+        if not candidate.is_file():
+            return False
+        files, _excluded = codebase.resolve_entry_code_files(
+            candidate, [candidate.suffix], project_root=project_root,
+        )
+    except OSError as exc:
+        logger.debug("change-summary scope check failed: %s", exc)
+        return None
+    return bool(files)
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-classify-path
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-file-markers
+def _file_traceability(path: Path) -> Tuple[List[str], List[str], str]:
+    """Return ``(references, defines, reason)`` for one changed file.
+
+    Both directions are asked, because a file's suffix is not a reliable guide and the
+    authoritative extension list lives in a ``commands`` module this layer must not
+    import. Asking what the file *does* with IDs is language-agnostic and needs no list:
+
+    * :func:`codebase.CodeFile.from_text` yields code markers — IDs the file
+      **references** from code.
+    * :func:`document.scan_cpt_id_lines` yields document IDs — those tagged
+      ``definition`` are IDs the file **declares**; those tagged ``reference`` are IDs
+      the document cites, which are references too. A document's mentions of IDs it
+      declares itself are left out: they point at nothing else.
+
+    The two are complementary in practice: this module's own source reports its code
+    references and no definitions, while the feature artifact declaring its algorithm
+    reports definitions, plus references to the other requirements it cites.
+
+    A binary file lands in the unreadable branch, because the loader reports a decode
+    failure — returned as *could not read* rather than as "carries no markers". Those
+    are different claims and only one of them is true.
+
+    **The file is read once**, and both parsers see that one snapshot. Two independent
+    reads let a file edited mid-scan — the live-editing case this module is for — report
+    ``references`` from one version and ``defines`` from another as if they described a
+    single state. The size ceiling lives in :mod:`codebase` alongside the bulk-scan path
+    that already enforced it, applied to the bytes actually read, and *too large* is told
+    from *unreadable* by the loader's own error code rather than by measuring the file
+    a second time.
+    """
+    text, errors = codebase.read_code_text(path)
+    if text is None:
+        if any(err.get("code") == EC.FILE_TOO_LARGE for err in errors):
+            return [], [], REASON_FILE_TOO_LARGE
+        logger.debug("change-summary could not read a changed file")
+        return [], [], REASON_FILE_UNREADABLE
+    code_file, errors = codebase.CodeFile.from_text(path, text)
+    if code_file is None or errors:
+        # Read fine, parsed badly. A test file full of deliberately malformed marker
+        # fixtures is the everyday case, and "could not be read" was untrue of it.
+        logger.debug("change-summary could not parse code markers in a changed file")
+        return [], [], REASON_MARKERS_INVALID
+    hits = document.scan_cpt_id_lines(text.splitlines())
+    defines = {str(h.get("id")) for h in hits if h.get("type") == "definition" and h.get("id")}
+    # A document that points at an ID references it as surely as a code marker does —
+    # a design note citing a requirement is a link to that requirement. Only its
+    # mentions of IDs it declares *itself* are left out: those point at nothing else.
+    cited = {str(h.get("id")) for h in hits if h.get("type") == "reference" and h.get("id")}
+    references = {ref.id for ref in code_file.references if ref.id} | (cited - defines)
+    return sorted(references), sorted(defines), REASON_OK
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-file-markers
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-collect-changed
+def _collect_changed_entries(
+    project_root: Path,
+    base_sha: str,
+) -> Optional[Tuple[List[Tuple[str, str]], int]]:
+    """List ``(status, path)`` for everything changed since ``base_sha``, plus the total.
+
+    Returns ``(entries, total)``: at most :data:`MAX_CHANGED_ENTRIES` entries
+    materialised, and the count of everything git reported. The untracked sweep is
+    the unbounded stream — an unignored dependency tree can run to hundreds of
+    thousands of paths — so past the ceiling its paths are *counted* but not stored.
+    Deduplication against the diff still holds for them: a path already seen is
+    neither stored twice nor counted twice. Git's captured output is still read whole
+    (``subprocess.run`` buffers it); what this bounds is the per-path Python objects and
+    the dictionary, which is where the cost the ceiling exists for actually accrues.
+
+    Rename detection is pinned with ``-M`` rather than left to the ambient
+    ``diff.renames`` setting, because :func:`_walk_name_status` keeps a rename's new
+    path precisely so the rename keeps its requirement link — a guarantee that would
+    otherwise hold on one machine and fail on another with the same repository state.
+
+    Compares the base commit against the **working tree**, not against ``HEAD``, so
+    uncommitted work is included — a developer asking what changed before committing is
+    the main caller.
+
+    Untracked files are collected separately and reported with status ``?``. ``git
+    diff`` cannot see them, so omitting them would let a brand-new module be absent
+    from the digest entirely: the silent omission this module exists to avoid.
+
+    **The two streams overlap and are deduplicated by path, diff status winning.** One
+    physical file can appear in both: `git rm --cached` on a file present in the base
+    commit leaves it deleted in the index and untracked on disk, so the diff reports
+    ``D`` and the untracked sweep reports it as new. Concatenating produced two
+    contradictory rows for one file and inflated every counter. Git emits repo-relative
+    POSIX paths from both commands, so the raw string is an exact key — resolving each
+    path instead would cost a syscall per entry *and* wrongly merge two distinct
+    symlinks that happen to share a target.
+
+    **Either query failing makes the whole listing unavailable.** An earlier version
+    turned a failed untracked sweep into an empty one, so a report could come back
+    available while silently missing every new file — the exact partial-presented-as-
+    complete result this module exists to prevent.
+    """
+    diffed = _git_records(
+        project_root,
+        # `--end-of-options` for the same reason as the ref lookups: the base sha comes
+        # from a window the caller may have built, so it must not be read as an option.
+        ["diff", "-M", "--name-status", "-z", "--end-of-options", base_sha],
+    )
+    if diffed is None:
+        return None
+    seen: Dict[str, str] = {}
+    for status, rel_path in _walk_name_status(diffed):
+        seen.setdefault(rel_path, status)
+    untracked = _git_records(
+        project_root, ["ls-files", "--others", "--exclude-standard", "-z"],
+    )
+    if untracked is None:
+        return None
+    overflow = 0
+    for rel_path in untracked:
+        if not rel_path or rel_path in seen:
+            # Already carrying a diff status: neither stored nor counted twice.
+            continue
+        if len(seen) >= MAX_CHANGED_ENTRIES:
+            overflow += 1
+            continue
+        seen[rel_path] = "?"
+    # The map is keyed by path for deduplication, but the contract is (status, path),
+    # so the pairs are flipped back rather than returned in the map's own order.
+    return [(status, rel_path) for rel_path, status in seen.items()], len(seen) + overflow
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-collect-changed
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-classify-entry
+def _classify_entry(
+    status: str,
+    rel_path: str,
+    project_root: Path,
+) -> Tuple[Optional[FileLink], str]:
+    """Classify one changed entry into ``(link, counter to bump)``.
+
+    Extracted from :func:`link_changed_files` to keep that function within the
+    project's local-variable budget, and because "what is this entry, and which tally
+    does it belong to" is one question worth answering in one place.
+
+    A ``None`` link means the entry is counted but not listed — that is only the
+    policy-excluded case, where naming the path would imply it was examined. Every
+    other outcome produces a row, because a reader needs to see that the entry existed
+    even when nothing could be read from it.
+    """
+    absolute = project_root / rel_path
+    in_scope = _in_project_scope(absolute, project_root)
+
+    if in_scope is None:
+        # The scope question could not be answered. Reporting that as "excluded by
+        # policy" would claim a judgement that was never made.
+        return FileLink(path=rel_path, status=status, reason=REASON_SCOPE_UNKNOWN), "unreadable"
+
+    if not in_scope:
+        # Three distinct ways to fail the scope check, kept apart: the file is gone, it
+        # is not a regular file at all (a changed submodule arrives as a directory), or
+        # the shared policy genuinely excluded it.
+        if status == "D" or not absolute.exists():
+            return FileLink(path=rel_path, status=status, reason=REASON_FILE_GONE), "deleted"
+        if not absolute.is_file():
+            # Its own tally: it is neither gone nor unreadable nor excluded, and a row
+            # that bumps no counter is an entry the report's arithmetic cannot see.
+            return FileLink(path=rel_path, status=status, reason=REASON_NOT_A_FILE), "not_a_file"
+        return None, "excluded"
+
+    references, defines, reason = _file_traceability(absolute)
+    link = FileLink(
+        path=rel_path, status=status,
+        references=tuple(references), defines=tuple(defines), reason=reason,
+    )
+    return link, ("unreadable" if reason else "")
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-classify-entry
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-link-changed
+def link_changed_files(window: ChangeWindow) -> LinkReport:
+    """Resolve every file changed inside ``window`` to the requirements it declares.
+
+    The project root comes from the window — the resolved path its ``base_sha`` was
+    established against — not from a second argument. An earlier signature took one,
+    unresolved, so a relative root plus a later ``chdir`` could diff a different
+    directory from the one the window described, while every other reader of the
+    window (``select_events``) already sourced the root from it.
+
+    An unavailable window propagates its own reason, so one cause is reported rather
+    than two. A window built from an explicit ``--since`` has no base commit, so there
+    is nothing to diff against and that is said plainly instead of silently returning
+    no files. Never raises: one entry whose classification raises something no arm
+    anticipated becomes its own row with a stated reason, and every other row stands —
+    the alternative was one bad file discarding the whole report.
+    """
+    if not window.available:
+        return LinkReport(reason=window.reason)
+    if not window.base_sha:
+        return LinkReport(reason=REASON_NO_BASE_COMMIT)
+    if not window.project_root:
+        return LinkReport(reason=REASON_NO_PROJECT_ROOT)
+    project_root = Path(window.project_root)
+
+    collected = _collect_changed_entries(project_root, window.base_sha)
+    if collected is None:
+        return LinkReport(reason=REASON_DIFF_UNAVAILABLE)
+    entries, total = collected
+
+    # Entries beyond the ceiling are counted, not dropped quietly. The count is the
+    # whole point: a digest that examined 1,000 of 40,000 changed paths and said
+    # nothing about the other 39,000 would be the silent-omission defect at scale.
+    examined = entries[:MAX_CHANGED_ENTRIES]
+
+    links: List[FileLink] = []
+    tally: Dict[str, int] = {"deleted": 0, "excluded": 0, "unreadable": 0, "not_a_file": 0}
+    for status, rel_path in examined:
+        try:
+            link, counter = _classify_entry(status, rel_path, project_root)
+        except Exception as exc:  # pylint: disable=broad-except
+            # The isolation boundary. Everything an entry can legitimately fail with is
+            # handled inside `_classify_entry`; this catches what was not foreseen, and
+            # confines it to the one row rather than letting it discard the report.
+            logger.warning("change-summary could not classify a changed entry: %s", type(exc).__name__)
+            link, counter = FileLink(path=rel_path, status=status, reason=REASON_SCAN_FAILED), "unreadable"
+        if counter:
+            tally[counter] += 1
+        if link is not None:
+            links.append(link)
+
+    return LinkReport(
+        files=tuple(links),
+        changed=total,
+        examined=len(examined),
+        linked=sum(1 for link in links if link.references),
+        declaring=sum(1 for link in links if link.defines),
+        deleted=tally["deleted"],
+        excluded=tally["excluded"],
+        unreadable=tally["unreadable"],
+        not_a_file=tally["not_a_file"],
+        truncated=total - len(examined),
+        available=True,
+        reason=REASON_OK,
+    )
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-link-changed
