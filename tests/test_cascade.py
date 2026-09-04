@@ -6,6 +6,7 @@ See constructorfabric/studio#104.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -91,6 +92,58 @@ class TestRouteTier1:
         result = route_tier1(f, "widget", margin_threshold=1.0)
         assert result["tier"] == "resolved"
         assert result["reason"] == "heading_nav_tfidf_agree_large_margin"
+
+    #: Non-finite/non-positive numeric values, plus a non-numeric string and
+    #: a bool -- the latter two exist to pin down a real bug (studio#135's
+    #: review): math.isfinite() raises TypeError for either, which would
+    #: propagate out before the intended ValueError ever ran, defeating
+    #: _validate_margin_threshold's documented contract for exactly the
+    #: direct-Python-caller case its docstring exists for. bool is checked
+    #: separately from the numeric cases since it subclasses int and would
+    #: otherwise slip past a bare isinstance(x, (int, float)) check.
+    _BAD_MARGIN_THRESHOLDS = (0, -1, float("nan"), float("inf"), "0.5", True)
+
+    @pytest.mark.parametrize("bad_threshold", _BAD_MARGIN_THRESHOLDS)
+    def test_margin_threshold_rejects_invalid_values_at_the_callable_api(
+        self, tmp_path: Path, monkeypatch, bad_threshold,
+    ):
+        """A direct Python caller bypasses commands/cascade.py's argparse
+        validation entirely -- without a check here too, a non-positive or
+        non-finite threshold would make the row-4 margin comparison fire on
+        virtually any finite margin, defeating the "no finite value is yet
+        proven safe" design basis."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        expected = re.escape(f"margin_threshold must be a finite number > 0, got {bad_threshold!r}")
+        with pytest.raises(ValueError, match=f"^{expected}$"):
+            route_tier1(f, "widget", margin_threshold=bad_threshold)
+
+    @pytest.mark.parametrize("bad_threshold", _BAD_MARGIN_THRESHOLDS)
+    def test_route_query_rejects_the_same_invalid_margin_thresholds_as_route_tier1(
+        self, tmp_path: Path, monkeypatch, bad_threshold,
+    ):
+        """route_query shares _validate_margin_threshold with route_tier1 via
+        the same call path -- mirrors that test's full matrix instead of a
+        single hard-coded value, so a future refactor that decoupled the two
+        validation paths would be caught here rather than silently letting
+        an invalid threshold through route_query specifically."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        expected = re.escape(f"margin_threshold must be a finite number > 0, got {bad_threshold!r}")
+        with pytest.raises(ValueError, match=f"^{expected}$"):
+            route_query(f, "widget", margin_threshold=bad_threshold)
+
+    @pytest.mark.parametrize("route_fn", [route_tier1, route_query])
+    def test_a_large_finite_margin_threshold_is_accepted_not_just_rejected_values(
+        self, tmp_path: Path, monkeypatch, route_fn,
+    ):
+        """The accept path, not just the reject path: a legitimately large
+        but finite threshold (e.g. an explicit, permissive opt-in) must not
+        itself be treated as invalid by either entry point."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        result = route_fn(f, "widget", margin_threshold=1e10)  # must not raise
+        assert "tier" in result
 
 
 class TestRouteTier2:

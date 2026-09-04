@@ -109,6 +109,25 @@ class TestGetOkfStatus:
         by_heading = {e["heading"]: e for e in status["entries"]}
         assert by_heading["Introduction"]["status"] == "missing"
 
+    def test_truncated_right_after_the_opening_delimiter_reports_missing(self, tmp_path: Path, monkeypatch):
+        """CodeRabbit PR #111: a concept file cut off right after the
+        opening ``---`` still starts with it, so checking only that would
+        report a genuinely unusable file as current. The closing delimiter
+        must be present too."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        intro = index["retrieval_sections"][0]
+        write_concept_file(f, intro["line_start"], description="d", body="b")
+        assert get_okf_status(f)["entries"][0]["status"] == "current"
+
+        bundle_dir = _okf_bundle_dir(f)
+        (bundle_dir / "01-introduction.md").write_text("---\n", encoding="utf-8")
+
+        status = get_okf_status(f)
+        by_heading = {e["heading"]: e for e in status["entries"]}
+        assert by_heading["Introduction"]["status"] == "missing"
+
     def test_editing_the_source_after_writing_reports_stale(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
