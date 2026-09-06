@@ -59,25 +59,13 @@ ALWAYS open and follow `{cf-studio-path}/config/rules/anti-patterns.md` WHEN rev
 
 NEVER edit files inside `{cf-studio-path}/.core/` or `{cf-studio-path}/.gen/` directly — they are read-only copies. ALWAYS edit the canonical source files under project root (`skills/`, `kits/`, `schemas/`, etc.) and then run `cfs update --source . --force` to sync changes into `{cf-studio-path}/`.
 
-### Specs-First Development Workflow
+### Code and specification changes
 
-ALWAYS update specs and documentation in `architecture/` FIRST BEFORE writing any code.
+Follow [Making Changes](../../../CONTRIBUTING.md#making-changes) for maintenance of Constructor Studio itself. Edit canonical source files directly when implementing or repairing behavior already described by the specifications. Preserve the applicable traceability markers; do not require an unrelated specification edit merely to change code.
 
-**Mandatory sequence for any code change**:
+When the requested change alters requirements, architecture, or a specified contract, update the affected artifacts in `architecture/` before implementing the changed contract. Validate affected specifications and traceability with the checks described in CONTRIBUTING.md.
 
-1. **Update specs** — modify or create relevant artifacts in `architecture/`:
-   - `architecture/PRD.md` — for new requirements or use cases
-   - `architecture/DESIGN.md` — for architectural changes or new components
-   - `architecture/DECOMPOSITION.md` — for new features or work breakdown
-   - `architecture/features/*.md` — for feature-level specs
-   - `architecture/specs/*.md` — for technical specs (CDSL, CLISPEC, etc.)
-   - `architecture/ADR/*.md` — for architecture decisions
-
-2. **Validate specs** — run `cfs validate` to ensure artifact integrity
-
-3. **Generate code via Constructor Studio** — use `/cf-generate` workflow to implement code from specs with traceability markers
-
-NEVER write code directly without first updating the corresponding specs. This ensures design-to-code traceability and prevents implementation drift from design intent.
+Use `/cf-generate` when the selected workflow calls for generation from specifications. Its prerequisites belong to that workflow; it is not a prerequisite for every maintenance edit.
 
 ---
 
