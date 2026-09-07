@@ -864,6 +864,31 @@ class TestRecordTier2Escalation:
         cache_path.write_text("not json", encoding="utf-8")
         assert get_tier2_escalations(f) == 0
 
+    def test_get_tier2_escalations_defaults_to_zero_on_invalid_utf8_bytes(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates,
+    ):
+        """constructorfabric/studio#136 (third review pass, Major):
+        _load_escalation_file's read_text(encoding="utf-8") can raise
+        UnicodeDecodeError on a sidecar file containing invalid UTF-8
+        bytes (disk corruption, a bad manual edit) -- UnicodeDecodeError
+        is a ValueError subclass, NOT an OSError, so it was not caught by
+        the (json.JSONDecodeError, OSError) handler and would propagate
+        unhandled out of any caller (cfs doc-index, cfs retrieve, ...).
+        This must degrade to the same "corrupt/unreadable, never-escalated"
+        fallback every other corrupt-data case in this function uses, with
+        its own warning rather than silently swallowing the failure."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)  # creates the counter file/dir
+        cache_path = _escalation_cache_path(f)
+        # 0xff is not a valid UTF-8 byte sequence on its own.
+        cache_path.write_bytes(b"\xff\xfe\xfa not valid utf-8")
+
+        with caplog.at_level("WARNING"):
+            assert get_tier2_escalations(f) == 0
+
+        assert any(r.levelname == "WARNING" for r in caplog.records)
+
     def test_structural_index_never_carries_the_escalation_counter(self, tmp_path: Path, monkeypatch):
         """The counter is deliberately not a field of the structural cache
         -- confirms the architectural boundary, not just its absence by
@@ -1032,6 +1057,92 @@ class TestRecordTier2Escalation:
         assert record_tier2_escalation(f) == 1
         assert record_tier2_escalation(f) == 2
         assert record_tier2_escalation(f) == 3
+
+    def test_empty_escalation_key_never_deduplicates_across_unrelated_calls(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """constructorfabric/studio#136 (third review pass, Minor): an
+        empty string is not a meaningful caller-supplied idempotency
+        token, but record_tier2_escalation used to compare it to
+        recent_keys by exact string equality like any real key -- so two
+        different callers (or two genuinely distinct queries) both
+        passing escalation_key="" would have the second call silently
+        swallowed, "" in recent_keys already being True after the first.
+        An empty key must be treated the same as no key: always
+        increments."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        assert record_tier2_escalation(f, escalation_key="") == 1
+        assert record_tier2_escalation(f, escalation_key="") == 2  # unrelated query, must still count
+        assert get_tier2_escalations(f) == 2
+
+    def test_recent_escalation_keys_window_evicts_the_oldest_at_the_200_key_boundary(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """constructorfabric/studio#136 (third review pass, Minor):
+        record_tier2_escalation bounds recent_escalation_keys via
+        `(recent_keys + [escalation_key])[-_MAX_RECENT_ESCALATION_KEYS:]`
+        -- correct oldest-evicted/newest-kept slicing -- but nothing
+        previously exercised the actual 200-key eviction boundary.
+
+        This inserts 201 distinct keys and checks all three
+        consequences of *that specific slicing direction*: a
+        deliberately-broken eviction that kept the oldest 200 instead
+        (e.g. `[:_MAX_RECENT_ESCALATION_KEYS]`) would fail every
+        assertion below -- the persisted list would still start with
+        keys[0] (not be evicted), would be missing keys[-1] (never
+        admitted), and re-submitting keys[0] would wrongly dedupe as
+        "already seen" instead of incrementing again."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        keys = [f"req-{i}" for i in range(201)]
+        for key in keys:
+            record_tier2_escalation(f, escalation_key=key)
+
+        cache_path = _escalation_cache_path(f)
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        recent = data["recent_escalation_keys"]
+
+        assert len(recent) == di._MAX_RECENT_ESCALATION_KEYS
+        assert keys[0] not in recent  # oldest evicted out of the window
+        assert keys[-1] in recent  # newest retained
+        assert get_tier2_escalations(f) == 201
+
+        # The now-evicted oldest key is indistinguishable from a genuinely
+        # new one -- retrying it must increment again (documented,
+        # accepted behavior: an old key aging out just means a very old
+        # retry could double-count again).
+        assert record_tier2_escalation(f, escalation_key=keys[0]) == 202
+
+    def test_oversized_escalation_key_is_treated_as_no_key(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (third review pass, Minor):
+        _MAX_RECENT_ESCALATION_KEYS caps the *count* of retained keys
+        specifically to bound the sidecar file's growth, but nothing
+        previously capped an individual key's *length* before it was
+        persisted verbatim -- a single pathologically large key would
+        defeat that growth bound via key size instead of key count. An
+        oversized key is rejected by treating the call as if no key were
+        given at all: the escalation is still recorded (always
+        increments), it's just not eligible for future dedup, and
+        nothing oversized ever reaches the persisted file."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        oversized_key = "x" * (di._MAX_ESCALATION_KEY_LENGTH + 1)
+        assert record_tier2_escalation(f, escalation_key=oversized_key) == 1
+        # A "retry" with the same oversized key must NOT be deduplicated --
+        # it was never actually persisted as a real key.
+        assert record_tier2_escalation(f, escalation_key=oversized_key) == 2
+
+        cache_path = _escalation_cache_path(f)
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        assert oversized_key not in data.get("recent_escalation_keys", [])
 
 
 class TestReadWithStableEtag:

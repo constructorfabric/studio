@@ -72,6 +72,19 @@ _ESCALATION_SCHEMA_VERSION = 1
 #: its actual purpose (a caller retrying within the same request/session).
 _MAX_RECENT_ESCALATION_KEYS = 200
 
+#: Caps how long a single caller-supplied ``escalation_key`` (see
+#: ``record_tier2_escalation``) may be before it is persisted verbatim
+#: into ``recent_escalation_keys``. ``_MAX_RECENT_ESCALATION_KEYS`` above
+#: only bounds the counter file's growth by key *count* -- a caller
+#: passing one pathologically oversized key (e.g. a multi-megabyte
+#: string) would still make the file grow far beyond what 200 short IDs
+#: produce, defeating that bound via key *size* instead. This key is
+#: meant to be an opaque request-correlation ID (a UUID is 36
+#: characters), not arbitrary data, so 200 characters is deliberately
+#: generous headroom while still keeping worst-case growth from a single
+#: key in the same ballpark as the count cap.
+_MAX_ESCALATION_KEY_LENGTH = 200
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-etag
 def _compute_etag(path: Path) -> str:
@@ -705,6 +718,17 @@ def _load_escalation_file(cache_path: Path) -> Dict[str, Any]:
         return {}
     try:
         data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError as exc:
+        # UnicodeDecodeError is a ValueError subclass, not an OSError, so it
+        # is NOT caught by the (json.JSONDecodeError, OSError) clause below
+        # -- without this clause it would propagate unhandled out of every
+        # caller (cfs doc-index, cfs retrieve, ...) on a sidecar file
+        # containing invalid UTF-8 (disk corruption, a bad manual edit).
+        logger.warning(
+            "doc-index escalation counter at %s is not valid UTF-8 (%s); treating as never-escalated",
+            cache_path, exc,
+        )
+        return {}
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning(
             "doc-index escalation counter at %s is corrupt/unreadable (%s); treating as never-escalated",
@@ -831,6 +855,19 @@ def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) ->
     again. Passing no key (the default, and every existing caller's
     current behaviour) preserves the original always-increment contract --
     there is nothing to deduplicate against without one.
+
+    An empty string is treated the same as no key at all (always
+    increments, nothing to deduplicate against): it was never a
+    meaningful caller-supplied identity, so letting it match by exact
+    string equality against ``recent_keys`` would make two unrelated
+    callers that both happen to pass ``""`` silently collide -- the
+    second call's real escalation would go uncounted, mistaken for a
+    retry of the first. A key longer than ``_MAX_ESCALATION_KEY_LENGTH``
+    is likewise treated as no key (with a warning): this is meant to be a
+    short, opaque request-correlation ID, not arbitrary data, and
+    persisting an oversized one verbatim would defeat
+    ``_MAX_RECENT_ESCALATION_KEYS``'s file-growth bound via key *size*
+    instead of key *count*.
     """
     cache_path = _escalation_cache_path(path)
     if cache_path is None:
@@ -840,6 +877,20 @@ def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) ->
             path,
         )
         return None
+
+    if escalation_key and len(escalation_key) > _MAX_ESCALATION_KEY_LENGTH:
+        logger.warning(
+            "doc-index escalation_key for %s is %d characters, over the %d-character cap; "
+            "treating this call as if no key were given (the escalation is still recorded, "
+            "just not deduplicated against a future retry)",
+            path, len(escalation_key), _MAX_ESCALATION_KEY_LENGTH,
+        )
+        escalation_key = None
+    elif not escalation_key:
+        # Normalize "" (and any other falsy-but-not-None value the type
+        # hint doesn't otherwise allow) to None so it is never treated as
+        # a real, matchable idempotency token below.
+        escalation_key = None
 
     def _read_modify_write() -> Optional[int]:
         data = _load_escalation_file(cache_path)

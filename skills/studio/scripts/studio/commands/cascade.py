@@ -12,6 +12,7 @@ import math
 from typing import List
 
 from ..utils.cascade import route_query
+from ..utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
 from ..utils.ui import ui
 
 
@@ -36,6 +37,30 @@ def _margin_threshold_arg(value: str) -> float:
         raise argparse.ArgumentTypeError(
             f"--margin-threshold must be a finite number > 0, got {value!r}")
     return parsed
+
+
+def _escalation_key_arg(value: str) -> str:
+    """argparse type for --escalation-key: rejects an oversized value up
+    front with a clear CLI error, rather than silently degrading it to
+    "no key" the way ``record_tier2_escalation`` does for a non-CLI
+    caller (e.g. one composing ``route_query`` directly). The CLI is the
+    direct, interactive caller here, so a caller who passes a
+    multi-megabyte string almost certainly did so by mistake (e.g. piped
+    in the wrong variable) and is better served by an immediate, actionable
+    error than a value that gets quietly discarded several layers down.
+
+    ``escalation_key`` is meant to be a short, opaque request-correlation
+    ID (a UUID is 36 characters) -- not arbitrary data -- so this mirrors
+    ``doc_index._MAX_ESCALATION_KEY_LENGTH``, the same bound
+    ``record_tier2_escalation`` itself enforces as a defense-in-depth
+    fallback for any other caller.
+    """
+    if len(value) > _MAX_ESCALATION_KEY_LENGTH:
+        raise argparse.ArgumentTypeError(
+            f"--escalation-key must be at most {_MAX_ESCALATION_KEY_LENGTH} characters, "
+            f"got {len(value)}"
+        )
+    return value
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-cmd
@@ -68,11 +93,12 @@ def cmd_retrieve(argv: List[str]) -> int:
         "future volume instead of the actually-observed-so-far count.",
     )
     p.add_argument(
-        "--escalation-key", default=None,
+        "--escalation-key", type=_escalation_key_arg, default=None,
         help="Idempotency key for this specific query attempt -- optional. Pass the same value again "
         "when retrying this exact query (e.g. after a timeout or transient failure) so the retry "
-        "doesn't inflate the persisted tier2_escalations count a second time. Omit for a normal, "
-        "one-shot invocation.",
+        f"doesn't inflate the persisted tier2_escalations count a second time. At most "
+        f"{_MAX_ESCALATION_KEY_LENGTH} characters (an opaque correlation ID, not arbitrary data). "
+        "Omit for a normal, one-shot invocation.",
     )
     args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:

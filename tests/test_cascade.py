@@ -679,6 +679,37 @@ class TestCmdRetrieve:
         assert rc == 2
         assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
 
+    def test_escalation_key_rejects_an_oversized_value(self, capsys):
+        """constructorfabric/studio#136 (third review pass, Minor):
+        _MAX_RECENT_ESCALATION_KEYS caps the counter file's growth by key
+        *count*, but nothing capped an individual --escalation-key's
+        *length* before it was persisted verbatim -- a caller passing a
+        pathologically large string would defeat that growth bound via
+        key size instead. The CLI rejects an oversized key outright with
+        a clear, immediate error rather than silently degrading it deep
+        inside record_tier2_escalation."""
+        from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
+
+        oversized_key = "x" * (_MAX_ESCALATION_KEY_LENGTH + 1)
+        rc = cmd_retrieve(["doc.md", "query", "--escalation-key", oversized_key])
+        assert rc == 2
+        assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
+
+    def test_escalation_key_accepts_a_value_at_the_length_boundary(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        """The cap is inclusive -- a key exactly at the limit is a normal,
+        valid idempotency token, not an edge case to reject."""
+        from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        boundary_key = "x" * _MAX_ESCALATION_KEY_LENGTH
+        rc = cmd_retrieve([str(f), "making up", "--escalation-key", boundary_key])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier2"]["tier2_escalations"] == 1
+
     def test_basic_json_output(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
