@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -59,6 +60,17 @@ _TFIDF_ONLY_DIFFUSE_SAMPLE = (
     "## SectionB\n\nThe gizmo hums. " + ("filler word text here. " * 30) + "A thing rattles.\n"
 )
 
+# Same hyphenation gap as _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE (heading-nav: 0 hits
+# for "KAPING framework"), but with a single retrieval section: score_sections'
+# `_confidence` has two separate ways to return `unambiguous=True` -- a
+# positive top score beating a real second candidate's score, or (this
+# fixture) a positive top score with no second candidate to compare against
+# at all, since `len(ranked) == 1`. Every other row-2 fixture in this file
+# has two sections and only exercises the former path.
+_SINGLE_SECTION_TFIDF_UNAMBIGUOUS_SAMPLE = (
+    "## Overview\n\nThis document describes the KAPING-framework in detail.\n"
+)
+
 
 def _write(tmp_path: Path, content: str = _SAMPLE, name: str = "doc.md") -> Path:
     f = tmp_path / name
@@ -102,6 +114,43 @@ class TestRouteTier1:
             "reason": "tfidf_only_unambiguous",
             "candidates": [{"heading": "Introduction", "line_start": 1, "line_end": 4}],
         }
+
+    def test_row2_tfidf_only_unambiguous_with_single_section_document(self, tmp_path: Path, monkeypatch):
+        """A single-section document is a distinct code path for
+        `unambiguous`, not just a smaller instance of the two-section case:
+        `_confidence` returns `unambiguous=True` here purely because there is
+        no second section to compare against at all (`len(ranked) == 1`),
+        never by beating a real rival's score. Verified directly against
+        tfidf.py's own `_confidence` logic, not asserted blindly."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _SINGLE_SECTION_TFIDF_UNAMBIGUOUS_SAMPLE)
+        index = get_or_build_doc_index(f)
+        (section,) = index["retrieval_sections"]
+        result = route_tier1(f, "KAPING framework")
+        assert result == {
+            "tier": "resolved",
+            "reason": "tfidf_only_unambiguous",
+            "candidates": [
+                {"heading": "Overview", "line_start": section["line_start"], "line_end": section["line_end"]}
+            ],
+        }
+
+    def test_row2_tfidf_only_unambiguous_never_calls_route_tier2_or_okf(self, tmp_path: Path, monkeypatch):
+        """Row 2 resolves entirely within Tier 1 -- route_query must never
+        fall through to route_tier2 (and, by extension, an OKF lookup) for
+        it. The other row-2 test above checks the returned dict's shape but
+        never spies on route_tier2/OKF to confirm neither was touched."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE)
+        with mock.patch("studio.utils.cascade.route_tier2") as mock_tier2, mock.patch(
+            "studio.utils.cascade.get_okf_status"
+        ) as mock_okf_status:
+            result = route_query(f, "KAPING framework")
+        assert result["tier"] == "resolved"
+        assert result["reason"] == "tfidf_only_unambiguous"
+        assert "tier2" not in result
+        mock_tier2.assert_not_called()
+        mock_okf_status.assert_not_called()
 
     def test_row3_tfidf_only_diffuse_escalates_with_tfidf_pick_as_candidate(self, tmp_path: Path, monkeypatch):
         """Heading-nav still has nothing, and TF-IDF has a real but diffuse
@@ -173,6 +222,39 @@ class TestRouteTier1:
         assert result["tier"] == "resolved"
         assert result["reason"] == "heading_nav_tfidf_agree_large_margin"
 
+    def test_route_tier1_never_touches_okf(self, tmp_path: Path, monkeypatch):
+        """The module docstring guarantees route_tier1 stays free and
+        deterministic by never touching the OKF bundle, but nothing
+        automated backed that up before this test. Patches
+        get_okf_status with a mock that raises if called at all, then
+        exercises every routing-table row this class covers (1 through 7,
+        plus the margin_threshold opt-in) -- a future edit that
+        reintroduces an OKF call from inside route_tier1 fails this test
+        immediately instead of only being caught by manual review."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        with mock.patch("studio.utils.cascade.get_okf_status") as mock_okf_status:
+            mock_okf_status.side_effect = AssertionError("route_tier1 must never call get_okf_status")
+
+            route_tier1(_write(tmp_path, _SAMPLE, "row1.md"), "making up")
+            route_tier1(_write(tmp_path, _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE, "row2.md"), "KAPING framework")
+            route_tier1(_write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE, "row3.md"), "gizmo thing")
+            route_tier1(
+                _write(
+                    tmp_path,
+                    "## Alpha\n\nNo relevant terms here besides filler filler filler.\n\n"
+                    "## Beta\n\nThis talks about it up here too.\n",
+                    "row4.md",
+                ),
+                "it up",
+            )
+            route_tier1(_write(tmp_path, _DISAGREEMENT_SAMPLE, "row5.md"), "gadget")
+            route_tier1(_write(tmp_path, _SAMPLE, "row6.md"), "KAPING")
+            row7_doc = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE, "row7.md")
+            route_tier1(row7_doc, "widget")
+            route_tier1(row7_doc, "widget", margin_threshold=1.0)
+
+        mock_okf_status.assert_not_called()
+
 
 class TestRouteTier2:
     def test_no_bundle_at_all_recommends_baseline(self, tmp_path: Path, monkeypatch):
@@ -224,6 +306,29 @@ class TestRouteTier2:
         tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
+
+    def test_row3_tfidf_sourced_candidate_recommends_okf_when_current(self, tmp_path: Path, monkeypatch):
+        """Row 3's escalate candidate is TF-IDF-sourced -- SectionA, picked
+        because it's TF-IDF's own top pick, not because heading-nav ever
+        matched it (heading-nav has zero hits in this fixture). Every other
+        route_tier2 test before this one only ever passed a heading-nav-
+        sourced candidate (rows 4/7) or no candidate at all (row 1); this is
+        the first to exercise that new provenance. Builds the row-3 result
+        via a real route_tier1 call rather than hand-building the dict, so
+        this test breaks if row 3's actual shape ever changes."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE)
+        tier1 = route_tier1(f, "gizmo thing")
+        assert tier1["tier"] == "escalate"
+        assert tier1["reason"] == "heading_nav_no_hits_diffuse_tfidf"  # sanity: genuinely row 3
+
+        index = get_or_build_doc_index(f)
+        for section in index["retrieval_sections"]:
+            write_concept_file(f, section["line_start"], description="d", body="b")
+
+        result = route_tier2(f, tier1)
+        assert result["recommendation"] == "okf"
+        assert result["bundle_dir"]
 
     def test_current_bundle_for_candidate_recommends_okf(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
