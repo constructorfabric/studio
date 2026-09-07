@@ -160,9 +160,11 @@ class TestRouteTier1:
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE)
         result = route_tier1(f, "gizmo thing")
-        assert result["tier"] == "escalate"
-        assert result["reason"] == "heading_nav_no_hits_diffuse_tfidf"
-        assert result["candidates"] == [{"heading": "SectionA", "line_start": 1, "line_end": 4}]
+        assert result == {
+            "tier": "escalate",
+            "reason": "heading_nav_no_hits_diffuse_tfidf",
+            "candidates": [{"heading": "SectionA", "line_start": 1, "line_end": 4}],
+        }
 
     def test_row4_heading_nav_hit_but_tfidf_has_no_signal_escalates(self, tmp_path: Path, monkeypatch):
         """Real bug caught during review (constructorfabric/studio#137):
@@ -330,6 +332,66 @@ class TestRouteTier2:
         assert result["recommendation"] == "okf"
         assert result["bundle_dir"]
 
+    def test_row3_tfidf_sourced_candidate_narrows_staleness_to_only_that_section(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The test above writes *every* retrieval section's concept file
+        current before calling route_tier2, so a route_tier2 that (bug)
+        validated the whole bundle instead of narrowing to just row 3's
+        named candidate would still pass it undetected. Here, only
+        SectionA -- TF-IDF's own top pick, and row 3's sole candidate --
+        gets a current concept file; SectionB's is deliberately left
+        missing. route_tier2 must still recommend okf: it proves the
+        staleness check only ever looked at the named candidate's own
+        section. A route_tier2 that instead fell back to checking
+        `status["entries"]` (every section) regardless of `candidates`
+        would see SectionB's still-missing entry and downgrade to
+        baseline with `okf_needs_rebuild`, failing this assertion."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE)
+        tier1 = route_tier1(f, "gizmo thing")
+        assert tier1["tier"] == "escalate"
+        assert tier1["reason"] == "heading_nav_no_hits_diffuse_tfidf"  # sanity: genuinely row 3
+        assert tier1["candidates"] == [{"heading": "SectionA", "line_start": 1, "line_end": 4}]
+
+        index = get_or_build_doc_index(f)
+        section_a = index["retrieval_sections"][0]
+        assert section_a["heading"] == "SectionA"
+        write_concept_file(f, section_a["line_start"], description="d", body="b")
+        # SectionB's concept file deliberately left missing.
+
+        result = route_tier2(f, tier1)
+        assert result["recommendation"] == "okf"
+        assert result["bundle_dir"]
+
+    def test_row4_heading_nav_sourced_candidate_recommends_okf_when_current(self, tmp_path: Path, monkeypatch):
+        """Row 4's escalate candidate is heading-nav-sourced (TF-IDF found no
+        signal at all, unlike row 3's TF-IDF-sourced candidate) -- but
+        nothing before this test fed a real row-4 result into route_tier2 at
+        all, even though row 4 escalates and names a candidate exactly like
+        row 3 does. Same template as
+        test_row3_tfidf_sourced_candidate_recommends_okf_when_current:
+        builds the escalate result via a real route_tier1 call rather than
+        hand-building the dict, so this test breaks if row 4's actual shape
+        ever changes."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(
+            tmp_path,
+            "## Alpha\n\nNo relevant terms here besides filler filler filler.\n\n"
+            "## Beta\n\nThis talks about it up here too.\n",
+        )
+        tier1 = route_tier1(f, "it up")
+        assert tier1["tier"] == "escalate"
+        assert tier1["reason"] == "heading_nav_only_no_tfidf_signal"  # sanity: genuinely row 4
+
+        index = get_or_build_doc_index(f)
+        for section in index["retrieval_sections"]:
+            write_concept_file(f, section["line_start"], description="d", body="b")
+
+        result = route_tier2(f, tier1)
+        assert result["recommendation"] == "okf"
+        assert result["bundle_dir"]
+
     def test_current_bundle_for_candidate_recommends_okf(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
@@ -394,6 +456,52 @@ class TestRouteTier2:
         result = route_tier2(f, bogus_tier1)
         assert result["recommendation"] == "baseline"
         assert result["okf_needs_rebuild"] is True
+
+    def test_docstrings_row_number_cross_reference_matches_actual_escalating_reasons(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """route_tier2's docstring claims it's "only called for the
+        escalating rows: row 1 ... row 3 ... row 4 ... and row 7", naming
+        each row's exact reason string -- but the implementation never
+        reads tier1_result["reason"] at all, so nothing enforces that list
+        against route_tier1's real behavior. It already drifted once during
+        this PR's own renumbering (constructorfabric/studio#137 review).
+        Exercise route_tier1 against a fixture for every row in its own
+        table (1-7, using the exact same samples/queries as each
+        TestRouteTier1 row test) and assert the rows/reasons that actually
+        come back `tier == "escalate"` are EXACTLY what route_tier2's
+        docstring claims -- so a future table change that adds, removes, or
+        renames an escalating row fails this test instead of only drifting
+        in prose."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        row_fixtures = {
+            1: (_SAMPLE, "making up"),
+            2: (_TFIDF_ONLY_UNAMBIGUOUS_SAMPLE, "KAPING framework"),
+            3: (_TFIDF_ONLY_DIFFUSE_SAMPLE, "gizmo thing"),
+            4: (
+                "## Alpha\n\nNo relevant terms here besides filler filler filler.\n\n"
+                "## Beta\n\nThis talks about it up here too.\n",
+                "it up",
+            ),
+            5: (_DISAGREEMENT_SAMPLE, "gadget"),
+            6: (_SAMPLE, "KAPING"),
+            7: (_DIFFUSE_MARGIN_SAMPLE, "widget"),
+        }
+        escalating_reasons_by_row = {}
+        for row, (content, query) in row_fixtures.items():
+            f = _write(tmp_path, content, f"docstring_row{row}.md")
+            result = route_tier1(f, query)
+            if result["tier"] == "escalate":
+                escalating_reasons_by_row[row] = result["reason"]
+
+        # The exact rows/reasons route_tier2's docstring names as the ones
+        # it's "only called for".
+        assert escalating_reasons_by_row == {
+            1: "no_signal_from_either_method",
+            3: "heading_nav_no_hits_diffuse_tfidf",
+            4: "heading_nav_only_no_tfidf_signal",
+            7: "diffuse_margin",
+        }
 
 
 class TestRouteQuery:
