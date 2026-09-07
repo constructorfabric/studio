@@ -53,6 +53,25 @@ _INDEX_CACHE_DIR = "doc-index"
 #: matching etag.
 _SCHEMA_VERSION = 1
 
+#: Schema version for the standalone Tier-2-escalation counter file (see
+#: ``_escalation_cache_path``) -- tracked separately from ``_SCHEMA_VERSION``
+#: above since the two files are independent artifacts with independent
+#: lifecycles (the counter is never rebuilt or reset the way the structural
+#: cache is). Bump this if the counter file's shape ever changes
+#: incompatibly (e.g. what a key inside it holds); a reader that finds a
+#: version newer than this logs a warning and reads the fields it knows
+#: about best-effort, rather than failing closed on a file a future build
+#: wrote in a compatible-but-unrecognized way.
+_ESCALATION_SCHEMA_VERSION = 1
+
+#: Caps how many recent idempotency keys (see ``record_tier2_escalation``'s
+#: ``escalation_key``) a counter file remembers, so a long-lived document's
+#: sidecar file can't grow without bound across its lifetime -- a stale key
+#: aging out of this window and being "forgotten" only means a very old
+#: retry could double-count again, not that the mechanism is unsound for
+#: its actual purpose (a caller retrying within the same request/session).
+_MAX_RECENT_ESCALATION_KEYS = 200
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-etag
 def _compute_etag(path: Path) -> str:
@@ -666,37 +685,114 @@ def _escalation_cache_path(path: Path) -> Optional[Path]:
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-cache-path
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load-escalation-file
+def _load_escalation_file(cache_path: Path) -> Dict[str, Any]:
+    """Best-effort read of the raw escalation-counter JSON object at
+    ``cache_path``, returning ``{}`` for a missing, corrupt, or
+    non-object file -- the same "nothing usable here" fallback every
+    caller below already treats as "never escalated."
+
+    Each failure mode below logs its own, differently-worded message
+    (missing file logs nothing at all -- it's the routine, expected shape
+    of a document never escalated, not an anomaly) so a log reader can
+    tell a genuinely corrupt/unreadable file apart from a merely
+    not-yet-created one, or one holding the wrong JSON shape entirely --
+    see :func:`get_tier2_escalations`'s docstring for why this
+    ambiguity can't be fully eliminated from the *return value* itself
+    without a bigger API change.
+    """
+    if not cache_path.is_file():
+        return {}
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning(
+            "doc-index escalation counter at %s is corrupt/unreadable (%s); treating as never-escalated",
+            cache_path, exc,
+        )
+        return {}
+    if not isinstance(data, dict):
+        logger.warning(
+            "doc-index escalation counter at %s did not contain a JSON object (got %s); "
+            "treating as never-escalated",
+            cache_path, type(data).__name__,
+        )
+        return {}
+    return data
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load-escalation-file
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-count-from
+def _escalation_count_from(data: Dict[str, Any], cache_path: Path) -> int:
+    """Extract a valid ``tier2_escalations`` count from an already-parsed
+    escalation-file object, clamping anything that isn't a real
+    non-negative count (missing, wrong type, or negative -- e.g. a
+    hand-edited or truncated-write file containing ``{"tier2_escalations":
+    -5}``) down to ``0`` rather than letting it propagate into
+    :func:`record_tier2_escalation`'s ``+ 1``, which would otherwise keep
+    the counter negative (or worse, let it climb back through 0) forever.
+    """
+    schema_version = data.get("schema_version")
+    if isinstance(schema_version, int) and schema_version > _ESCALATION_SCHEMA_VERSION:
+        logger.warning(
+            "doc-index escalation counter at %s declares schema_version %r, newer than this "
+            "build understands (%d); reading tier2_escalations best-effort",
+            cache_path, schema_version, _ESCALATION_SCHEMA_VERSION,
+        )
+    count = data.get("tier2_escalations", 0)
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        logger.warning(
+            "doc-index escalation counter at %s has an invalid tier2_escalations value (%r); "
+            "treating as never-escalated",
+            cache_path, count,
+        )
+        return 0
+    return count
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-count-from
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-escalations
 def get_tier2_escalations(path: Path) -> int:
     """Read ``path``'s persisted Tier-2-escalation count without
     incrementing it -- ``0`` for a document never escalated, outside a
-    Studio project, or whose counter file is missing/corrupt.
+    Studio project, or whose counter file is missing/corrupt/holding an
+    invalid (e.g. negative) count.
 
     Read-only, so this never takes the counter's lock: a concurrent
     increment mid-read is, at worst, a one-query-stale read of a
     monotonically increasing count -- never a wrong *kind* of answer, just
     possibly one behind, and resolved by whichever caller reads next.
+
+    Known, accepted limitation: a healthy "never escalated yet" document
+    and a corrupt/unreadable counter file both return ``0`` here -- the
+    ``logger.warning`` calls in :func:`_load_escalation_file` and
+    :func:`_escalation_count_from` are the only place those two cases are
+    distinguishable (each fires a differently-worded message, and the
+    routine "no file yet" case logs nothing at all). Exposing that
+    distinction in this function's return value would mean changing its
+    contract from "a count" to something callers would have to unwrap
+    everywhere `should_build_okf` reasons about it; not worth it unless a
+    real caller shows up that needs to react differently to "never
+    escalated" vs. "counter broken."
     """
     cache_path = _escalation_cache_path(path)
-    if cache_path is None or not cache_path.is_file():
+    if cache_path is None:
         return 0
-    try:
-        data = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("doc-index escalation counter unreadable at %s: %s", cache_path, exc)
-        return 0
-    count = data.get("tier2_escalations", 0) if isinstance(data, dict) else 0
-    return count if isinstance(count, int) and not isinstance(count, bool) else 0
+    data = _load_escalation_file(cache_path)
+    return _escalation_count_from(data, cache_path)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-escalations
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation
-def record_tier2_escalation(path: Path) -> Optional[int]:
+def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) -> Optional[int]:
     """Increment and persist ``path``'s Tier-2-escalation counter, returning
-    the new count (``None`` outside a Studio project, or when persisting
-    the increment itself fails -- the same "can't confirm this was really
-    saved" contract :func:`annotate_section_summary` already uses, rather
-    than reporting a fabricated success count).
+    the new count (``None`` outside a Studio project -- nowhere to
+    persist to at all -- or when persisting the increment itself fails,
+    the same "can't confirm this was really saved" contract
+    :func:`annotate_section_summary` already uses, rather than reporting a
+    fabricated success count; each of those two ``None`` cases logs its
+    own distinct message so they're distinguishable in a log, even though
+    both surface identically to the caller).
 
     This is the real, observed-usage signal
     :func:`studio.utils.cascade.route_tier2` needs to decide whether
@@ -717,17 +813,70 @@ def record_tier2_escalation(path: Path) -> Optional[int]:
     payload just to change one integer. Its own lock, on its own file,
     means it also never races :func:`get_or_build_doc_index`'s unlocked
     cache-miss rebuild, the way a shared file would.
+
+    ``escalation_key``, when given, is an opaque idempotency token
+    identifying one *logical* Tier-2 escalation attempt (a caller mints one
+    per query and passes the same value again on a retry of that same
+    query, e.g. after a transient failure or timeout). This function has
+    no other way to tell a genuine second escalation apart from a caller
+    re-invoking it for the same one (constructorfabric/studio#136): every
+    call looks identical from here (same path, same lock, no request
+    context), so without a caller-supplied correlation token, a retry and
+    a real repeat query are indistinguishable by construction, and any
+    "detect the retry" heuristic risks the opposite bug -- silently
+    dropping a real second escalation. A bounded window of recently-seen
+    keys (see ``_MAX_RECENT_ESCALATION_KEYS``) is persisted alongside the
+    count, under the same lock as the increment itself, so a key already
+    seen returns the current count unchanged instead of incrementing
+    again. Passing no key (the default, and every existing caller's
+    current behaviour) preserves the original always-increment contract --
+    there is nothing to deduplicate against without one.
     """
     cache_path = _escalation_cache_path(path)
     if cache_path is None:
+        logger.warning(
+            "doc-index escalation for %s has no Studio project to persist to; "
+            "the escalation is not recorded and should_build_okf stays untracked (None)",
+            path,
+        )
         return None
 
     def _read_modify_write() -> Optional[int]:
-        new_count = get_tier2_escalations(path) + 1
+        data = _load_escalation_file(cache_path)
+        current_count = _escalation_count_from(data, cache_path)
+
+        recent_keys_raw = data.get("recent_escalation_keys")
+        recent_keys = [k for k in recent_keys_raw if isinstance(k, str)] if isinstance(recent_keys_raw, list) else []
+
+        if escalation_key is not None and escalation_key in recent_keys:
+            # Same logical escalation attempt already recorded (a caller
+            # retry after a transient failure/timeout, per this function's
+            # own docstring) -- returning the already-persisted count
+            # instead of incrementing again is what actually closes the
+            # double-count hole; nothing else here can tell a retry apart
+            # from a genuinely new escalation.
+            return current_count
+
+        new_count = current_count + 1
+        payload: Dict[str, Any] = {
+            "schema_version": _ESCALATION_SCHEMA_VERSION,
+            "tier2_escalations": new_count,
+        }
+        if escalation_key is not None:
+            payload["recent_escalation_keys"] = (recent_keys + [escalation_key])[-_MAX_RECENT_ESCALATION_KEYS:]
+        elif recent_keys:
+            # No key on *this* call, but earlier calls recorded some --
+            # carry them forward unchanged rather than silently dropping
+            # a mix of keyed and unkeyed callers' history.
+            payload["recent_escalation_keys"] = recent_keys
+
         try:
-            atomic_write_text(cache_path, json.dumps({"tier2_escalations": new_count}))
+            atomic_write_text(cache_path, json.dumps(payload))
         except OSError as exc:
-            logger.warning("doc-index escalation counter write failed for %s: %s", cache_path, exc)
+            logger.warning(
+                "doc-index escalation counter write failed for %s (persisting count %d): %s",
+                cache_path, new_count, exc,
+            )
             return None
         return new_count
 

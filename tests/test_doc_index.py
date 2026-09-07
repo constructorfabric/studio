@@ -956,6 +956,83 @@ class TestRecordTier2Escalation:
 
         assert get_tier2_escalations(f) == 10
 
+    def test_counter_file_carries_a_schema_version(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (second review pass): the structural
+        doc-index cache deliberately carries schema_version (and etag) so a
+        future format change can be detected and migrated safely -- the
+        sibling escalation-counter file needs the same, since it's an
+        independent artifact with its own lifecycle."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+
+        cache_path = _escalation_cache_path(f)
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        assert data["schema_version"] == di._ESCALATION_SCHEMA_VERSION
+
+    def test_get_tier2_escalations_treats_a_missing_schema_version_as_fine(self, tmp_path: Path, monkeypatch):
+        """This field is brand new in this same unreleased feature -- there
+        is no real pre-existing unversioned file in the wild to migrate
+        from, but a reader should still degrade gracefully (not raise) if
+        one somehow lacks the field."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        cache_path = _escalation_cache_path(f)
+        cache_path.write_text(json.dumps({"tier2_escalations": 3}), encoding="utf-8")
+        assert get_tier2_escalations(f) == 3
+
+    def test_get_tier2_escalations_clamps_a_negative_persisted_count_to_zero(self, tmp_path: Path, monkeypatch):
+        """A syntactically valid file holding a negative count (hand-edited,
+        or corrupted mid-write) must not pass through as-is -- treated the
+        same as every other corrupt-data case this function already falls
+        back to zero for."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)  # creates the counter file/dir
+        cache_path = _escalation_cache_path(f)
+        cache_path.write_text(json.dumps({"schema_version": 1, "tier2_escalations": -5}), encoding="utf-8")
+        assert get_tier2_escalations(f) == 0
+
+    def test_record_tier2_escalation_does_not_propagate_a_negative_persisted_count(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """record_tier2_escalation computes new_count = get_tier2_escalations(path) + 1
+        -- if that clamp ever regressed, a negative count would silently
+        keep climbing from a negative baseline instead of restarting from 0."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        cache_path = _escalation_cache_path(f)
+        cache_path.write_text(json.dumps({"schema_version": 1, "tier2_escalations": -5}), encoding="utf-8")
+        assert record_tier2_escalation(f) == 1
+
+    def test_escalation_key_prevents_a_retry_from_double_counting(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (second review pass, Major): without
+        a caller-supplied correlation token, record_tier2_escalation can't
+        tell a genuinely new escalation apart from a caller re-invoking it
+        for the same logical query after a transient failure/timeout.
+        Passing the same escalation_key on the retry must not advance the
+        persisted count a second time; a different key still does."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        assert record_tier2_escalation(f, escalation_key="req-1") == 1
+        assert record_tier2_escalation(f, escalation_key="req-1") == 1  # retry, same key
+        assert record_tier2_escalation(f, escalation_key="req-2") == 2  # genuinely new
+        assert get_tier2_escalations(f) == 2
+
+    def test_escalation_key_is_none_by_default_and_always_increments(self, tmp_path: Path, monkeypatch):
+        """No key means no way to deduplicate -- every existing caller that
+        doesn't pass one keeps the original always-increment contract."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert record_tier2_escalation(f) == 1
+        assert record_tier2_escalation(f) == 2
+        assert record_tier2_escalation(f) == 3
+
 
 class TestReadWithStableEtag:
     def test_retries_when_the_file_changes_mid_read(self, tmp_path: Path, monkeypatch):
