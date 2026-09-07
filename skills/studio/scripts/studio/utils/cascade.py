@@ -125,7 +125,7 @@ def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = N
 
     Returns ``{"tier": "resolved" | "resolved_multi" | "escalate", "reason":
     str, "candidates": [...]}``. ``candidates`` is the section(s) a caller
-    should actually read: one for rows 2/4/6/7 (rows 3/4/7 despite
+    should actually read: one for rows 2/3/4/6/7 (rows 3/4/7 despite
     escalating, since a signal's own top pick is still the best Tier-1 guess
     to hand Tier 2), two for row 5, none for row 1 (neither method found
     anything to anchor a guess to at all).
@@ -133,9 +133,23 @@ def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = N
     Both heading-nav and TF-IDF always run, regardless of either one's
     outcome -- see this module's docstring for why a zero-hit heading-nav
     result used to skip TF-IDF entirely, discarding a genuinely different
-    signal (word-level match vs. heading-nav's exact-phrase match).
+    signal (word-level match vs. heading-nav's exact-phrase match). That
+    means TF-IDF scoring (:func:`studio.utils.tfidf.score_sections`) always
+    runs, even on a heading-nav hit that could otherwise have resolved
+    without it: an accepted, explicit cost of fusing the two signals, not an
+    oversight -- see ``tfidf.py``'s own module docstring for the scale
+    assumption (validated against a single ~166-page, ~9-section document,
+    deliberately no cap on section count or file size) this cost relies on.
     """
     nav_first_match = find_sections(path, query)["first_match"]
+    # Unconditional, even when heading-nav already found a hit: fusing the
+    # two signals (this function's whole purpose, see the module docstring)
+    # means TF-IDF's own outcome always matters, not just as a fallback for
+    # a heading-nav miss. Accepted cost, not an oversight -- tfidf.py has no
+    # cap on section count or file size and was only validated against a
+    # single ~166-page/~9-section document; a caller feeding this an
+    # adversarially large file pays that cost on every call, not just the
+    # ones that end up escalating.
     tfidf_result = score_sections(path, query)
     tfidf_ranked = tfidf_result["ranked"]
     has_tfidf_signal = bool(tfidf_ranked) and tfidf_ranked[0]["score"] > 0
