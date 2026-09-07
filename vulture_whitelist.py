@@ -15,6 +15,10 @@ from studio.utils.context import LoadedKit
 from studio.utils.doc_index import annotate_section_summary, diff_stale_sections
 from studio.utils.eval_harness import ReferencePresenceScorer, Scenario, ScorerKind, run_suite
 from studio.utils.eval_judge import Gold
+from studio.utils.artifact_quality import (
+    ArtifactFinding,
+    finding_json_schema,
+)
 from studio.utils.manifest import ManifestLayerState
 from studio.utils.okf import write_concept_file
 from studio.utils.change_summary import (
@@ -160,3 +164,15 @@ EventSelection.skipped_lines  # noqa: B018
 EventSelection.runless  # noqa: B018
 EventSelection.log_overridden  # noqa: B018
 RUN_UNATTRIBUTED  # noqa: B018
+
+# Artifact-quality finding model — public API consumed by detectors + the presentation layer,
+# which land in later tasks (feature `cpt-studio-feature-artifact-quality`; the scanning flow
+# `cpt-studio-flow-artifact-quality-assess` in architecture/features/artifact-quality.md), so these
+# are unreferenced within the scanned scope until then. REMOVAL TRIGGER — delete each entry once a
+# real consumer imports it: ArtifactFinding / finding_json_schema when the first detector or the
+# `cfs artifact-quality` command lands (i.e. once `cpt-studio-flow-artifact-quality-assess` is
+# implemented — grep that id here and check its `[ ]`→`[x]` in the feature doc). (VERDICT_UNJUDGEABLE
+# is now referenced in-module by the unjudgeable-metadata check, so it no longer needs an entry here.)
+# If a later refactor leaves one genuinely unused, delete its line rather than keep suppressing it.
+ArtifactFinding  # noqa: B018
+finding_json_schema  # noqa: B018
