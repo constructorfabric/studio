@@ -255,6 +255,14 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 13. [x] - `p1` - Walk a known-good base ref down to a window, letting a git tool failure take precedence over a historical reading and keeping whatever was already learned on the returned window - `inst-change-summary-window-from-base`
 14. [x] - `p1` - Reduce a run id to a canonical form, casefolding and stripping so one logical run is not split and a non-string does not merge with its own text, while not rejecting an unrecognised-but-real identifier - `inst-change-summary-canonical-run`
 15. [x] - `p1` - Resolve the decision log a window should be read from, returning either a usable path and whether the environment chose it, or the reason no log is usable - `inst-change-summary-resolve-log`
+16. [x] - `p1` - Define the per-file link and report types as immutable records, keeping referenced IDs separate from declared IDs so a changed specification is never reported as tracing to nothing - `inst-change-summary-link-datamodel`
+17. [x] - `p1` - Answer read-only multi-record git queries by splitting NUL-delimited output, since a path may legally contain any byte except NUL, running with the same sanitised environment as the single-line query so an ambient redirect cannot list another repository's files - `inst-change-summary-git-lines`
+18. [x] - `p1` - Parse a name-status line into status and path, taking the new path for renames and copies so a rename keeps its requirement link - `inst-change-summary-parse-name-status`
+19. [x] - `p1` - Judge whether a changed path is one this project owns, delegating to the single shared exclusion policy rather than re-deriving containment - `inst-change-summary-classify-path`
+20. [x] - `p1` - Report what one file does with requirement IDs, asking both directions because a suffix is not a reliable guide — a document's citation of an ID it does not itself declare is a reference too — reading the file once so both directions describe one snapshot, telling too-large from unreadable by the loader's own error code, and separating could-not-read from could-not-parse from carries-no-markers - `inst-change-summary-file-markers`
+21. [x] - `p1` - List everything changed since the base commit against the working tree, including untracked files, so newly written work is never absent from the digest; pin rename detection rather than inherit the ambient git setting; count every entry but materialise no more than the report will examine; and report the whole listing as unavailable when either query fails rather than presenting a partial list as complete - `inst-change-summary-collect-changed`
+22. [x] - `p1` - Resolve every changed file to what it declares, taking the root from the window so the report describes the project the window was built for, counting excluded, unreadable, deleted and not-a-file separately over the entries examined so the report always carries its denominator, and confining one entry's unforeseen failure to its own row - `inst-change-summary-link-changed`
+23. [x] - `p1` - Classify one changed entry into its report row and its tally, keeping could-not-determine apart from excluded-by-policy and from not-a-regular-file, and listing every entry that existed even when nothing could be read from it - `inst-change-summary-classify-entry`
 
 ## 4. States (CDSL)
 
@@ -315,7 +323,7 @@ No feature-specific state machines. Self-check is stateless (run → report).
 | TOC Command | `skills/.../commands/toc.py` | CLI wrapper for TOC generation |
 | TOC Utils | `skills/.../utils/toc.py` | Unified TOC generation, anchor slugs, code block awareness |
 | Resolve Vars Command | `skills/.../commands/resolve_vars.py` | Template variable resolution to absolute paths |
-| Change Summary Core | `skills/.../utils/change_summary.py` | Window resolution from git, and decision-log event selection inside it |
+| Change Summary Core | `skills/.../utils/change_summary.py` | Window resolution from git, decision-log event selection inside it, and resolution of the changed files in that window to the requirement IDs they reference or declare |
 
 ## 7. Acceptance Criteria
 

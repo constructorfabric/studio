@@ -122,6 +122,10 @@ TOC_MISSING_DESCRIPTION = "toc-missing-description"
 # ---------------------------------------------------------------------------
 FILE_READ_ERROR = "file-read-error"
 FILE_LOAD_ERROR = "file-load-error"
+#: A file the reader declined because it exceeds the scan size ceiling. Distinct from
+#: FILE_READ_ERROR so a caller can branch on the code rather than re-stat the file or
+#: parse the message.
+FILE_TOO_LARGE = "file-too-large"
 
 # ---------------------------------------------------------------------------
 # Content language validation
