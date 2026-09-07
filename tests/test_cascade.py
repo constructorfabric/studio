@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -39,6 +40,37 @@ _DISAGREEMENT_SAMPLE = (
     "## SectionB\n\ngadget gadget gadget.\n"
 )
 
+# constructorfabric/studio#134, Oleg67's suggestion #4: a real single-signal
+# failure -- the source hyphenates "KAPING-framework", so the literal
+# two-word query substring "KAPING framework" never appears anywhere
+# (heading-nav: 0 hits), but TF-IDF tokenizes on `[a-z0-9]+` regardless of
+# the hyphen, so "kaping"/"framework" both land as real, distinctive terms
+# scoring 0 everywhere except Introduction -- unambiguous.
+_TFIDF_ONLY_UNAMBIGUOUS_SAMPLE = (
+    "## Introduction\n\nThis section introduces the KAPING-framework for knowledge graphs.\n\n"
+    "## Related Work\n\nThis section covers unrelated background material with no overlap.\n"
+)
+
+# Same hyphenation gap (heading-nav: 0 hits for "gizmo thing" -- the exact
+# two-word phrase never appears contiguously in either section), but this
+# time both terms independently occur in *both* sections, so TF-IDF scores
+# positively on both -- a real signal, just not an unambiguous one.
+_TFIDF_ONLY_DIFFUSE_SAMPLE = (
+    "## SectionA\n\nA gizmo-thing sits here alone.\n\n"
+    "## SectionB\n\nThe gizmo hums. " + ("filler word text here. " * 30) + "A thing rattles.\n"
+)
+
+# Same hyphenation gap as _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE (heading-nav: 0 hits
+# for "KAPING framework"), but with a single retrieval section: score_sections'
+# `_confidence` has two separate ways to return `unambiguous=True` -- a
+# positive top score beating a real second candidate's score, or (this
+# fixture) a positive top score with no second candidate to compare against
+# at all, since `len(ranked) == 1`. Every other row-2 fixture in this file
+# has two sections and only exercises the former path.
+_SINGLE_SECTION_TFIDF_UNAMBIGUOUS_SAMPLE = (
+    "## Overview\n\nThis document describes the KAPING-framework in detail.\n"
+)
+
 
 def _write(tmp_path: Path, content: str = _SAMPLE, name: str = "doc.md") -> Path:
     f = tmp_path / name
@@ -46,14 +78,114 @@ def _write(tmp_path: Path, content: str = _SAMPLE, name: str = "doc.md") -> Path
     return f
 
 
+# route_tier2 never reads tier1_result["reason"] -- these TestRouteTier2
+# fixtures only need the row-1 *shape* (escalate, no candidates), so the
+# exact reason string doesn't affect what's under test. Kept as one named
+# constant rather than a literal repeated across every fixture: a bare
+# string copy-pasted five times silently drifted out of sync with
+# route_tier1's real reason ("heading_nav_no_hits" was retired and renamed
+# to "no_signal_from_either_method" without any of these being updated --
+# constructorfabric/studio#137 review) with nothing to catch it, since nothing
+# here actually exercises route_tier1 itself.
+_NO_CANDIDATE_ESCALATION = {"tier": "escalate", "reason": "no_signal_from_either_method", "candidates": []}
+
+
 class TestRouteTier1:
-    def test_row1_heading_nav_no_hits_escalates(self, tmp_path: Path, monkeypatch):
+    def test_row1_neither_method_has_signal_escalates(self, tmp_path: Path, monkeypatch):
+        """"making up" is tfidf.py's own documented adversarial case: "up" is
+        filtered by the 3-char minimum, and "making" never appears anywhere
+        in this fixture, so TF-IDF has nothing either -- both methods
+        genuinely have zero signal, not just heading-nav."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         result = route_tier1(f, "making up")
-        assert result == {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        assert result == {"tier": "escalate", "reason": "no_signal_from_either_method", "candidates": []}
 
-    def test_row2_agree_unambiguous_resolves_at_tier1(self, tmp_path: Path, monkeypatch):
+    def test_row2_tfidf_only_unambiguous_resolves_at_tier1(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#134, Oleg67's suggestion #4: heading-nav's
+        exact-phrase match misses on a hyphenation difference, but TF-IDF's
+        word-level tokenization doesn't -- and its own unambiguous signal is
+        enough to resolve at Tier 1 without ever reaching Tier 2/OKF."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE)
+        result = route_tier1(f, "KAPING framework")
+        assert result == {
+            "tier": "resolved",
+            "reason": "tfidf_only_unambiguous",
+            "candidates": [{"heading": "Introduction", "line_start": 1, "line_end": 4}],
+        }
+
+    def test_row2_tfidf_only_unambiguous_with_single_section_document(self, tmp_path: Path, monkeypatch):
+        """A single-section document is a distinct code path for
+        `unambiguous`, not just a smaller instance of the two-section case:
+        `_confidence` returns `unambiguous=True` here purely because there is
+        no second section to compare against at all (`len(ranked) == 1`),
+        never by beating a real rival's score. Verified directly against
+        tfidf.py's own `_confidence` logic, not asserted blindly."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _SINGLE_SECTION_TFIDF_UNAMBIGUOUS_SAMPLE)
+        index = get_or_build_doc_index(f)
+        (section,) = index["retrieval_sections"]
+        result = route_tier1(f, "KAPING framework")
+        assert result == {
+            "tier": "resolved",
+            "reason": "tfidf_only_unambiguous",
+            "candidates": [
+                {"heading": "Overview", "line_start": section["line_start"], "line_end": section["line_end"]}
+            ],
+        }
+
+    def test_row2_tfidf_only_unambiguous_never_calls_route_tier2_or_okf(self, tmp_path: Path, monkeypatch):
+        """Row 2 resolves entirely within Tier 1 -- route_query must never
+        fall through to route_tier2 (and, by extension, an OKF lookup) for
+        it. The other row-2 test above checks the returned dict's shape but
+        never spies on route_tier2/OKF to confirm neither was touched."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE)
+        with mock.patch("studio.utils.cascade.route_tier2") as mock_tier2, mock.patch(
+            "studio.utils.cascade.get_okf_status"
+        ) as mock_okf_status:
+            result = route_query(f, "KAPING framework")
+        assert result["tier"] == "resolved"
+        assert result["reason"] == "tfidf_only_unambiguous"
+        assert "tier2" not in result
+        mock_tier2.assert_not_called()
+        mock_okf_status.assert_not_called()
+
+    def test_row3_tfidf_only_diffuse_escalates_with_tfidf_pick_as_candidate(self, tmp_path: Path, monkeypatch):
+        """Heading-nav still has nothing, and TF-IDF has a real but diffuse
+        signal (both sections score positively) -- escalates, but hands
+        along TF-IDF's own top pick as the best Tier-1 guess, the same way
+        row 4/7 hand along heading-nav's pick despite escalating."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE)
+        result = route_tier1(f, "gizmo thing")
+        assert result == {
+            "tier": "escalate",
+            "reason": "heading_nav_no_hits_diffuse_tfidf",
+            "candidates": [{"heading": "SectionA", "line_start": 1, "line_end": 4}],
+        }
+
+    def test_row4_heading_nav_hit_but_tfidf_has_no_signal_escalates(self, tmp_path: Path, monkeypatch):
+        """Real bug caught during review (constructorfabric/studio#137):
+        `tfidf_ranked[0]` is still a real dict entry when every section
+        scores exactly 0 -- just an arbitrary document-order tie-break, not
+        a genuine pick. The old code compared it against heading-nav's real
+        pick unconditionally, fabricating a "disagreement" (`resolved_multi`
+        with a bogus second candidate TF-IDF never actually found relevant)
+        out of a signal that was never there. Must escalate on heading-nav's
+        single, unconfirmed signal instead."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, "## Alpha\n\nNo relevant terms here besides filler filler filler.\n\n"
+                             "## Beta\n\nThis talks about it up here too.\n")
+        result = route_tier1(f, "it up")
+        assert result == {
+            "tier": "escalate",
+            "reason": "heading_nav_only_no_tfidf_signal",
+            "candidates": [{"heading": "Beta", "line_start": 5, "line_end": 8}],
+        }
+
+    def test_row6_agree_unambiguous_resolves_at_tier1(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
         result = route_tier1(f, "KAPING")
@@ -61,7 +193,7 @@ class TestRouteTier1:
         assert result["reason"] == "heading_nav_tfidf_agree_large_margin"
         assert result["candidates"] == [{"heading": "Introduction", "line_start": 1, "line_end": 4}]
 
-    def test_row3_disagreement_resolves_multi_with_both_candidates(self, tmp_path: Path, monkeypatch):
+    def test_row5_disagreement_resolves_multi_with_both_candidates(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path, _DISAGREEMENT_SAMPLE)
         result = route_tier1(f, "gadget")
@@ -70,7 +202,7 @@ class TestRouteTier1:
         headings = {c["heading"] for c in result["candidates"]}
         assert headings == {"SectionA", "SectionB"}
 
-    def test_row4_agree_diffuse_margin_escalates(self, tmp_path: Path, monkeypatch):
+    def test_row7_agree_diffuse_margin_escalates(self, tmp_path: Path, monkeypatch):
         """Real, reproduced shape of findings.md's "zero-shot" adversarial
         test: heading-nav and TF-IDF agree on the same section, but the
         margin is finite (not unambiguous) -- and that agreed pick is
@@ -92,12 +224,45 @@ class TestRouteTier1:
         assert result["tier"] == "resolved"
         assert result["reason"] == "heading_nav_tfidf_agree_large_margin"
 
+    def test_route_tier1_never_touches_okf(self, tmp_path: Path, monkeypatch):
+        """The module docstring guarantees route_tier1 stays free and
+        deterministic by never touching the OKF bundle, but nothing
+        automated backed that up before this test. Patches
+        get_okf_status with a mock that raises if called at all, then
+        exercises every routing-table row this class covers (1 through 7,
+        plus the margin_threshold opt-in) -- a future edit that
+        reintroduces an OKF call from inside route_tier1 fails this test
+        immediately instead of only being caught by manual review."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        with mock.patch("studio.utils.cascade.get_okf_status") as mock_okf_status:
+            mock_okf_status.side_effect = AssertionError("route_tier1 must never call get_okf_status")
+
+            route_tier1(_write(tmp_path, _SAMPLE, "row1.md"), "making up")
+            route_tier1(_write(tmp_path, _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE, "row2.md"), "KAPING framework")
+            route_tier1(_write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE, "row3.md"), "gizmo thing")
+            route_tier1(
+                _write(
+                    tmp_path,
+                    "## Alpha\n\nNo relevant terms here besides filler filler filler.\n\n"
+                    "## Beta\n\nThis talks about it up here too.\n",
+                    "row4.md",
+                ),
+                "it up",
+            )
+            route_tier1(_write(tmp_path, _DISAGREEMENT_SAMPLE, "row5.md"), "gadget")
+            route_tier1(_write(tmp_path, _SAMPLE, "row6.md"), "KAPING")
+            row7_doc = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE, "row7.md")
+            route_tier1(row7_doc, "widget")
+            route_tier1(row7_doc, "widget", margin_threshold=1.0)
+
+        mock_okf_status.assert_not_called()
+
 
 class TestRouteTier2:
     def test_no_bundle_at_all_recommends_baseline(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert result == {"recommendation": "baseline", "reason": "no_current_okf_bundle"}
 
@@ -128,7 +293,7 @@ class TestRouteTier2:
         section_a = index["retrieval_sections"][0]
         write_concept_file(f, section_a["line_start"], description="d", body="b")  # SectionB left missing
 
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "baseline"
         assert result["okf_needs_rebuild"] is True
@@ -140,9 +305,92 @@ class TestRouteTier2:
         for section in index["retrieval_sections"]:
             write_concept_file(f, section["line_start"], description="d", body="b")
 
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
+
+    def test_row3_tfidf_sourced_candidate_recommends_okf_when_current(self, tmp_path: Path, monkeypatch):
+        """Row 3's escalate candidate is TF-IDF-sourced -- SectionA, picked
+        because it's TF-IDF's own top pick, not because heading-nav ever
+        matched it (heading-nav has zero hits in this fixture). Every other
+        route_tier2 test before this one only ever passed a heading-nav-
+        sourced candidate (rows 4/7) or no candidate at all (row 1); this is
+        the first to exercise that new provenance. Builds the row-3 result
+        via a real route_tier1 call rather than hand-building the dict, so
+        this test breaks if row 3's actual shape ever changes."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE)
+        tier1 = route_tier1(f, "gizmo thing")
+        assert tier1["tier"] == "escalate"
+        assert tier1["reason"] == "heading_nav_no_hits_diffuse_tfidf"  # sanity: genuinely row 3
+
+        index = get_or_build_doc_index(f)
+        for section in index["retrieval_sections"]:
+            write_concept_file(f, section["line_start"], description="d", body="b")
+
+        result = route_tier2(f, tier1)
+        assert result["recommendation"] == "okf"
+        assert result["bundle_dir"]
+
+    def test_row3_tfidf_sourced_candidate_narrows_staleness_to_only_that_section(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The test above writes *every* retrieval section's concept file
+        current before calling route_tier2, so a route_tier2 that (bug)
+        validated the whole bundle instead of narrowing to just row 3's
+        named candidate would still pass it undetected. Here, only
+        SectionA -- TF-IDF's own top pick, and row 3's sole candidate --
+        gets a current concept file; SectionB's is deliberately left
+        missing. route_tier2 must still recommend okf: it proves the
+        staleness check only ever looked at the named candidate's own
+        section. A route_tier2 that instead fell back to checking
+        `status["entries"]` (every section) regardless of `candidates`
+        would see SectionB's still-missing entry and downgrade to
+        baseline with `okf_needs_rebuild`, failing this assertion."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_DIFFUSE_SAMPLE)
+        tier1 = route_tier1(f, "gizmo thing")
+        assert tier1["tier"] == "escalate"
+        assert tier1["reason"] == "heading_nav_no_hits_diffuse_tfidf"  # sanity: genuinely row 3
+        assert tier1["candidates"] == [{"heading": "SectionA", "line_start": 1, "line_end": 4}]
+
+        index = get_or_build_doc_index(f)
+        section_a = index["retrieval_sections"][0]
+        assert section_a["heading"] == "SectionA"
+        write_concept_file(f, section_a["line_start"], description="d", body="b")
+        # SectionB's concept file deliberately left missing.
+
+        result = route_tier2(f, tier1)
+        assert result["recommendation"] == "okf"
+        assert result["bundle_dir"]
+
+    def test_row4_heading_nav_sourced_candidate_recommends_okf_when_current(self, tmp_path: Path, monkeypatch):
+        """Row 4's escalate candidate is heading-nav-sourced (TF-IDF found no
+        signal at all, unlike row 3's TF-IDF-sourced candidate) -- but
+        nothing before this test fed a real row-4 result into route_tier2 at
+        all, even though row 4 escalates and names a candidate exactly like
+        row 3 does. Same template as
+        test_row3_tfidf_sourced_candidate_recommends_okf_when_current:
+        builds the escalate result via a real route_tier1 call rather than
+        hand-building the dict, so this test breaks if row 4's actual shape
+        ever changes."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(
+            tmp_path,
+            "## Alpha\n\nNo relevant terms here besides filler filler filler.\n\n"
+            "## Beta\n\nThis talks about it up here too.\n",
+        )
+        tier1 = route_tier1(f, "it up")
+        assert tier1["tier"] == "escalate"
+        assert tier1["reason"] == "heading_nav_only_no_tfidf_signal"  # sanity: genuinely row 4
+
+        index = get_or_build_doc_index(f)
+        for section in index["retrieval_sections"]:
+            write_concept_file(f, section["line_start"], description="d", body="b")
+
+        result = route_tier2(f, tier1)
+        assert result["recommendation"] == "okf"
+        assert result["bundle_dir"]
 
     def test_current_bundle_for_candidate_recommends_okf(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -172,7 +420,7 @@ class TestRouteTier2:
     def test_expected_future_queries_adds_break_even_math(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1, expected_future_queries=20)
         breakeven = result["build_okf_break_even"]
         assert breakeven["okf_total_tokens"] == 301_187 + 45_735 * 20
@@ -182,7 +430,7 @@ class TestRouteTier2:
     def test_no_expected_future_queries_omits_break_even_math(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
-        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+        tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert "build_okf_break_even" not in result
 
@@ -208,6 +456,52 @@ class TestRouteTier2:
         result = route_tier2(f, bogus_tier1)
         assert result["recommendation"] == "baseline"
         assert result["okf_needs_rebuild"] is True
+
+    def test_docstrings_row_number_cross_reference_matches_actual_escalating_reasons(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """route_tier2's docstring claims it's "only called for the
+        escalating rows: row 1 ... row 3 ... row 4 ... and row 7", naming
+        each row's exact reason string -- but the implementation never
+        reads tier1_result["reason"] at all, so nothing enforces that list
+        against route_tier1's real behavior. It already drifted once during
+        this PR's own renumbering (constructorfabric/studio#137 review).
+        Exercise route_tier1 against a fixture for every row in its own
+        table (1-7, using the exact same samples/queries as each
+        TestRouteTier1 row test) and assert the rows/reasons that actually
+        come back `tier == "escalate"` are EXACTLY what route_tier2's
+        docstring claims -- so a future table change that adds, removes, or
+        renames an escalating row fails this test instead of only drifting
+        in prose."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        row_fixtures = {
+            1: (_SAMPLE, "making up"),
+            2: (_TFIDF_ONLY_UNAMBIGUOUS_SAMPLE, "KAPING framework"),
+            3: (_TFIDF_ONLY_DIFFUSE_SAMPLE, "gizmo thing"),
+            4: (
+                "## Alpha\n\nNo relevant terms here besides filler filler filler.\n\n"
+                "## Beta\n\nThis talks about it up here too.\n",
+                "it up",
+            ),
+            5: (_DISAGREEMENT_SAMPLE, "gadget"),
+            6: (_SAMPLE, "KAPING"),
+            7: (_DIFFUSE_MARGIN_SAMPLE, "widget"),
+        }
+        escalating_reasons_by_row = {}
+        for row, (content, query) in row_fixtures.items():
+            f = _write(tmp_path, content, f"docstring_row{row}.md")
+            result = route_tier1(f, query)
+            if result["tier"] == "escalate":
+                escalating_reasons_by_row[row] = result["reason"]
+
+        # The exact rows/reasons route_tier2's docstring names as the ones
+        # it's "only called for".
+        assert escalating_reasons_by_row == {
+            1: "no_signal_from_either_method",
+            3: "heading_nav_no_hits_diffuse_tfidf",
+            4: "heading_nav_only_no_tfidf_signal",
+            7: "diffuse_margin",
+        }
 
 
 class TestRouteQuery:
