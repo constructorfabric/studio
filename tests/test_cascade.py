@@ -234,7 +234,12 @@ class TestRouteTier1:
     #: direct-Python-caller case its docstring exists for. bool is checked
     #: separately from the numeric cases since it subclasses int and would
     #: otherwise slip past a bare isinstance(x, (int, float)) check.
-    _BAD_MARGIN_THRESHOLDS = (0, -1, float("nan"), float("inf"), "0.5", True)
+    #: 0 and -1 are both finite and only violate ``> 0``; nan/inf/-inf are
+    #: all non-finite; -0.0 is finite, non-positive (``-0.0 > 0`` is False),
+    #: and adjacent to the boundary -- a case none of the other values pin
+    #: down, since 0 and -1 don't distinguish "wrong sign" from "IEEE
+    #: negative zero specifically".
+    _BAD_MARGIN_THRESHOLDS = (0, -1, float("nan"), float("inf"), float("-inf"), -0.0, "0.5", True)
 
     @pytest.mark.parametrize("bad_threshold", _BAD_MARGIN_THRESHOLDS)
     def test_margin_threshold_rejects_invalid_values_at_the_callable_api(
@@ -242,7 +247,7 @@ class TestRouteTier1:
     ):
         """A direct Python caller bypasses commands/cascade.py's argparse
         validation entirely -- without a check here too, a non-positive or
-        non-finite threshold would make the row-4 margin comparison fire on
+        non-finite threshold would make the row-7 margin comparison fire on
         virtually any finite margin, defeating the "no finite value is yet
         proven safe" design basis."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -266,17 +271,59 @@ class TestRouteTier1:
         with pytest.raises(ValueError, match=f"^{expected}$"):
             route_query(f, "widget", margin_threshold=bad_threshold)
 
-    @pytest.mark.parametrize("route_fn", [route_tier1, route_query])
-    def test_a_large_finite_margin_threshold_is_accepted_not_just_rejected_values(
-        self, tmp_path: Path, monkeypatch, route_fn,
+    @pytest.mark.parametrize("bad_threshold", _BAD_MARGIN_THRESHOLDS)
+    def test_margin_threshold_is_validated_even_when_heading_nav_finds_no_hits(
+        self, tmp_path: Path, monkeypatch, bad_threshold,
     ):
-        """The accept path, not just the reject path: a legitimately large
-        but finite threshold (e.g. an explicit, permissive opt-in) must not
-        itself be treated as invalid by either entry point."""
+        """Real behavior change introduced by this PR, with no prior direct
+        test coverage (studio#135 round-2 review): _validate_margin_threshold
+        is now called unconditionally as the very first statement of
+        route_tier1, before nav_first_match is even computed. Previously,
+        margin_threshold was only read/compared at row 7 -- a query that
+        escalates at row 1 instead (heading-nav: 0 hits, so
+        tfidf_result["margin"] is never reached) would have returned the
+        escalate result silently regardless of how invalid margin_threshold
+        was. Pins down that the same invalid threshold now raises ValueError
+        here too, before row 1 even runs."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)  # heading-nav has zero hits for "making up" (row 1, see test_row1_*)
+        expected = re.escape(f"margin_threshold must be a finite number > 0, got {bad_threshold!r}")
+        with pytest.raises(ValueError, match=f"^{expected}$"):
+            route_tier1(f, "making up", margin_threshold=bad_threshold)
+
+    @pytest.mark.parametrize("route_fn", [route_tier1, route_query])
+    @pytest.mark.parametrize(
+        "accepted_threshold, expected_tier, expected_reason",
+        [
+            # Tiny-but-positive: proves the smallest legitimate values pass
+            # validation, and (well below _DIFFUSE_MARGIN_SAMPLE's actual
+            # measured margin of 99.0 for "widget") resolves at Tier 1.
+            (1e-9, "resolved", "heading_nav_tfidf_agree_large_margin"),
+            # Enormous but finite: proves a large value isn't itself
+            # rejected by validation either -- but since it's far above the
+            # fixture's real margin (99.0), row 7's comparison correctly
+            # still escalates. Asserting this exact tier/reason, rather than
+            # a large threshold always meaning "resolved", is what catches a
+            # mutation that broke the margin comparison itself (e.g. flipped
+            # the operator, or dropped it so any finite threshold resolves).
+            (1e10, "escalate", "diffuse_margin"),
+        ],
+    )
+    def test_a_large_or_tiny_finite_margin_threshold_is_accepted_not_just_rejected_values(
+        self, tmp_path: Path, monkeypatch, route_fn, accepted_threshold, expected_tier, expected_reason,
+    ):
+        """The accept path, not just the reject path: neither a tiny-but-
+        positive nor an enormous finite threshold is itself treated as
+        invalid by either entry point. Asserts the actual tier/reason the
+        fixture produces for each, not just that some dict with a "tier" key
+        came back -- a mutation that returned an arbitrary tier value, or
+        broke the row-7 margin comparison, would still pass a bare "tier" in
+        result check but not this one."""
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
-        result = route_fn(f, "widget", margin_threshold=1e10)  # must not raise
-        assert "tier" in result
+        result = route_fn(f, "widget", margin_threshold=accepted_threshold)  # must not raise
+        assert result["tier"] == expected_tier
+        assert result["reason"] == expected_reason
 
     def test_route_tier1_never_touches_okf(self, tmp_path: Path, monkeypatch):
         """The module docstring guarantees route_tier1 stays free and

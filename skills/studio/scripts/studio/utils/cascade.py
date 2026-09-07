@@ -128,7 +128,7 @@ def _as_candidate(section: Dict[str, Any]) -> Dict[str, Any]:
 
 def _validate_margin_threshold(margin_threshold: Optional[float]) -> None:
     """Reject a non-finite or non-positive ``margin_threshold`` before it can
-    reach row 4's comparison.
+    reach row 7's comparison.
 
     ``commands/cascade.py``'s ``_margin_threshold_arg`` enforces this same
     rule for the CLI, but a direct Python caller of :func:`route_tier1`/
@@ -207,6 +207,13 @@ def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = N
     oversight -- see ``tfidf.py``'s own module docstring for the scale
     assumption (validated against a single ~166-page, ~9-section document,
     deliberately no cap on section count or file size) this cost relies on.
+
+    Raises ``ValueError`` if ``margin_threshold`` is not ``None`` and not a
+    finite number > 0 (see :func:`_validate_margin_threshold`). This is
+    checked unconditionally as the very first step, before ``nav_first_match``
+    is even computed -- so it raises even for a query that would otherwise
+    hit row 1 (``no_signal_from_either_method``), which never reads
+    ``margin_threshold`` at all.
     """
     _validate_margin_threshold(margin_threshold)
     nav_first_match = find_sections(path, query)["first_match"]
@@ -431,6 +438,10 @@ def route_query(
     query attempt, so a caller retrying this same query after a transient
     failure or timeout can pass the same key again and not double-count
     the Tier-2 escalation (constructorfabric/studio#136).
+
+    Raises ``ValueError`` for an invalid ``margin_threshold`` -- this calls
+    :func:`route_tier1` first, which validates it unconditionally before
+    doing anything else (see that function's own docstring).
     """
     tier1 = route_tier1(path, query, margin_threshold=margin_threshold)
     result: Dict[str, Any] = {"query": query, **tier1}
