@@ -47,7 +47,10 @@ def cmd_retrieve(argv: List[str]) -> int:
             "Route a query through the two-tier JIT-retrieval cascade and report the decision. "
             "Every escalation to Tier 2 is counted per document (cfs doc-index's tier2_escalations); "
             "once that count crosses its real break-even point, the response's tier2.should_build_okf "
-            "flag turns on automatically -- no --expected-future-queries guess required."
+            "flag turns on automatically -- no --expected-future-queries guess required. This requires "
+            "a resolvable Studio project cache directory: outside one, nothing can be persisted, so "
+            "tier2_escalations is always null and should_build_okf is always false, regardless of real "
+            "escalation volume (see test_should_build_okf_is_false_outside_a_studio_project)."
         ),
     )
     p.add_argument("file", help="Markdown file path")
@@ -64,6 +67,13 @@ def cmd_retrieve(argv: List[str]) -> int:
         "escalations regardless of whether this is passed; use this only to reason about a hypothetical "
         "future volume instead of the actually-observed-so-far count.",
     )
+    p.add_argument(
+        "--escalation-key", default=None,
+        help="Idempotency key for this specific query attempt -- optional. Pass the same value again "
+        "when retrying this exact query (e.g. after a timeout or transient failure) so the retry "
+        "doesn't inflate the persisted tier2_escalations count a second time. Omit for a normal, "
+        "one-shot invocation.",
+    )
     args, filepath = ui.parse_file_command(p, argv)
     if filepath is None:
         return 2
@@ -74,6 +84,7 @@ def cmd_retrieve(argv: List[str]) -> int:
             filepath, args.query,
             margin_threshold=args.margin_threshold,
             expected_future_queries=args.expected_future_queries,
+            escalation_key=args.escalation_key,
         ),
     )
     if rc is not None:

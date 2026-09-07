@@ -12,6 +12,7 @@ from unittest import mock
 import pytest
 
 from studio.commands.cascade import cmd_retrieve
+from studio.utils import cascade
 from studio.utils.cascade import route_query, route_tier1, route_tier2
 from studio.utils.doc_index import get_or_build_doc_index
 from studio.utils.okf import write_concept_file
@@ -483,6 +484,40 @@ class TestRouteTier2:
         assert result["tier2_escalations"] is None
         assert result["should_build_okf"] is False
 
+    def test_break_even_constant_is_exactly_two(self):
+        """cascade.py's own docstring/comment claims
+        _TIER2_BREAK_EVEN_ESCALATIONS evaluates to 2 (301_187 / (333_573 -
+        45_735), rounded up) -- the existing tests only assert the
+        *behavioral* consequence (should_build_okf False at 1, True at 2),
+        never the constant's value directly. Pin it here so a future edit
+        to the hardcoded rates that silently changed the break-even point
+        gets caught even if it happened to preserve that 1-vs-2 boundary
+        behavior by coincidence."""
+        assert cascade._TIER2_BREAK_EVEN_ESCALATIONS == 2
+
+    def test_route_tier2_does_not_double_count_a_caller_retry_with_the_same_escalation_key(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """constructorfabric/studio#136 (second review pass, Major):
+        record_tier2_escalation was called unconditionally on every
+        route_tier2 invocation with no way to distinguish a fresh
+        escalation from a caller re-invoking route_tier2 for the same
+        logical query after a transient failure/timeout. Simulates exactly
+        that retry: the same escalation_key passed twice must only advance
+        the persisted count once; a genuinely new key still counts."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+
+        first = route_tier2(f, tier1, escalation_key="req-1")
+        assert first["tier2_escalations"] == 1
+
+        retried = route_tier2(f, tier1, escalation_key="req-1")
+        assert retried["tier2_escalations"] == 1  # retry of the same request -- not double-counted
+
+        genuinely_new = route_tier2(f, tier1, escalation_key="req-2")
+        assert genuinely_new["tier2_escalations"] == 2
+
     def test_candidate_that_no_longer_matches_any_section_falls_back_to_baseline(
         self, tmp_path: Path, monkeypatch
     ):
@@ -592,6 +627,21 @@ class TestRouteQuery:
         assert result["tier2"]["recommendation"] == "okf"
         assert "read_gate" not in result
 
+    def test_route_query_retry_with_the_same_escalation_key_does_not_double_count(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Same regression as TestRouteTier2's version, exercised through
+        the full route_query entry point a real caller (e.g. cmd_retrieve)
+        actually uses, since escalation_key must survive both hops
+        (route_query -> route_tier2 -> record_tier2_escalation) intact."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        first = route_query(f, "making up", escalation_key="req-1")
+        retried = route_query(f, "making up", escalation_key="req-1")
+        assert first["tier2"]["tier2_escalations"] == 1
+        assert retried["tier2"]["tier2_escalations"] == 1
+
 
 class TestCmdRetrieve:
     def test_missing_file(self, tmp_path: Path, capsys):
@@ -674,6 +724,45 @@ class TestCmdRetrieve:
             set_json_mode(orig)
         assert rc == 0
         assert "Introduction" in capsys.readouterr().out
+
+    def test_json_output_exposes_tier2_escalations_and_should_build_okf_at_baseline(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        """constructorfabric/studio#136 (second review pass): route_tier2's
+        baseline recommendation carries tier2_escalations/should_build_okf,
+        and cmd_retrieve passes route_query's result straight through into
+        its JSON output -- but every existing JSON-output test here only
+        ever hits the resolved (Tier 1) tier, never a baseline Tier-2
+        recommendation, so this machine-readable contract was never
+        actually exercised end to end through the CLI."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        rc = cmd_retrieve([str(f), "making up"])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier2"]["tier2_escalations"] == 1
+        assert out["tier2"]["should_build_okf"] is False
+
+        rc = cmd_retrieve([str(f), "making up"])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier2"]["tier2_escalations"] == 2
+        assert out["tier2"]["should_build_okf"] is True  # at cascade._TIER2_BREAK_EVEN_ESCALATIONS
+
+    def test_escalation_key_flag_prevents_a_cli_retry_from_double_counting(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        cmd_retrieve([str(f), "making up", "--escalation-key", "req-1"])
+        first = json.loads(capsys.readouterr().out)
+        cmd_retrieve([str(f), "making up", "--escalation-key", "req-1"])
+        retried = json.loads(capsys.readouterr().out)
+
+        assert first["tier2"]["tier2_escalations"] == 1
+        assert retried["tier2"]["tier2_escalations"] == 1
 
     def test_human_output_okf_needs_rebuild(self, tmp_path: Path, capsys, monkeypatch):
         from studio.utils.ui import is_json_mode, set_json_mode

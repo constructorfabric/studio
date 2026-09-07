@@ -94,6 +94,23 @@ _BASELINE_PER_QUERY_TOKENS = 333_573
 #: constant instead answers the narrower question route_tier2 actually
 #: faces: for queries that *do* escalate to Tier 2, when does paying to
 #: build OKF beat continuing to fall back to baseline for each one.
+#:
+#: The formula below divides by ``_BASELINE_PER_QUERY_TOKENS -
+#: _OKF_PER_QUERY_TOKENS`` and only makes sense (a positive, finite
+#: break-even point) while baseline costs strictly more per query than
+#: OKF does -- true for the three measured rates above, but not something
+#: Python enforces on three independent module-level integer literals. A
+#: future edit to any of them (a rate remeasured, a typo) that silently
+#: flipped or zeroed that sign would make this ``math.ceil(...)`` either
+#: raise (division by zero) or -- worse -- silently produce a nonsensical
+#: negative/zero break-even that made ``should_build_okf`` fire on the very
+#: first escalation. Assert the invariant loudly at import time instead of
+#: letting either of those happen quietly.
+assert _BASELINE_PER_QUERY_TOKENS > _OKF_PER_QUERY_TOKENS, (
+    "_TIER2_BREAK_EVEN_ESCALATIONS's break-even math assumes baseline costs strictly more "
+    "per query than OKF does (_BASELINE_PER_QUERY_TOKENS > _OKF_PER_QUERY_TOKENS); that no "
+    "longer holds for the hardcoded rates above, so the break-even point below is undefined"
+)
 _TIER2_BREAK_EVEN_ESCALATIONS = math.ceil(
     _OKF_BUILD_COST_TOKENS / (_BASELINE_PER_QUERY_TOKENS - _OKF_PER_QUERY_TOKENS)
 )
@@ -270,6 +287,7 @@ def route_tier2(
     tier1_result: Dict[str, Any],
     *,
     expected_future_queries: Optional[int] = None,
+    escalation_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Choose OKF vs. baseline once Tier 1 has escalated.
 
@@ -293,8 +311,17 @@ def route_tier2(
     real usage gets recorded (:func:`studio.utils.doc_index.record_tier2_escalation`)
     -- regardless of which branch below the call ends up taking, since the
     escalation already happened by the time this function runs at all.
+
+    ``escalation_key``, when given, is forwarded verbatim to
+    :func:`studio.utils.doc_index.record_tier2_escalation` as its
+    idempotency token: pass the same value on a retried call for the same
+    logical query (e.g. a caller re-invoking this after a transient
+    failure or timeout) so the retry doesn't inflate the persisted count a
+    second time (constructorfabric/studio#136). Omitting it (the default)
+    keeps the original always-increment behaviour, since there is nothing
+    to deduplicate a bare retry against without one.
     """
-    tier2_escalations = record_tier2_escalation(path)
+    tier2_escalations = record_tier2_escalation(path, escalation_key=escalation_key)
     status = get_okf_status(path)
     # get_okf_status() returns one entry per retrieval section regardless of
     # whether anything was ever summarized -- an "available" bundle_dir with
@@ -341,6 +368,7 @@ def route_query(
     *,
     margin_threshold: Optional[float] = None,
     expected_future_queries: Optional[int] = None,
+    escalation_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Route one query end to end: Tier 1, then Tier 2 only if it escalates.
 
@@ -363,13 +391,21 @@ def route_query(
     ``_human_retrieve`` and ``tests/test_cascade.py`` both key into these
     fields by name -- changing a key here is a breaking change for both and
     should be treated as one (versioned or coordinated), not a routine edit.
+
+    ``escalation_key`` is forwarded to :func:`route_tier2` unchanged (see
+    its docstring): an optional idempotency token identifying one logical
+    query attempt, so a caller retrying this same query after a transient
+    failure or timeout can pass the same key again and not double-count
+    the Tier-2 escalation (constructorfabric/studio#136).
     """
     tier1 = route_tier1(path, query, margin_threshold=margin_threshold)
     result: Dict[str, Any] = {"query": query, **tier1}
     if tier1["tier"] != "escalate":
         return result
 
-    tier2 = route_tier2(path, tier1, expected_future_queries=expected_future_queries)
+    tier2 = route_tier2(
+        path, tier1, expected_future_queries=expected_future_queries, escalation_key=escalation_key,
+    )
     result["tier2"] = tier2
 
     if tier2["recommendation"] == "baseline":
