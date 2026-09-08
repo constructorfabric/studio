@@ -651,6 +651,61 @@ class TestGetOrBuildDocIndex:
         index = get_or_build_doc_index(f, force_rebuild=True)
         assert index["cache_hit"] is False
 
+    def test_concurrent_rebuild_does_not_discard_a_racing_annotation(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (round-5, Major): get_or_build_doc_index's
+        rebuild-and-save call site took no lock, so a rebuild triggered by a
+        genuine cache miss could silently overwrite a concurrently-saved
+        annotate_section_summary write with a stale, summary-less snapshot.
+        Forces the interleaving deterministically by intercepting the first
+        (pre-lock) cache check to run a real build-and-annotate cycle on a
+        background thread first, then asserts the fix's post-lock freshness
+        recheck returns that cache intact instead of rebuilding over it."""
+        import threading
+
+        from studio.utils import doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        section_a = next(s for s in di.build_doc_index(f)["sections"] if s["heading"] == "Section A")
+        line_start, expected_hash = section_a["line_start"], section_a["hash"]
+
+        original_load = di.load_doc_index
+        call_count = {"n": 0}
+        annotate_ok = {}
+
+        def intercepted_load(path):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                def concurrent_build_and_annotate() -> None:
+                    di.get_or_build_doc_index(path)
+                    annotate_ok["value"] = di.annotate_section_summary(
+                        path, line_start, expected_hash, "Covers A."
+                    )
+
+                t = threading.Thread(target=concurrent_build_and_annotate)
+                t.start()
+                t.join(timeout=5)
+                assert not t.is_alive(), "concurrent build-and-annotate cycle never finished"
+                assert annotate_ok.get("value") is True, "concurrent annotation itself failed (test setup)"
+                return None
+            return original_load(path)
+
+        monkeypatch.setattr(di, "load_doc_index", intercepted_load)
+        try:
+            result = di.get_or_build_doc_index(f)
+        finally:
+            monkeypatch.setattr(di, "load_doc_index", original_load)
+
+        final = di.load_doc_index(f)
+        final_section_a = next(s for s in final["sections"] if s["heading"] == "Section A")
+        assert final_section_a["summary"] == "Covers A.", (
+            "the rebuild silently discarded the concurrently-saved annotation"
+        )
+        # The recheck recognized the concurrently-completed cache as
+        # already fresh and returned it directly, rather than needlessly
+        # (and destructively) rebuilding from scratch over it.
+        assert result["cache_hit"] is True
+
 
 class TestAnnotateSectionSummary:
     def test_returns_false_when_no_cache_exists_yet(self, tmp_path: Path, monkeypatch):

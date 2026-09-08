@@ -509,6 +509,15 @@ def get_or_build_doc_index(path: Path, *, force_rebuild: bool = False) -> Dict[s
     the cache; every subsequent call against an unchanged file returns the
     cached result directly. ``index["cache_hit"]`` reports which happened,
     for benchmarking.
+
+    The rebuild-and-save step runs under the same per-file lock
+    :func:`annotate_section_summary` already uses, so it can no longer race
+    a concurrent annotation and silently overwrite it with a stale,
+    pre-annotation snapshot (constructorfabric/studio#136, round-5 review,
+    Major). When not ``force_rebuild``, it also re-checks cache freshness
+    once more *after* acquiring the lock, so a rebuild that loses the race
+    to a concurrent write returns that fresh cache instead of redundantly
+    rebuilding over it.
     """
     if not force_rebuild:
         cached = load_doc_index(path)
@@ -516,10 +525,25 @@ def get_or_build_doc_index(path: Path, *, force_rebuild: bool = False) -> Dict[s
             cached["cache_hit"] = True
             return cached
 
-    fresh = build_doc_index(path)
-    save_doc_index(path, fresh)
-    fresh["cache_hit"] = False
-    return fresh
+    cache_path = _index_cache_path(path)
+    if cache_path is None:
+        fresh = build_doc_index(path)
+        save_doc_index(path, fresh)
+        fresh["cache_hit"] = False
+        return fresh
+
+    def _rebuild_and_save() -> Dict[str, Any]:
+        if not force_rebuild:
+            recheck = load_doc_index(path)
+            if recheck is not None:
+                recheck["cache_hit"] = True
+                return recheck
+        fresh = build_doc_index(path)
+        save_doc_index(path, fresh)
+        fresh["cache_hit"] = False
+        return fresh
+
+    return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _rebuild_and_save)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-or-build
 
 
