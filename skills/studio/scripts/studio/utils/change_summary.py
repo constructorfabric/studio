@@ -41,16 +41,19 @@ to be declared, and re-resolving it here would duplicate that gate for cosmetic 
 @cpt-algo:cpt-studio-algo-developer-experience-change-summary:p1
 """
 
-# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-datamodel
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-reader-bounds
 from __future__ import annotations
 
 import logging
 import os
 import subprocess
-from dataclasses import dataclass
+import sys
+import threading
+import time
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Container, Dict, List, Optional, Tuple
 
 from . import codebase
 from . import decision_log
@@ -62,12 +65,48 @@ logger = logging.getLogger(__name__)
 #: Seconds any single git query may take before it is treated as unavailable.
 _GIT_TIMEOUT = 10
 
-#: Environment variables that redirect git away from the repository it was pointed at.
+#: The codec every git reader here decodes with — the one Python uses for filesystem
+#: paths, so a path read from git is the string ``open`` encodes back to the same bytes.
+#: Git emits paths as raw bytes. ``text=True`` without an ``encoding`` decodes them with
+#: the locale's codec instead, and the two readers of the changed-file listing — the
+#: captured diff and the streamed sweep — then disagreed about one file's name under a
+#: non-UTF-8 locale, so the sweep's deduplication against the diff missed it and one
+#: file was reported twice.
+_PATH_ENCODING = sys.getfilesystemencoding()
+_PATH_ERRORS = sys.getfilesystemencodeerrors()
+
+#: Longest single record the streamed reader buffers before calling the stream
+#: malformed. The ceiling on records bounds how many are kept, not how long one may
+#: grow: a child that never writes a NUL was otherwise buffered without limit. Far above
+#: any path a repository holds, and far below the point where it would matter.
+_MAX_RECORD_BYTES = 1 << 20
+
+#: What the three readers below say when git could not be launched at all, and when it
+#: ran and refused. One template each, because an operator greps a log for a fixed
+#: phrase: three readers wording the same outcome three ways is three things to search
+#: for. Both carry the exception *type* or the exit code, never the message — an
+#: ``OSError``'s text can carry a path.
+_LOG_GIT_FAILED = "change-summary git query could not run: %s"
+_LOG_GIT_EXITED = "change-summary git query exited %d"
+#: Distinct from :data:`_LOG_GIT_FAILED` on purpose: git launched and then the stream
+#: broke part-way, which is a different fact for an operator than git never starting.
+#: Named for the same reason as the other two, and because a test asserting the exact
+#: message needs the template rather than a substring of it.
+_LOG_GIT_STREAM_FAILED = "change-summary git query stream failed: %s"
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-reader-bounds
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-environment
+#: Environment variables that let the ambient environment change what these queries
+#: answer. Two mechanisms, both cleared, because naming the directory is not enough on
+#: either count.
 #:
-#: ``cwd=`` is *not* sufficient on its own: an ambient ``GIT_DIR`` overrides it, so a
-#: query about project A answered from project B's repository. Verified —
-#: ``GIT_DIR=b/.git git -C a log`` reports b's commit, not a's. Every one of these is
-#: cleared so the answer describes the project the caller named and nothing else.
+#: The first **redirects which repository git reads**: an ambient ``GIT_DIR`` overrides
+#: ``cwd=``, so a query about project A was answered from project B's repository.
+#: Verified — ``GIT_DIR=b/.git git -C a log`` reports b's commit, not a's.
+#:
+#: The second **changes what git reports about the right repository**, and is described
+#: at the group below. Every variable here is cleared, so the answer describes the
+#: project the caller named, in the state that project is actually in.
 _GIT_REDIRECT_VARS = (
     "GIT_DIR",
     "GIT_WORK_TREE",
@@ -76,6 +115,45 @@ _GIT_REDIRECT_VARS = (
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     "GIT_COMMON_DIR",
     "GIT_CEILING_DIRECTORIES",
+    # Widens the upward search instead of narrowing it: with this set, discovery crosses
+    # a mount boundary and can settle on an ancestor repository on another filesystem
+    # rather than stopping at the requested project's own. Cleared for symmetry with
+    # ``GIT_CEILING_DIRECTORIES`` above — leaving the variable that widens the walk while
+    # clearing the one that restricts it would make the search depend on the ambient
+    # environment in exactly the direction that hurts.
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    # The second mechanism: git also takes *configuration* from the environment, and
+    # config reaches these queries even though it cannot redirect discovery. Measured —
+    # with `core.excludesFile` injected through any of the three below,
+    # `ls-files --others --exclude-standard` returned **nothing** for a repository whose
+    # untracked file it otherwise lists. That is the silent omission this module exists
+    # to prevent, arriving through the environment rather than through the code, so the
+    # digest would have called a brand-new file absent while reporting itself complete.
+    #
+    # `core.worktree` is *not* the vector it first appears to be: injected this way it
+    # is set (``git config core.worktree`` echoes it back) but ignored for discovery, so
+    # `--show-toplevel` and the listings stay with the directory git was pointed at. It
+    # only redirects once `GIT_DIR` is also set — verified, and that is cleared above,
+    # which is what makes the two groups here complementary rather than overlapping.
+    "GIT_CONFIG_PARAMETERS",
+    # Gates the indexed `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` pairs: verified that
+    # without a count git ignores them entirely, so clearing the count clears the family
+    # and no unbounded scan for indices is needed.
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    # Toggles whether system config participates at all, so it changes the answer in the
+    # opposite direction to the two above — and directly reverses them. Measured:
+    # `GIT_CONFIG_SYSTEM=<file setting core.excludesFile>` emptied the untracked sweep,
+    # and adding `GIT_CONFIG_NOSYSTEM=1` brought the file back. Left inherited, an
+    # ambient value would decide whether the machine's real ``/etc/gitconfig`` is
+    # consulted, which is the same ambient dependence as the rest of this tuple.
+    #
+    # With this, the set is the whole documented config surface — `git help config`
+    # lists exactly ``GIT_CONFIG_COUNT``, ``GIT_CONFIG_KEY_n``, ``GIT_CONFIG_VALUE_n``,
+    # ``GIT_CONFIG_GLOBAL``, ``GIT_CONFIG_SYSTEM`` and ``GIT_CONFIG_NOSYSTEM``, plus the
+    # undocumented ``GIT_CONFIG_PARAMETERS`` above, which was verified by measurement.
+    "GIT_CONFIG_NOSYSTEM",
 )
 
 #: Refs tried in order when the caller names no base.
@@ -101,7 +179,9 @@ _DEFAULT_BASE_REFS = (
     "origin/master",
     "master",
 )
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-environment
 
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-reason-vocabulary
 # Reasons are module constants so the renderer and the tests share one vocabulary
 # instead of matching on prose that can drift.
 REASON_OK = ""
@@ -115,6 +195,10 @@ REASON_GIT_UNAVAILABLE = "git unavailable"
 REASON_NO_BASE_REF = "no default base ref found"
 REASON_BASE_REF_UNKNOWN = "requested base ref not found"
 REASON_NO_MERGE_BASE = "no merge base with the base ref"
+#: A merge-base miss in a shallow clone decides nothing: the branch point may lie beyond
+#: the fetched depth, or the histories may be unrelated, and a truncated history cannot
+#: tell which. The reason says so rather than pick one. CI checkouts default to depth 1.
+REASON_SHALLOW_HISTORY = "no merge base in a shallow history; the branch point may lie beyond the fetched depth"
 REASON_NO_BASE_TIME = "base commit has no readable timestamp"
 REASON_NOT_A_PROJECT = "not inside a Studio project"
 REASON_LOG_DISABLED = "decision log disabled"
@@ -157,8 +241,10 @@ MAX_CHANGED_ENTRIES = 1000
 #: discards real information (see :func:`_canonical_run_id`). Sharing a label is
 #: cosmetic; dropping an event is not.
 RUN_UNATTRIBUTED = "(unattributed)"
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-reason-vocabulary
 
 
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-datamodel
 @dataclass(frozen=True)
 class ChangeWindow:
     """The span of work a digest covers.
@@ -244,17 +330,21 @@ def _git_query(project_root: Path, args: List[str]) -> Tuple[Optional[str], bool
             text=True,
             # Git refs and paths are bytes and need not be UTF-8, so `text=True`'s
             # strict default would raise UnicodeDecodeError past the handler below and
-            # break the never-raises contract. `surrogateescape` is the handler Python
-            # uses for filesystem values, so they round-trip to the same bytes.
-            errors="surrogateescape",
+            # break the never-raises contract. The filesystem codec is the one Python
+            # uses for paths, so a value round-trips to the same bytes -- and every
+            # reader in this module decodes with it, so one path is one string.
+            encoding=_PATH_ENCODING,
+            errors=_PATH_ERRORS,
             timeout=_GIT_TIMEOUT,
             check=False,
         )
     except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
-        logger.debug("change-summary git query could not run: %s", exc)
+        # Warning, not debug: git not launching is an environment fault an operator
+        # should see, unlike the routine non-zero exit below.
+        logger.warning(_LOG_GIT_FAILED, type(exc).__name__)
         return None, True
     if result.returncode:
-        logger.debug("change-summary git query exited %d", result.returncode)
+        logger.debug(_LOG_GIT_EXITED, result.returncode)
         return None, False
     line = result.stdout.strip().splitlines()
     return (line[0].strip() if line else None), False
@@ -328,13 +418,32 @@ def _resolve_base_ref(project_root: Path, requested: str = "") -> Tuple[Optional
 def _merge_base(project_root: Path, base_ref: str) -> Tuple[Optional[str], bool]:
     """Return the merge-base sha between ``HEAD`` and ``base_ref``.
 
-    Returns ``(sha, tool_failed)``. Unrelated histories and a missing ref yield a
-    ``None`` sha with ``tool_failed`` false — there is genuinely no branch point. A
-    ``True`` flag means git never answered, which is a different fact and must not be
-    reported as a finding about history.
+    Returns ``(sha, tool_failed)``. A ``None`` sha with ``tool_failed`` false means git
+    found no common ancestor *in the history it has*: genuinely unrelated branches, a
+    missing ref — or a shallow clone whose branch point was never fetched, which
+    :func:`_is_shallow` tells apart. A ``True`` flag means git never answered, which is
+    a different fact and must not be reported as a finding about history.
     """
     return _git_query(project_root, ["merge-base", "--end-of-options", "HEAD", base_ref])
 # @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-merge-base
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-shallow-check
+def _is_shallow(project_root: Path) -> Tuple[bool, bool]:
+    """Whether the repository's history is truncated — a shallow clone.
+
+    Returns ``(shallow, tool_failed)``, like every other probe here. Asked only after a
+    merge-base miss, so it costs nothing on the common path, and only to choose between
+    two reasons: a miss in full history is a fact about the branches; a miss in a shallow
+    one is undecidable — the branch point may lie beyond the fetched depth, or the
+    histories may be unrelated, and a truncated history cannot tell the two apart — so it
+    is reported as exactly that. The failure flag is kept rather than dropped: a probe
+    that never ran answered neither way, and an earlier version read that as "not
+    shallow" and reported unrelated history on the strength of a timeout.
+    """
+    answer, failed = _git_query(project_root, ["rev-parse", "--is-shallow-repository"])
+    return answer == "true", failed
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-shallow-check
 
 
 # @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-base-time
@@ -353,9 +462,11 @@ def resolve_window(
 ) -> ChangeWindow:
     """Resolve the span of work a digest should cover.
 
-    ``since`` short-circuits git entirely — an explicit lower bound is the caller's
-    assertion and needs no branch point. Otherwise the window starts at the merge-base
-    with ``base`` (or the first of :data:`_DEFAULT_BASE_REFS` that exists).
+    ``since`` on its own short-circuits git entirely — an explicit lower bound is the
+    caller's assertion and needs no branch point. Otherwise the window starts at the
+    merge-base with ``base`` (or the first of :data:`_DEFAULT_BASE_REFS` that exists).
+    Given both, the base still anchors the changed-file diff and ``since`` replaces only
+    the decision boundary; a base the caller named is never silently ignored.
 
     **The boundary moves with the merge-base.** It is the base commit's *commit* time,
     so rebasing onto newer upstream commits advances it, and decisions logged before
@@ -378,12 +489,14 @@ def resolve_window(
     # `subprocess(cwd=...)` resolves a relative path at call time, not at capture time.
     project_root = Path(project_root).resolve()
     root = str(project_root)
-    if since:
-        # A caller-supplied bound is validated here rather than surfacing later as a
-        # complaint about a base commit that was never consulted.
-        if _parse_ts(since) is None:
-            return ChangeWindow(project_root=root, reason=REASON_INVALID_SINCE)
-        return ChangeWindow(project_root=root, since=since, available=True, reason=REASON_OK)
+    if since and (not base or _parse_ts(since) is None):
+        # A bad bound is refused up front, whether or not a base was named, rather than
+        # surfacing later as a complaint about a base commit that was never consulted. A
+        # good bound with no base *is* the window, and needs no git. With a base as
+        # well, the base still anchors the changed-file diff below and `since` replaces
+        # only the decision boundary once the window is built — ignoring the base
+        # silently left a caller who named one with no file changes and no hint why.
+        return _since_only_window(root, since)
 
     repo_state = _detect_repo(project_root)
     if repo_state:
@@ -399,7 +512,15 @@ def resolve_window(
             project_root=root,
             reason=REASON_BASE_REF_UNKNOWN if base else REASON_NO_BASE_REF,
         )
-    return _window_from_base_ref(project_root, base_ref)
+    window = _window_from_base_ref(project_root, base_ref)
+    return replace(window, since=since) if since and window.available else window
+
+
+def _since_only_window(root: str, since: str) -> ChangeWindow:
+    """The window an explicit bound makes on its own, or the reason the bound is unusable."""
+    if _parse_ts(since) is None:
+        return ChangeWindow(project_root=root, reason=REASON_INVALID_SINCE)
+    return ChangeWindow(project_root=root, since=since, available=True, reason=REASON_OK)
 # @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-resolve-window
 
 
@@ -422,7 +543,14 @@ def _window_from_base_ref(project_root: Path, base_ref: str) -> ChangeWindow:
     if failed:
         return ChangeWindow(project_root=root, base_ref=base_ref, reason=REASON_GIT_UNAVAILABLE)
     if base_sha is None:
-        return ChangeWindow(project_root=root, base_ref=base_ref, reason=REASON_NO_MERGE_BASE)
+        # A miss in a shallow clone is not a fact about history: the branch point may lie
+        # beyond the fetched depth. "No merge base" would send someone looking for
+        # unrelated branches that are related, and CI checkouts default to depth 1.
+        shallow, failed = _is_shallow(project_root)
+        if failed:
+            return ChangeWindow(project_root=root, base_ref=base_ref, reason=REASON_GIT_UNAVAILABLE)
+        reason = REASON_SHALLOW_HISTORY if shallow else REASON_NO_MERGE_BASE
+        return ChangeWindow(project_root=root, base_ref=base_ref, reason=reason)
 
     base_time, failed = _commit_time(project_root, base_sha)
     if failed or base_time is None:
@@ -711,6 +839,18 @@ class LinkReport:
     renderer checks is ``examined == len(files) + excluded``, and every row that carries
     no marker is in exactly one of ``deleted``, ``unreadable`` or ``not_a_file`` — or is
     a regular file that was read and simply carries none.
+
+    ``unreadable`` is **the aggregate of every reason no marker could be established**,
+    not only a failed read: a file whose scope could not be determined
+    (:data:`REASON_SCOPE_UNKNOWN`), one whose markers would not parse
+    (:data:`REASON_MARKERS_INVALID`) and one whose scan failed unexpectedly
+    (:data:`REASON_SCAN_FAILED`) all land here alongside
+    :data:`REASON_FILE_UNREADABLE`. Splitting it would put a counter on each cause and
+    an invariant on none of them — the exactly-one property above is what a renderer
+    checks its arithmetic against. The distinction is not lost: each row keeps its own
+    ``reason``, so the per-file detail says which cause applied while the counter says
+    only how many rows yielded nothing. A renderer naming this count must therefore name
+    the aggregate rather than one of its causes.
     """
 
     files: Tuple[FileLink, ...] = ()
@@ -757,17 +897,21 @@ def _git_records(project_root: Path, args: List[str]) -> Optional[List[str]]:
             # Filesystem paths are bytes on POSIX and are not guaranteed to be UTF-8,
             # so `text=True`'s strict default raises UnicodeDecodeError on a legal but
             # undecodable filename -- escaping past the handler below and breaking the
-            # never-raises contract. `surrogateescape` is the handler Python itself uses
-            # for paths, so the value round-trips back to the same bytes when reopened.
-            errors="surrogateescape",
+            # never-raises contract. The filesystem codec is what Python itself uses for
+            # paths, so the value round-trips to the same bytes when reopened, and the
+            # streamed sweep decodes with the same one, so both name one file alike.
+            encoding=_PATH_ENCODING,
+            errors=_PATH_ERRORS,
             timeout=_GIT_TIMEOUT,
             check=False,
         )
     except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
-        logger.debug("change-summary git query failed: %s", exc)
+        # Warning, not debug, for the same reason as `_git_query`: this is the tool
+        # failing, not git answering "no", and the two must not look alike in a log.
+        logger.warning(_LOG_GIT_FAILED, type(exc).__name__)
         return None
     if result.returncode:
-        logger.debug("change-summary git query exited %d", result.returncode)
+        logger.debug(_LOG_GIT_EXITED, result.returncode)
         return None
     # A trailing NUL leaves one empty tail record; drop it without dropping
     # legitimately empty interior records, which would desynchronise the walk.
@@ -776,6 +920,118 @@ def _git_records(project_root: Path, args: List[str]) -> Optional[List[str]]:
         records.pop()
     return records
 # @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-lines
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-stream
+def _git_records_bounded(
+    project_root: Path, args: List[str], keep: int, skip: Container[str] = frozenset(),
+) -> Optional[Tuple[List[str], int]]:
+    """Stream a ``-z`` query, storing at most ``keep`` records and counting them all.
+
+    For the one query whose output is not bounded by the repository — the untracked
+    sweep, which an unignored dependency tree can turn into hundreds of thousands of
+    paths. :func:`_git_records` captures the whole output and splits it into one Python
+    string per record before any ceiling applies; this reads git's pipe in chunks, keeps
+    the first ``keep`` records, and counts the rest as they stream past, so the cost
+    bounded is the cost that was actually accruing. Records in ``skip`` are neither kept
+    nor counted, and are judged before the ceiling: a caller deduplicating this stream
+    against another listing cannot do so afterwards for records that were only counted,
+    and a duplicate that took a kept slot displaced a record that was genuinely new.
+    Returns ``(kept, total)``, or ``None`` for any non-answer, like its sibling — a
+    stream that failed part-way is a non-answer too, not a shorter listing.
+    """
+    kept: List[str] = []
+    counts = [0]
+    failure: List[BaseException] = []
+    deadline = time.monotonic() + _GIT_TIMEOUT
+    try:
+        with subprocess.Popen(
+            ["git"] + args,
+            cwd=str(project_root),
+            env=_git_env(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ) as proc:
+            assert proc.stdout is not None
+            # The pipe is read on a helper thread against the module's deadline. A
+            # blocking read on the main thread was bounded by nothing: a git that holds
+            # stdout open without writing never returns from `read`, so the `wait`
+            # with its timeout behind it could never run. Threads are how `subprocess`
+            # itself does this portably (`communicate`), and pipes are not selectable
+            # everywhere this runs.
+            pump = threading.Thread(
+                target=_pump_records,
+                args=(proc.stdout, keep, skip, kept, counts, failure),
+                daemon=True,
+            )
+            pump.start()
+            pump.join(timeout=max(0.0, deadline - time.monotonic()))
+            if pump.is_alive():
+                proc.kill()
+                pump.join(timeout=1.0)
+                raise subprocess.TimeoutExpired(cmd="git", timeout=_GIT_TIMEOUT)
+            if failure:
+                # The pump stopped early. What it kept is a prefix of the truth, and a
+                # prefix presented as the listing is the silent omission this module
+                # exists to prevent — so nothing is returned rather than part of it.
+                proc.kill()
+                logger.warning(_LOG_GIT_STREAM_FAILED, type(failure[0]).__name__)
+                return None
+            try:
+                returncode = proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning(_LOG_GIT_FAILED, type(exc).__name__)
+        return None
+    if returncode:
+        logger.debug(_LOG_GIT_EXITED, returncode)
+        return None
+    return kept, counts[0]
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-stream
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-pump-records
+def _pump_records(
+    stream: Any, keep: int, skip: Container[str],
+    kept: List[str], counts: List[int], failure: List[BaseException],
+) -> None:
+    """Split a NUL-delimited byte stream as it arrives: keep up to ``keep``, count all.
+
+    ``counts`` and ``failure`` are lists so the total and any exception cross the thread
+    boundary without a lock — the caller reads them only after joining. An unterminated
+    final record is a record too, as :func:`_git_records` treats it; an empty record is
+    not, since this reader lists paths and there is no empty path. Whatever is raised in
+    here is recorded rather than lost: an exception ends a thread and is printed nowhere,
+    and the caller would have read a stopped pump as a finished one — a partial listing
+    as the whole. A record longer than :data:`_MAX_RECORD_BYTES` is such a failure,
+    whether it has been terminated or is still accruing in the tail.
+    """
+    def take(raw: bytes) -> None:
+        if len(raw) > _MAX_RECORD_BYTES:
+            raise ValueError("record exceeds the streamed reader's size bound")
+        record = raw.decode(_PATH_ENCODING, _PATH_ERRORS)
+        if not record or record in skip:
+            return
+        counts[0] += 1
+        if len(kept) < keep:
+            kept.append(record)
+
+    try:
+        tail = b""
+        for chunk in iter(lambda: stream.read(65536), b""):
+            parts = (tail + chunk).split(b"\0")
+            tail = parts.pop()
+            if len(tail) > _MAX_RECORD_BYTES:
+                raise ValueError("record exceeds the streamed reader's size bound")
+            for raw in parts:
+                take(raw)
+        if tail:
+            take(tail)
+    except Exception as exc:  # pylint: disable=broad-except
+        failure.append(exc)
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-pump-records
 
 
 # @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-parse-name-status
@@ -831,12 +1087,21 @@ def _in_project_scope(candidate: Path, project_root: Path) -> Optional[bool]:
       change under a vendored path is reported rather than hidden — the safer direction
       for a review digest, since over-reporting costs a reader a moment while
       under-reporting hides work that really did change.
+
+    **No extension policy applies, by design.** The resolver's extension list only
+    selects candidates when it walks a directory; for a single file it is not consulted,
+    so an empty list is passed rather than a fabricated one that would suggest a filter
+    is in force. The registry's code extensions would be the wrong filter anyway: the
+    digest reports both directions, and a changed feature artifact — Markdown, never a
+    code extension — *declares* requirements. Filtering it out would report a changed
+    specification as tracing to nothing, which is the inversion this module exists to
+    avoid. What a file *does* with IDs is decided by reading it, not by its suffix.
     """
     try:
         if not candidate.is_file():
             return False
         files, _excluded = codebase.resolve_entry_code_files(
-            candidate, [candidate.suffix], project_root=project_root,
+            candidate, [], project_root=project_root,
         )
     except OSError as exc:
         logger.debug("change-summary scope check failed: %s", exc)
@@ -906,14 +1171,16 @@ def _collect_changed_entries(
 ) -> Optional[Tuple[List[Tuple[str, str]], int]]:
     """List ``(status, path)`` for everything changed since ``base_sha``, plus the total.
 
-    Returns ``(entries, total)``: at most :data:`MAX_CHANGED_ENTRIES` entries
-    materialised, and the count of everything git reported. The untracked sweep is
-    the unbounded stream — an unignored dependency tree can run to hundreds of
-    thousands of paths — so past the ceiling its paths are *counted* but not stored.
-    Deduplication against the diff still holds for them: a path already seen is
-    neither stored twice nor counted twice. Git's captured output is still read whole
-    (``subprocess.run`` buffers it); what this bounds is the per-path Python objects and
-    the dictionary, which is where the cost the ceiling exists for actually accrues.
+    Returns ``(entries, total)``: at most :data:`MAX_CHANGED_ENTRIES` entries returned
+    for examination, and the count of every distinct path git reported. The tracked diff
+    is captured whole: its size is bounded by the repository's tracked-file count, which
+    git holds in memory to produce it, so streaming it would bound nothing the
+    repository does not already. The untracked sweep is the unbounded one — an
+    unignored dependency tree can run to hundreds of thousands of paths — so it is
+    streamed: it keeps only as many paths as the shared ceiling can still seat once the
+    diff is in hand, *counts* the rest, and is deduplicated against the diff as it
+    streams, so a path already seen is neither stored nor counted, and takes no slot
+    from a path that is genuinely new.
 
     Rename detection is pinned with ``-M`` rather than left to the ambient
     ``diff.renames`` setting, because :func:`_walk_name_status` keeps a rename's new
@@ -953,24 +1220,54 @@ def _collect_changed_entries(
     seen: Dict[str, str] = {}
     for status, rel_path in _walk_name_status(diffed):
         seen.setdefault(rel_path, status)
-    untracked = _git_records(
-        project_root, ["ls-files", "--others", "--exclude-standard", "-z"],
+    # The sweep keeps only as many paths as the shared ceiling can still seat. The
+    # interleave gives tracked entries at most half of it, so once the diff is in hand
+    # the room left for new files is known, and nothing is retained only to be dropped.
+    keep = MAX_CHANGED_ENTRIES - min(len(seen), (MAX_CHANGED_ENTRIES + 1) // 2)
+    swept = _git_records_bounded(
+        project_root, ["ls-files", "--others", "--exclude-standard", "-z"], keep,
+        # Deduplicated inside the stream, before the ceiling. Checked afterwards, a
+        # `git rm --cached` file — in the diff already — was counted a second time once
+        # past the ceiling, and below it had taken a kept slot from a genuinely new file.
+        skip=seen,
     )
-    if untracked is None:
+    if swept is None:
         return None
-    overflow = 0
-    for rel_path in untracked:
-        if not rel_path or rel_path in seen:
-            # Already carrying a diff status: neither stored nor counted twice.
-            continue
-        if len(seen) >= MAX_CHANGED_ENTRIES:
-            overflow += 1
-            continue
-        seen[rel_path] = "?"
+    untracked, untracked_total = swept
+    new = [(path, "?") for path in untracked]
+    total = len(seen) + untracked_total
+    tracked = list(seen.items())
+    if len(tracked) + len(new) <= MAX_CHANGED_ENTRIES:
+        picked = tracked + new
+    else:
+        # The ceiling is shared fairly rather than filled from the diff first: filling
+        # in order dropped exactly the untracked files — brand-new work, the one thing
+        # the sweep exists to keep in the digest — whenever the diff alone reached it.
+        picked = _interleave(tracked, new, MAX_CHANGED_ENTRIES)
     # The map is keyed by path for deduplication, but the contract is (status, path),
     # so the pairs are flipped back rather than returned in the map's own order.
-    return [(status, rel_path) for rel_path, status in seen.items()], len(seen) + overflow
+    return [(status, rel_path) for rel_path, status in picked], total
 # @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-collect-changed
+
+
+# @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-share-ceiling
+def _interleave(first: List[Tuple[str, str]], second: List[Tuple[str, str]], cap: int) -> List[Tuple[str, str]]:
+    """Take from two lists alternately until ``cap`` items, so neither is starved.
+
+    Used only when the ceiling bites. Below it, the natural order — diff entries then
+    untracked — is kept, so a report that was never capped reads as it always did.
+    """
+    picked: List[Tuple[str, str]] = []
+    i = j = 0
+    while len(picked) < cap and (i < len(first) or j < len(second)):
+        if i < len(first):
+            picked.append(first[i])
+            i += 1
+        if len(picked) < cap and j < len(second):
+            picked.append(second[j])
+            j += 1
+    return picked
+# @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-share-ceiling
 
 
 # @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-classify-entry

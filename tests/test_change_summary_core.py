@@ -83,6 +83,122 @@ def _event(ts: str, run_id: str = "r1", event: str = "validation") -> dict:
 
 # --------------------------------------------------------------------------- window
 
+class TestAShallowCloneIsNotUnrelatedHistory:
+    """A merge-base miss in a shallow clone says nothing about history — the branch
+    point may lie beyond the fetched depth. CI checkouts default to depth 1, so this is
+    the common way to reach a miss, and "no merge base" sent people looking for
+    unrelated branches that are related."""
+
+    def test_a_shallow_clone_reports_the_fetch_depth_not_unrelated_history(self, tmp_path):
+        origin = _make_repo(tmp_path / "origin")
+        trunk = _git(origin, "branch", "--show-current")
+        _commit(origin, "b.txt")
+        _git(origin, "checkout", "-q", "-b", "feat")
+        _commit(origin, "d.txt")
+        _git(origin, "checkout", "-q", trunk)
+        _commit(origin, "c.txt")
+        clone = tmp_path / "clone"
+        cloned = subprocess.run(
+            ["git", "clone", "-q", "--depth", "1", "--branch", "feat", f"file://{origin}", str(clone)],
+            capture_output=True, text=True, check=False,
+        )
+        if cloned.returncode:
+            pytest.skip(f"shallow file:// clone unavailable here: {cloned.stderr.strip()[:80]}")
+        _git(clone, "fetch", "-q", "--depth", "1", "origin", f"{trunk}:refs/remotes/upstream/main")
+
+        window = cs.resolve_window(clone)
+
+        assert window.available is False
+        assert window.reason == cs.REASON_SHALLOW_HISTORY
+        assert window.base_ref == "upstream/main", "what was learned is still reported"
+
+    def test_a_genuine_miss_in_a_full_clone_still_says_no_merge_base(self, tmp_path, monkeypatch):
+        repo = _make_repo(tmp_path / "r")
+        _point_ref(repo, "refs/remotes/upstream/main", _git(repo, "rev-parse", "HEAD"))
+        monkeypatch.setattr(cs, "_merge_base", lambda *_a, **_k: (None, False))
+
+        assert cs.resolve_window(repo).reason == cs.REASON_NO_MERGE_BASE
+
+    def test_a_shallow_repository_is_detected_without_a_network_clone(self, tmp_path):
+        """The `file://` clone above can be refused by a hardened git, and a skip there
+        left the headline reason unverified. This fabricates the same state directly:
+        `.git/shallow` naming HEAD as a graft is exactly what a depth-1 fetch writes, so
+        the branch point is cut off and the reason is exercised wherever the suite runs."""
+        repo = _make_repo(tmp_path / "r")
+        _point_ref(repo, "refs/remotes/upstream/main", _git(repo, "rev-parse", "HEAD"))
+        head = _commit(repo, "b.txt")
+        assert cs._merge_base(repo, "upstream/main")[0], "related until the graft is written"
+        (repo / ".git" / "shallow").write_text(head + "\n", encoding="utf-8")
+
+        window = cs.resolve_window(repo)
+
+        assert window.available is False
+        assert window.reason == cs.REASON_SHALLOW_HISTORY
+
+    def test_a_shallow_probe_that_fails_is_reported_as_git_not_as_history(self, tmp_path, monkeypatch):
+        """After a merge-base miss, the depth probe itself failing answers nothing about
+        depth. An earlier version read that failure as "not shallow" and reported
+        unrelated history on the strength of a timeout."""
+        repo = _make_repo(tmp_path / "r")
+        _point_ref(repo, "refs/remotes/upstream/main", _git(repo, "rev-parse", "HEAD"))
+        monkeypatch.setattr(cs, "_merge_base", lambda *_a, **_k: (None, False))
+        real_query = cs._git_query
+
+        def _probe_fails(root, args):
+            if "--is-shallow-repository" in args:
+                return None, True
+            return real_query(root, args)
+        monkeypatch.setattr(cs, "_git_query", _probe_fails)
+
+        window = cs.resolve_window(repo)
+
+        assert window.reason == cs.REASON_GIT_UNAVAILABLE
+        assert window.reason != cs.REASON_NO_MERGE_BASE
+        assert cs._is_shallow(repo) == (False, True), "the failure flag is returned, not dropped"
+
+
+class TestANamedBaseIsNeverSilentlyIgnored:
+    """`since` alone needs no git. Given `base` too, the base still anchors the
+    changed-file diff and `since` replaces only the decision boundary — a caller who
+    named a base used to get no file changes and no hint why."""
+
+    def test_a_named_base_still_anchors_the_diff_when_since_is_given(self, tmp_path):
+        repo = _make_repo(tmp_path / "r")
+        base = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "branch", "release")
+        _commit(repo, "b.txt")
+
+        window = cs.resolve_window(repo, base="release", since="2026-01-01T00:00:00+00:00")
+
+        assert window.available is True
+        assert (window.base_ref, window.base_sha) == ("release", base)
+        assert window.since == "2026-01-01T00:00:00+00:00", "the bound pins the decisions"
+
+    def test_a_bad_base_is_refused_even_when_since_would_have_sufficed(self, tmp_path):
+        repo = _make_repo(tmp_path / "r")
+
+        window = cs.resolve_window(repo, base="no-such-ref", since="2026-01-01T00:00:00+00:00")
+
+        assert window.available is False
+        assert window.reason == cs.REASON_BASE_REF_UNKNOWN
+
+    def test_git_failing_to_launch_is_a_warning_with_the_type_only(self, tmp_path, monkeypatch, caplog):
+        def _no_git(*_a, **_k):
+            raise OSError("no exec at /secret/bin/git")
+        monkeypatch.setattr(cs.subprocess, "run", _no_git)
+
+        with caplog.at_level("WARNING", logger="studio"):
+            assert cs._git_query(tmp_path, ["status"]) == (None, True)
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        # Against the shared template, not a substring of it. `"OSError" in message`
+        # passed for any wording that happened to name the type, so the three readers
+        # could drift back to three phrasings -- which is the thing the constant exists
+        # to prevent -- without a test noticing.
+        assert warnings and warnings[0] == cs._LOG_GIT_FAILED % "OSError"
+        assert "/secret/bin/git" not in warnings[0]
+
+
 class TestTheWindowComesFromGit:
 
     def test_a_repo_with_a_base_ref_yields_a_window(self, tmp_path):
@@ -486,8 +602,25 @@ class TestPrivacy:
             "submodule", "archive", "bundle", "daemon", "send-pack", "fetch-pack",
         }
         issued: list = []
+        launches = {"run": 0, "popen": 0}
 
-        def _capture(args, **_kwargs):
+        def _capture_run(args, **_kwargs):
+            """Captures, then answers *successfully* with nothing.
+
+            Raising here made the test blind twice over: the diff query is the first
+            thing the collector runs, so a failure short-circuited it and the streamed
+            sweep below was never reached, let alone observed. An empty success lets the
+            collector walk on to the sweep.
+            """
+            launches["run"] += 1
+            issued.append(list(args))
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        def _capture_popen(args, **_kwargs):
+            """The streamed reader launches through `Popen`, which patching `run` does
+            not intercept -- the asymmetry that hid this launch. Only the argv is needed,
+            so it captures and fails; the caller treats that as a tool failure."""
+            launches["popen"] += 1
             issued.append(list(args))
             raise OSError("not run")
 
@@ -500,7 +633,8 @@ class TestPrivacy:
             since="2026-01-01T00:00:00+00:00", available=True,
         )
 
-        monkeypatch.setattr(cs.subprocess, "run", _capture)
+        monkeypatch.setattr(cs.subprocess, "run", _capture_run)
+        monkeypatch.setattr(cs.subprocess, "Popen", _capture_popen)
         cs.resolve_window(repo)
         # The linkage half lives in a later change; exercise it when present so this
         # test covers every git call site on whichever branch it runs. It takes its
@@ -510,6 +644,13 @@ class TestPrivacy:
             linker(window)
 
         assert issued, "the helper must actually have been exercised"
+        # Both launch mechanisms, counted separately. The claim is "every git subcommand
+        # this module issues", and a launch nobody observed cannot support it: with only
+        # `run` patched, changing the sweep's subcommand to `ls-remote` left this test
+        # green. Asserting each count is non-zero is what stops that recurring, since a
+        # future refactor moving a query between the two would otherwise pass silently.
+        assert launches["run"], "the captured queries must have been exercised"
+        assert launches["popen"] and linker is not None, "the streamed query too"
         for argv in issued:
             subcommand = argv[1] if len(argv) > 1 else ""
             assert subcommand not in remote_capable, f"remote-capable: {subcommand}"

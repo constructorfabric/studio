@@ -12,8 +12,12 @@ a reviewer would rightly flag.
 from __future__ import annotations
 
 import dataclasses
+import io
 import os
 import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -566,15 +570,94 @@ class TestTheListingIsAboutTheProjectNamedAndNothingElse:
         assert report.available is True, report.reason
         assert [f.path for f in report.files] == ["mine.py"], "this project's files, not the decoy's"
 
+    @pytest.mark.parametrize(
+        "env",
+        [
+            pytest.param(
+                {
+                    "GIT_CONFIG_COUNT": "1",
+                    "GIT_CONFIG_KEY_0": "core.excludesFile",
+                    "GIT_CONFIG_VALUE_0": "{excludes}",
+                },
+                id="indexed-pairs",
+            ),
+            pytest.param(
+                {"GIT_CONFIG_PARAMETERS": "'core.excludesfile'='{excludes}'"},
+                id="config-parameters",
+            ),
+            pytest.param({"GIT_CONFIG_GLOBAL": "{config}"}, id="global-config-file"),
+            pytest.param({"GIT_CONFIG_SYSTEM": "{config}"}, id="system-config-file"),
+        ],
+    )
+    def test_ambient_git_config_cannot_hide_a_new_file_from_the_listing(
+        self, tmp_path, monkeypatch, env,
+    ):
+        """Git takes configuration from the environment too, and configuration reaches
+        these queries even where it cannot redirect discovery.
+
+        Measured before the fix: with `core.excludesFile` injected through any of these
+        four interfaces, `ls-files --others --exclude-standard` returned *nothing* for a
+        repository whose untracked file it otherwise lists. So a brand-new file was
+        absent from the digest while the report still called itself available and
+        complete — the silent omission this module exists to prevent, arriving through
+        the environment rather than through the code.
+
+        `core.worktree` is deliberately *not* the case under test: injected this way it
+        is set but ignored for discovery, and only redirects once `GIT_DIR` is also set,
+        which is cleared and covered by the test above.
+        """
+        repo = _repo_with_base(tmp_path)
+        (repo / "brand-new.py").write_text(_code(), encoding="utf-8")
+        excludes = tmp_path / "excludes"
+        excludes.write_text("brand-new.py\n", encoding="utf-8")
+        config = tmp_path / "gitconfig"
+        config.write_text(f"[core]\n\texcludesFile = {excludes}\n", encoding="utf-8")
+        for name, value in env.items():
+            monkeypatch.setenv(name, value.format(excludes=excludes, config=config))
+
+        report = _report(repo)
+
+        assert report.available is True, report.reason
+        assert "brand-new.py" in [f.path for f in report.files], (
+            "an ambient config must not decide what the digest can see"
+        )
+
+    def test_the_config_interfaces_are_cleared_by_name(self):
+        """Names, not just behaviour: git gained the indexed interface after `GIT_DIR`,
+        and a future one would pass the behavioural test above only by accident."""
+        for name in (
+            "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+            # Reverses the two above rather than adding to them: it decides whether
+            # system config participates at all. Measured -- `GIT_CONFIG_SYSTEM` alone
+            # emptied the sweep, and adding this brought the file back.
+            "GIT_CONFIG_NOSYSTEM",
+            # Widens the upward search where `GIT_CEILING_DIRECTORIES` narrows it, so
+            # discovery could settle on an ancestor repository across a mount boundary
+            # instead of the project's own. Covered by name only: constructing a mount
+            # boundary needs privileges a test suite does not have, and clearing the
+            # narrowing variable while leaving the widening one is the asymmetry.
+            "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+        ):
+            assert name in cs._GIT_REDIRECT_VARS, name
+        # The indexed pairs need no entry of their own: git ignores `GIT_CONFIG_KEY_n`
+        # and `GIT_CONFIG_VALUE_n` unless the count says how many to read, verified, so
+        # clearing the count clears the family without scanning for indices.
+        assert not [n for n in cs._GIT_REDIRECT_VARS if n.startswith("GIT_CONFIG_KEY")]
+
     def test_every_git_call_site_runs_with_the_sanitised_environment(self):
         """Structural: a new call site that forgets `env=_git_env()` fails here rather
         than in review — which is how the record query slipped through the first time."""
         import inspect
         source = inspect.getsource(cs)
-        launches = source.count("subprocess.run(")
+        launches = source.count("subprocess.run(") + source.count("subprocess.Popen(")
 
-        assert launches >= 2
+        assert launches >= 3
         assert source.count("env=_git_env()") == launches, "every launch, not most of them"
+        # And every captured launch decodes with the codec the streamed reader uses, so
+        # the two readers of one path cannot disagree about its name.
+        assert source.count("encoding=_PATH_ENCODING,") == source.count("subprocess.run(")
+        assert "raw.decode(_PATH_ENCODING, _PATH_ERRORS)" in source
 
     def test_a_failed_untracked_sweep_makes_the_listing_unavailable(self, tmp_path, monkeypatch):
         """`or []` turned a failed `ls-files` into an empty one, so the report came back
@@ -583,11 +666,7 @@ class TestTheListingIsAboutTheProjectNamedAndNothingElse:
         (repo / "m.py").write_text(_code(), encoding="utf-8")
         _git(repo, "add", "m.py")
         _git(repo, "commit", "-q", "-m", "add")
-        real_records = cs._git_records
-
-        def _diff_only(root, args):
-            return None if args[0] == "ls-files" else real_records(root, args)
-        monkeypatch.setattr(cs, "_git_records", _diff_only)
+        monkeypatch.setattr(cs, "_git_records_bounded", lambda *_a, **_k: None)
 
         report = _report(repo)
 
@@ -708,6 +787,491 @@ class TestTheReportAccountsForEveryEntry:
 
         assert len(entries) == 2, "no more stored than will be examined"
         assert total == 5, "but every one of them counted"
+
+
+class TestTheCeilingIsSharedAndTheSweepIsStreamed:
+    """The untracked sweep is the one unbounded query. It is read as a stream — kept up
+    to the ceiling, counted past it — and the ceiling is shared with the diff rather
+    than filled from the diff first, so brand-new files are never the first dropped."""
+
+    def test_the_ceiling_is_shared_so_new_files_are_not_the_first_dropped(self, tmp_path, monkeypatch):
+        """Filling in order dropped exactly the untracked files whenever the diff alone
+        reached the ceiling — the one omission the sweep exists to prevent."""
+        repo = _repo_with_base(tmp_path)
+        for name in ("t1.py", "t2.py", "t3.py"):
+            (repo / name).write_text("x = 1\n", encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "tracked")
+        for name in ("u1.py", "u2.py", "u3.py"):
+            (repo / name).write_text("y = 2\n", encoding="utf-8")
+        monkeypatch.setattr(cs, "MAX_CHANGED_ENTRIES", 4)
+
+        entries, total = cs._collect_changed_entries(repo, _git(repo, "rev-parse", "upstream/main"))
+
+        assert (len(entries), total) == (4, 6)
+        assert sum(1 for status, _ in entries if status == "?") == 2, "shared, not diff-first"
+
+    def test_under_the_ceiling_the_order_is_diff_then_untracked(self, tmp_path):
+        repo = _repo_with_base(tmp_path)
+        (repo / "t.py").write_text("x = 1\n", encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "tracked")
+        (repo / "u.py").write_text("y = 2\n", encoding="utf-8")
+
+        entries, total = cs._collect_changed_entries(repo, _git(repo, "rev-parse", "upstream/main"))
+
+        assert entries == [("A", "t.py"), ("?", "u.py")]
+        assert total == 2
+
+    @pytest.mark.parametrize("first,second,expected", [
+        ([("t1", "A")], [(f"u{i}", "?") for i in range(10)], [("t1", "A"), ("u0", "?"), ("u1", "?")]),
+        ([(f"t{i}", "A") for i in range(10)], [("u1", "?")], [("t0", "A"), ("u1", "?"), ("t1", "A")]),
+    ], ids=["one-tracked-many-new", "many-tracked-one-new"])
+    def test_the_lopsided_case_still_seats_the_minority(self, first, second, expected):
+        """One tracked change beside a large new tree, or the reverse — the common shape,
+        not the balanced one. The single entry from the smaller side is seated and the
+        rest of the cap goes to the other; a fill-in-order implementation seats none
+        of the minority when the majority alone reaches the cap."""
+        assert cs._interleave(first, second, 3) == expected
+
+    def test_a_lopsided_population_keeps_the_minority_on_the_real_path(self, tmp_path, monkeypatch):
+        """The same asymmetry through git: one tracked change beside five new files under a
+        cap of 3. The tracked change is seated, the rest of the cap goes to new files, and
+        the total is the whole population — statuses and count, not the picker alone."""
+        repo = _repo_with_base(tmp_path)
+        (repo / "t.py").write_text("x = 1\n", encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "tracked")
+        for i in range(5):
+            (repo / f"u{i}.py").write_text("y = 2\n", encoding="utf-8")
+        monkeypatch.setattr(cs, "MAX_CHANGED_ENTRIES", 3)
+
+        entries, total = cs._collect_changed_entries(repo, _git(repo, "rev-parse", "upstream/main"))
+
+        assert total == 6
+        assert [status for status, _ in entries] == ["A", "?", "?"]
+
+    @pytest.mark.parametrize("tracked,keep", [(0, 4), (1, 3), (2, 2), (3, 2), (9, 2)])
+    def test_the_sweep_keeps_only_what_the_shared_ceiling_can_still_seat(self, tracked, keep, tmp_path, monkeypatch):
+        """The interleave gives tracked entries at most half the ceiling, so once the diff
+        is in hand the room left for new files is known. The sweep is asked for that many
+        and no more — not the whole ceiling, to be trimmed after the fact."""
+        repo = _repo_with_base(tmp_path)
+        for i in range(tracked):
+            (repo / f"t{i}.py").write_text("x = 1\n", encoding="utf-8")
+        if tracked:
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m", "tracked")
+        asked = []
+        real = cs._git_records_bounded
+
+        def spy(root, args, keep_arg, **kwargs):
+            asked.append(keep_arg)
+            return real(root, args, keep_arg, **kwargs)
+        monkeypatch.setattr(cs, "_git_records_bounded", spy)
+        monkeypatch.setattr(cs, "MAX_CHANGED_ENTRIES", 4)
+
+        cs._collect_changed_entries(repo, _git(repo, "rev-parse", "upstream/main"))
+
+        assert asked == [keep]
+
+    def test_a_skipped_record_takes_no_kept_slot_and_is_not_counted(self, tmp_path):
+        """Deduplication happens inside the stream. A record the caller already holds —
+        here `a.txt`, in the diff as deleted and first in the sweep — neither occupies one
+        of the `keep` slots, which displaced a genuinely new path behind it, nor adds to
+        the total."""
+        repo = _repo_with_base(tmp_path)
+        _git(repo, "rm", "-q", "--cached", "a.txt")
+        for name in ("u1.py", "u2.py", "u3.py"):
+            (repo / name).write_text("y = 2\n", encoding="utf-8")
+
+        kept, total = cs._git_records_bounded(
+            repo, ["ls-files", "--others", "--exclude-standard", "-z"], 2, skip={"a.txt"},
+        )
+
+        assert kept == ["u1.py", "u2.py"], "the duplicate sorted first and took no slot"
+        assert total == 3
+
+    def test_a_duplicate_past_the_ceiling_is_counted_once(self, tmp_path, monkeypatch):
+        """A `git rm --cached` file is in the diff as deleted and in the sweep as new.
+        Beyond the kept prefix it could not be checked against the diff afterwards, so
+        the total carried it twice; judged as it streams, each distinct path counts once."""
+        repo = _make_repo(tmp_path / "r")
+        _commit(repo, "zz.txt")
+        _point_ref(repo, "refs/remotes/upstream/main", _git(repo, "rev-parse", "HEAD"))
+        _git(repo, "rm", "-q", "--cached", "zz.txt")
+        for name in ("u1.py", "u2.py", "u3.py"):
+            (repo / name).write_text("y = 2\n", encoding="utf-8")
+        monkeypatch.setattr(cs, "MAX_CHANGED_ENTRIES", 2)
+
+        entries, total = cs._collect_changed_entries(repo, _git(repo, "rev-parse", "upstream/main"))
+
+        assert total == 4, "zz.txt once, three new files: four distinct paths"
+        assert ("D", "zz.txt") in entries
+        assert len(entries) == 2
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="byte filenames are a POSIX matter")
+    def test_both_readers_decode_one_path_to_one_string(self, tmp_path, monkeypatch):
+        """The diff is captured by `subprocess.run`, the sweep streamed from a pipe; both
+        must decode the same bytes with the same codec, or the sweep's dedup against the
+        diff misses a file under a non-UTF-8 locale and reports it twice. The codec is
+        swapped for one that reads the byte differently, so a reader left on a default
+        of its own would disagree here."""
+        repo = _repo_with_base(tmp_path)
+        with open(os.path.join(os.fsencode(repo), b"caf\xe9.py"), "wb") as handle:
+            handle.write(b"x = 1\n")
+        monkeypatch.setattr(cs, "_PATH_ENCODING", "latin-1")
+        monkeypatch.setattr(cs, "_PATH_ERRORS", "strict")
+        args = ["ls-files", "--others", "--exclude-standard", "-z"]
+
+        captured = cs._git_records(repo, args)
+        streamed, total = cs._git_records_bounded(repo, args, 5)
+
+        assert captured == streamed == ["café.py"]
+        assert total == 1
+
+    def test_a_stream_that_fails_part_way_is_a_tool_failure_not_a_shorter_listing(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        """An exception on the pump thread used to end the thread and be printed nowhere;
+        the caller read a stopped pump as a finished one and returned the prefix it had
+        as the listing — new files absent, and nothing said."""
+        class _Breaking:
+            def __init__(self):
+                self.calls = 0
+
+            def read(self, _size):
+                self.calls += 1
+                if self.calls == 1:
+                    return b"a.py\0"
+                raise OSError("pipe went away")
+
+        class _Proc:
+            killed = False
+
+            def __init__(self, *_a, **_k):
+                self.stdout = _Breaking()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                _Proc.killed = True
+
+        monkeypatch.setattr(cs.subprocess, "Popen", _Proc)
+
+        with caplog.at_level("WARNING", logger="studio"):
+            result = cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5)
+
+        assert result is None, "a prefix is not the listing"
+        assert _Proc.killed
+        # The stream template, not the launch one: git started and the pipe then broke,
+        # which is a different fact for an operator. Asserted exactly, so the two
+        # cannot converge on one wording and lose that distinction.
+        assert cs._LOG_GIT_STREAM_FAILED % "OSError" in [
+            r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+        ], "the shared template, not merely a message naming the type"
+
+    def test_a_record_that_never_ends_is_bounded_not_buffered_forever(self, tmp_path, monkeypatch, caplog):
+        """`keep` bounds how many records are stored, not how long one may grow; a child
+        that never writes a NUL was buffered chunk after chunk until the deadline."""
+        class _Endless:
+            reads = 0
+
+            def read(self, _size):
+                _Endless.reads += 1
+                return b"x" * 64
+
+        class _Proc:
+            def __init__(self, *_a, **_k):
+                self.stdout = _Endless()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                pass
+
+        monkeypatch.setattr(cs.subprocess, "Popen", _Proc)
+        monkeypatch.setattr(cs, "_MAX_RECORD_BYTES", 200)
+
+        with caplog.at_level("WARNING", logger="studio"):
+            result = cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5)
+
+        assert result is None
+        assert _Endless.reads == 4, "stopped the read after the bound was crossed, not at the deadline"
+        assert any("ValueError" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+    def test_a_terminated_record_over_the_bound_is_refused_too(self, tmp_path, monkeypatch, caplog):
+        """The bound applies to a completed record as much as to the unterminated tail;
+        checking the tail alone let a record that ended inside the chunk through."""
+        class _Proc:
+            def __init__(self, *_a, **_k):
+                self.stdout = io.BytesIO(b"x" * 300 + b"\0" + b"a.py\0")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                pass
+
+        monkeypatch.setattr(cs.subprocess, "Popen", _Proc)
+        monkeypatch.setattr(cs, "_MAX_RECORD_BYTES", 200)
+
+        with caplog.at_level("WARNING", logger="studio"):
+            result = cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5)
+
+        assert result is None
+        assert any("ValueError" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+    def test_an_oversized_record_makes_the_whole_listing_unavailable(self, tmp_path, monkeypatch):
+        """The unit above shows the reader returns no answer; this shows the absence
+        reaches the report as unavailable with its reason — not as an empty, available
+        untracked list, which an `or ([], 0)` fallback in the collector would produce
+        while quietly dropping every new file."""
+        repo = _repo_with_base(tmp_path)
+        (repo / "m.py").write_text(_code(), encoding="utf-8")
+        _git(repo, "add", "m.py")
+        _git(repo, "commit", "-q", "-m", "add")
+
+        class _Proc:
+            def __init__(self):
+                self.stdout = io.BytesIO(b"x" * 300 + b"\0")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                pass
+
+        real_popen = subprocess.Popen
+
+        def only_the_sweep_is_faked(args, *rest, **kwargs):
+            # `subprocess.run` launches through the same `Popen`, so the window's and the
+            # diff's queries must still reach git; only the untracked sweep is stood in for.
+            return _Proc() if "ls-files" in args else real_popen(args, *rest, **kwargs)
+        monkeypatch.setattr(cs.subprocess, "Popen", only_the_sweep_is_faked)
+        monkeypatch.setattr(cs, "_MAX_RECORD_BYTES", 200)
+
+        report = _report(repo)
+
+        assert report.available is False, "a listing the sweep could not complete is not a listing"
+        assert report.reason == cs.REASON_DIFF_UNAVAILABLE
+        assert report.files == ()
+
+    def test_the_bounded_reader_keeps_the_cap_and_counts_the_rest(self, tmp_path):
+        repo = _repo_with_base(tmp_path)
+        for i in range(5):
+            (repo / f"u{i}.py").write_text("x = 1\n", encoding="utf-8")
+
+        kept, total = cs._git_records_bounded(
+            repo, ["ls-files", "--others", "--exclude-standard", "-z"], 2,
+        )
+
+        assert kept == ["u0.py", "u1.py"]
+        assert total == 5
+
+    def test_the_bounded_reader_returns_nothing_on_a_non_zero_exit(self, tmp_path):
+        repo = _make_repo(tmp_path / "r")
+
+        assert cs._git_records_bounded(repo, ["rev-parse", "--verify", "refs/heads/no-such"], 5) is None
+
+    def test_a_launch_failure_and_a_broken_stream_do_not_share_one_message(self):
+        """Two different facts for an operator: git never started, versus git started
+        and the pipe broke part-way.
+
+        Pinned here rather than left to the two tests that assert each message, because
+        those compare against the templates themselves — so if the two names ever became
+        one value, both would still pass while the log lost the distinction. Verified: a
+        mutation aliasing one to the other passed the whole streaming suite until this
+        existed.
+        """
+        assert cs._LOG_GIT_FAILED != cs._LOG_GIT_STREAM_FAILED
+        assert "could not run" in cs._LOG_GIT_FAILED
+        assert "stream failed" in cs._LOG_GIT_STREAM_FAILED
+
+    def test_the_bounded_reader_degrades_when_git_cannot_launch(self, tmp_path, monkeypatch, caplog):
+        def _no_git(*_a, **_k):
+            raise OSError("git: not found")
+        monkeypatch.setattr(cs.subprocess, "Popen", _no_git)
+
+        with caplog.at_level("WARNING", logger="studio"):
+            result = cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5)
+
+        assert result is None
+        assert any(r.levelname == "WARNING" and "could not run" in r.getMessage() for r in caplog.records)
+
+    def test_a_git_that_closes_its_pipe_but_never_exits_is_killed(self, tmp_path, monkeypatch, caplog):
+        """The stream reaches EOF but git never exits: the wait carries the module's
+        timeout, so the process is killed rather than left running, and reported like
+        any other tool failure. The pipe held open in silence is the next test."""
+        class _Hung:
+            killed = False
+
+            def __init__(self, *_a, **_k):
+                self.stdout = io.BytesIO(b"a.py\0")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def wait(self, timeout=None):
+                raise subprocess.TimeoutExpired(cmd="git", timeout=timeout)
+
+            def kill(self):
+                _Hung.killed = True
+
+        monkeypatch.setattr(cs.subprocess, "Popen", _Hung)
+
+        with caplog.at_level("WARNING", logger="studio"):
+            result = cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5)
+
+        assert result is None
+        assert _Hung.killed, "a hung git is not left running"
+        assert any("TimeoutExpired" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+    def test_a_sweep_that_holds_the_pipe_open_is_killed_at_the_deadline(self, tmp_path, monkeypatch, caplog):
+        """A `read()` on a pipe git keeps open without writing never returns, so a
+        `wait(timeout)` placed after it could never run. The reader now pumps on a
+        helper thread against the module's deadline, and a silent git is killed."""
+        class _StalledPipe:
+            def __init__(self, gate):
+                self.gate = gate
+
+            def read(self, _size):
+                self.gate.wait()
+                return b""
+
+        class _Stalled:
+            killed = False
+
+            def __init__(self, *_a, **_k):
+                self.gate = threading.Event()
+                self.stdout = _StalledPipe(self.gate)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                _Stalled.killed = True
+                self.gate.set()
+
+        monkeypatch.setattr(cs.subprocess, "Popen", _Stalled)
+        monkeypatch.setattr(cs, "_GIT_TIMEOUT", 0.2)
+        started = time.monotonic()
+
+        with caplog.at_level("WARNING", logger="studio"):
+            result = cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5)
+
+        assert result is None
+        assert _Stalled.killed, "a silent git is not left holding the pipe"
+        assert time.monotonic() - started < 5, "returned at the deadline, not never"
+        assert any("TimeoutExpired" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+    def test_an_unterminated_final_record_is_kept_and_counted(self, tmp_path, monkeypatch):
+        """`_git_records` keeps a trailing record with no NUL after it; the streamed
+        reader must agree, or the two would disagree about the same output."""
+        class _Short:
+            def __init__(self, *_a, **_k):
+                self.stdout = io.BytesIO(b"a.py\0b.py")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                pass
+
+        monkeypatch.setattr(cs.subprocess, "Popen", _Short)
+
+        assert cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5) == (["a.py", "b.py"], 2)
+        assert cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 1) == (["a.py"], 2)
+
+    def test_a_launch_failure_is_a_warning_and_a_miss_is_not(self, tmp_path, monkeypatch, caplog):
+        """The tool failing and git answering "no" must not look alike in a log."""
+        repo = _make_repo(tmp_path / "r")
+        with caplog.at_level("DEBUG", logger="studio"):
+            cs._git_records(repo, ["rev-parse", "--verify", "refs/heads/no-such"])
+        assert not [r for r in caplog.records if r.levelname == "WARNING"], "a miss is routine"
+
+        def _no_git(*_a, **_k):
+            raise OSError("git: not found at /secret/path")
+        monkeypatch.setattr(cs.subprocess, "run", _no_git)
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="studio"):
+            assert cs._git_records(repo, ["diff"]) is None
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert warnings and warnings[0] == cs._LOG_GIT_FAILED % "OSError"
+        assert "/secret/path" not in warnings[0], "the type, not the message"
+
+
+class TestNoExtensionFilterApplies:
+    """Pinned as a design decision: the digest reads both directions, and a changed
+    feature artifact declares requirements without carrying a code extension, so the
+    registry's extension list would report a changed specification as tracing to
+    nothing. What a file does with IDs is decided by reading it, not by its suffix."""
+
+    def test_a_non_source_extension_is_read_not_excluded(self, tmp_path):
+        repo = _repo_with_base(tmp_path)
+        (repo / "deps.lock").write_text("nothing to see\n", encoding="utf-8")
+        _git(repo, "add", "deps.lock")
+        _git(repo, "commit", "-q", "-m", "lock")
+
+        report = _report(repo)
+
+        assert report.excluded == 0
+        assert [(f.path, f.reason) for f in report.files] == [("deps.lock", cs.REASON_OK)]
+
+    def test_the_resolver_is_asked_about_containment_with_no_fabricated_filter(self, tmp_path, monkeypatch):
+        repo = _make_repo(tmp_path / "r")
+        (repo / "m.py").write_text(_code(), encoding="utf-8")
+        asked = {}
+        real = cs.codebase.resolve_entry_code_files
+
+        def _spy(candidate, extensions, **kwargs):
+            asked["extensions"] = extensions
+            return real(candidate, extensions, **kwargs)
+        monkeypatch.setattr(cs.codebase, "resolve_entry_code_files", _spy)
+
+        assert cs._in_project_scope(repo / "m.py", repo) is True
+        assert asked["extensions"] == [], "no filter is in force, so none is pretended"
 
 
 class TestInvariants:

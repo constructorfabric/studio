@@ -562,6 +562,13 @@ def _should_skip_text_file(
         logger.warning("Failed to stat %s: %s", path, exc)
         return True
 
+def is_binary(raw: bytes) -> bool:
+    """Whether ``raw`` is binary, by the one rule every text reader applies: a NUL byte
+    is never text. Shared so the readers cannot drift — this module's and the code
+    reader's must agree on what is text, or one scans a file the other refuses."""
+    return b"\x00" in raw
+
+
 def read_text_safe(path: Path) -> Optional[List[str]]:
     """
     Safely read text file to lines.
@@ -580,7 +587,7 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
         logger.warning("Failed to read text file %s: %s", path, exc)
         return None
 
-    if b"\x00" in raw:
+    if is_binary(raw):
         return None
 
     try:
