@@ -8,7 +8,10 @@
   frameworks (Ring C), added because these categories are converging on Studio's
   space but were absent from the original tiering.
 - **Research base**: 14 direct competitors across 3 tiers, plus 16 adjacent players
-  across 2 new tiers, identified via web research.
+  across 2 new tiers, identified via web research. **Pass 3 research as of 2026-09-08**
+  — vendor launch dates, GA timing, and quoted statements below reflect what was publicly
+  verifiable as of that date; re-verify before relying on them for a positioning decision,
+  and revisit each release cycle per Rf-038.
 
 **Overall verdict**: Constructor Studio is the **most comprehensive workflow-level SDLC
 system among open-source alternatives** with 8 capabilities that are genuinely unique in
@@ -80,7 +83,7 @@ top of these, or compete with hand-rolled orchestration.
 |------|----------------|------------------------|
 | **LangGraph** | Stateful, graph-based orchestration (branches, loops, retries, human-in-the-loop checkpoints); production standard | Full control, zero built-in governance/UI — teams build what Studio ships |
 | **CrewAI** | Role-based multi-agent ("researcher/writer/reviewer"); rapid prototyping | Role model resembles Studio sub-agents; no artifact model or determinism |
-| **Microsoft Agent Framework** | Unified AutoGen + Semantic Kernel SDK (GA Q1 2026); graph-based orchestration | Microsoft-anchored substrate, not an SDLC layer |
+| **Microsoft Agent Framework** | Unified AutoGen + Semantic Kernel SDK (GA 2026-04-03[^ms-agent-ga]); graph-based orchestration | Microsoft-anchored substrate, not an SDLC layer |
 | **n8n / Pipedream / Activepieces** | Workflow composition across APIs; fast, self-hostable | Integration plumbing; not design-to-code traceability |
 
 ---
@@ -177,19 +180,22 @@ them.
 
 ### Why these categories matter
 
-Studio's own thesis is that "an agent governed by a process is reliable." In April 2026,
-Appian's CTO framed its agentic platform in almost identical language: agents with open tool
-access are powerful, but "an agent governed by a process is reliable — which is what
-enterprises need to move agents into production." When a 25-year BPM incumbent and a new
-open-source SDLC tool independently arrive at the same sentence, the categories are on a
-collision course.
+Studio's own thesis is that "an agent governed by a process is reliable." On 2026-04-27,
+Appian VP of Product Management Jacob Rank framed its agentic platform in almost identical
+language: agents with open tool access are powerful, but "an agent governed by a process is
+reliable — which is what enterprises need to move agents into production."[^appian-blog]
+(Corrected 2026-09-08: an earlier draft of this section attributed the quote to Appian's
+CTO — it is Rank's, not the CTO's; the substance of the comparison is unaffected.) When a
+25-year BPM incumbent and a new open-source SDLC tool independently arrive at the same
+sentence, the categories are on a collision course.
 
 ### The convergence thesis
 
 Two movements are closing the gap from opposite directions:
 
-1. **BPM platforms are moving "up" into software creation.** Appian **Composer** (launched
-   April 2026) is "AI-assisted spec-driven development... conversational and iterative,"
+1. **BPM platforms are moving "up" into software creation.** Appian **Composer** (announced
+   2026-04-28 at Appian World 2026[^appian-composer-pr]) is "AI-assisted spec-driven
+   development... conversational and iterative,"
    built on an MCP-exposed "model-driven representation of your complete application estate —
    requirements, apps, data entities, logic, workflows, security/governance rules,
    integrations, and multi-object dependencies." That description is functionally Studio's
@@ -721,3 +727,18 @@ the convergence thesis and Studio's defensible intersection explicitly.
 | **vs Ring B (agentic BPM)** | Not a competitor for business-process automation; shares the "governed agent" thesis. Studio wins on repo-local, offline, open, developer-native design-to-code traceability; Ring B wins on runtime execution, enterprise governance, and distribution. Watch Appian Composer's move into spec-driven dev (Rf-039, Rf-040). |
 | **vs Ring C (agent frameworks)** | Complement, not competitor. Studio is the planning/governance layer above LangGraph/CrewAI-style runtimes; emits self-contained phase files any framework can execute (Rf-043). |
 | **Strategic risk** | Narrative capture — incumbents defining "governed, spec-driven AI development" first. Mitigation: re-anchor positioning on the unique, repo-local, deterministic intersection (Rf-045). |
+
+---
+
+## Sources (Pass 3)
+
+Verifiable, dated sources for the time-sensitive vendor claims in the Pass 3 (Adjacent
+Category Analysis) section above — added 2026-09-08 after a review flagged those claims as
+unsourced. Confirm currency before reusing any of these for a positioning decision; see the
+Methodology note's freshness caveat.
+
+[^appian-composer-pr]: Appian, ["Appian Advances AI in Process to Deliver Enterprise Outcomes at Scale"](https://appian.com/about/explore/press-releases/2026/appian-advances-ai-in-process-to-deliver-enterprise-outcomes-at-scale), press release, 2026-04-28 (also carried by [PR Newswire](https://www.prnewswire.com/apac/news-releases/appian-advances-ai-in-process-to-deliver-enterprise-outcomes-at-scale-302766677.html)). Announces AI-assisted spec-driven development and MCP integration, unveiled at Appian World 2026.
+
+[^appian-blog]: Jacob Rank (VP of Product Management, Appian), ["Autonomy Requires Control: How to Orchestrate Enterprise AI Agents"](https://appian.com/blog/2026/enterprise-AI-agents), Appian blog, 2026-04-27. Source of the "an agent governed by a process is reliable" quote.
+
+[^ms-agent-ga]: Microsoft, ["Microsoft Agent Framework Version 1.0"](https://devblogs.microsoft.com/agent-framework/microsoft-agent-framework-version-1-0/), Microsoft Agent Framework devblog, 2026-04-03 (also reported by [Visual Studio Magazine](https://visualstudiomagazine.com/articles/2026/04/06/microsoft-ships-production-ready-agent-framework-1-0-for-net-and-python.aspx)). GA release of Microsoft Agent Framework 1.0, unifying AutoGen and Semantic Kernel — 2026-04-03 is Q2 2026, not Q1 as an earlier draft of this document stated.
