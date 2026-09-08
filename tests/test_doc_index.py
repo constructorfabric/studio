@@ -15,6 +15,7 @@ import pytest
 from studio.commands.doc_index import cmd_doc_index
 from studio.utils.doc_index import (
     _escalation_cache_path,
+    _normalize_escalation_key,
     annotate_section_summary,
     build_doc_index,
     diff_stale_sections,
@@ -861,6 +862,43 @@ class TestAnnotateSectionSummary:
         by_line = {s["line_start"]: s["summary"] for s in final["sections"]}
         assert by_line[line_a] == "Summary A"
         assert by_line[line_b] == "Summary B"
+
+
+class TestNormalizeEscalationKey:
+    """constructorfabric/studio#136 (round-6, Minor): every existing test
+    exercises _normalize_escalation_key only indirectly through
+    record_tier2_escalation with a length+1 oversized key -- none pins the
+    exact boundary (a key of exactly _MAX_ESCALATION_KEY_LENGTH must pass
+    through unchanged) or isolates the warning-only-on-oversized behavior
+    from the larger read-modify-write flow. An off-by-one regression
+    (``>=`` instead of ``>``) in the length comparison would ship
+    undetected without a test at this exact boundary."""
+
+    def test_empty_string_normalizes_to_none(self, tmp_path: Path, caplog, studio_logger_propagates):
+        with caplog.at_level("WARNING"):
+            assert _normalize_escalation_key("", tmp_path / "doc.md") is None
+        assert not caplog.records
+
+    def test_key_at_exactly_the_length_cap_passes_through_unchanged(
+        self, tmp_path: Path, caplog, studio_logger_propagates,
+    ):
+        from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
+
+        boundary_key = "x" * _MAX_ESCALATION_KEY_LENGTH
+        with caplog.at_level("WARNING"):
+            assert _normalize_escalation_key(boundary_key, tmp_path / "doc.md") == boundary_key
+        assert not caplog.records
+
+    def test_key_one_over_the_length_cap_normalizes_to_none_with_a_warning(
+        self, tmp_path: Path, caplog, studio_logger_propagates,
+    ):
+        from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
+
+        oversized_key = "x" * (_MAX_ESCALATION_KEY_LENGTH + 1)
+        with caplog.at_level("WARNING"):
+            assert _normalize_escalation_key(oversized_key, tmp_path / "doc.md") is None
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "WARNING"
 
 
 class TestRecordTier2Escalation:

@@ -11,7 +11,7 @@ import argparse
 import math
 from typing import List
 
-from ..utils.cascade import route_query
+from ..utils.cascade import _TIER2_BREAK_EVEN_ESCALATIONS, route_query
 from ..utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
 from ..utils.ui import ui
 
@@ -73,7 +73,9 @@ def cmd_retrieve(argv: List[str]) -> int:
         description=(
             "Route a query through the two-tier JIT-retrieval cascade and report the decision. "
             "Every escalation to Tier 2 is counted per document (cfs doc-index's tier2_escalations); "
-            "once that count crosses its real break-even point, the response's tier2.should_build_okf "
+            f"once that count reaches {_TIER2_BREAK_EVEN_ESCALATIONS} (the real break-even point, derived "
+            "from measured OKF-build, OKF-per-query, and baseline-per-query token costs -- see "
+            "cascade.py's _TIER2_BREAK_EVEN_ESCALATIONS), the response's tier2.should_build_okf "
             "flag turns on automatically -- no --expected-future-queries guess required. This requires "
             "a resolvable Studio project cache directory: outside one, nothing can be persisted, so "
             "tier2_escalations is always null and should_build_okf is always false, regardless of real "
