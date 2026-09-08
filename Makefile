@@ -372,8 +372,18 @@ lint-ci:
 # event context that act cannot reconstruct for a linked worktree.
 # Runs jobs sequentially — stops on first failure.
 # Auto-detects arm64/amd64. Override: make ci ACT_FLAGS="--your-flags"
+# Job discovery failing outright, changing format, or an over-broad exclusion
+# emptying the list must never look like "nothing to do, success" -- an empty
+# job set fails loudly instead of letting a zero-iteration loop exit 0.
 ci: lint-ci
-	@for job in $$(act push --list $(ACT_FLAGS) 2>/dev/null | tail -n +2 | awk '{print $$2}' | grep -Ev '^(sonarqube|code-ranker)$$'); do \
+	@jobs="$$(act push --list $(ACT_FLAGS) 2>/dev/null | tail -n +2 | awk '{print $$2}' | grep -Ev '^(sonarqube|code-ranker)$$')"; \
+	if [ -z "$$jobs" ]; then \
+		echo "ERROR: 'act push --list' discovered no CI jobs to run -- refusing to report" >&2; \
+		echo "       success for a no-op. Check that act is installed/working and that" >&2; \
+		echo "       .github/workflows/*.yml still parses the way this Makefile expects." >&2; \
+		exit 1; \
+	fi; \
+	for job in $$jobs; do \
 		echo "▶ Running job: $$job"; \
 		act push -j $$job $(ACT_FLAGS) || exit 1; \
 	done
