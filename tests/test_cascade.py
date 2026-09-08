@@ -781,6 +781,33 @@ class TestCmdRetrieve:
         assert out["tier2"]["tier2_escalations"] == 2
         assert out["tier2"]["should_build_okf"] is True  # at cascade._TIER2_BREAK_EVEN_ESCALATIONS
 
+    def test_human_output_shows_the_recorded_escalation_count_before_break_even(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        """Real gap caught in review (constructorfabric/studio#136, round-4,
+        Minor): _human_retrieve only rendered tier2_escalations inside the
+        should_build_okf branch, even though the JSON output above already
+        reports the count unconditionally as soon as it's known -- the
+        human-readable view was hiding real, already-recorded information
+        the machine-readable one showed. Only the first (below-break-even)
+        escalation is exercised here; the at-break-even case is already
+        covered by the JSON test above and shares the same rendering path
+        once should_build_okf is true."""
+        from studio.utils.ui import set_json_mode
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        set_json_mode(False)
+        try:
+            rc = cmd_retrieve([str(f), "making up"])
+        finally:
+            set_json_mode(True)  # restore the autouse fixture's invariant for later tests
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "1 Tier-2 escalations recorded for this document" in out
+        assert "pay for itself" not in out  # not yet at break-even
+
     def test_escalation_key_flag_prevents_a_cli_retry_from_double_counting(
         self, tmp_path: Path, capsys, monkeypatch,
     ):

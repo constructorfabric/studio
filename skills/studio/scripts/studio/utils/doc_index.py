@@ -831,11 +831,15 @@ def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) ->
     persist to at all -- when persisting the increment itself fails, the
     same "can't confirm this was really saved" contract
     :func:`annotate_section_summary` already uses, rather than reporting a
-    fabricated success count; or when the counter file's lock could not be
+    fabricated success count; when the counter file's lock could not be
     acquired within :data:`_ESCALATION_LOCK_TIMEOUT_SECONDS`
-    (constructorfabric/studio#136, round-4 review, Major) -- each of those
-    three ``None`` cases logs its own distinct message so they're
-    distinguishable in a log, even though all three surface identically to
+    (constructorfabric/studio#136, round-4 review, Major); or when
+    acquiring that lock raised some other ``OSError`` before it was even
+    held -- e.g. creating the lock directory or opening the lock file
+    itself failed (constructorfabric/studio#136, round-4 review, Major,
+    a distinct follow-up finding from the timeout one) -- each of those
+    four ``None`` cases logs its own distinct message so they're
+    distinguishable in a log, even though all four surface identically to
     the caller).
 
     This is the real, observed-usage signal
@@ -981,6 +985,23 @@ def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) ->
             "(another process appears to be holding it); the escalation is not recorded and "
             "should_build_okf stays untracked (None)",
             path, _ESCALATION_LOCK_TIMEOUT_SECONDS,
+        )
+        return None
+    except OSError as exc:
+        # TimeoutError is itself an OSError subclass, so this only ever
+        # catches something the specific clause above didn't: with_file_lock
+        # creates the lock directory and opens the lock file *before* it
+        # ever attempts to acquire the lock (constructorfabric/studio#136,
+        # round-4 review) -- an OSError from either of those (e.g. a
+        # permissions problem, a full disk, a missing parent on a broken
+        # mount) would otherwise propagate uncaught through route_tier2
+        # and crash `cfs retrieve` outright, instead of degrading to the
+        # same "could not persist" None contract as every other failure
+        # mode this function already handles.
+        logger.warning(
+            "doc-index escalation counter lock for %s could not be acquired (%s); "
+            "the escalation is not recorded and should_build_okf stays untracked (None)",
+            path, exc,
         )
         return None
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation

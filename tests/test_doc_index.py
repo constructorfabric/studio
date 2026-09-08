@@ -928,6 +928,33 @@ class TestRecordTier2Escalation:
         # never got recorded (not just that the call returned None).
         assert get_tier2_escalations(f) == 0
 
+    def test_returns_none_instead_of_raising_when_lock_acquisition_itself_raises_oserror(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates,
+    ):
+        """Real gap caught in review (constructorfabric/studio#136, round-4,
+        Major, coderabbitai -- a distinct finding from the lock-timeout one
+        above): with_file_lock creates the lock directory and opens the
+        lock file *before* it ever attempts to acquire the lock at all. An
+        OSError from either of those (a permissions problem, a full disk,
+        a missing parent on a broken mount) is not a TimeoutError, so the
+        specific `except TimeoutError` clause alone would let it propagate
+        straight through record_tier2_escalation and route_tier2, crashing
+        `cfs retrieve` outright instead of degrading to the same "could not
+        persist" None contract every other failure mode here already uses."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        def _raise(*_a, **_k):
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(di, "with_file_lock", _raise)
+        with caplog.at_level("WARNING"):
+            assert di.record_tier2_escalation(f) is None
+        assert any(r.levelname == "WARNING" for r in caplog.records)
+        assert "could not be acquired" in caplog.text
+
     def test_get_tier2_escalations_defaults_to_zero_when_never_recorded(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
         f = _write(tmp_path)
