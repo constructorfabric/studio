@@ -290,23 +290,51 @@ def _match_sections_by_hash(
     return matched_by_position
 
 
+#: Every frontmatter key :func:`_build_frontmatter` always writes. A file
+#: with valid opening/closing delimiters but missing one of these (or with
+#: nothing but whitespace for its value) was never actually produced by
+#: this module's own writer -- truncated, hand-edited, or corrupted instead.
+_REQUIRED_FRONTMATTER_FIELDS = ("title", "description", "resource", "generated")
+
+
 def _concept_file_is_valid(concept_path: Path) -> bool:
-    """Minimal content-validity check for a concept file already confirmed
-    to exist on disk: real content always opens *and closes* the YAML
-    frontmatter block :func:`_build_frontmatter` writes. A physical-presence
-    check alone (``is_file()``) can't tell a genuine concept file from one
-    truncated, emptied, or corrupted after the fact -- checking only the
-    opening ``---`` doesn't either, since a file truncated right after it
-    still passes that alone; requiring the closing delimiter too catches
-    that without needing full YAML parsing, which is more than this check
-    needs to answer "is there real content here at all".
+    """Content-validity check for a concept file already confirmed to exist
+    on disk: real content always opens *and closes* the YAML frontmatter
+    block :func:`_build_frontmatter` writes, that frontmatter always carries
+    every one of :data:`_REQUIRED_FRONTMATTER_FIELDS` with a non-blank
+    value, and there's always a non-blank body after it.
+
+    A physical-presence check alone (``is_file()``) can't tell a genuine
+    concept file from one truncated, emptied, or corrupted after the fact.
+    Checking only the delimiters doesn't fully catch it either: a file
+    truncated right after the opening ``---`` fails that, but a file with
+    *both* delimiters present and otherwise-empty or partial frontmatter
+    (say, a hand-edited file missing ``description``, or one truncated
+    right at the closing ``---`` with no body at all) would still pass a
+    delimiters-only check while never having been a real generated concept
+    file. Parsing each field with a simple per-line regex (rather than a
+    full YAML parser this codebase doesn't otherwise depend on for this)
+    is enough to answer "is there real, complete content here" without
+    pulling in a heavier dependency.
     """
     try:
         content = concept_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         logger.debug("okf concept file unreadable at %s: %s", concept_path, exc)
         return False
-    return content.startswith("---\n") and "\n---\n" in content[4:]
+    if not content.startswith("---\n"):
+        return False
+    closing = content.find("\n---\n", 4)
+    if closing == -1:
+        return False
+    frontmatter = content[4:closing]
+    body = content[closing + len("\n---\n"):]
+    if not body.strip():
+        return False
+    return all(
+        re.search(rf"(?m)^{field}:[ \t]*\S", frontmatter) is not None
+        for field in _REQUIRED_FRONTMATTER_FIELDS
+    )
 
 
 def _resolve_section_status(

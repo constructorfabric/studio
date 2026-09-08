@@ -8,9 +8,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from studio.commands.okf import cmd_okf_status
 from studio.utils.doc_index import get_or_build_doc_index
 from studio.utils.okf import (
+    _concept_file_is_valid,
     _okf_bundle_dir,
     get_okf_status,
     load_okf_manifest,
@@ -297,6 +300,78 @@ class TestGetOkfStatus:
         assert all(e["status"] == "current" for e in after_details)
         after_files = sorted(e["concept_file"] for e in after_details)
         assert after_files == sorted(before_files.values())
+
+
+class TestConceptFileIsValid:
+    """studio#135 round-4 review: delimiters alone (opening and closing
+    ``---``) were being treated as sufficient for "this concept file is
+    current" -- a file with both delimiters present but missing a required
+    generated field, or with degenerate/empty content between them, was
+    incorrectly reported valid rather than being rebuilt.
+    """
+
+    _VALID_FRONTMATTER_LINES = (
+        'title: "Introduction"',
+        'description: "d"',
+        'resource: "doc.md#L1-L4"',
+        'generated: { by: "test", at: "2024-01-01T00:00:00Z" }',
+    )
+
+    @staticmethod
+    def _build(frontmatter_lines, body="Real body content.\n"):
+        return "---\n" + "\n".join(frontmatter_lines) + "\n---\n\n" + body
+
+    def test_well_formed_file_is_valid(self, tmp_path: Path):
+        f = tmp_path / "concept.md"
+        f.write_text(self._build(self._VALID_FRONTMATTER_LINES), encoding="utf-8")
+        assert _concept_file_is_valid(f) is True
+
+    @pytest.mark.parametrize("missing_field", ["title", "description", "resource", "generated"])
+    def test_missing_a_required_field_is_invalid(self, tmp_path: Path, missing_field):
+        lines = [
+            line for line in self._VALID_FRONTMATTER_LINES
+            if not line.startswith(f"{missing_field}:")
+        ]
+        f = tmp_path / "concept.md"
+        f.write_text(self._build(lines), encoding="utf-8")
+        assert _concept_file_is_valid(f) is False
+
+    @pytest.mark.parametrize("blank_field", ["title", "description", "resource", "generated"])
+    def test_a_required_field_with_only_a_blank_value_is_invalid(self, tmp_path: Path, blank_field):
+        lines = [
+            f"{blank_field}: " if line.startswith(f"{blank_field}:") else line
+            for line in self._VALID_FRONTMATTER_LINES
+        ]
+        f = tmp_path / "concept.md"
+        f.write_text(self._build(lines), encoding="utf-8")
+        assert _concept_file_is_valid(f) is False
+
+    def test_empty_frontmatter_is_invalid(self, tmp_path: Path):
+        f = tmp_path / "concept.md"
+        f.write_text("---\n---\n\nReal body content.\n", encoding="utf-8")
+        assert _concept_file_is_valid(f) is False
+
+    def test_valid_frontmatter_with_empty_body_is_invalid(self, tmp_path: Path):
+        f = tmp_path / "concept.md"
+        f.write_text(self._build(self._VALID_FRONTMATTER_LINES, body=""), encoding="utf-8")
+        assert _concept_file_is_valid(f) is False
+
+    def test_valid_frontmatter_with_whitespace_only_body_is_invalid(self, tmp_path: Path):
+        f = tmp_path / "concept.md"
+        f.write_text(self._build(self._VALID_FRONTMATTER_LINES, body="   \n\n"), encoding="utf-8")
+        assert _concept_file_is_valid(f) is False
+
+    def test_a_real_write_concept_file_output_is_valid(self, tmp_path: Path, monkeypatch):
+        """The existing writer's own output (via write_concept_file) must
+        still pass -- the strengthened check must not reject genuine
+        content, only degenerate/incomplete content."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        intro = index["retrieval_sections"][0]
+        write_concept_file(f, intro["line_start"], description="d", body="b")
+        bundle_dir = _okf_bundle_dir(f)
+        assert _concept_file_is_valid(bundle_dir / "01-introduction.md") is True
 
 
 class TestWriteConceptFile:

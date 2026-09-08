@@ -5,14 +5,16 @@ See constructorfabric/studio#104.
 
 from __future__ import annotations
 
+import argparse
 import json
+import logging
 import re
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
-from studio.commands.cascade import cmd_retrieve
+from studio.commands.cascade import _margin_threshold_arg, cmd_retrieve
 from studio.utils import cascade
 from studio.utils.cascade import route_query, route_tier1, route_tier2
 from studio.utils.doc_index import get_or_build_doc_index
@@ -256,6 +258,21 @@ class TestRouteTier1:
         with pytest.raises(ValueError, match=f"^{expected}$"):
             route_tier1(f, "widget", margin_threshold=bad_threshold)
 
+    def test_margin_threshold_rejection_emits_a_diagnostic_log(self, tmp_path: Path, monkeypatch, caplog):
+        """studio#135 round-4 review: a direct Python caller of route_tier1
+        (not going through the CLI's argparse, which has its own error
+        surface) previously got a bare ValueError with no structured log
+        trace. _validate_margin_threshold now logs a warning, with the
+        rejected value safely %r-repr'd, immediately before raising."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        with caplog.at_level(logging.WARNING, logger="studio.utils.cascade"):
+            with pytest.raises(ValueError):
+                route_tier1(f, "widget", margin_threshold=-1)
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.WARNING
+        assert "-1" in caplog.records[0].getMessage()
+
     @pytest.mark.parametrize("bad_threshold", _BAD_MARGIN_THRESHOLDS)
     def test_route_query_rejects_the_same_invalid_margin_thresholds_as_route_tier1(
         self, tmp_path: Path, monkeypatch, bad_threshold,
@@ -324,6 +341,40 @@ class TestRouteTier1:
         result = route_fn(f, "widget", margin_threshold=accepted_threshold)  # must not raise
         assert result["tier"] == expected_tier
         assert result["reason"] == expected_reason
+
+    @pytest.mark.parametrize(
+        "bad_threshold", [t for t in _BAD_MARGIN_THRESHOLDS if not isinstance(t, str)],
+    )
+    def test_cli_arg_parser_rejects_the_same_numeric_boundary_values_as_the_direct_api(
+        self, bad_threshold,
+    ):
+        """studio#135 round-4 review: commands/cascade.py's
+        _margin_threshold_arg and this module's _validate_margin_threshold
+        used to implement the finite-and-positive rule as two independently
+        maintained checks that could silently drift apart. Both now
+        delegate to the same _check_margin_threshold_value helper -- this
+        reuses _BAD_MARGIN_THRESHOLDS (minus the non-numeric-string entry,
+        which exercises the CLI's *intentionally different* input domain,
+        see the next test) to prove every numeric value the direct API
+        rejects is also rejected at the CLI once coerced through argparse's
+        own string input.
+        """
+        with pytest.raises(argparse.ArgumentTypeError):
+            _margin_threshold_arg(str(bad_threshold))
+
+    def test_cli_arg_parser_accepts_a_numeric_string_the_direct_api_rejects(self):
+        """The one deliberate difference between the two entry points: the
+        CLI's natural input is a string, so parsing "0.5" to 0.5 first and
+        then applying the shared finite/positive check is correct CLI
+        behavior -- unlike _validate_margin_threshold (the direct Python
+        API), which requires an already-numeric value and correctly rejects
+        the bare string "0.5" (see
+        test_margin_threshold_rejects_invalid_values_at_the_callable_api).
+        Both entry points share one identical accept/reject policy for the
+        finite-and-positive check itself; they differ only in what they
+        accept as *input* before that check ever runs.
+        """
+        assert _margin_threshold_arg("0.5") == 0.5
 
     def test_route_tier1_never_touches_okf(self, tmp_path: Path, monkeypatch):
         """The module docstring guarantees route_tier1 stays free and

@@ -67,6 +67,7 @@ option that fits what this codebase can actually guarantee.
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -76,6 +77,8 @@ from .heading_nav import find_sections
 from .okf import get_okf_status
 from .read_gate import check_gate
 from .tfidf import score_sections
+
+logger = logging.getLogger(__name__)
 
 #: Real, measured per-query token rates (see the design session's findings).
 _OKF_BUILD_COST_TOKENS = 301_187
@@ -126,35 +129,61 @@ def _as_candidate(section: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _check_margin_threshold_value(value: float) -> None:
+    """Raise ``ValueError`` unless ``value`` is a finite number > 0.
+
+    The single source of truth for the "finite and positive" rule, shared
+    by :func:`_validate_margin_threshold` (the direct Python API, which
+    requires ``value`` to already be numeric -- no string coercion) and
+    ``commands/cascade.py``'s ``_margin_threshold_arg`` (the CLI, which
+    parses the argparse string to ``float`` *first* and then delegates the
+    finite/positive check here, translating a ``ValueError`` into
+    ``argparse.ArgumentTypeError``). Before this was extracted, both call
+    sites duplicated this exact check independently -- accepting different
+    input domains (the CLI coerced ``"0.5"`` to ``0.5`` and accepted it,
+    while this function rejects a bare string outright) was an accident of
+    that duplication, not an intentional difference in policy, and the two
+    copies could silently drift further apart on any future edit to just
+    one of them.
+
+    isinstance guards ``math.isfinite()`` itself: it raises ``TypeError``
+    for any non-numeric argument, which would propagate out before the
+    ``ValueError`` below ever runs. bool is deliberately excluded even
+    though it subclasses int: True/False are not meaningful margin
+    thresholds, and ``isfinite(True)`` would otherwise silently accept one.
+    """
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not (math.isfinite(value) and value > 0)
+    ):
+        raise ValueError(f"margin_threshold must be a finite number > 0, got {value!r}")
+
+
 def _validate_margin_threshold(margin_threshold: Optional[float]) -> None:
     """Reject a non-finite or non-positive ``margin_threshold`` before it can
     reach row 7's comparison.
 
     ``commands/cascade.py``'s ``_margin_threshold_arg`` enforces this same
-    rule for the CLI, but a direct Python caller of :func:`route_tier1`/
-    :func:`route_query` bypasses argparse entirely -- without this check
-    here too, a non-positive or non-finite threshold would make
+    rule for the CLI (via the shared :func:`_check_margin_threshold_value`),
+    but a direct Python caller of :func:`route_tier1`/:func:`route_query`
+    bypasses argparse entirely -- without this check here too, a
+    non-positive or non-finite threshold would make
     ``tfidf_result["margin"] >= margin_threshold`` fire on virtually any
     finite margin, silently defeating the "no finite value is yet proven
     safe" design basis this module's own docstring documents.
+
+    A rejection is logged (not just raised) so a direct Python caller --
+    which has no argparse error surface of its own to fall back on -- still
+    leaves a structured trace of what was rejected and why.
     """
     if margin_threshold is None:
         return
-    # isinstance guards math.isfinite() itself: it raises TypeError for any
-    # non-numeric argument, which would propagate out before the ValueError
-    # below ever runs -- defeating this function's own documented contract
-    # for exactly the direct-Python-caller case its docstring exists for
-    # (the CLI's argparse type already coerces to float before this is
-    # ever reached, so only a direct caller can hit this). bool is
-    # deliberately excluded even though it subclasses int: True/False are
-    # not meaningful margin thresholds, and isfinite(True) would otherwise
-    # silently accept one.
-    if (
-        isinstance(margin_threshold, bool)
-        or not isinstance(margin_threshold, (int, float))
-        or not (math.isfinite(margin_threshold) and margin_threshold > 0)
-    ):
-        raise ValueError(f"margin_threshold must be a finite number > 0, got {margin_threshold!r}")
+    try:
+        _check_margin_threshold_value(margin_threshold)
+    except ValueError:
+        logger.warning("rejected invalid margin_threshold: %r", margin_threshold)
+        raise
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-tier1
