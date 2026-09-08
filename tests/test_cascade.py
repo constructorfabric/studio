@@ -795,6 +795,73 @@ class TestCmdRetrieve:
         assert first["tier2"]["tier2_escalations"] == 1
         assert retried["tier2"]["tier2_escalations"] == 1
 
+    @pytest.mark.parametrize("escalation_key", [None, "req-1"], ids=["no_key", "with_key"])
+    def test_exit_code_and_status_truth_table_resolves_at_tier1(
+        self, tmp_path: Path, capsys, monkeypatch, escalation_key,
+    ):
+        """constructorfabric/studio#136 (round-4 review, Minor): --escalation-key
+        added a new input path to cmd_retrieve, but no single test asserted
+        return code + JSON shape across the meaningfully distinct outcomes
+        crossed with the flag's presence. This is row 1 of that truth
+        table: a query that resolves entirely at Tier 1, so no escalation
+        happens at all -- --escalation-key is inert here either way."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE)
+        argv = [str(f), "KAPING framework"]
+        if escalation_key is not None:
+            argv += ["--escalation-key", escalation_key]
+
+        rc = cmd_retrieve(argv)
+
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier"] == "resolved"
+        assert "tier2" not in out
+
+    @pytest.mark.parametrize("escalation_key", [None, "req-1"], ids=["no_key", "with_key"])
+    def test_exit_code_and_status_truth_table_escalates_to_baseline(
+        self, tmp_path: Path, capsys, monkeypatch, escalation_key,
+    ):
+        """Row 2: Tier 1 escalates and Tier 2 recommends baseline (no OKF
+        bundle exists yet)."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        argv = [str(f), "making up"]
+        if escalation_key is not None:
+            argv += ["--escalation-key", escalation_key]
+
+        rc = cmd_retrieve(argv)
+
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier"] == "escalate"
+        assert out["tier2"]["recommendation"] == "baseline"
+        assert out["tier2"]["tier2_escalations"] == 1
+        assert out["tier2"]["should_build_okf"] is False
+
+    @pytest.mark.parametrize("escalation_key", [None, "req-1"], ids=["no_key", "with_key"])
+    def test_exit_code_and_status_truth_table_escalates_to_okf(
+        self, tmp_path: Path, capsys, monkeypatch, escalation_key,
+    ):
+        """Row 3: Tier 1 escalates (no named candidate, row 1) and Tier 2
+        recommends okf, since every retrieval section already has a
+        current concept file."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        index = get_or_build_doc_index(f)
+        for section in index["retrieval_sections"]:
+            write_concept_file(f, section["line_start"], description="d", body="b")
+        argv = [str(f), "making up"]
+        if escalation_key is not None:
+            argv += ["--escalation-key", escalation_key]
+
+        rc = cmd_retrieve(argv)
+
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier"] == "escalate"
+        assert out["tier2"]["recommendation"] == "okf"
+
     def test_human_output_okf_needs_rebuild(self, tmp_path: Path, capsys, monkeypatch):
         from studio.utils.ui import is_json_mode, set_json_mode
 

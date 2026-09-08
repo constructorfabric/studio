@@ -17,10 +17,18 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable, TypeVar
 
 T = TypeVar("T")
+
+#: Poll interval (seconds) for the bounded-``timeout`` path in
+#: :func:`with_file_lock`. ``fcntl.flock`` has no native timeout, so a
+#: bounded wait is implemented as a non-blocking-lock poll loop instead;
+#: this interval trades a little latency (worst case, one interval's worth
+#: of extra wait past the real unlock moment) for not busy-spinning.
+_LOCK_POLL_INTERVAL_SECONDS = 0.05
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
@@ -48,7 +56,7 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock
-def with_file_lock(lock_path: Path, fn: Callable[[], T]) -> T:
+def with_file_lock(lock_path: Path, fn: Callable[[], T], *, timeout: float | None = None) -> T:
     """Run ``fn()`` -- a read-modify-write cycle -- under an exclusive lock
     on ``lock_path``, serializing concurrent callers so two overlapping
     cycles against the same underlying resource can't each read the same
@@ -59,6 +67,29 @@ def with_file_lock(lock_path: Path, fn: Callable[[], T]) -> T:
     ``fn()`` unlocked (e.g. Windows) -- the atomicity of any individual
     write is :func:`atomic_write_text`'s separate guarantee; only the
     cross-call serialization is best-effort here.
+
+    ``timeout``, in seconds, bounds how long this call will wait to
+    acquire the lock. ``None`` (the default) blocks forever, exactly as
+    before this parameter existed -- every existing caller
+    (:func:`studio.utils.doc_index.annotate_section_summary`,
+    :func:`studio.utils.doc_index.record_tier2_escalation`'s prior
+    behavior, :func:`studio.utils.okf`'s manifest writer) keeps its
+    original block-forever semantics unless it explicitly opts into a
+    bound. A real timeout is implemented as a non-blocking (``LOCK_NB``)
+    poll loop rather than a native ``flock`` timeout, since POSIX
+    ``flock`` has none: on the last poll before the deadline that still
+    fails to acquire the lock, this raises :class:`TimeoutError` instead
+    of running ``fn()`` at all -- the caller never starts its
+    read-modify-write cycle without actually holding the lock.
+
+    constructorfabric/studio#136 (round-4 review, Major):
+    :func:`studio.utils.doc_index.record_tier2_escalation` used to enter
+    this function's original always-blocking path unconditionally, so a
+    live process holding the lock indefinitely (hung, deadlocked, or just
+    very slow) would block the entire ``route_query``/``cfs retrieve``
+    call forever before Tier 2 could return anything. It now passes a
+    bounded ``timeout`` and treats :class:`TimeoutError` as a third,
+    distinctly-logged "could not persist" case (see its own docstring).
     """
     try:
         import fcntl  # pylint: disable=import-outside-toplevel
@@ -66,6 +97,19 @@ def with_file_lock(lock_path: Path, fn: Callable[[], T]) -> T:
         return fn()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "a", encoding="utf-8") as lock_fh:
-        fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+        if timeout is None:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+        else:
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"timed out after {timeout:.1f}s waiting for the lock at {lock_path}"
+                        )
+                    time.sleep(_LOCK_POLL_INTERVAL_SECONDS)
         return fn()
 # @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock

@@ -748,7 +748,21 @@ class TestAnnotateSectionSummary:
         save, so thread B's own save would overwrite thread A's summary
         with a stale base index. Injects a delay inside the locked section
         (between load and save) to force a real overlap window if the lock
-        weren't actually serializing the two calls."""
+        weren't actually serializing the two calls.
+
+        constructorfabric/studio#136 (round-4 review, Minor): a bare
+        thread.start() loop with no explicit synchronization leaves actual
+        overlap up to OS scheduling luck -- both threads could, by chance,
+        run their entire read-modify-write cycle back-to-back with no real
+        concurrency at all, and this test would still pass even with the
+        lock silently removed. A threading.Barrier forces both threads to
+        actually begin their call at the same instant instead of merely
+        hoping thread.start()'s own scheduling produces an overlap, making
+        the injected slow_save delay a genuine, guaranteed contention
+        window rather than a probabilistic one. (Manually verified this
+        reliably fails if with_file_lock's lock is temporarily no-op'd,
+        and reliably passes with it restored -- the same technique used to
+        validate the escalation-counter race test below.)"""
         import threading
         import time as time_module
 
@@ -772,8 +786,10 @@ class TestAnnotateSectionSummary:
 
         results: dict = {}
         hashes = {line_a: hash_a, line_b: hash_b}
+        barrier = threading.Barrier(2)
 
         def run(line_start: int, summary: str) -> None:
+            barrier.wait(timeout=5)  # both calls genuinely start together, not by scheduling luck
             results[line_start] = di.annotate_section_summary(f, line_start, hashes[line_start], summary)
 
         t1 = threading.Thread(target=run, args=(line_a, "Summary A"))
@@ -783,6 +799,8 @@ class TestAnnotateSectionSummary:
         t1.join(timeout=5)
         t2.join(timeout=5)
 
+        assert not t1.is_alive(), "thread annotating Section A never finished"
+        assert not t2.is_alive(), "thread annotating Section B never finished"
         assert results == {line_a: True, line_b: True}
         final = di.load_doc_index(f)
         by_line = {s["line_start"]: s["summary"] for s in final["sections"]}
@@ -845,6 +863,70 @@ class TestRecordTier2Escalation:
         monkeypatch.setattr(di, "atomic_write_text", _raise)
         assert record_tier2_escalation(f) is None
         assert get_tier2_escalations(f) == 0  # nothing was actually persisted
+
+    def test_returns_none_within_a_bounded_time_when_the_lock_is_held_by_someone_else(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates,
+    ):
+        """constructorfabric/studio#136 (round-4 review, Major):
+        record_tier2_escalation used to enter with_file_lock's original
+        always-blocking flock unconditionally -- a live process holding
+        that lock indefinitely (hung, deadlocked, or just very slow) would
+        block the entire route_query/cfs retrieve call forever before
+        Tier 2 could return anything.
+
+        Simulates "someone else has this locked and won't release it" by
+        acquiring the counter file's own lock directly in this test, via a
+        separate open file description on the same lock path -- flock
+        locks are scoped to the open file description, not the process,
+        so this genuinely contends with record_tier2_escalation's own
+        flock call even though both run in this same test process. The
+        real call under test runs on a background thread so this test
+        itself cannot hang forever if the fix were broken: it is bounded
+        by Thread.join(timeout=...), and an explicit is_alive() check
+        fails the test loudly instead of the process just hanging."""
+        import fcntl
+        import threading
+
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        # A short timeout keeps this test itself fast; the mechanism under
+        # test (giving up on a genuinely stuck lock) doesn't depend on the
+        # timeout's exact magnitude.
+        monkeypatch.setattr(di, "_ESCALATION_LOCK_TIMEOUT_SECONDS", 0.2)
+        f = _write(tmp_path)
+
+        cache_path = di._escalation_cache_path(f)
+        lock_path = cache_path.with_name(f"{cache_path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        holder = open(lock_path, "a", encoding="utf-8")
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+
+        result: dict = {}
+
+        def call() -> None:
+            result["value"] = di.record_tier2_escalation(f)
+
+        try:
+            with caplog.at_level("WARNING"):
+                t = threading.Thread(target=call)
+                t.start()
+                # Comfortably above the 0.2s lock timeout, so a genuine fix
+                # regression (a real hang) still fails this assertion
+                # instead of blocking the suite indefinitely.
+                t.join(timeout=5)
+
+            assert not t.is_alive(), "record_tier2_escalation hung instead of timing out"
+            assert result.get("value") is None
+            assert any(r.levelname == "WARNING" for r in caplog.records)
+            assert "timed out" in caplog.text and "lock" in caplog.text
+        finally:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+            holder.close()
+
+        # The lock is free again now -- confirms the counter genuinely
+        # never got recorded (not just that the call returned None).
+        assert get_tier2_escalations(f) == 0
 
     def test_get_tier2_escalations_defaults_to_zero_when_never_recorded(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -917,6 +999,19 @@ class TestRecordTier2Escalation:
         assert get_tier2_escalations(f) == 2
 
     def test_concurrent_escalations_do_not_lose_either_increment(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (round-4 review, Minor): the
+        original version of this test started 5 threads back-to-back and
+        relied on atomic_write_text's injected sleep to *probably* produce
+        an overlapping read-modify-write window -- with no explicit
+        scheduling barrier, an unlocked mutation that happened (by pure
+        scheduling luck) to run each thread's cycle serially would still
+        land on the correct count, so the test could pass even with the
+        lock silently broken. A threading.Barrier forces all 5 calls to
+        genuinely begin at the same instant, making the overlap real
+        rather than probabilistic. (Manually verified: temporarily
+        replacing with_file_lock with a no-op made this test fail
+        (get_tier2_escalations(f) landing below 5), and restoring the real
+        lock made it pass again.)"""
         import threading
         import time as time_module
 
@@ -933,13 +1028,22 @@ class TestRecordTier2Escalation:
 
         monkeypatch.setattr(di, "atomic_write_text", slow_write)
 
-        threads = [threading.Thread(target=di.record_tier2_escalation, args=(f,)) for _ in range(5)]
+        thread_count = 5
+        barrier = threading.Barrier(thread_count)
+
+        def run() -> None:
+            barrier.wait(timeout=5)  # all 5 calls genuinely start together, not by scheduling luck
+            di.record_tier2_escalation(f)
+
+        threads = [threading.Thread(target=run) for _ in range(thread_count)]
         for t in threads:
             t.start()
         for t in threads:
             t.join(timeout=5)
 
-        assert get_tier2_escalations(f) == 5
+        for i, t in enumerate(threads):
+            assert not t.is_alive(), f"escalation thread {i} never finished"
+        assert get_tier2_escalations(f) == thread_count
 
     def test_get_and_record_do_not_race_get_or_build_doc_index(self, tmp_path: Path, monkeypatch):
         """Real bug caught in review (constructorfabric/studio#136): the
@@ -978,6 +1082,15 @@ class TestRecordTier2Escalation:
         stop.set()
         for t in rebuilders:
             t.join(timeout=5)
+
+        # constructorfabric/studio#136 (round-4 review, Minor): a bare
+        # join(timeout=5) with no follow-up check lets a thread that never
+        # actually finished (a real hang) pass silently instead of failing
+        # the test loudly.
+        for i, t in enumerate(escalators):
+            assert not t.is_alive(), f"escalator thread {i} never finished"
+        for i, t in enumerate(rebuilders):
+            assert not t.is_alive(), f"rebuilder thread {i} never finished"
 
         assert get_tier2_escalations(f) == 10
 

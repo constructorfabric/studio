@@ -112,3 +112,76 @@ class TestWithFileLock:
         lock_path = tmp_path / "x.lock"
         assert with_file_lock(lock_path, lambda: "ran") == "ran"
         assert not lock_path.exists()  # never created -- the fallback never opens it
+
+    def test_timeout_none_still_blocks_forever_by_default(self, tmp_path: Path):
+        """constructorfabric/studio#136 (round-4 review, Major): adding a
+        ``timeout`` parameter must not change any existing caller's
+        behavior. ``None`` (the default, and every caller's behavior before
+        this parameter existed) takes the original always-blocking
+        ``LOCK_EX`` path, not the poll loop -- confirmed here by patching
+        ``fcntl.flock`` to observe it is called without ``LOCK_NB``."""
+        import fcntl
+
+        calls = []
+        real_flock = fcntl.flock
+
+        def _spy(fd, operation):
+            calls.append(operation)
+            return real_flock(fd, operation)
+
+        import unittest.mock as mock
+
+        lock_path = tmp_path / "x.lock"
+        with mock.patch("fcntl.flock", side_effect=_spy):
+            assert with_file_lock(lock_path, lambda: "ran") == "ran"
+        assert calls == [fcntl.LOCK_EX]
+        assert not any(op & fcntl.LOCK_NB for op in calls)
+
+    def test_succeeds_within_a_generous_timeout_when_uncontended(self, tmp_path: Path):
+        """The normal (uncontended) case must not be affected by passing a
+        bounded timeout at all -- it should acquire immediately and return
+        the callback's real result, not time out just because a timeout
+        was given."""
+        lock_path = tmp_path / "x.lock"
+        assert with_file_lock(lock_path, lambda: 99, timeout=5.0) == 99
+
+    def test_raises_timeout_error_when_the_lock_is_held_by_someone_else(self, tmp_path: Path):
+        """Simulates "someone else has this locked and won't release it":
+        a separate open file description on the same lock path holds an
+        exclusive flock (flock locks are scoped to the open file
+        description, not the process, so this genuinely contends with
+        with_file_lock's own flock call even from the same process/thread
+        -- no second thread or process is needed to prove the contention
+        is real). Bounded to a small timeout so this test itself cannot
+        hang even if the fix under test were broken."""
+        import fcntl
+
+        lock_path = tmp_path / "x.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        holder = open(lock_path, "a", encoding="utf-8")
+        try:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+            with pytest.raises(TimeoutError):
+                with_file_lock(lock_path, lambda: "should not run", timeout=0.2)
+        finally:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+            holder.close()
+
+    def test_callback_never_runs_on_a_timeout(self, tmp_path: Path):
+        """A caller must never see its read-modify-write cycle start
+        without actually holding the lock -- a TimeoutError means fn() was
+        never invoked at all, not that it ran unsynchronized."""
+        import fcntl
+
+        lock_path = tmp_path / "x.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        holder = open(lock_path, "a", encoding="utf-8")
+        ran = []
+        try:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+            with pytest.raises(TimeoutError):
+                with_file_lock(lock_path, lambda: ran.append(1), timeout=0.2)
+        finally:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+            holder.close()
+        assert ran == []

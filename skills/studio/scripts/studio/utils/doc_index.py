@@ -85,6 +85,23 @@ _MAX_RECENT_ESCALATION_KEYS = 200
 #: key in the same ballpark as the count cap.
 _MAX_ESCALATION_KEY_LENGTH = 200
 
+#: Bound (seconds) on how long ``record_tier2_escalation`` will wait to
+#: acquire the counter file's lock before giving up and returning ``None``
+#: (constructorfabric/studio#136, round-4 review, Major: the lock helper's
+#: original always-blocking ``flock`` meant a live process holding this
+#: lock indefinitely -- hung, deadlocked, or just very slow -- would block
+#: the entire ``route_query``/``cfs retrieve`` call forever before Tier 2
+#: could return anything). ``5`` seconds is three orders of magnitude
+#: above this lock's normal hold time (one small JSON read + one
+#: ``atomic_write_text``, typically low-single-digit milliseconds on
+#: local disk), so two near-simultaneous real callers -- ordinary
+#: contention -- comfortably both succeed well inside it; only a
+#: genuinely stuck/abandoned lock ever trips this bound. It is
+#: deliberately not larger: this call sits directly in a synchronous CLI
+#: request path (``cfs retrieve``), so any bound here is a user-visible
+#: worst-case latency, not just an internal safety margin.
+_ESCALATION_LOCK_TIMEOUT_SECONDS = 5.0
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-etag
 def _compute_etag(path: Path) -> str:
@@ -811,12 +828,15 @@ def get_tier2_escalations(path: Path) -> int:
 def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) -> Optional[int]:
     """Increment and persist ``path``'s Tier-2-escalation counter, returning
     the new count (``None`` outside a Studio project -- nowhere to
-    persist to at all -- or when persisting the increment itself fails,
-    the same "can't confirm this was really saved" contract
+    persist to at all -- when persisting the increment itself fails, the
+    same "can't confirm this was really saved" contract
     :func:`annotate_section_summary` already uses, rather than reporting a
-    fabricated success count; each of those two ``None`` cases logs its
-    own distinct message so they're distinguishable in a log, even though
-    both surface identically to the caller).
+    fabricated success count; or when the counter file's lock could not be
+    acquired within :data:`_ESCALATION_LOCK_TIMEOUT_SECONDS`
+    (constructorfabric/studio#136, round-4 review, Major) -- each of those
+    three ``None`` cases logs its own distinct message so they're
+    distinguishable in a log, even though all three surface identically to
+    the caller).
 
     This is the real, observed-usage signal
     :func:`studio.utils.cascade.route_tier2` needs to decide whether
@@ -837,6 +857,25 @@ def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) ->
     payload just to change one integer. Its own lock, on its own file,
     means it also never races :func:`get_or_build_doc_index`'s unlocked
     cache-miss rebuild, the way a shared file would.
+
+    That lock is acquired through :func:`studio.utils.atomic_io.with_file_lock`
+    with a bounded ``timeout`` (:data:`_ESCALATION_LOCK_TIMEOUT_SECONDS`),
+    not the shared helper's default block-forever wait
+    (constructorfabric/studio#136, round-4 review, Major): this call sits
+    directly in the synchronous ``route_query``/``cfs retrieve`` request
+    path, so an unbounded wait on a lock held by a hung, deadlocked, or
+    merely very slow process would hang that entire CLI call forever
+    before Tier 2 could return anything at all. On a timeout, this
+    degrades to the same ``None`` "could not persist" contract as the
+    other two cases above, logging its own distinctly-worded warning so a
+    log reader can tell "gave up waiting for the lock" apart from "wrote
+    successfully-guarded state, but the write itself failed" or "no
+    project to persist to". This does not change behavior for the
+    ordinary uncontended (or briefly contended) case: the timeout is
+    generously sized against this lock's real, millisecond-scale normal
+    hold time (see :data:`_ESCALATION_LOCK_TIMEOUT_SECONDS`'s own
+    docstring), so two near-simultaneous genuine callers still both
+    succeed well within it.
 
     ``escalation_key``, when given, is an opaque idempotency token
     identifying one *logical* Tier-2 escalation attempt (a caller mints one
@@ -931,5 +970,17 @@ def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) ->
             return None
         return new_count
 
-    return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _read_modify_write)
+    lock_path = cache_path.with_name(f"{cache_path.name}.lock")
+    try:
+        return with_file_lock(
+            lock_path, _read_modify_write, timeout=_ESCALATION_LOCK_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning(
+            "doc-index escalation counter lock for %s timed out after %.1fs "
+            "(another process appears to be holding it); the escalation is not recorded and "
+            "should_build_okf stays untracked (None)",
+            path, _ESCALATION_LOCK_TIMEOUT_SECONDS,
+        )
+        return None
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation
