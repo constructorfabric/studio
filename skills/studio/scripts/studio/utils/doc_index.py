@@ -53,6 +53,55 @@ _INDEX_CACHE_DIR = "doc-index"
 #: matching etag.
 _SCHEMA_VERSION = 1
 
+#: Schema version for the standalone Tier-2-escalation counter file (see
+#: ``_escalation_cache_path``) -- tracked separately from ``_SCHEMA_VERSION``
+#: above since the two files are independent artifacts with independent
+#: lifecycles (the counter is never rebuilt or reset the way the structural
+#: cache is). Bump this if the counter file's shape ever changes
+#: incompatibly (e.g. what a key inside it holds); a reader that finds a
+#: version newer than this logs a warning and reads the fields it knows
+#: about best-effort, rather than failing closed on a file a future build
+#: wrote in a compatible-but-unrecognized way.
+_ESCALATION_SCHEMA_VERSION = 1
+
+#: Caps how many recent idempotency keys (see ``record_tier2_escalation``'s
+#: ``escalation_key``) a counter file remembers, so a long-lived document's
+#: sidecar file can't grow without bound across its lifetime -- a stale key
+#: aging out of this window and being "forgotten" only means a very old
+#: retry could double-count again, not that the mechanism is unsound for
+#: its actual purpose (a caller retrying within the same request/session).
+_MAX_RECENT_ESCALATION_KEYS = 200
+
+#: Caps how long a single caller-supplied ``escalation_key`` (see
+#: ``record_tier2_escalation``) may be before it is persisted verbatim
+#: into ``recent_escalation_keys``. ``_MAX_RECENT_ESCALATION_KEYS`` above
+#: only bounds the counter file's growth by key *count* -- a caller
+#: passing one pathologically oversized key (e.g. a multi-megabyte
+#: string) would still make the file grow far beyond what 200 short IDs
+#: produce, defeating that bound via key *size* instead. This key is
+#: meant to be an opaque request-correlation ID (a UUID is 36
+#: characters), not arbitrary data, so 200 characters is deliberately
+#: generous headroom while still keeping worst-case growth from a single
+#: key in the same ballpark as the count cap.
+_MAX_ESCALATION_KEY_LENGTH = 200
+
+#: Bound (seconds) on how long ``record_tier2_escalation`` will wait to
+#: acquire the counter file's lock before giving up and returning ``None``
+#: (constructorfabric/studio#136, round-4 review, Major: the lock helper's
+#: original always-blocking ``flock`` meant a live process holding this
+#: lock indefinitely -- hung, deadlocked, or just very slow -- would block
+#: the entire ``route_query``/``cfs retrieve`` call forever before Tier 2
+#: could return anything). ``5`` seconds is three orders of magnitude
+#: above this lock's normal hold time (one small JSON read + one
+#: ``atomic_write_text``, typically low-single-digit milliseconds on
+#: local disk), so two near-simultaneous real callers -- ordinary
+#: contention -- comfortably both succeed well inside it; only a
+#: genuinely stuck/abandoned lock ever trips this bound. It is
+#: deliberately not larger: this call sits directly in a synchronous CLI
+#: request path (``cfs retrieve``), so any bound here is a user-visible
+#: worst-case latency, not just an internal safety margin.
+_ESCALATION_LOCK_TIMEOUT_SECONDS = 5.0
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-etag
 def _compute_etag(path: Path) -> str:
@@ -80,15 +129,17 @@ def _compute_etag(path: Path) -> str:
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cache-path
-def _index_cache_path(path: Path) -> Optional[Path]:
-    """Resolve ``<studio-dir>/.cache/doc-index/<slug>.json`` for a file.
+def _cache_dir_for(path: Path) -> Optional[Path]:
+    """Resolve ``<studio-dir>/.cache/doc-index/`` for the Studio project
+    owning ``path``, or ``None`` outside one (e.g. no Studio directory can
+    be found) -- the shared lookup every per-document cache file under this
+    directory reuses (the structural index itself, and any sidecar file
+    like :func:`_escalation_cache_path`'s), so a future addition doesn't
+    re-implement this resolution.
 
     Resolved from ``path`` itself (not the process's current working
     directory), so indexing a file outside the caller's cwd still resolves
     -- and always resolves -- the Studio directory that actually owns it.
-
-    Returns ``None`` when no Studio directory can be found (e.g. outside a
-    Studio-adapted project) -- callers should fall back to an uncached build.
     """
     from .files import find_studio_directory
 
@@ -101,13 +152,28 @@ def _index_cache_path(path: Path) -> Optional[Path]:
         # anomaly (unlike the ordinary, unlogged "no Studio directory"
         # case below), and should be visible at the CLI's default log
         # level rather than indistinguishable from a routine cache miss.
-        logger.warning("doc-index cache path lookup failed for %s: %s", path, exc)
-        studio_dir = None
+        logger.warning("doc-index cache dir lookup failed for %s: %s", path, exc)
+        return None
     if studio_dir is None:
         return None
+    return studio_dir / _CACHE_SUBDIR / _INDEX_CACHE_DIR
 
-    slug = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:16]
-    return studio_dir / _CACHE_SUBDIR / _INDEX_CACHE_DIR / f"{slug}.json"
+
+def _cache_slug(path: Path) -> str:
+    """The filename-safe identity a per-document cache file is keyed by."""
+    return hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:16]
+
+
+def _index_cache_path(path: Path) -> Optional[Path]:
+    """Resolve ``<studio-dir>/.cache/doc-index/<slug>.json`` for a file.
+
+    Returns ``None`` when no Studio directory can be found (e.g. outside a
+    Studio-adapted project) -- callers should fall back to an uncached build.
+    """
+    cache_dir = _cache_dir_for(path)
+    if cache_dir is None:
+        return None
+    return cache_dir / f"{_cache_slug(path)}.json"
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-cache-path
 
 
@@ -279,6 +345,15 @@ def build_doc_index(path: Path) -> Dict[str, Any]:
     "one chunk per real chapter" grouping a future TF-IDF/cascade/OKF
     caller should read against instead -- see :func:`infer_section_level`
     for why a fixed heading level can't be assumed.
+
+    Deliberately does *not* carry any real-usage counters (e.g. Tier-2
+    escalation volume, see :func:`record_tier2_escalation`): this index is
+    the "read once per file" *structural* cache, rebuilt wholesale on any
+    content edit -- a counter tracking usage of the *document* (which
+    outlives any one edit) has no business living inside a cache keyed by
+    the exact bytes currently on disk, and doing so would mean every
+    single-counter increment pays to re-serialize this entire dict just to
+    change one integer.
     """
     canonical_path = path.resolve()
     content, etag = _read_with_stable_etag(canonical_path)
@@ -434,6 +509,15 @@ def get_or_build_doc_index(path: Path, *, force_rebuild: bool = False) -> Dict[s
     the cache; every subsequent call against an unchanged file returns the
     cached result directly. ``index["cache_hit"]`` reports which happened,
     for benchmarking.
+
+    The rebuild-and-save step runs under the same per-file lock
+    :func:`annotate_section_summary` already uses, so it can no longer race
+    a concurrent annotation and silently overwrite it with a stale,
+    pre-annotation snapshot (constructorfabric/studio#136, round-5 review,
+    Major). When not ``force_rebuild``, it also re-checks cache freshness
+    once more *after* acquiring the lock, so a rebuild that loses the race
+    to a concurrent write returns that fresh cache instead of redundantly
+    rebuilding over it.
     """
     if not force_rebuild:
         cached = load_doc_index(path)
@@ -441,10 +525,25 @@ def get_or_build_doc_index(path: Path, *, force_rebuild: bool = False) -> Dict[s
             cached["cache_hit"] = True
             return cached
 
-    fresh = build_doc_index(path)
-    save_doc_index(path, fresh)
-    fresh["cache_hit"] = False
-    return fresh
+    cache_path = _index_cache_path(path)
+    if cache_path is None:
+        fresh = build_doc_index(path)
+        save_doc_index(path, fresh)
+        fresh["cache_hit"] = False
+        return fresh
+
+    def _rebuild_and_save() -> Dict[str, Any]:
+        if not force_rebuild:
+            recheck = load_doc_index(path)
+            if recheck is not None:
+                recheck["cache_hit"] = True
+                return recheck
+        fresh = build_doc_index(path)
+        save_doc_index(path, fresh)
+        fresh["cache_hit"] = False
+        return fresh
+
+    return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _rebuild_and_save)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-or-build
 
 
@@ -619,3 +718,329 @@ def annotate_section_summary(path: Path, line_start: int, expected_hash: str, su
 
     return with_file_lock(cache_path.with_name(f"{cache_path.name}.lock"), _read_modify_write)
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-annotate
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-cache-path
+def _escalation_cache_path(path: Path) -> Optional[Path]:
+    """Resolve ``<studio-dir>/.cache/doc-index/<slug>.escalations.json`` --
+    a tiny, standalone counter file, deliberately *not* a field inside the
+    structural ``doc_index.json`` cache (see :func:`record_tier2_escalation`
+    for why): incrementing it must never require rewriting a document's
+    full section/summary payload, and it must never share a lock (and
+    therefore never race) with that cache's own build-and-save path -- a
+    real bug caught in review (constructorfabric/studio#136), since
+    :func:`get_or_build_doc_index`'s cache-miss rebuild took no lock at
+    all, while a counter living inside that same file did.
+    """
+    cache_dir = _cache_dir_for(path)
+    if cache_dir is None:
+        return None
+    return cache_dir / f"{_cache_slug(path)}.escalations.json"
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-cache-path
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load-escalation-file
+def _load_escalation_file(cache_path: Path) -> Dict[str, Any]:
+    """Best-effort read of the raw escalation-counter JSON object at
+    ``cache_path``, returning ``{}`` for a missing, corrupt, or
+    non-object file -- the same "nothing usable here" fallback every
+    caller below already treats as "never escalated."
+
+    Each failure mode below logs its own, differently-worded message
+    (missing file logs nothing at all -- it's the routine, expected shape
+    of a document never escalated, not an anomaly) so a log reader can
+    tell a genuinely corrupt/unreadable file apart from a merely
+    not-yet-created one, or one holding the wrong JSON shape entirely --
+    see :func:`get_tier2_escalations`'s docstring for why this
+    ambiguity can't be fully eliminated from the *return value* itself
+    without a bigger API change.
+    """
+    if not cache_path.is_file():
+        return {}
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError as exc:
+        # UnicodeDecodeError is a ValueError subclass, not an OSError, so it
+        # is NOT caught by the (json.JSONDecodeError, OSError) clause below
+        # -- without this clause it would propagate unhandled out of every
+        # caller (cfs doc-index, cfs retrieve, ...) on a sidecar file
+        # containing invalid UTF-8 (disk corruption, a bad manual edit).
+        logger.warning(
+            "doc-index escalation counter at %s is not valid UTF-8 (%s); treating as never-escalated",
+            cache_path, exc,
+        )
+        return {}
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning(
+            "doc-index escalation counter at %s is corrupt/unreadable (%s); treating as never-escalated",
+            cache_path, exc,
+        )
+        return {}
+    if not isinstance(data, dict):
+        logger.warning(
+            "doc-index escalation counter at %s did not contain a JSON object (got %s); "
+            "treating as never-escalated",
+            cache_path, type(data).__name__,
+        )
+        return {}
+    return data
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load-escalation-file
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-count-from
+def _escalation_count_from(data: Dict[str, Any], cache_path: Path) -> int:
+    """Extract a valid ``tier2_escalations`` count from an already-parsed
+    escalation-file object, clamping anything that isn't a real
+    non-negative count (missing, wrong type, or negative -- e.g. a
+    hand-edited or truncated-write file containing ``{"tier2_escalations":
+    -5}``) down to ``0`` rather than letting it propagate into
+    :func:`record_tier2_escalation`'s ``+ 1``, which would otherwise keep
+    the counter negative (or worse, let it climb back through 0) forever.
+    """
+    schema_version = data.get("schema_version")
+    if isinstance(schema_version, int) and schema_version > _ESCALATION_SCHEMA_VERSION:
+        logger.warning(
+            "doc-index escalation counter at %s declares schema_version %r, newer than this "
+            "build understands (%d); reading tier2_escalations best-effort",
+            cache_path, schema_version, _ESCALATION_SCHEMA_VERSION,
+        )
+    count = data.get("tier2_escalations", 0)
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        logger.warning(
+            "doc-index escalation counter at %s has an invalid tier2_escalations value (%r); "
+            "treating as never-escalated",
+            cache_path, count,
+        )
+        return 0
+    return count
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-escalation-count-from
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-escalations
+def get_tier2_escalations(path: Path) -> int:
+    """Read ``path``'s persisted Tier-2-escalation count without
+    incrementing it -- ``0`` for a document never escalated, outside a
+    Studio project, or whose counter file is missing/corrupt/holding an
+    invalid (e.g. negative) count.
+
+    Read-only, so this never takes the counter's lock: a concurrent
+    increment mid-read is, at worst, a one-query-stale read of a
+    monotonically increasing count -- never a wrong *kind* of answer, just
+    possibly one behind, and resolved by whichever caller reads next.
+
+    Known, accepted limitation: a healthy "never escalated yet" document
+    and a corrupt/unreadable counter file both return ``0`` here -- the
+    ``logger.warning`` calls in :func:`_load_escalation_file` and
+    :func:`_escalation_count_from` are the only place those two cases are
+    distinguishable (each fires a differently-worded message, and the
+    routine "no file yet" case logs nothing at all). Exposing that
+    distinction in this function's return value would mean changing its
+    contract from "a count" to something callers would have to unwrap
+    everywhere `should_build_okf` reasons about it; not worth it unless a
+    real caller shows up that needs to react differently to "never
+    escalated" vs. "counter broken."
+    """
+    cache_path = _escalation_cache_path(path)
+    if cache_path is None:
+        return 0
+    data = _load_escalation_file(cache_path)
+    return _escalation_count_from(data, cache_path)
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-escalations
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-normalize-escalation-key
+def _normalize_escalation_key(escalation_key: Optional[str], path: Path) -> Optional[str]:
+    """Reduce a caller-supplied ``escalation_key`` to either a real,
+    matchable idempotency token or ``None`` ("no key, always increment").
+
+    An empty string is normalized to ``None`` -- it was never a
+    meaningful caller-supplied identity, so matching on it by exact
+    string equality would let two unrelated callers that both happen to
+    pass ``""`` silently collide (constructorfabric/studio#136, round-4
+    review). A key over :data:`_MAX_ESCALATION_KEY_LENGTH` is likewise
+    normalized to ``None`` (with a warning): this is meant to be a short,
+    opaque request-correlation ID, not arbitrary data, and persisting an
+    oversized one verbatim would defeat :data:`_MAX_RECENT_ESCALATION_KEYS`'s
+    file-growth bound via key *size* instead of key *count*.
+    """
+    if escalation_key and len(escalation_key) > _MAX_ESCALATION_KEY_LENGTH:
+        logger.warning(
+            "doc-index escalation_key for %s is %d characters, over the %d-character cap; "
+            "treating this call as if no key were given (the escalation is still recorded, "
+            "just not deduplicated against a future retry)",
+            path, len(escalation_key), _MAX_ESCALATION_KEY_LENGTH,
+        )
+        return None
+    return escalation_key or None
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-normalize-escalation-key
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation
+def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) -> Optional[int]:
+    """Increment and persist ``path``'s Tier-2-escalation counter, returning
+    the new count (``None`` outside a Studio project -- nowhere to
+    persist to at all -- when persisting the increment itself fails, the
+    same "can't confirm this was really saved" contract
+    :func:`annotate_section_summary` already uses, rather than reporting a
+    fabricated success count; when the counter file's lock could not be
+    acquired within :data:`_ESCALATION_LOCK_TIMEOUT_SECONDS`
+    (constructorfabric/studio#136, round-4 review, Major); or when
+    acquiring that lock raised some other ``OSError`` before it was even
+    held -- e.g. creating the lock directory or opening the lock file
+    itself failed (constructorfabric/studio#136, round-4 review, Major,
+    a distinct follow-up finding from the timeout one) -- each of those
+    four ``None`` cases logs its own distinct message so they're
+    distinguishable in a log, even though all four surface identically to
+    the caller).
+
+    This is the real, observed-usage signal
+    :func:`studio.utils.cascade.route_tier2` needs to decide whether
+    building an OKF bundle for a document has crossed the point where it
+    pays for itself, without a human supplying an ``expected_future_queries``
+    guess -- see constructorfabric/studio#134. Counts Tier-1 *escalations*
+    specifically (calls where heading-nav/TF-IDF couldn't resolve
+    confidently on their own), not every query against the document: the
+    OKF-vs-baseline choice this counter feeds is only ever made for the
+    queries that actually reach Tier 2, so that is the population its
+    break-even math (and this counter) needs to describe.
+
+    Kept in its own tiny file (see :func:`_escalation_cache_path`) rather
+    than as a field inside the structural ``doc_index.json`` cache: a
+    document's real usage history outlives any one content edit, so it
+    can't be reset on rebuild the way the structural cache correctly is --
+    and it must never require rewriting that cache's full section/summary
+    payload just to change one integer. Its own lock, on its own file,
+    means it also never races :func:`get_or_build_doc_index`'s unlocked
+    cache-miss rebuild, the way a shared file would.
+
+    That lock is acquired through :func:`studio.utils.atomic_io.with_file_lock`
+    with a bounded ``timeout`` (:data:`_ESCALATION_LOCK_TIMEOUT_SECONDS`),
+    not the shared helper's default block-forever wait
+    (constructorfabric/studio#136, round-4 review, Major): this call sits
+    directly in the synchronous ``route_query``/``cfs retrieve`` request
+    path, so an unbounded wait on a lock held by a hung, deadlocked, or
+    merely very slow process would hang that entire CLI call forever
+    before Tier 2 could return anything at all. On a timeout, this
+    degrades to the same ``None`` "could not persist" contract as the
+    other two cases above, logging its own distinctly-worded warning so a
+    log reader can tell "gave up waiting for the lock" apart from "wrote
+    successfully-guarded state, but the write itself failed" or "no
+    project to persist to". This does not change behavior for the
+    ordinary uncontended (or briefly contended) case: the timeout is
+    generously sized against this lock's real, millisecond-scale normal
+    hold time (see :data:`_ESCALATION_LOCK_TIMEOUT_SECONDS`'s own
+    docstring), so two near-simultaneous genuine callers still both
+    succeed well within it.
+
+    ``escalation_key``, when given, is an opaque idempotency token
+    identifying one *logical* Tier-2 escalation attempt (a caller mints one
+    per query and passes the same value again on a retry of that same
+    query, e.g. after a transient failure or timeout). This function has
+    no other way to tell a genuine second escalation apart from a caller
+    re-invoking it for the same one (constructorfabric/studio#136): every
+    call looks identical from here (same path, same lock, no request
+    context), so without a caller-supplied correlation token, a retry and
+    a real repeat query are indistinguishable by construction, and any
+    "detect the retry" heuristic risks the opposite bug -- silently
+    dropping a real second escalation. A bounded window of recently-seen
+    keys (see ``_MAX_RECENT_ESCALATION_KEYS``) is persisted alongside the
+    count, under the same lock as the increment itself, so a key already
+    seen returns the current count unchanged instead of incrementing
+    again. Passing no key (the default, and every existing caller's
+    current behaviour) preserves the original always-increment contract --
+    there is nothing to deduplicate against without one.
+
+    An empty string is treated the same as no key at all (always
+    increments, nothing to deduplicate against): it was never a
+    meaningful caller-supplied identity, so letting it match by exact
+    string equality against ``recent_keys`` would make two unrelated
+    callers that both happen to pass ``""`` silently collide -- the
+    second call's real escalation would go uncounted, mistaken for a
+    retry of the first. A key longer than ``_MAX_ESCALATION_KEY_LENGTH``
+    is likewise treated as no key (with a warning): this is meant to be a
+    short, opaque request-correlation ID, not arbitrary data, and
+    persisting an oversized one verbatim would defeat
+    ``_MAX_RECENT_ESCALATION_KEYS``'s file-growth bound via key *size*
+    instead of key *count*.
+    """
+    cache_path = _escalation_cache_path(path)
+    if cache_path is None:
+        logger.warning(
+            "doc-index escalation for %s has no Studio project to persist to; "
+            "the escalation is not recorded and should_build_okf stays untracked (None)",
+            path,
+        )
+        return None
+
+    escalation_key = _normalize_escalation_key(escalation_key, path)
+
+    def _read_modify_write() -> Optional[int]:
+        data = _load_escalation_file(cache_path)
+        current_count = _escalation_count_from(data, cache_path)
+
+        recent_keys_raw = data.get("recent_escalation_keys")
+        recent_keys = [k for k in recent_keys_raw if isinstance(k, str)] if isinstance(recent_keys_raw, list) else []
+
+        if escalation_key is not None and escalation_key in recent_keys:
+            # Same logical escalation attempt already recorded (a caller
+            # retry after a transient failure/timeout, per this function's
+            # own docstring) -- returning the already-persisted count
+            # instead of incrementing again is what actually closes the
+            # double-count hole; nothing else here can tell a retry apart
+            # from a genuinely new escalation.
+            return current_count
+
+        new_count = current_count + 1
+        payload: Dict[str, Any] = {
+            "schema_version": _ESCALATION_SCHEMA_VERSION,
+            "tier2_escalations": new_count,
+        }
+        if escalation_key is not None:
+            payload["recent_escalation_keys"] = (recent_keys + [escalation_key])[-_MAX_RECENT_ESCALATION_KEYS:]
+        elif recent_keys:
+            # No key on *this* call, but earlier calls recorded some --
+            # carry them forward unchanged rather than silently dropping
+            # a mix of keyed and unkeyed callers' history.
+            payload["recent_escalation_keys"] = recent_keys
+
+        try:
+            atomic_write_text(cache_path, json.dumps(payload))
+        except OSError as exc:
+            logger.warning(
+                "doc-index escalation counter write failed for %s (persisting count %d): %s",
+                cache_path, new_count, exc,
+            )
+            return None
+        return new_count
+
+    lock_path = cache_path.with_name(f"{cache_path.name}.lock")
+    try:
+        return with_file_lock(
+            lock_path, _read_modify_write, timeout=_ESCALATION_LOCK_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning(
+            "doc-index escalation counter lock for %s timed out after %.1fs "
+            "(another process appears to be holding it); the escalation is not recorded and "
+            "should_build_okf stays untracked (None)",
+            path, _ESCALATION_LOCK_TIMEOUT_SECONDS,
+        )
+        return None
+    except OSError as exc:
+        # TimeoutError is itself an OSError subclass, so this only ever
+        # catches something the specific clause above didn't: with_file_lock
+        # creates the lock directory and opens the lock file *before* it
+        # ever attempts to acquire the lock (constructorfabric/studio#136,
+        # round-4 review) -- an OSError from either of those (e.g. a
+        # permissions problem, a full disk, a missing parent on a broken
+        # mount) would otherwise propagate uncaught through route_tier2
+        # and crash `cfs retrieve` outright, instead of degrading to the
+        # same "could not persist" None contract as every other failure
+        # mode this function already handles.
+        logger.warning(
+            "doc-index escalation counter lock for %s could not be acquired (%s); "
+            "the escalation is not recorded and should_build_okf stays untracked (None)",
+            path, exc,
+        )
+        return None
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation

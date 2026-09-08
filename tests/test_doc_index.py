@@ -14,12 +14,16 @@ import pytest
 
 from studio.commands.doc_index import cmd_doc_index
 from studio.utils.doc_index import (
+    _escalation_cache_path,
+    _normalize_escalation_key,
     annotate_section_summary,
     build_doc_index,
     diff_stale_sections,
     get_or_build_doc_index,
+    get_tier2_escalations,
     infer_section_level,
     load_doc_index,
+    record_tier2_escalation,
     save_doc_index,
 )
 from studio.utils.toc import parse_headings_with_lines
@@ -648,6 +652,61 @@ class TestGetOrBuildDocIndex:
         index = get_or_build_doc_index(f, force_rebuild=True)
         assert index["cache_hit"] is False
 
+    def test_concurrent_rebuild_does_not_discard_a_racing_annotation(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (round-5, Major): get_or_build_doc_index's
+        rebuild-and-save call site took no lock, so a rebuild triggered by a
+        genuine cache miss could silently overwrite a concurrently-saved
+        annotate_section_summary write with a stale, summary-less snapshot.
+        Forces the interleaving deterministically by intercepting the first
+        (pre-lock) cache check to run a real build-and-annotate cycle on a
+        background thread first, then asserts the fix's post-lock freshness
+        recheck returns that cache intact instead of rebuilding over it."""
+        import threading
+
+        from studio.utils import doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        section_a = next(s for s in di.build_doc_index(f)["sections"] if s["heading"] == "Section A")
+        line_start, expected_hash = section_a["line_start"], section_a["hash"]
+
+        original_load = di.load_doc_index
+        call_count = {"n": 0}
+        annotate_ok = {}
+
+        def intercepted_load(path):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                def concurrent_build_and_annotate() -> None:
+                    di.get_or_build_doc_index(path)
+                    annotate_ok["value"] = di.annotate_section_summary(
+                        path, line_start, expected_hash, "Covers A."
+                    )
+
+                t = threading.Thread(target=concurrent_build_and_annotate)
+                t.start()
+                t.join(timeout=5)
+                assert not t.is_alive(), "concurrent build-and-annotate cycle never finished"
+                assert annotate_ok.get("value") is True, "concurrent annotation itself failed (test setup)"
+                return None
+            return original_load(path)
+
+        monkeypatch.setattr(di, "load_doc_index", intercepted_load)
+        try:
+            result = di.get_or_build_doc_index(f)
+        finally:
+            monkeypatch.setattr(di, "load_doc_index", original_load)
+
+        final = di.load_doc_index(f)
+        final_section_a = next(s for s in final["sections"] if s["heading"] == "Section A")
+        assert final_section_a["summary"] == "Covers A.", (
+            "the rebuild silently discarded the concurrently-saved annotation"
+        )
+        # The recheck recognized the concurrently-completed cache as
+        # already fresh and returned it directly, rather than needlessly
+        # (and destructively) rebuilding from scratch over it.
+        assert result["cache_hit"] is True
+
 
 class TestAnnotateSectionSummary:
     def test_returns_false_when_no_cache_exists_yet(self, tmp_path: Path, monkeypatch):
@@ -745,7 +804,21 @@ class TestAnnotateSectionSummary:
         save, so thread B's own save would overwrite thread A's summary
         with a stale base index. Injects a delay inside the locked section
         (between load and save) to force a real overlap window if the lock
-        weren't actually serializing the two calls."""
+        weren't actually serializing the two calls.
+
+        constructorfabric/studio#136 (round-4 review, Minor): a bare
+        thread.start() loop with no explicit synchronization leaves actual
+        overlap up to OS scheduling luck -- both threads could, by chance,
+        run their entire read-modify-write cycle back-to-back with no real
+        concurrency at all, and this test would still pass even with the
+        lock silently removed. A threading.Barrier forces both threads to
+        actually begin their call at the same instant instead of merely
+        hoping thread.start()'s own scheduling produces an overlap, making
+        the injected slow_save delay a genuine, guaranteed contention
+        window rather than a probabilistic one. (Manually verified this
+        reliably fails if with_file_lock's lock is temporarily no-op'd,
+        and reliably passes with it restored -- the same technique used to
+        validate the escalation-counter race test below.)"""
         import threading
         import time as time_module
 
@@ -769,8 +842,10 @@ class TestAnnotateSectionSummary:
 
         results: dict = {}
         hashes = {line_a: hash_a, line_b: hash_b}
+        barrier = threading.Barrier(2)
 
         def run(line_start: int, summary: str) -> None:
+            barrier.wait(timeout=5)  # both calls genuinely start together, not by scheduling luck
             results[line_start] = di.annotate_section_summary(f, line_start, hashes[line_start], summary)
 
         t1 = threading.Thread(target=run, args=(line_a, "Summary A"))
@@ -780,11 +855,527 @@ class TestAnnotateSectionSummary:
         t1.join(timeout=5)
         t2.join(timeout=5)
 
+        assert not t1.is_alive(), "thread annotating Section A never finished"
+        assert not t2.is_alive(), "thread annotating Section B never finished"
         assert results == {line_a: True, line_b: True}
         final = di.load_doc_index(f)
         by_line = {s["line_start"]: s["summary"] for s in final["sections"]}
         assert by_line[line_a] == "Summary A"
         assert by_line[line_b] == "Summary B"
+
+
+class TestNormalizeEscalationKey:
+    """constructorfabric/studio#136 (round-6, Minor): every existing test
+    exercises _normalize_escalation_key only indirectly through
+    record_tier2_escalation with a length+1 oversized key -- none pins the
+    exact boundary (a key of exactly _MAX_ESCALATION_KEY_LENGTH must pass
+    through unchanged) or isolates the warning-only-on-oversized behavior
+    from the larger read-modify-write flow. An off-by-one regression
+    (``>=`` instead of ``>``) in the length comparison would ship
+    undetected without a test at this exact boundary."""
+
+    def test_empty_string_normalizes_to_none(self, tmp_path: Path, caplog, studio_logger_propagates):
+        with caplog.at_level("WARNING"):
+            assert _normalize_escalation_key("", tmp_path / "doc.md") is None
+        assert not caplog.records
+
+    def test_key_at_exactly_the_length_cap_passes_through_unchanged(
+        self, tmp_path: Path, caplog, studio_logger_propagates,
+    ):
+        from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
+
+        boundary_key = "x" * _MAX_ESCALATION_KEY_LENGTH
+        with caplog.at_level("WARNING"):
+            assert _normalize_escalation_key(boundary_key, tmp_path / "doc.md") == boundary_key
+        assert not caplog.records
+
+    def test_key_one_over_the_length_cap_normalizes_to_none_with_a_warning(
+        self, tmp_path: Path, caplog, studio_logger_propagates,
+    ):
+        from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
+
+        oversized_key = "x" * (_MAX_ESCALATION_KEY_LENGTH + 1)
+        with caplog.at_level("WARNING"):
+            assert _normalize_escalation_key(oversized_key, tmp_path / "doc.md") is None
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "WARNING"
+
+
+class TestRecordTier2Escalation:
+    """constructorfabric/studio#134: an automatic, persisted per-document
+    signal for whether building an OKF bundle has crossed its break-even
+    point, replacing a human-supplied query-volume guess.
+
+    Kept in its own counter file (see doc_index.py's
+    ``_escalation_cache_path``), separate from the structural
+    ``doc_index.json`` cache -- constructorfabric/studio#136 review caught
+    two real problems with the original single-file design: (a) a genuine
+    race, since ``get_or_build_doc_index``'s cache-miss rebuild took no
+    lock while this counter's read-modify-write did, so a concurrent
+    rebuild could silently revert a recorded escalation; and (b) every
+    single increment rewrote the *entire* structural cache (all sections,
+    summaries) just to change one integer, contradicting the module's own
+    "read once per file" goal. A standalone file sidesteps both: nothing
+    else ever locks or rebuilds it, and an increment is a tiny, independent
+    write."""
+
+    def test_first_call_starts_the_counter_at_one(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert record_tier2_escalation(f) == 1
+
+    def test_repeated_calls_increment_and_persist(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        record_tier2_escalation(f)
+        assert record_tier2_escalation(f) == 3
+        assert get_tier2_escalations(f) == 3
+
+    def test_returns_none_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
+        f = _write(tmp_path)
+        assert record_tier2_escalation(f) is None
+
+    def test_returns_none_instead_of_a_fabricated_count_when_persistence_fails(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """Real bug caught in review (constructorfabric/studio#136): the
+        original implementation discarded save_doc_index's return value and
+        always returned the incremented count, even when the write itself
+        failed -- silently corrupting the should_build_okf signal. A write
+        failure must be reported as None, not a fabricated success."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        def _raise(*_a, **_k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(di, "atomic_write_text", _raise)
+        assert record_tier2_escalation(f) is None
+        assert get_tier2_escalations(f) == 0  # nothing was actually persisted
+
+    def test_returns_none_within_a_bounded_time_when_the_lock_is_held_by_someone_else(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates,
+    ):
+        """constructorfabric/studio#136 (round-4 review, Major):
+        record_tier2_escalation used to enter with_file_lock's original
+        always-blocking flock unconditionally -- a live process holding
+        that lock indefinitely (hung, deadlocked, or just very slow) would
+        block the entire route_query/cfs retrieve call forever before
+        Tier 2 could return anything.
+
+        Simulates "someone else has this locked and won't release it" by
+        acquiring the counter file's own lock directly in this test, via a
+        separate open file description on the same lock path -- flock
+        locks are scoped to the open file description, not the process,
+        so this genuinely contends with record_tier2_escalation's own
+        flock call even though both run in this same test process. The
+        real call under test runs on a background thread so this test
+        itself cannot hang forever if the fix were broken: it is bounded
+        by Thread.join(timeout=...), and an explicit is_alive() check
+        fails the test loudly instead of the process just hanging."""
+        import fcntl
+        import threading
+
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        # A short timeout keeps this test itself fast; the mechanism under
+        # test (giving up on a genuinely stuck lock) doesn't depend on the
+        # timeout's exact magnitude.
+        monkeypatch.setattr(di, "_ESCALATION_LOCK_TIMEOUT_SECONDS", 0.2)
+        f = _write(tmp_path)
+
+        cache_path = di._escalation_cache_path(f)
+        lock_path = cache_path.with_name(f"{cache_path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        holder = open(lock_path, "a", encoding="utf-8")
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+
+        result: dict = {}
+
+        def call() -> None:
+            result["value"] = di.record_tier2_escalation(f)
+
+        try:
+            with caplog.at_level("WARNING"):
+                t = threading.Thread(target=call)
+                t.start()
+                # Comfortably above the 0.2s lock timeout, so a genuine fix
+                # regression (a real hang) still fails this assertion
+                # instead of blocking the suite indefinitely.
+                t.join(timeout=5)
+
+            assert not t.is_alive(), "record_tier2_escalation hung instead of timing out"
+            assert result.get("value") is None
+            assert any(r.levelname == "WARNING" for r in caplog.records)
+            assert "timed out" in caplog.text and "lock" in caplog.text
+        finally:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+            holder.close()
+
+        # The lock is free again now -- confirms the counter genuinely
+        # never got recorded (not just that the call returned None).
+        assert get_tier2_escalations(f) == 0
+
+    def test_returns_none_instead_of_raising_when_lock_acquisition_itself_raises_oserror(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates,
+    ):
+        """Real gap caught in review (constructorfabric/studio#136, round-4,
+        Major, coderabbitai -- a distinct finding from the lock-timeout one
+        above): with_file_lock creates the lock directory and opens the
+        lock file *before* it ever attempts to acquire the lock at all. An
+        OSError from either of those (a permissions problem, a full disk,
+        a missing parent on a broken mount) is not a TimeoutError, so the
+        specific `except TimeoutError` clause alone would let it propagate
+        straight through record_tier2_escalation and route_tier2, crashing
+        `cfs retrieve` outright instead of degrading to the same "could not
+        persist" None contract every other failure mode here already uses."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        def _raise(*_a, **_k):
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(di, "with_file_lock", _raise)
+        with caplog.at_level("WARNING"):
+            assert di.record_tier2_escalation(f) is None
+        assert any(r.levelname == "WARNING" for r in caplog.records)
+        assert "could not be acquired" in caplog.text
+
+    def test_get_tier2_escalations_defaults_to_zero_when_never_recorded(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert get_tier2_escalations(f) == 0
+
+    def test_get_tier2_escalations_defaults_to_zero_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
+        f = _write(tmp_path)
+        assert get_tier2_escalations(f) == 0
+
+    def test_get_tier2_escalations_defaults_to_zero_on_a_corrupt_counter_file(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)  # creates the counter file
+        cache_path = _escalation_cache_path(f)
+        cache_path.write_text("not json", encoding="utf-8")
+        assert get_tier2_escalations(f) == 0
+
+    def test_get_tier2_escalations_defaults_to_zero_on_invalid_utf8_bytes(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates,
+    ):
+        """constructorfabric/studio#136 (third review pass, Major):
+        _load_escalation_file's read_text(encoding="utf-8") can raise
+        UnicodeDecodeError on a sidecar file containing invalid UTF-8
+        bytes (disk corruption, a bad manual edit) -- UnicodeDecodeError
+        is a ValueError subclass, NOT an OSError, so it was not caught by
+        the (json.JSONDecodeError, OSError) handler and would propagate
+        unhandled out of any caller (cfs doc-index, cfs retrieve, ...).
+        This must degrade to the same "corrupt/unreadable, never-escalated"
+        fallback every other corrupt-data case in this function uses, with
+        its own warning rather than silently swallowing the failure."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)  # creates the counter file/dir
+        cache_path = _escalation_cache_path(f)
+        # 0xff is not a valid UTF-8 byte sequence on its own.
+        cache_path.write_bytes(b"\xff\xfe\xfa not valid utf-8")
+
+        with caplog.at_level("WARNING"):
+            assert get_tier2_escalations(f) == 0
+
+        assert any(r.levelname == "WARNING" for r in caplog.records)
+
+    def test_structural_index_never_carries_the_escalation_counter(self, tmp_path: Path, monkeypatch):
+        """The counter is deliberately not a field of the structural cache
+        -- confirms the architectural boundary, not just its absence by
+        omission."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        record_tier2_escalation(f)
+        index = get_or_build_doc_index(f)
+        assert "tier2_escalations" not in index
+
+    def test_content_edit_never_touches_the_escalation_counter(self, tmp_path: Path, monkeypatch):
+        """The counter tracks real observed usage against the *document*,
+        which outlives any one edit -- unlike the old single-file design,
+        a rebuild triggered by a content change (a new etag) doesn't even
+        read or write the counter's file at all, since the two are now
+        fully independent."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        record_tier2_escalation(f)
+
+        f.write_text(_SAMPLE + "\n## Section C\n")
+        index = get_or_build_doc_index(f)
+        assert index["cache_hit"] is False  # confirms this really is a rebuild, not a stale hit
+        assert get_tier2_escalations(f) == 2
+
+    def test_concurrent_escalations_do_not_lose_either_increment(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (round-4 review, Minor): the
+        original version of this test started 5 threads back-to-back and
+        relied on atomic_write_text's injected sleep to *probably* produce
+        an overlapping read-modify-write window -- with no explicit
+        scheduling barrier, an unlocked mutation that happened (by pure
+        scheduling luck) to run each thread's cycle serially would still
+        land on the correct count, so the test could pass even with the
+        lock silently broken. A threading.Barrier forces all 5 calls to
+        genuinely begin at the same instant, making the overlap real
+        rather than probabilistic. (Manually verified: temporarily
+        replacing with_file_lock with a no-op made this test fail
+        (get_tier2_escalations(f) landing below 5), and restoring the real
+        lock made it pass again.)"""
+        import threading
+        import time as time_module
+
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        original_write = di.atomic_write_text
+
+        def slow_write(path, content, **kwargs):
+            time_module.sleep(0.05)
+            return original_write(path, content, **kwargs)
+
+        monkeypatch.setattr(di, "atomic_write_text", slow_write)
+
+        thread_count = 5
+        barrier = threading.Barrier(thread_count)
+
+        def run() -> None:
+            barrier.wait(timeout=5)  # all 5 calls genuinely start together, not by scheduling luck
+            di.record_tier2_escalation(f)
+
+        threads = [threading.Thread(target=run) for _ in range(thread_count)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        for i, t in enumerate(threads):
+            assert not t.is_alive(), f"escalation thread {i} never finished"
+        assert get_tier2_escalations(f) == thread_count
+
+    def test_get_and_record_do_not_race_get_or_build_doc_index(self, tmp_path: Path, monkeypatch):
+        """Real bug caught in review (constructorfabric/studio#136): the
+        original design shared one file (and one lock) between the
+        structural cache and the escalation counter, but
+        get_or_build_doc_index's own cache-miss rebuild-and-save path took
+        no lock at all -- an unlocked structural rebuild racing a locked
+        escalation write could read a stale snapshot and overwrite a
+        newer, real escalation count back down. With the counter in its
+        own file, the two can no longer share any lock or state to race
+        over: interleaving heavy doc-index rebuild traffic with escalation
+        recording must never lose an increment."""
+        import threading
+
+        from studio.utils import doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        stop = threading.Event()
+
+        def hammer_rebuilds():
+            while not stop.is_set():
+                di.get_or_build_doc_index(f, force_rebuild=True)
+
+        rebuilders = [threading.Thread(target=hammer_rebuilds) for _ in range(3)]
+        for t in rebuilders:
+            t.start()
+
+        escalators = [threading.Thread(target=di.record_tier2_escalation, args=(f,)) for _ in range(10)]
+        for t in escalators:
+            t.start()
+        for t in escalators:
+            t.join(timeout=5)
+
+        stop.set()
+        for t in rebuilders:
+            t.join(timeout=5)
+
+        # constructorfabric/studio#136 (round-4 review, Minor): a bare
+        # join(timeout=5) with no follow-up check lets a thread that never
+        # actually finished (a real hang) pass silently instead of failing
+        # the test loudly.
+        for i, t in enumerate(escalators):
+            assert not t.is_alive(), f"escalator thread {i} never finished"
+        for i, t in enumerate(rebuilders):
+            assert not t.is_alive(), f"rebuilder thread {i} never finished"
+
+        assert get_tier2_escalations(f) == 10
+
+    def test_counter_file_carries_a_schema_version(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (second review pass): the structural
+        doc-index cache deliberately carries schema_version (and etag) so a
+        future format change can be detected and migrated safely -- the
+        sibling escalation-counter file needs the same, since it's an
+        independent artifact with its own lifecycle."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+
+        cache_path = _escalation_cache_path(f)
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        assert data["schema_version"] == di._ESCALATION_SCHEMA_VERSION
+
+    def test_get_tier2_escalations_treats_a_missing_schema_version_as_fine(self, tmp_path: Path, monkeypatch):
+        """This field is brand new in this same unreleased feature -- there
+        is no real pre-existing unversioned file in the wild to migrate
+        from, but a reader should still degrade gracefully (not raise) if
+        one somehow lacks the field."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        cache_path = _escalation_cache_path(f)
+        cache_path.write_text(json.dumps({"tier2_escalations": 3}), encoding="utf-8")
+        assert get_tier2_escalations(f) == 3
+
+    def test_get_tier2_escalations_clamps_a_negative_persisted_count_to_zero(self, tmp_path: Path, monkeypatch):
+        """A syntactically valid file holding a negative count (hand-edited,
+        or corrupted mid-write) must not pass through as-is -- treated the
+        same as every other corrupt-data case this function already falls
+        back to zero for."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)  # creates the counter file/dir
+        cache_path = _escalation_cache_path(f)
+        cache_path.write_text(json.dumps({"schema_version": 1, "tier2_escalations": -5}), encoding="utf-8")
+        assert get_tier2_escalations(f) == 0
+
+    def test_record_tier2_escalation_does_not_propagate_a_negative_persisted_count(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """record_tier2_escalation computes new_count = get_tier2_escalations(path) + 1
+        -- if that clamp ever regressed, a negative count would silently
+        keep climbing from a negative baseline instead of restarting from 0."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        cache_path = _escalation_cache_path(f)
+        cache_path.write_text(json.dumps({"schema_version": 1, "tier2_escalations": -5}), encoding="utf-8")
+        assert record_tier2_escalation(f) == 1
+
+    def test_escalation_key_prevents_a_retry_from_double_counting(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (second review pass, Major): without
+        a caller-supplied correlation token, record_tier2_escalation can't
+        tell a genuinely new escalation apart from a caller re-invoking it
+        for the same logical query after a transient failure/timeout.
+        Passing the same escalation_key on the retry must not advance the
+        persisted count a second time; a different key still does."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        assert record_tier2_escalation(f, escalation_key="req-1") == 1
+        assert record_tier2_escalation(f, escalation_key="req-1") == 1  # retry, same key
+        assert record_tier2_escalation(f, escalation_key="req-2") == 2  # genuinely new
+        assert get_tier2_escalations(f) == 2
+
+    def test_escalation_key_is_none_by_default_and_always_increments(self, tmp_path: Path, monkeypatch):
+        """No key means no way to deduplicate -- every existing caller that
+        doesn't pass one keeps the original always-increment contract."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        assert record_tier2_escalation(f) == 1
+        assert record_tier2_escalation(f) == 2
+        assert record_tier2_escalation(f) == 3
+
+    def test_empty_escalation_key_never_deduplicates_across_unrelated_calls(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """constructorfabric/studio#136 (third review pass, Minor): an
+        empty string is not a meaningful caller-supplied idempotency
+        token, but record_tier2_escalation used to compare it to
+        recent_keys by exact string equality like any real key -- so two
+        different callers (or two genuinely distinct queries) both
+        passing escalation_key="" would have the second call silently
+        swallowed, "" in recent_keys already being True after the first.
+        An empty key must be treated the same as no key: always
+        increments."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        assert record_tier2_escalation(f, escalation_key="") == 1
+        assert record_tier2_escalation(f, escalation_key="") == 2  # unrelated query, must still count
+        assert get_tier2_escalations(f) == 2
+
+    def test_recent_escalation_keys_window_evicts_the_oldest_at_the_200_key_boundary(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """constructorfabric/studio#136 (third review pass, Minor):
+        record_tier2_escalation bounds recent_escalation_keys via
+        `(recent_keys + [escalation_key])[-_MAX_RECENT_ESCALATION_KEYS:]`
+        -- correct oldest-evicted/newest-kept slicing -- but nothing
+        previously exercised the actual 200-key eviction boundary.
+
+        This inserts 201 distinct keys and checks all three
+        consequences of *that specific slicing direction*: a
+        deliberately-broken eviction that kept the oldest 200 instead
+        (e.g. `[:_MAX_RECENT_ESCALATION_KEYS]`) would fail every
+        assertion below -- the persisted list would still start with
+        keys[0] (not be evicted), would be missing keys[-1] (never
+        admitted), and re-submitting keys[0] would wrongly dedupe as
+        "already seen" instead of incrementing again."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        keys = [f"req-{i}" for i in range(201)]
+        for key in keys:
+            record_tier2_escalation(f, escalation_key=key)
+
+        cache_path = _escalation_cache_path(f)
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        recent = data["recent_escalation_keys"]
+
+        assert len(recent) == di._MAX_RECENT_ESCALATION_KEYS
+        assert keys[0] not in recent  # oldest evicted out of the window
+        assert keys[-1] in recent  # newest retained
+        assert get_tier2_escalations(f) == 201
+
+        # The now-evicted oldest key is indistinguishable from a genuinely
+        # new one -- retrying it must increment again (documented,
+        # accepted behavior: an old key aging out just means a very old
+        # retry could double-count again).
+        assert record_tier2_escalation(f, escalation_key=keys[0]) == 202
+
+    def test_oversized_escalation_key_is_treated_as_no_key(self, tmp_path: Path, monkeypatch):
+        """constructorfabric/studio#136 (third review pass, Minor):
+        _MAX_RECENT_ESCALATION_KEYS caps the *count* of retained keys
+        specifically to bound the sidecar file's growth, but nothing
+        previously capped an individual key's *length* before it was
+        persisted verbatim -- a single pathologically large key would
+        defeat that growth bound via key size instead of key count. An
+        oversized key is rejected by treating the call as if no key were
+        given at all: the escalation is still recorded (always
+        increments), it's just not eligible for future dedup, and
+        nothing oversized ever reaches the persisted file."""
+        import studio.utils.doc_index as di
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        oversized_key = "x" * (di._MAX_ESCALATION_KEY_LENGTH + 1)
+        assert record_tier2_escalation(f, escalation_key=oversized_key) == 1
+        # A "retry" with the same oversized key must NOT be deduplicated --
+        # it was never actually persisted as a real key.
+        assert record_tier2_escalation(f, escalation_key=oversized_key) == 2
+
+        cache_path = _escalation_cache_path(f)
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        assert oversized_key not in data.get("recent_escalation_keys", [])
 
 
 class TestReadWithStableEtag:
@@ -885,6 +1476,58 @@ class TestCmdDocIndex:
         assert out["retrieval_section_count"] == 3
         assert [s["heading"] for s in out["retrieval_sections"]] == [None, "Section A", "Section B"]
         assert "hash" in out["retrieval_sections"][0]
+
+    def test_json_output_exposes_tier2_escalations(self, tmp_path: Path, capsys, monkeypatch):
+        """Same bug class as PR #109's retrieval_sections omission (see the
+        test above): tier2_escalations lives in its own file, separate from
+        `index`, and cmd_doc_index built its output purely from `index` --
+        so the new counter was invisible through the CLI even though
+        get_tier2_escalations(path) carried a real value (constructorfabric/studio#136)."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        record_tier2_escalation(f)
+
+        rc = cmd_doc_index([str(f)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier2_escalations"] == 2
+
+    def test_human_output_shows_escalation_count_when_recorded(self, tmp_path: Path, capsys, monkeypatch):
+        from studio.utils.ui import is_json_mode, set_json_mode
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        record_tier2_escalation(f)
+        record_tier2_escalation(f)
+
+        orig = is_json_mode()
+        set_json_mode(False)
+        try:
+            rc = cmd_doc_index([str(f)])
+        finally:
+            set_json_mode(orig)
+        assert rc == 0
+        assert "2 Tier-2 escalation(s) recorded" in capsys.readouterr().out
+
+    def test_human_output_shows_zero_escalations_when_never_recorded(self, tmp_path: Path, capsys, monkeypatch):
+        """constructorfabric/studio#136 (round-5, Minor): _human_doc_index used
+        a truthy check that skipped rendering when the count was exactly 0 --
+        a real "never escalated" state, not an absent one. The guard is now
+        `is not None`, so a genuine zero count still renders."""
+        from studio.utils.ui import is_json_mode, set_json_mode
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        orig = is_json_mode()
+        set_json_mode(False)
+        try:
+            rc = cmd_doc_index([str(f)])
+        finally:
+            set_json_mode(orig)
+        assert rc == 0
+        assert "0 Tier-2 escalation(s) recorded for this document" in capsys.readouterr().out
 
     def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(self, tmp_path: Path, capsys, monkeypatch):
         """CodeRabbit PR #109: a binary/non-UTF-8 file used to crash with an

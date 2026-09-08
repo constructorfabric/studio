@@ -12,9 +12,10 @@ from unittest import mock
 import pytest
 
 from studio.commands.cascade import cmd_retrieve
+from studio.utils import cascade
 from studio.utils.cascade import route_query, route_tier1, route_tier2
 from studio.utils.doc_index import get_or_build_doc_index
-from studio.utils.okf import write_concept_file
+from studio.utils.okf import _okf_bundle_dir, write_concept_file
 
 _SAMPLE = (
     "## Introduction\n\n"
@@ -264,7 +265,12 @@ class TestRouteTier2:
         f = _write(tmp_path)
         tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
-        assert result == {"recommendation": "baseline", "reason": "no_current_okf_bundle"}
+        assert result == {
+            "recommendation": "baseline",
+            "reason": "no_current_okf_bundle",
+            "tier2_escalations": 1,
+            "should_build_okf": False,
+        }
 
     def test_bundle_exists_but_only_missing_entries_is_treated_as_no_bundle(self, tmp_path: Path, monkeypatch):
         """Real bug caught during manual verification: get_okf_status()
@@ -330,7 +336,7 @@ class TestRouteTier2:
 
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
-        assert result["bundle_dir"]
+        assert result["bundle_dir"] == str(_okf_bundle_dir(f))
 
     def test_row3_tfidf_sourced_candidate_narrows_staleness_to_only_that_section(
         self, tmp_path: Path, monkeypatch
@@ -362,7 +368,7 @@ class TestRouteTier2:
 
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
-        assert result["bundle_dir"]
+        assert result["bundle_dir"] == str(_okf_bundle_dir(f))
 
     def test_row4_heading_nav_sourced_candidate_recommends_okf_when_current(self, tmp_path: Path, monkeypatch):
         """Row 4's escalate candidate is heading-nav-sourced (TF-IDF found no
@@ -390,7 +396,7 @@ class TestRouteTier2:
 
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
-        assert result["bundle_dir"]
+        assert result["bundle_dir"] == str(_okf_bundle_dir(f))
 
     def test_current_bundle_for_candidate_recommends_okf(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -402,7 +408,7 @@ class TestRouteTier2:
         tier1 = route_tier1(f, "widget")
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
-        assert result["bundle_dir"]
+        assert result["bundle_dir"] == str(_okf_bundle_dir(f))
 
     def test_stale_bundle_for_candidate_falls_back_to_baseline_with_rebuild_flag(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -433,6 +439,84 @@ class TestRouteTier2:
         tier1 = _NO_CANDIDATE_ESCALATION
         result = route_tier2(f, tier1)
         assert "build_okf_break_even" not in result
+
+    def test_tier2_escalations_counts_up_across_calls_without_a_human_supplied_guess(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """constructorfabric/studio#134: should_build_okf must derive from
+        real, observed escalations against this document, not a human-typed
+        `expected_future_queries` guess -- no such guess is passed here at
+        all."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        tier1 = _NO_CANDIDATE_ESCALATION
+
+        first = route_tier2(f, tier1)
+        assert first["tier2_escalations"] == 1
+
+        second = route_tier2(f, tier1)
+        assert second["tier2_escalations"] == 2
+
+    def test_should_build_okf_flips_true_once_escalations_cross_the_real_break_even(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The break-even point is derived from cascade.py's own hardcoded,
+        measured per-query rates -- 301_187 / (333_573 - 45_735), which
+        rounds up to 2 -- not the ~15-48 total-query-volume figures from
+        constructorfabric/studio#104's earlier comments (those measured a
+        different population: total queries against a document, most of
+        which resolve at Tier 1 and never reach this function)."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        tier1 = _NO_CANDIDATE_ESCALATION
+
+        assert route_tier2(f, tier1)["should_build_okf"] is False  # 1st escalation
+        assert route_tier2(f, tier1)["should_build_okf"] is True  # 2nd escalation, at break-even
+
+    def test_should_build_okf_is_false_outside_a_studio_project(self, tmp_path: Path, monkeypatch):
+        """No cache location means no way to persist a real escalation
+        count, so this must never fabricate a True recommendation from
+        nothing -- None (untracked), not 0, and never above the threshold."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: None)
+        f = _write(tmp_path)
+        tier1 = _NO_CANDIDATE_ESCALATION
+        result = route_tier2(f, tier1)
+        assert result["tier2_escalations"] is None
+        assert result["should_build_okf"] is False
+
+    def test_break_even_constant_is_exactly_two(self):
+        """cascade.py's own docstring/comment claims
+        _TIER2_BREAK_EVEN_ESCALATIONS evaluates to 2 (301_187 / (333_573 -
+        45_735), rounded up) -- the existing tests only assert the
+        *behavioral* consequence (should_build_okf False at 1, True at 2),
+        never the constant's value directly. Pin it here so a future edit
+        to the hardcoded rates that silently changed the break-even point
+        gets caught even if it happened to preserve that 1-vs-2 boundary
+        behavior by coincidence."""
+        assert cascade._TIER2_BREAK_EVEN_ESCALATIONS == 2
+
+    def test_route_tier2_does_not_double_count_a_caller_retry_with_the_same_escalation_key(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """constructorfabric/studio#136 (second review pass, Major):
+        record_tier2_escalation was called unconditionally on every
+        route_tier2 invocation with no way to distinguish a fresh
+        escalation from a caller re-invoking route_tier2 for the same
+        logical query after a transient failure/timeout. Simulates exactly
+        that retry: the same escalation_key passed twice must only advance
+        the persisted count once; a genuinely new key still counts."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        tier1 = {"tier": "escalate", "reason": "heading_nav_no_hits", "candidates": []}
+
+        first = route_tier2(f, tier1, escalation_key="req-1")
+        assert first["tier2_escalations"] == 1
+
+        retried = route_tier2(f, tier1, escalation_key="req-1")
+        assert retried["tier2_escalations"] == 1  # retry of the same request -- not double-counted
+
+        genuinely_new = route_tier2(f, tier1, escalation_key="req-2")
+        assert genuinely_new["tier2_escalations"] == 2
 
     def test_candidate_that_no_longer_matches_any_section_falls_back_to_baseline(
         self, tmp_path: Path, monkeypatch
@@ -543,6 +627,21 @@ class TestRouteQuery:
         assert result["tier2"]["recommendation"] == "okf"
         assert "read_gate" not in result
 
+    def test_route_query_retry_with_the_same_escalation_key_does_not_double_count(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Same regression as TestRouteTier2's version, exercised through
+        the full route_query entry point a real caller (e.g. cmd_retrieve)
+        actually uses, since escalation_key must survive both hops
+        (route_query -> route_tier2 -> record_tier2_escalation) intact."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        first = route_query(f, "making up", escalation_key="req-1")
+        retried = route_query(f, "making up", escalation_key="req-1")
+        assert first["tier2"]["tier2_escalations"] == 1
+        assert retried["tier2"]["tier2_escalations"] == 1
+
 
 class TestCmdRetrieve:
     def test_missing_file(self, tmp_path: Path, capsys):
@@ -579,6 +678,38 @@ class TestCmdRetrieve:
         rc = cmd_retrieve(["doc.md", "query", "--margin-threshold", "inf"])
         assert rc == 2
         assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
+
+    def test_escalation_key_rejects_an_oversized_value(self, tmp_path: Path, capsys, monkeypatch):
+        """constructorfabric/studio#136 (round-5, Minor): a literal "doc.md" was
+        never created here, so the old test couldn't tell "key rejected" from
+        "file not found" -- both gave rc==2/ERROR. Asserting the error message
+        names --escalation-key specifically closes that gap."""
+        from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        oversized_key = "x" * (_MAX_ESCALATION_KEY_LENGTH + 1)
+        rc = cmd_retrieve([str(f), "query", "--escalation-key", oversized_key])
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+        assert "--escalation-key" in out["message"]
+        assert str(_MAX_ESCALATION_KEY_LENGTH) in out["message"]
+
+    def test_escalation_key_accepts_a_value_at_the_length_boundary(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        """The cap is inclusive -- a key exactly at the limit is a normal,
+        valid idempotency token, not an edge case to reject."""
+        from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        boundary_key = "x" * _MAX_ESCALATION_KEY_LENGTH
+        rc = cmd_retrieve([str(f), "making up", "--escalation-key", boundary_key])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier2"]["tier2_escalations"] == 1
 
     def test_basic_json_output(self, tmp_path: Path, capsys, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -626,6 +757,139 @@ class TestCmdRetrieve:
         assert rc == 0
         assert "Introduction" in capsys.readouterr().out
 
+    def test_json_output_exposes_tier2_escalations_and_should_build_okf_at_baseline(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        """constructorfabric/studio#136 (second review pass): route_tier2's
+        baseline recommendation carries tier2_escalations/should_build_okf,
+        and cmd_retrieve passes route_query's result straight through into
+        its JSON output -- but every existing JSON-output test here only
+        ever hits the resolved (Tier 1) tier, never a baseline Tier-2
+        recommendation, so this machine-readable contract was never
+        actually exercised end to end through the CLI."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        rc = cmd_retrieve([str(f), "making up"])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier2"]["tier2_escalations"] == 1
+        assert out["tier2"]["should_build_okf"] is False
+
+        rc = cmd_retrieve([str(f), "making up"])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier2"]["tier2_escalations"] == 2
+        assert out["tier2"]["should_build_okf"] is True  # at cascade._TIER2_BREAK_EVEN_ESCALATIONS
+
+    def test_human_output_shows_the_recorded_escalation_count_before_break_even(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        """Real gap caught in review (constructorfabric/studio#136, round-4,
+        Minor): _human_retrieve only rendered tier2_escalations inside the
+        should_build_okf branch, even though the JSON output above already
+        reports the count unconditionally as soon as it's known -- the
+        human-readable view was hiding real, already-recorded information
+        the machine-readable one showed. Only the first (below-break-even)
+        escalation is exercised here; the at-break-even case is already
+        covered by the JSON test above and shares the same rendering path
+        once should_build_okf is true."""
+        from studio.utils.ui import set_json_mode
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        set_json_mode(False)
+        try:
+            rc = cmd_retrieve([str(f), "making up"])
+        finally:
+            set_json_mode(True)  # restore the autouse fixture's invariant for later tests
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "1 Tier-2 escalations recorded for this document" in out
+        assert "pay for itself" not in out  # not yet at break-even
+
+    def test_escalation_key_flag_prevents_a_cli_retry_from_double_counting(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+
+        cmd_retrieve([str(f), "making up", "--escalation-key", "req-1"])
+        first = json.loads(capsys.readouterr().out)
+        cmd_retrieve([str(f), "making up", "--escalation-key", "req-1"])
+        retried = json.loads(capsys.readouterr().out)
+
+        assert first["tier2"]["tier2_escalations"] == 1
+        assert retried["tier2"]["tier2_escalations"] == 1
+
+    @pytest.mark.parametrize("escalation_key", [None, "req-1"], ids=["no_key", "with_key"])
+    def test_exit_code_and_status_truth_table_resolves_at_tier1(
+        self, tmp_path: Path, capsys, monkeypatch, escalation_key,
+    ):
+        """constructorfabric/studio#136 (round-4 review, Minor): --escalation-key
+        added a new input path to cmd_retrieve, but no single test asserted
+        return code + JSON shape across the meaningfully distinct outcomes
+        crossed with the flag's presence. This is row 1 of that truth
+        table: a query that resolves entirely at Tier 1, so no escalation
+        happens at all -- --escalation-key is inert here either way."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _TFIDF_ONLY_UNAMBIGUOUS_SAMPLE)
+        argv = [str(f), "KAPING framework"]
+        if escalation_key is not None:
+            argv += ["--escalation-key", escalation_key]
+
+        rc = cmd_retrieve(argv)
+
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier"] == "resolved"
+        assert "tier2" not in out
+
+    @pytest.mark.parametrize("escalation_key", [None, "req-1"], ids=["no_key", "with_key"])
+    def test_exit_code_and_status_truth_table_escalates_to_baseline(
+        self, tmp_path: Path, capsys, monkeypatch, escalation_key,
+    ):
+        """Row 2: Tier 1 escalates and Tier 2 recommends baseline (no OKF
+        bundle exists yet)."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        argv = [str(f), "making up"]
+        if escalation_key is not None:
+            argv += ["--escalation-key", escalation_key]
+
+        rc = cmd_retrieve(argv)
+
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier"] == "escalate"
+        assert out["tier2"]["recommendation"] == "baseline"
+        assert out["tier2"]["tier2_escalations"] == 1
+        assert out["tier2"]["should_build_okf"] is False
+
+    @pytest.mark.parametrize("escalation_key", [None, "req-1"], ids=["no_key", "with_key"])
+    def test_exit_code_and_status_truth_table_escalates_to_okf(
+        self, tmp_path: Path, capsys, monkeypatch, escalation_key,
+    ):
+        """Row 3: Tier 1 escalates (no named candidate, row 1) and Tier 2
+        recommends okf, since every retrieval section already has a
+        current concept file."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path, _DIFFUSE_MARGIN_SAMPLE)
+        index = get_or_build_doc_index(f)
+        for section in index["retrieval_sections"]:
+            write_concept_file(f, section["line_start"], description="d", body="b")
+        argv = [str(f), "making up"]
+        if escalation_key is not None:
+            argv += ["--escalation-key", escalation_key]
+
+        rc = cmd_retrieve(argv)
+
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["tier"] == "escalate"
+        assert out["tier2"]["recommendation"] == "okf"
+
     def test_human_output_okf_needs_rebuild(self, tmp_path: Path, capsys, monkeypatch):
         from studio.utils.ui import is_json_mode, set_json_mode
 
@@ -644,3 +908,71 @@ class TestCmdRetrieve:
             set_json_mode(orig)
         assert rc == 0
         assert "needs a rebuild" in capsys.readouterr().out
+
+    def test_escalation_lock_timeout_degrades_the_whole_cli_call_gracefully(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        """constructorfabric/studio#136 (round-5, Minor): every existing test
+        for the escalation-lock-timeout degradation exercised
+        record_tier2_escalation directly, never the full cmd_retrieve CLI
+        path. Same technique as test_doc_index.py's
+        test_returns_none_within_a_bounded_time_when_the_lock_is_held_by_someone_else
+        (hold the lock externally, run the real call on a background
+        thread), applied here at the CLI level for both JSON and human
+        output."""
+        import fcntl
+        import threading
+
+        import studio.utils.doc_index as di
+        from studio.utils.ui import set_json_mode
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        # A short timeout keeps this test fast; the mechanism under test
+        # (giving up on a genuinely stuck lock) doesn't depend on the
+        # timeout's exact magnitude.
+        monkeypatch.setattr(di, "_ESCALATION_LOCK_TIMEOUT_SECONDS", 0.2)
+        f = _write(tmp_path)
+
+        cache_path = di._escalation_cache_path(f)
+        lock_path = cache_path.with_name(f"{cache_path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        holder = open(lock_path, "a", encoding="utf-8")
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+
+        def _run_bounded(argv: list[str]) -> dict:
+            result: dict = {}
+
+            def call() -> None:
+                result["rc"] = cmd_retrieve(argv)
+
+            t = threading.Thread(target=call)
+            t.start()
+            # Comfortably above the 0.2s lock timeout, so a genuine fix
+            # regression (a real hang) still fails this assertion instead
+            # of blocking the suite indefinitely.
+            t.join(timeout=5)
+            assert not t.is_alive(), "cmd_retrieve hung instead of degrading past the lock timeout"
+            return result
+
+        try:
+            result = _run_bounded([str(f), "making up"])
+            assert result["rc"] == 0
+            out = json.loads(capsys.readouterr().out)
+            assert out["tier2"]["tier2_escalations"] is None
+            assert out["tier2"]["should_build_okf"] is False
+
+            set_json_mode(False)
+            try:
+                result = _run_bounded([str(f), "making up"])
+            finally:
+                set_json_mode(True)  # restore the autouse fixture's invariant for later tests
+            assert result["rc"] == 0
+            human_out = capsys.readouterr().out
+            assert "tier 2 recommendation: baseline" in human_out
+            # The count is unknown (not zero), so the escalation-count
+            # substep must be omitted entirely, not rendered as "0" or
+            # skipped for the wrong reason.
+            assert "Tier-2 escalations recorded" not in human_out
+        finally:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+            holder.close()

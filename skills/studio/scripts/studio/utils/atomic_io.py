@@ -15,12 +15,21 @@ don't need.
 
 from __future__ import annotations
 
+import errno
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable, TypeVar
 
 T = TypeVar("T")
+
+#: Poll interval (seconds) for the bounded-``timeout`` path in
+#: :func:`with_file_lock`. ``fcntl.flock`` has no native timeout, so a
+#: bounded wait is implemented as a non-blocking-lock poll loop instead;
+#: this interval trades a little latency (worst case, one interval's worth
+#: of extra wait past the real unlock moment) for not busy-spinning.
+_LOCK_POLL_INTERVAL_SECONDS = 0.05
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
@@ -48,7 +57,7 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock
-def with_file_lock(lock_path: Path, fn: Callable[[], T]) -> T:
+def with_file_lock(lock_path: Path, fn: Callable[[], T], *, timeout: float | None = None) -> T:
     """Run ``fn()`` -- a read-modify-write cycle -- under an exclusive lock
     on ``lock_path``, serializing concurrent callers so two overlapping
     cycles against the same underlying resource can't each read the same
@@ -59,6 +68,37 @@ def with_file_lock(lock_path: Path, fn: Callable[[], T]) -> T:
     ``fn()`` unlocked (e.g. Windows) -- the atomicity of any individual
     write is :func:`atomic_write_text`'s separate guarantee; only the
     cross-call serialization is best-effort here.
+
+    ``timeout``, in seconds, bounds how long this call will wait to
+    acquire the lock. ``None`` (the default) blocks forever, exactly as
+    before this parameter existed -- every existing caller
+    (:func:`studio.utils.doc_index.annotate_section_summary`,
+    :func:`studio.utils.doc_index.record_tier2_escalation`'s prior
+    behavior, :func:`studio.utils.okf`'s manifest writer) keeps its
+    original block-forever semantics unless it explicitly opts into a
+    bound. A real timeout is implemented as a non-blocking (``LOCK_NB``)
+    poll loop rather than a native ``flock`` timeout, since POSIX
+    ``flock`` has none: on the last poll before the deadline that still
+    fails to acquire the lock, this raises :class:`TimeoutError` instead
+    of running ``fn()`` at all -- the caller never starts its
+    read-modify-write cycle without actually holding the lock. Only an
+    ``OSError`` whose ``errno`` is ``EAGAIN``/``EWOULDBLOCK`` (what
+    ``flock`` actually raises for "someone else holds this lock right
+    now") is treated as ordinary contention and retried; any other
+    ``OSError`` (e.g. ``EINVAL``, ``EBADF``, ``ENOLCK`` -- a real
+    filesystem or descriptor problem, not contention) propagates
+    immediately instead of being silently polled away into a generic,
+    less informative ``TimeoutError`` (constructorfabric/studio#136,
+    round-4 review, Major).
+
+    constructorfabric/studio#136 (round-4 review, Major):
+    :func:`studio.utils.doc_index.record_tier2_escalation` used to enter
+    this function's original always-blocking path unconditionally, so a
+    live process holding the lock indefinitely (hung, deadlocked, or just
+    very slow) would block the entire ``route_query``/``cfs retrieve``
+    call forever before Tier 2 could return anything. It now passes a
+    bounded ``timeout`` and treats :class:`TimeoutError` as a third,
+    distinctly-logged "could not persist" case (see its own docstring).
     """
     try:
         import fcntl  # pylint: disable=import-outside-toplevel
@@ -66,6 +106,49 @@ def with_file_lock(lock_path: Path, fn: Callable[[], T]) -> T:
         return fn()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "a", encoding="utf-8") as lock_fh:
-        fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+        if timeout is None:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+        else:
+            _acquire_lock_bounded(lock_fh, lock_path, timeout)
         return fn()
 # @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock-poll
+def _acquire_lock_bounded(lock_fh, lock_path: Path, timeout: float) -> None:
+    """Poll for the exclusive lock on ``lock_fh`` until acquired or ``timeout``
+    seconds pass, raising :class:`TimeoutError` on the latter.
+
+    This errno check is scoped to POSIX ``flock(2)`` semantics only (same
+    platform boundary as the ``ImportError``-based Windows fallback in
+    :func:`with_file_lock`) -- not a claim these are the exhaustive
+    contention errnos on every platform.
+
+    Only the errno ``flock`` actually uses to signal "someone else holds
+    this lock right now" (``EAGAIN``/``EWOULDBLOCK``) is worth retrying
+    (constructorfabric/studio#136, round-4 review, Major). Any other
+    ``OSError`` (``EINVAL``: not a lockable descriptor, ``EBADF``: bad fd,
+    ``ENOLCK``: no lock resources on this filesystem, ...) is a real,
+    distinct failure -- polling it for the full timeout and then raising a
+    generic "timed out waiting for the lock" would misdiagnose a
+    filesystem/descriptor problem as ordinary contention and discard the
+    actual errno that would have explained it. ``EWOULDBLOCK`` and
+    ``EAGAIN`` are the same integer on Linux but distinct names for
+    portability -- checking both covers a platform where they differ.
+    """
+    import fcntl  # pylint: disable=import-outside-toplevel
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except OSError as exc:
+            if exc.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
+                raise
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"timed out after {timeout:.1f}s waiting for the lock at {lock_path}"
+                ) from exc
+            time.sleep(_LOCK_POLL_INTERVAL_SECONDS)
+# @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock-poll
