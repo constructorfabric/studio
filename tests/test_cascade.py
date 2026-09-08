@@ -939,7 +939,7 @@ class TestCmdRetrieve:
         holder = open(lock_path, "a", encoding="utf-8")
         fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
 
-        def _run_bounded(argv: List[str]) -> dict:
+        def _run_bounded(argv: list[str]) -> dict:
             result: dict = {}
 
             def call() -> None:
