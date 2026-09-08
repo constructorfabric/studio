@@ -109,31 +109,41 @@ def with_file_lock(lock_path: Path, fn: Callable[[], T], *, timeout: float | Non
         if timeout is None:
             fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
         else:
-            deadline = time.monotonic() + timeout
-            while True:
-                try:
-                    fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except OSError as exc:
-                    # Only the errno flock actually uses to signal "someone
-                    # else holds this lock right now" is worth retrying
-                    # (constructorfabric/studio#136, round-4 review, Major).
-                    # Any other OSError (EINVAL: not a lockable descriptor,
-                    # EBADF: bad fd, ENOLCK: no lock resources on this
-                    # filesystem, ...) is a real, distinct failure -- polling
-                    # it for the full timeout and then raising a generic
-                    # "timed out waiting for the lock" would misdiagnose a
-                    # filesystem/descriptor problem as ordinary contention
-                    # and discard the actual errno that would have explained
-                    # it. EWOULDBLOCK and EAGAIN are the same integer on
-                    # Linux but distinct names for portability -- checking
-                    # both covers a platform where they differ.
-                    if exc.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
-                        raise
-                    if time.monotonic() >= deadline:
-                        raise TimeoutError(
-                            f"timed out after {timeout:.1f}s waiting for the lock at {lock_path}"
-                        ) from exc
-                    time.sleep(_LOCK_POLL_INTERVAL_SECONDS)
+            _acquire_lock_bounded(lock_fh, lock_path, timeout)
         return fn()
 # @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock-poll
+def _acquire_lock_bounded(lock_fh, lock_path: Path, timeout: float) -> None:
+    """Poll for the exclusive lock on ``lock_fh`` until acquired or ``timeout``
+    seconds pass, raising :class:`TimeoutError` on the latter.
+
+    Only the errno ``flock`` actually uses to signal "someone else holds
+    this lock right now" (``EAGAIN``/``EWOULDBLOCK``) is worth retrying
+    (constructorfabric/studio#136, round-4 review, Major). Any other
+    ``OSError`` (``EINVAL``: not a lockable descriptor, ``EBADF``: bad fd,
+    ``ENOLCK``: no lock resources on this filesystem, ...) is a real,
+    distinct failure -- polling it for the full timeout and then raising a
+    generic "timed out waiting for the lock" would misdiagnose a
+    filesystem/descriptor problem as ordinary contention and discard the
+    actual errno that would have explained it. ``EWOULDBLOCK`` and
+    ``EAGAIN`` are the same integer on Linux but distinct names for
+    portability -- checking both covers a platform where they differ.
+    """
+    import fcntl  # pylint: disable=import-outside-toplevel
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except OSError as exc:
+            if exc.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
+                raise
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"timed out after {timeout:.1f}s waiting for the lock at {lock_path}"
+                ) from exc
+            time.sleep(_LOCK_POLL_INTERVAL_SECONDS)
+# @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock-poll

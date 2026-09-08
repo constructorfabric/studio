@@ -39,6 +39,7 @@ def _margin_threshold_arg(value: str) -> float:
     return parsed
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-escalation-key-arg
 def _escalation_key_arg(value: str) -> str:
     """argparse type for --escalation-key: rejects an oversized value up
     front with a clear CLI error, rather than silently degrading it to
@@ -61,6 +62,7 @@ def _escalation_key_arg(value: str) -> str:
             f"got {len(value)}"
         )
     return value
+# @cpt-end:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-escalation-key-arg
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-cmd

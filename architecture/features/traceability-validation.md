@@ -498,6 +498,7 @@ detected as stale again on the very next check, never silently wrong.
 - [x] - `p1` - Resolve the escalation-counter's own cache file location, sharing the same Studio-directory/slug resolution `inst-doc-index-cache-path` uses but writing to a separate filename -- deliberately never the same file as the structural index, so the two never share a lock - `inst-doc-index-escalation-cache-path`
 - [x] - `p1` - Best-effort read of the raw escalation-counter JSON object, returning an empty object for a missing, corrupt, or non-object file -- the same "nothing usable here" fallback every caller already treats as never-escalated. A missing file logs nothing (the routine, expected case); a corrupt/unreadable file or one holding the wrong JSON shape each log a distinct, differently-worded message, so a log reader can tell those apart from each other and from "never escalated yet" - `inst-doc-index-load-escalation-file`
 - [x] - `p1` - Extract a valid `tier2_escalations` count from an already-parsed escalation-file object, clamping anything that isn't a real non-negative int (missing, wrong type, or negative -- e.g. a hand-edited or truncated-write file) down to `0` rather than letting it propagate into the next increment; warns if the file declares a `schema_version` newer than this build understands, reading the fields it recognizes best-effort rather than failing closed - `inst-doc-index-escalation-count-from`
+- [x] - `p1` - Reduce a caller-supplied escalation idempotency key to either a real, matchable token or `None`: an empty string is treated as no key at all (an empty value was never a meaningful caller-supplied identity), and a key over the length cap is likewise normalized to `None` with a warning, rather than letting either persist verbatim as if it were a genuine correlation ID - `inst-doc-index-normalize-escalation-key`
 
 ### TF-IDF Scoring
 
@@ -550,7 +551,8 @@ Deterministic infrastructure only, matching `doc_index.py`/`tfidf.py`: no LLM ca
 Shared by every local cache/bundle writer in this package (`doc_index.py`, `okf.py`) once a second consumer needed the exact same two behaviors a first implementation had already solved once -- extracted rather than reimplemented a second time. Mirrors the fallback shape `decision_log.py`'s own locking already established for this codebase (exclusive `fcntl` lock where available, unlocked elsewhere), kept separate since that module also bakes in log-rotation behavior these callers don't need.
 
 1. [x] - `p1` - Write text to a path atomically: temp file + `os.replace`, so a reader racing a concurrent writer sees either the old complete file or the new complete one, never a torn write - `inst-atomic-write`
-2. [x] - `p1` - Run a read-modify-write callback under an exclusive lock on a sibling lock file, serializing concurrent callers so two overlapping cycles can't each read the same base state and have whichever writes last silently discard the other's update - `inst-atomic-lock`
+2. [x] - `p1` - Run a read-modify-write callback under an exclusive lock on a sibling lock file, serializing concurrent callers so two overlapping cycles can't each read the same base state and have whichever writes last silently discard the other's update. An optional `timeout` bounds the wait instead of blocking forever (`None` keeps every existing caller's original block-forever behavior unchanged) - `inst-atomic-lock`
+3. [x] - `p1` - Poll for the lock under a bounded timeout via non-blocking `flock` attempts, retrying only the errno that means "someone else holds this lock right now" (`EAGAIN`/`EWOULDBLOCK`) and raising `TimeoutError` once the deadline passes; any other `OSError` (a real filesystem/descriptor failure, not contention) propagates immediately instead of being misdiagnosed as an ordinary wait - `inst-atomic-lock-poll`
 
 ### Heading-Nav Search
 
@@ -586,6 +588,8 @@ Combines Heading-Nav Search and TF-IDF Scoring into the two-tier routing decisio
 **Supporting**:
 - [x] - `p1` - `cfs retrieve` CLI wrapper: parse arguments, build the JSON output payload - `inst-cascade-cmd`
 - [x] - `p1` - Human-friendly formatter for `cfs retrieve` output - `inst-cascade-cmd-format`
+- [x] - `p1` - Guard the Tier-2 break-even constant's own invariant at import time (baseline must cost strictly more per query than OKF) and derive it from the three measured per-query rates, rather than letting a future edit to those rates silently produce a nonsensical or undefined break-even point - `inst-cascade-break-even-guard`
+- [x] - `p1` - `--escalation-key` argparse type: reject an oversized value with an immediate, actionable CLI error rather than letting it silently degrade to "no key" several layers down inside `record_tier2_escalation` - `inst-cascade-escalation-key-arg`
 
 ### Read Gate
 

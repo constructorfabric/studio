@@ -106,6 +106,7 @@ _BASELINE_PER_QUERY_TOKENS = 333_573
 #: negative/zero break-even that made ``should_build_okf`` fire on the very
 #: first escalation. Assert the invariant loudly at import time instead of
 #: letting either of those happen quietly.
+# @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-break-even-guard
 assert _BASELINE_PER_QUERY_TOKENS > _OKF_PER_QUERY_TOKENS, (
     "_TIER2_BREAK_EVEN_ESCALATIONS's break-even math assumes baseline costs strictly more "
     "per query than OKF does (_BASELINE_PER_QUERY_TOKENS > _OKF_PER_QUERY_TOKENS); that no "
@@ -114,6 +115,7 @@ assert _BASELINE_PER_QUERY_TOKENS > _OKF_PER_QUERY_TOKENS, (
 _TIER2_BREAK_EVEN_ESCALATIONS = math.ceil(
     _OKF_BUILD_COST_TOKENS / (_BASELINE_PER_QUERY_TOKENS - _OKF_PER_QUERY_TOKENS)
 )
+# @cpt-end:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-break-even-guard
 
 
 def _as_candidate(section: Dict[str, Any]) -> Dict[str, Any]:

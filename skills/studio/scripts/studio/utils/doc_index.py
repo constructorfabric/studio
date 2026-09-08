@@ -824,6 +824,33 @@ def get_tier2_escalations(path: Path) -> int:
 # @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-get-escalations
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-normalize-escalation-key
+def _normalize_escalation_key(escalation_key: Optional[str], path: Path) -> Optional[str]:
+    """Reduce a caller-supplied ``escalation_key`` to either a real,
+    matchable idempotency token or ``None`` ("no key, always increment").
+
+    An empty string is normalized to ``None`` -- it was never a
+    meaningful caller-supplied identity, so matching on it by exact
+    string equality would let two unrelated callers that both happen to
+    pass ``""`` silently collide (constructorfabric/studio#136, round-4
+    review). A key over :data:`_MAX_ESCALATION_KEY_LENGTH` is likewise
+    normalized to ``None`` (with a warning): this is meant to be a short,
+    opaque request-correlation ID, not arbitrary data, and persisting an
+    oversized one verbatim would defeat :data:`_MAX_RECENT_ESCALATION_KEYS`'s
+    file-growth bound via key *size* instead of key *count*.
+    """
+    if escalation_key and len(escalation_key) > _MAX_ESCALATION_KEY_LENGTH:
+        logger.warning(
+            "doc-index escalation_key for %s is %d characters, over the %d-character cap; "
+            "treating this call as if no key were given (the escalation is still recorded, "
+            "just not deduplicated against a future retry)",
+            path, len(escalation_key), _MAX_ESCALATION_KEY_LENGTH,
+        )
+        return None
+    return escalation_key or None
+# @cpt-end:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-normalize-escalation-key
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-record-escalation
 def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) -> Optional[int]:
     """Increment and persist ``path``'s Tier-2-escalation counter, returning
@@ -921,19 +948,7 @@ def record_tier2_escalation(path: Path, escalation_key: Optional[str] = None) ->
         )
         return None
 
-    if escalation_key and len(escalation_key) > _MAX_ESCALATION_KEY_LENGTH:
-        logger.warning(
-            "doc-index escalation_key for %s is %d characters, over the %d-character cap; "
-            "treating this call as if no key were given (the escalation is still recorded, "
-            "just not deduplicated against a future retry)",
-            path, len(escalation_key), _MAX_ESCALATION_KEY_LENGTH,
-        )
-        escalation_key = None
-    elif not escalation_key:
-        # Normalize "" (and any other falsy-but-not-None value the type
-        # hint doesn't otherwise allow) to None so it is never treated as
-        # a real, matchable idempotency token below.
-        escalation_key = None
+    escalation_key = _normalize_escalation_key(escalation_key, path)
 
     def _read_modify_write() -> Optional[int]:
         data = _load_escalation_file(cache_path)
