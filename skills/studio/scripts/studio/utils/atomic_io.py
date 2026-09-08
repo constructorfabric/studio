@@ -119,6 +119,11 @@ def _acquire_lock_bounded(lock_fh, lock_path: Path, timeout: float) -> None:
     """Poll for the exclusive lock on ``lock_fh`` until acquired or ``timeout``
     seconds pass, raising :class:`TimeoutError` on the latter.
 
+    This errno check is scoped to POSIX ``flock(2)`` semantics only (same
+    platform boundary as the ``ImportError``-based Windows fallback in
+    :func:`with_file_lock`) -- not a claim these are the exhaustive
+    contention errnos on every platform.
+
     Only the errno ``flock`` actually uses to signal "someone else holds
     this lock right now" (``EAGAIN``/``EWOULDBLOCK``) is worth retrying
     (constructorfabric/studio#136, round-4 review, Major). Any other

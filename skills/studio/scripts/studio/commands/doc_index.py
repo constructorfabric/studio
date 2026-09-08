@@ -71,7 +71,7 @@ def _human_doc_index(data: dict) -> None:
     hit = "cache hit — reused existing index" if data["cache_hit"] else "cache miss — built fresh index"
     ui.substep(hit)
     ui.substep(f"{data['section_count']} section(s), {data['total_lines']} total lines")
-    if data["tier2_escalations"]:
+    if data["tier2_escalations"] is not None:
         ui.substep(f"{data['tier2_escalations']} Tier-2 escalation(s) recorded for this document")
     for s in data["sections"]:
         summary = f" — {s['summary']}" if s.get("summary") else ""

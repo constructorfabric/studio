@@ -1472,7 +1472,11 @@ class TestCmdDocIndex:
         assert rc == 0
         assert "2 Tier-2 escalation(s) recorded" in capsys.readouterr().out
 
-    def test_human_output_omits_escalation_line_when_never_recorded(self, tmp_path: Path, capsys, monkeypatch):
+    def test_human_output_shows_zero_escalations_when_never_recorded(self, tmp_path: Path, capsys, monkeypatch):
+        """constructorfabric/studio#136 (round-5, Minor): _human_doc_index used
+        a truthy check that skipped rendering when the count was exactly 0 --
+        a real "never escalated" state, not an absent one. The guard is now
+        `is not None`, so a genuine zero count still renders."""
         from studio.utils.ui import is_json_mode, set_json_mode
 
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -1485,7 +1489,7 @@ class TestCmdDocIndex:
         finally:
             set_json_mode(orig)
         assert rc == 0
-        assert "Tier-2 escalation" not in capsys.readouterr().out
+        assert "0 Tier-2 escalation(s) recorded for this document" in capsys.readouterr().out
 
     def test_non_utf8_file_reports_a_clean_error_not_a_raw_traceback(self, tmp_path: Path, capsys, monkeypatch):
         """CodeRabbit PR #109: a binary/non-UTF-8 file used to crash with an

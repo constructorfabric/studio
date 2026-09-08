@@ -15,7 +15,7 @@ from studio.commands.cascade import cmd_retrieve
 from studio.utils import cascade
 from studio.utils.cascade import route_query, route_tier1, route_tier2
 from studio.utils.doc_index import get_or_build_doc_index
-from studio.utils.okf import write_concept_file
+from studio.utils.okf import _okf_bundle_dir, write_concept_file
 
 _SAMPLE = (
     "## Introduction\n\n"
@@ -336,7 +336,7 @@ class TestRouteTier2:
 
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
-        assert result["bundle_dir"]
+        assert result["bundle_dir"] == str(_okf_bundle_dir(f))
 
     def test_row3_tfidf_sourced_candidate_narrows_staleness_to_only_that_section(
         self, tmp_path: Path, monkeypatch
@@ -368,7 +368,7 @@ class TestRouteTier2:
 
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
-        assert result["bundle_dir"]
+        assert result["bundle_dir"] == str(_okf_bundle_dir(f))
 
     def test_row4_heading_nav_sourced_candidate_recommends_okf_when_current(self, tmp_path: Path, monkeypatch):
         """Row 4's escalate candidate is heading-nav-sourced (TF-IDF found no
@@ -396,7 +396,7 @@ class TestRouteTier2:
 
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
-        assert result["bundle_dir"]
+        assert result["bundle_dir"] == str(_okf_bundle_dir(f))
 
     def test_current_bundle_for_candidate_recommends_okf(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -408,7 +408,7 @@ class TestRouteTier2:
         tier1 = route_tier1(f, "widget")
         result = route_tier2(f, tier1)
         assert result["recommendation"] == "okf"
-        assert result["bundle_dir"]
+        assert result["bundle_dir"] == str(_okf_bundle_dir(f))
 
     def test_stale_bundle_for_candidate_falls_back_to_baseline_with_rebuild_flag(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
@@ -679,21 +679,22 @@ class TestCmdRetrieve:
         assert rc == 2
         assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
 
-    def test_escalation_key_rejects_an_oversized_value(self, capsys):
-        """constructorfabric/studio#136 (third review pass, Minor):
-        _MAX_RECENT_ESCALATION_KEYS caps the counter file's growth by key
-        *count*, but nothing capped an individual --escalation-key's
-        *length* before it was persisted verbatim -- a caller passing a
-        pathologically large string would defeat that growth bound via
-        key size instead. The CLI rejects an oversized key outright with
-        a clear, immediate error rather than silently degrading it deep
-        inside record_tier2_escalation."""
+    def test_escalation_key_rejects_an_oversized_value(self, tmp_path: Path, capsys, monkeypatch):
+        """constructorfabric/studio#136 (round-5, Minor): a literal "doc.md" was
+        never created here, so the old test couldn't tell "key rejected" from
+        "file not found" -- both gave rc==2/ERROR. Asserting the error message
+        names --escalation-key specifically closes that gap."""
         from studio.utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
 
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
         oversized_key = "x" * (_MAX_ESCALATION_KEY_LENGTH + 1)
-        rc = cmd_retrieve(["doc.md", "query", "--escalation-key", oversized_key])
+        rc = cmd_retrieve([str(f), "query", "--escalation-key", oversized_key])
         assert rc == 2
-        assert json.loads(capsys.readouterr().out)["status"] == "ERROR"
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "ERROR"
+        assert "--escalation-key" in out["message"]
+        assert str(_MAX_ESCALATION_KEY_LENGTH) in out["message"]
 
     def test_escalation_key_accepts_a_value_at_the_length_boundary(
         self, tmp_path: Path, capsys, monkeypatch,
@@ -907,3 +908,71 @@ class TestCmdRetrieve:
             set_json_mode(orig)
         assert rc == 0
         assert "needs a rebuild" in capsys.readouterr().out
+
+    def test_escalation_lock_timeout_degrades_the_whole_cli_call_gracefully(
+        self, tmp_path: Path, capsys, monkeypatch,
+    ):
+        """constructorfabric/studio#136 (round-5, Minor): every existing test
+        for the escalation-lock-timeout degradation exercised
+        record_tier2_escalation directly, never the full cmd_retrieve CLI
+        path. Same technique as test_doc_index.py's
+        test_returns_none_within_a_bounded_time_when_the_lock_is_held_by_someone_else
+        (hold the lock externally, run the real call on a background
+        thread), applied here at the CLI level for both JSON and human
+        output."""
+        import fcntl
+        import threading
+
+        import studio.utils.doc_index as di
+        from studio.utils.ui import set_json_mode
+
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        # A short timeout keeps this test fast; the mechanism under test
+        # (giving up on a genuinely stuck lock) doesn't depend on the
+        # timeout's exact magnitude.
+        monkeypatch.setattr(di, "_ESCALATION_LOCK_TIMEOUT_SECONDS", 0.2)
+        f = _write(tmp_path)
+
+        cache_path = di._escalation_cache_path(f)
+        lock_path = cache_path.with_name(f"{cache_path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        holder = open(lock_path, "a", encoding="utf-8")
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+
+        def _run_bounded(argv: List[str]) -> dict:
+            result: dict = {}
+
+            def call() -> None:
+                result["rc"] = cmd_retrieve(argv)
+
+            t = threading.Thread(target=call)
+            t.start()
+            # Comfortably above the 0.2s lock timeout, so a genuine fix
+            # regression (a real hang) still fails this assertion instead
+            # of blocking the suite indefinitely.
+            t.join(timeout=5)
+            assert not t.is_alive(), "cmd_retrieve hung instead of degrading past the lock timeout"
+            return result
+
+        try:
+            result = _run_bounded([str(f), "making up"])
+            assert result["rc"] == 0
+            out = json.loads(capsys.readouterr().out)
+            assert out["tier2"]["tier2_escalations"] is None
+            assert out["tier2"]["should_build_okf"] is False
+
+            set_json_mode(False)
+            try:
+                result = _run_bounded([str(f), "making up"])
+            finally:
+                set_json_mode(True)  # restore the autouse fixture's invariant for later tests
+            assert result["rc"] == 0
+            human_out = capsys.readouterr().out
+            assert "tier 2 recommendation: baseline" in human_out
+            # The count is unknown (not zero), so the escalation-count
+            # substep must be omitted entirely, not rendered as "0" or
+            # skipped for the wrong reason.
+            assert "Tier-2 escalations recorded" not in human_out
+        finally:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+            holder.close()

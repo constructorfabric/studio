@@ -77,7 +77,10 @@ def cmd_retrieve(argv: List[str]) -> int:
             "flag turns on automatically -- no --expected-future-queries guess required. This requires "
             "a resolvable Studio project cache directory: outside one, nothing can be persisted, so "
             "tier2_escalations is always null and should_build_okf is always false, regardless of real "
-            "escalation volume (see test_should_build_okf_is_false_outside_a_studio_project)."
+            "escalation volume (see test_should_build_okf_is_false_outside_a_studio_project). The same "
+            "null/false degradation also happens inside a Studio project when the escalation counter's "
+            "lock can't be acquired in time or the persisted write itself fails -- the count is simply "
+            "unknown for that call, not necessarily zero."
         ),
     )
     p.add_argument("file", help="Markdown file path")
