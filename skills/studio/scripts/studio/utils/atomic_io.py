@@ -15,6 +15,7 @@ don't need.
 
 from __future__ import annotations
 
+import errno
 import os
 import tempfile
 import time
@@ -80,7 +81,15 @@ def with_file_lock(lock_path: Path, fn: Callable[[], T], *, timeout: float | Non
     ``flock`` has none: on the last poll before the deadline that still
     fails to acquire the lock, this raises :class:`TimeoutError` instead
     of running ``fn()`` at all -- the caller never starts its
-    read-modify-write cycle without actually holding the lock.
+    read-modify-write cycle without actually holding the lock. Only an
+    ``OSError`` whose ``errno`` is ``EAGAIN``/``EWOULDBLOCK`` (what
+    ``flock`` actually raises for "someone else holds this lock right
+    now") is treated as ordinary contention and retried; any other
+    ``OSError`` (e.g. ``EINVAL``, ``EBADF``, ``ENOLCK`` -- a real
+    filesystem or descriptor problem, not contention) propagates
+    immediately instead of being silently polled away into a generic,
+    less informative ``TimeoutError`` (constructorfabric/studio#136,
+    round-4 review, Major).
 
     constructorfabric/studio#136 (round-4 review, Major):
     :func:`studio.utils.doc_index.record_tier2_escalation` used to enter
@@ -105,11 +114,26 @@ def with_file_lock(lock_path: Path, fn: Callable[[], T], *, timeout: float | Non
                 try:
                     fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
-                except OSError:
+                except OSError as exc:
+                    # Only the errno flock actually uses to signal "someone
+                    # else holds this lock right now" is worth retrying
+                    # (constructorfabric/studio#136, round-4 review, Major).
+                    # Any other OSError (EINVAL: not a lockable descriptor,
+                    # EBADF: bad fd, ENOLCK: no lock resources on this
+                    # filesystem, ...) is a real, distinct failure -- polling
+                    # it for the full timeout and then raising a generic
+                    # "timed out waiting for the lock" would misdiagnose a
+                    # filesystem/descriptor problem as ordinary contention
+                    # and discard the actual errno that would have explained
+                    # it. EWOULDBLOCK and EAGAIN are the same integer on
+                    # Linux but distinct names for portability -- checking
+                    # both covers a platform where they differ.
+                    if exc.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
+                        raise
                     if time.monotonic() >= deadline:
                         raise TimeoutError(
                             f"timed out after {timeout:.1f}s waiting for the lock at {lock_path}"
-                        )
+                        ) from exc
                     time.sleep(_LOCK_POLL_INTERVAL_SECONDS)
         return fn()
 # @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-lock

@@ -185,3 +185,56 @@ class TestWithFileLock:
             fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
             holder.close()
         assert ran == []
+
+    def test_a_non_contention_oserror_propagates_immediately_not_as_a_generic_timeout(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """Real gap caught in review (constructorfabric/studio#136, round-4,
+        Major): the bounded-timeout poll loop caught any OSError from
+        flock(LOCK_NB), not just the errno flock actually uses for "someone
+        else holds this lock right now" (EAGAIN/EWOULDBLOCK). A real
+        filesystem/descriptor failure (EINVAL, EBADF, ENOLCK, ...) would
+        otherwise be silently retried for the full timeout and then
+        reported as a generic "timed out waiting for the lock", discarding
+        the actual errno that would have explained it. Mocks fcntl.flock to
+        always raise EINVAL and asserts it propagates on the very first
+        call -- immediately, not after polling for the (generous) timeout
+        below."""
+        import errno
+        import fcntl
+
+        def _raise_einval(*_a, **_k):
+            raise OSError(errno.EINVAL, "invalid argument")
+
+        monkeypatch.setattr(fcntl, "flock", _raise_einval)
+        lock_path = tmp_path / "x.lock"
+        with pytest.raises(OSError) as exc_info:
+            with_file_lock(lock_path, lambda: "should not run", timeout=30.0)
+        assert exc_info.value.errno == errno.EINVAL
+        assert not isinstance(exc_info.value, TimeoutError)
+
+    def test_eagain_from_flock_still_retries_as_ordinary_contention(
+        self, tmp_path: Path, monkeypatch,
+    ):
+        """The other half of the fix above: EAGAIN/EWOULDBLOCK (real lock
+        contention) must still be retried, not misclassified as a fatal
+        error alongside EINVAL/EBADF/ENOLCK. Mocks fcntl.flock to raise
+        EAGAIN exactly twice, then succeed -- proving the poll loop
+        actually retries this specific errno rather than raising on first
+        sight of any OSError."""
+        import errno
+        import fcntl
+
+        real_flock = fcntl.flock
+        calls = []
+
+        def _flaky(fd, op):
+            calls.append(op)
+            if len(calls) <= 2 and op & fcntl.LOCK_NB:
+                raise OSError(errno.EAGAIN, "resource temporarily unavailable")
+            return real_flock(fd, op)
+
+        monkeypatch.setattr(fcntl, "flock", _flaky)
+        lock_path = tmp_path / "x.lock"
+        assert with_file_lock(lock_path, lambda: "ok", timeout=5.0) == "ok"
+        assert len(calls) == 3  # two simulated-contention retries, then a real success
