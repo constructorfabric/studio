@@ -32,3 +32,17 @@ OPTIONS:
   3 debug — debugger overlay in run mode, for workflow development only -> SET SIMPLE_MODE = debug; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-debug.md; CONTINUE SimpleModeDebug
   INVALID -> EMIT_MENU SimpleModeChoice
 ```
+
+```pdsl
+UNIT SimpleModeChangeTrigger
+PURPOSE: Recognize the one declared mode-change trigger and re-open mode selection without resetting any other session state.
+WHEN:
+  REQUIRE SIMPLE_MODE != unset
+  REQUIRE the user's message is exactly the phrase "change mode" (case-insensitive; not a paraphrase, synonym, or superset phrase)
+DO:
+  EMIT_MENU SimpleModeChoice
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS treat "change mode" as the sole mode-change trigger; NEVER treat semantically similar phrases, synonyms, or partial matches as satisfying it.
+```

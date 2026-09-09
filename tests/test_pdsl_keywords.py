@@ -564,6 +564,37 @@ def test_pdsl_workflows_load_execution_card_during_bootstrap() -> None:
     assert not failures, "\n".join(failures)
 
 
+def test_mode_change_trigger_is_disjoint_from_brave_new_world_phrases() -> None:
+    """ADR-0023 prerequisite 1: the declared mode-change trigger set must
+    never overlap the Brave New World overlay's open-ended activation
+    phrases, or a user saying one could be silently read as the other.
+    """
+    simple_mode_text = (REPO_ROOT / "skills/studio/modules/gates/simple-mode.md").read_text()
+    bnw_text = (REPO_ROOT / "workflows/brave-new-world.md").read_text()
+
+    trigger = "change mode"
+    assert f'"{trigger}"' in simple_mode_text, (
+        "Expected the literal mode-change trigger phrase to still be declared "
+        "in gates/simple-mode.md; update this test if the wording changed."
+    )
+
+    activation_line = next(
+        (line for line in bnw_text.splitlines() if "ALWAYS resolve semantically equivalent phrases" in line),
+        None,
+    )
+    assert activation_line is not None, (
+        "Expected to find BraveNewWorldActivate's activation-phrase rule in "
+        "workflows/brave-new-world.md; update this test if the wording moved."
+    )
+    bnw_phrases = re.findall(r"'([^']+)'", activation_line)
+    assert bnw_phrases, "Expected quoted activation phrases on that rule line"
+
+    assert trigger not in bnw_phrases, (
+        f"Mode-change trigger {trigger!r} collides with a Brave New World "
+        "activation phrase; ADR-0023 requires these trigger sets to be disjoint."
+    )
+
+
 def test_named_pdsl_units_and_menus_are_not_exact_duplicates() -> None:
     """Exact duplicate named PDSL blocks should be defined once and loaded."""
     blocks_by_body: dict[str, list[str]] = defaultdict(list)
