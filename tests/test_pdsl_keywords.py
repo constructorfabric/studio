@@ -568,9 +568,17 @@ def test_mode_change_trigger_is_disjoint_from_brave_new_world_phrases() -> None:
     """ADR-0023 prerequisite 1: the declared mode-change trigger set must
     never overlap the Brave New World overlay's open-ended activation
     phrases, or a user saying one could be silently read as the other.
+
+    Checked case-insensitively and for substring/superset overlap in either
+    direction, not just exact list membership -- SimpleModeChangeTrigger's own
+    contract rejects "a paraphrase, synonym, punctuation-padded variant, or
+    superset phrase", so this test rejects the same shapes of collision. The
+    activation-phrase and exclusion lines are both read only from inside
+    BraveNewWorldActivate's own PDSL block, not a flat file-wide scan.
     """
-    simple_mode_text = (REPO_ROOT / "skills/studio/modules/gates/simple-mode.md").read_text()
-    bnw_text = (REPO_ROOT / "workflows/brave-new-world.md").read_text()
+    simple_mode_path = REPO_ROOT / "skills/studio/modules/gates/simple-mode.md"
+    bnw_path = REPO_ROOT / "workflows/brave-new-world.md"
+    simple_mode_text = simple_mode_path.read_text()
 
     trigger = "change mode"
     assert f'"{trigger}"' in simple_mode_text, (
@@ -578,20 +586,124 @@ def test_mode_change_trigger_is_disjoint_from_brave_new_world_phrases() -> None:
         "in gates/simple-mode.md; update this test if the wording changed."
     )
 
+    bnw_activate_block = next(
+        (
+            block for _, block in _iter_pdsl_blocks(bnw_path)
+            if block and block[0].strip() == "UNIT BraveNewWorldActivate"
+        ),
+        None,
+    )
+    assert bnw_activate_block is not None, (
+        "Expected a UNIT BraveNewWorldActivate PDSL block in "
+        "workflows/brave-new-world.md; update this test if it moved or was renamed."
+    )
+
     activation_line = next(
-        (line for line in bnw_text.splitlines() if "ALWAYS resolve semantically equivalent phrases" in line),
+        (line for line in bnw_activate_block if "ALWAYS resolve semantically equivalent phrases" in line),
         None,
     )
     assert activation_line is not None, (
-        "Expected to find BraveNewWorldActivate's activation-phrase rule in "
-        "workflows/brave-new-world.md; update this test if the wording moved."
+        "Expected BraveNewWorldActivate's activation-phrase rule inside its own "
+        "block; update this test if the wording moved."
     )
-    bnw_phrases = re.findall(r"'([^']+)'", activation_line)
+    bnw_phrases = [phrase.lower() for phrase in re.findall(r"'([^']+)'", activation_line)]
     assert bnw_phrases, "Expected quoted activation phrases on that rule line"
 
-    assert trigger not in bnw_phrases, (
-        f"Mode-change trigger {trigger!r} collides with a Brave New World "
-        "activation phrase; ADR-0023 requires these trigger sets to be disjoint."
+    exclusion_line = next(
+        (
+            line for line in bnw_activate_block
+            if "NEVER treat the exact phrase" in line and trigger in line.lower()
+        ),
+        None,
+    )
+    assert exclusion_line is not None, (
+        "Expected an explicit NEVER rule in BraveNewWorldActivate excluding the "
+        "literal mode-change trigger phrase from BNW activation; update this "
+        "test if that exclusion moved or was reworded."
+    )
+
+    for phrase in bnw_phrases:
+        assert trigger != phrase, (
+            f"Mode-change trigger {trigger!r} exactly matches a BNW activation phrase {phrase!r}."
+        )
+        assert trigger not in phrase, (
+            f"Mode-change trigger {trigger!r} is a substring of BNW phrase {phrase!r}; "
+            "ADR-0023 requires these trigger sets to be disjoint, including supersets."
+        )
+        assert phrase not in trigger, (
+            f"BNW phrase {phrase!r} is a substring of the mode-change trigger {trigger!r}."
+        )
+
+
+def test_declared_gate_type_carveout_is_defined_once_and_cross_referenced() -> None:
+    """The declared mode/gate-type carve-out is defined canonically in
+    pdsl-execution-card.md; active-workflow-state-law.md must reference that
+    definition rather than silently restate it, so the two wordings can't
+    drift apart unnoticed (PR #162 review finding).
+    """
+    card_text = (REPO_ROOT / "skills/studio/modules/runtime/pdsl-execution-card.md").read_text()
+    law_text = (REPO_ROOT / "skills/studio/modules/runtime/active-workflow-state-law.md").read_text()
+
+    assert "a gate's declared risk type" in card_text
+    assert "NEVER treat a runtime-derived eligibility or risk classification" in card_text
+    assert "cpt-studio-adr-autonomous-default-and-gate-risk" in card_text, (
+        "Expected the carve-out's NOTES to cite ADR-0023, so a reader knows "
+        "this rule is a currently-inert prerequisite, not an implemented "
+        "resolution mechanism (PR #162 review finding)."
+    )
+    assert "restated for workflow-state law in\n  `runtime/active-workflow-state-law.md`" in card_text
+
+    assert (
+        "the canonical definition of that carve-out lives in `runtime/pdsl-execution-card.md`"
+        in law_text
+    ), (
+        "Expected active-workflow-state-law.md's declared-type carve-out to "
+        "cross-reference pdsl-execution-card.md rather than restate it with no link."
+    )
+
+
+def test_active_workflow_state_law_skip_audit_and_mode_persistence_rules_present() -> None:
+    """Regression lock for the normative additions to active-workflow-state-law.md
+    that otherwise had zero test coverage: the skip redefinition, the
+    audit-record requirement, and the mode-persistence rule -- which must both
+    name and actually dispatch to SimpleModeChangeTrigger, or the rule points
+    at a unit nothing ever reaches (PR #162 review findings).
+    """
+    law_text = (REPO_ROOT / "skills/studio/modules/runtime/active-workflow-state-law.md").read_text()
+
+    assert "A skip is bypassing a gate without a resolution" in law_text
+    assert "permitted by its statically declared type" in law_text
+    assert "ALWAYS produce the required audit record for every permitted autonomous" in law_text
+    assert "NEVER treat a reply as a mode reset" in law_text
+    assert "SimpleModeChangeTrigger" in law_text, (
+        "Expected the mode-persistence rule to name SimpleModeChangeTrigger "
+        "specifically (not the SimpleModeChoice menu) -- that unit is what "
+        "actually implements the declared trigger set."
+    )
+    assert "RUN SimpleModeChangeTrigger from `gates/simple-mode.md`" in law_text, (
+        "Expected the message-mapping rule to explicitly dispatch to "
+        "SimpleModeChangeTrigger; otherwise it is declared but unreachable "
+        "from any active workflow state (PR #162 review finding)."
+    )
+
+
+def test_simple_mode_change_trigger_contract_is_fully_declared() -> None:
+    """Regression lock for SimpleModeChangeTrigger's full matching contract --
+    exact match, ASCII case-folding, whitespace trimming, and rejection of
+    paraphrases/synonyms/superset phrases -- not just its trigger phrase
+    (PR #162 review finding: the prior test covered only BNW disjointness).
+    """
+    simple_mode_text = (REPO_ROOT / "skills/studio/modules/gates/simple-mode.md").read_text()
+
+    unit_start = simple_mode_text.index("UNIT SimpleModeChangeTrigger")
+    unit_text = simple_mode_text[unit_start:]
+
+    assert "folding ASCII case" in unit_text
+    assert "trimming leading/trailing whitespace" in unit_text
+    assert "not a paraphrase, synonym, punctuation-padded variant, or superset phrase" in unit_text
+    assert (
+        "NEVER treat semantically similar phrases, synonyms, or partial matches as satisfying it"
+        in unit_text
     )
 
 

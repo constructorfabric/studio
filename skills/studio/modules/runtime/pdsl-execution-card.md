@@ -53,4 +53,13 @@ RULES:
     obligations unless an active rule references them.
   NEVER weaken `ALWAYS`, `NEVER`, `REQUIRE`, `WAIT`, `STOP_TURN`, or
     `INVARIANTS` because nearby prose sounds softer.
+NOTES:
+  No core module declares a gate `TYPE` or resolves a gate from one today —
+  see `architecture/specs/PDSL.md` and `cpt-studio-adr-autonomous-default-and-gate-risk`
+  (ADR-0023). This carve-out only removes the prohibition against such
+  resolution once it exists; it does not itself define or implement how a
+  gate is resolved from its declared type.
+  The identical carve-out is restated for workflow-state law in
+  `runtime/active-workflow-state-law.md`; keep both definitions in sync if
+  this one changes.
 ```

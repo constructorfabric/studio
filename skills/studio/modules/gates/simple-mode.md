@@ -38,7 +38,7 @@ UNIT SimpleModeChangeTrigger
 PURPOSE: Recognize the one declared mode-change trigger and re-open mode selection without resetting any other session state.
 WHEN:
   REQUIRE SIMPLE_MODE != unset
-  REQUIRE the user's message is exactly the phrase "change mode" (case-insensitive; not a paraphrase, synonym, or superset phrase)
+  REQUIRE the user's message, after trimming leading/trailing whitespace and folding ASCII case, equals exactly the phrase "change mode" with no other leading, trailing, or embedded characters (not a paraphrase, synonym, punctuation-padded variant, or superset phrase)
 DO:
   EMIT_MENU SimpleModeChoice
   WAIT user.reply

@@ -40,6 +40,7 @@ RULES:
   ALWAYS keep all current and future underlying rules, prerequisites, menus, waits, hard stops, validation gates, and terminal shapes active, while allowing this overlay to answer eligible menus and questions by selecting one valid original option
   ALWAYS keep BRAVE_NEW_WORLD_DECISION_LOG append-only for the session across disable and re-enable cycles
   ALWAYS resolve semantically equivalent phrases such as 'stop asking me', 'auto mode', 'autonomous', 'fewer questions', 'less interruptions' as BNW activation when context is unambiguous
+  NEVER treat the exact phrase 'change mode' as BNW activation, semantically equivalent or otherwise; that phrase is reserved exclusively for `gates/simple-mode.md`'s SimpleModeChangeTrigger, and the semantic-equivalence rule above never claims it
   NEVER start substantive task work merely because this overlay was enabled
   NEVER require `cf` or `CFS_INIT == true` merely to enable or disable this overlay
 ```
