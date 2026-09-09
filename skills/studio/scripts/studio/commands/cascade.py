@@ -8,10 +8,9 @@ Thin CLI wrapper around ``studio.utils.cascade``.
 """
 
 import argparse
-import math
 from typing import List
 
-from ..utils.cascade import _TIER2_BREAK_EVEN_ESCALATIONS, route_query
+from ..utils.cascade import _TIER2_BREAK_EVEN_ESCALATIONS, _check_margin_threshold_value, route_query
 from ..utils.doc_index import _MAX_ESCALATION_KEY_LENGTH
 from ..utils.ui import ui
 
@@ -28,14 +27,25 @@ def _margin_threshold_arg(value: str) -> float:
     result, defeating that safety margin entirely; only a genuine positive
     finite number is accepted, mirroring ``commands/eval.py``'s
     ``_compliance_arg`` validator for the same class of hazard.
+
+    Parses the argparse string to ``float`` first (a string input like
+    ``"0.5"`` is a legitimate CLI value -- unlike the direct Python API in
+    ``utils/cascade.py``'s :func:`~studio.utils.cascade._validate_margin_threshold`,
+    which requires an already-numeric value and rejects a string outright),
+    then delegates the finite/positive check to the same shared
+    ``_check_margin_threshold_value`` helper :func:`_validate_margin_threshold`
+    uses, so both entry points enforce one identical policy instead of two
+    independently drifting copies of it.
     """
     try:
         parsed = float(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"invalid float value: {value!r}") from exc
-    if not math.isfinite(parsed) or parsed <= 0:
+    try:
+        _check_margin_threshold_value(parsed)
+    except ValueError as exc:
         raise argparse.ArgumentTypeError(
-            f"--margin-threshold must be a finite number > 0, got {value!r}")
+            f"--margin-threshold must be a finite number > 0, got {value!r}") from exc
     return parsed
 
 

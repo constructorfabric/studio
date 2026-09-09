@@ -67,6 +67,7 @@ option that fits what this codebase can actually guarantee.
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -76,6 +77,8 @@ from .heading_nav import find_sections
 from .okf import get_okf_status
 from .read_gate import check_gate
 from .tfidf import score_sections
+
+logger = logging.getLogger(__name__)
 
 #: Real, measured per-query token rates (see the design session's findings).
 _OKF_BUILD_COST_TOKENS = 301_187
@@ -124,6 +127,63 @@ def _as_candidate(section: Dict[str, Any]) -> Dict[str, Any]:
         "line_start": section["line_start"],
         "line_end": section["line_end"],
     }
+
+
+def _check_margin_threshold_value(value: float) -> None:
+    """Raise ``ValueError`` unless ``value`` is a finite number > 0.
+
+    The single source of truth for the "finite and positive" rule, shared
+    by :func:`_validate_margin_threshold` (the direct Python API, which
+    requires ``value`` to already be numeric -- no string coercion) and
+    ``commands/cascade.py``'s ``_margin_threshold_arg`` (the CLI, which
+    parses the argparse string to ``float`` *first* and then delegates the
+    finite/positive check here, translating a ``ValueError`` into
+    ``argparse.ArgumentTypeError``). Before this was extracted, both call
+    sites duplicated this exact check independently -- accepting different
+    input domains (the CLI coerced ``"0.5"`` to ``0.5`` and accepted it,
+    while this function rejects a bare string outright) was an accident of
+    that duplication, not an intentional difference in policy, and the two
+    copies could silently drift further apart on any future edit to just
+    one of them.
+
+    isinstance guards ``math.isfinite()`` itself: it raises ``TypeError``
+    for any non-numeric argument, which would propagate out before the
+    ``ValueError`` below ever runs. bool is deliberately excluded even
+    though it subclasses int: True/False are not meaningful margin
+    thresholds, and ``isfinite(True)`` would otherwise silently accept one.
+    """
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not (math.isfinite(value) and value > 0)
+    ):
+        raise ValueError(f"margin_threshold must be a finite number > 0, got {value!r}")
+
+
+def _validate_margin_threshold(margin_threshold: Optional[float]) -> None:
+    """Reject a non-finite or non-positive ``margin_threshold`` before it can
+    reach row 7's comparison.
+
+    ``commands/cascade.py``'s ``_margin_threshold_arg`` enforces this same
+    rule for the CLI (via the shared :func:`_check_margin_threshold_value`),
+    but a direct Python caller of :func:`route_tier1`/:func:`route_query`
+    bypasses argparse entirely -- without this check here too, a
+    non-positive or non-finite threshold would make
+    ``tfidf_result["margin"] >= margin_threshold`` fire on virtually any
+    finite margin, silently defeating the "no finite value is yet proven
+    safe" design basis this module's own docstring documents.
+
+    A rejection is logged (not just raised) so a direct Python caller --
+    which has no argparse error surface of its own to fall back on -- still
+    leaves a structured trace of what was rejected and why.
+    """
+    if margin_threshold is None:
+        return
+    try:
+        _check_margin_threshold_value(margin_threshold)
+    except ValueError:
+        logger.warning("rejected invalid margin_threshold: %r", margin_threshold)
+        raise
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-cascade:p1:inst-cascade-tier1
@@ -176,7 +236,15 @@ def route_tier1(path: Path, query: str, *, margin_threshold: Optional[float] = N
     oversight -- see ``tfidf.py``'s own module docstring for the scale
     assumption (validated against a single ~166-page, ~9-section document,
     deliberately no cap on section count or file size) this cost relies on.
+
+    Raises ``ValueError`` if ``margin_threshold`` is not ``None`` and not a
+    finite number > 0 (see :func:`_validate_margin_threshold`). This is
+    checked unconditionally as the very first step, before ``nav_first_match``
+    is even computed -- so it raises even for a query that would otherwise
+    hit row 1 (``no_signal_from_either_method``), which never reads
+    ``margin_threshold`` at all.
     """
+    _validate_margin_threshold(margin_threshold)
     nav_first_match = find_sections(path, query)["first_match"]
     # Unconditional, even when heading-nav already found a hit: fusing the
     # two signals (this function's whole purpose, see the module docstring)
@@ -399,6 +467,10 @@ def route_query(
     query attempt, so a caller retrying this same query after a transient
     failure or timeout can pass the same key again and not double-count
     the Tier-2 escalation (constructorfabric/studio#136).
+
+    Raises ``ValueError`` for an invalid ``margin_threshold`` -- this calls
+    :func:`route_tier1` first, which validates it unconditionally before
+    doing anything else (see that function's own docstring).
     """
     tier1 = route_tier1(path, query, margin_threshold=margin_threshold)
     result: Dict[str, Any] = {"query": query, **tier1}
