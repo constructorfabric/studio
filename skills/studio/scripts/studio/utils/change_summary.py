@@ -893,15 +893,21 @@ def _git_records(project_root: Path, args: List[str]) -> Optional[List[str]]:
             cwd=str(project_root),
             env=_git_env(),
             capture_output=True,
-            text=True,
-            # Filesystem paths are bytes on POSIX and are not guaranteed to be UTF-8,
-            # so `text=True`'s strict default raises UnicodeDecodeError on a legal but
-            # undecodable filename -- escaping past the handler below and breaking the
-            # never-raises contract. The filesystem codec is what Python itself uses for
-            # paths, so the value round-trips to the same bytes when reopened, and the
-            # streamed sweep decodes with the same one, so both name one file alike.
-            encoding=_PATH_ENCODING,
-            errors=_PATH_ERRORS,
+            # Bytes, decoded per record below rather than by `text=True`.
+            #
+            # Sharing the codec with the streamed sweep was not enough to make the two
+            # readers name one file alike: `text=True` also turns on *universal
+            # newlines*, and `subprocess` exposes no way to switch that off. So a path
+            # containing CR came back translated -- measured, `sweep\rname.txt` decoded
+            # here as `sweep\nname.txt` -- while the sweep, decoding raw slices, kept
+            # the CR. Two consequences, and the second is the worse one: deduplication
+            # against this listing missed the file, so it was reported twice; and the
+            # translated name opens nothing, so a *tracked* file present on disk was
+            # reported as "file no longer present".
+            #
+            # A path may contain any byte but NUL and `/`, CR included, and only NUL is
+            # the record separator -- so nothing in the output needs translating and
+            # anything translated is corruption.
             timeout=_GIT_TIMEOUT,
             check=False,
         )
@@ -915,10 +921,12 @@ def _git_records(project_root: Path, args: List[str]) -> Optional[List[str]]:
         return None
     # A trailing NUL leaves one empty tail record; drop it without dropping
     # legitimately empty interior records, which would desynchronise the walk.
-    records = result.stdout.split("\0")
-    if records and not records[-1]:
-        records.pop()
-    return records
+    raw = result.stdout.split(b"\0")
+    if raw and not raw[-1]:
+        raw.pop()
+    # The same decode call the pump makes, on the same slices, so one path is one
+    # string whichever reader saw it.
+    return [record.decode(_PATH_ENCODING, _PATH_ERRORS) for record in raw]
 # @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-lines
 
 

@@ -614,7 +614,10 @@ class TestPrivacy:
             """
             launches["run"] += 1
             issued.append(list(args))
-            return subprocess.CompletedProcess(args, 0, "", "")
+            # Mirrors what `subprocess` actually hands back for each call shape: the
+            # single-line reader asks for text, the record reader for bytes and decodes
+            # the slices itself. Returning a str to both fed `.split(b"\0")` a str.
+            return subprocess.CompletedProcess(args, 0, "" if _kwargs.get("text") else b"", b"")
 
         def _capture_popen(args, **_kwargs):
             """The streamed reader launches through `Popen`, which patching `run` does

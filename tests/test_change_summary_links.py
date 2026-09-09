@@ -654,10 +654,18 @@ class TestTheListingIsAboutTheProjectNamedAndNothingElse:
 
         assert launches >= 3
         assert source.count("env=_git_env()") == launches, "every launch, not most of them"
-        # And every captured launch decodes with the codec the streamed reader uses, so
-        # the two readers of one path cannot disagree about its name.
-        assert source.count("encoding=_PATH_ENCODING,") == source.count("subprocess.run(")
-        assert "raw.decode(_PATH_ENCODING, _PATH_ERRORS)" in source
+        # And no reader of a *path* may use `text=True`, which switches on universal
+        # newlines as well as decoding and so translated CR inside a filename. Only
+        # `_git_query` may, because it reads refs, shas and timestamps -- values git
+        # itself forbids a control character in. Both record readers instead decode raw
+        # slices with the one shared call, which is what makes one path one string.
+        # Counted with the trailing comma, which is the keyword-argument form: the
+        # comments here discuss `text=True` several times, and a bare substring count
+        # measured the prose as well as the code.
+        assert source.count("text=True,") == 1, "only the single-line reader may translate"
+        assert source.count(".decode(_PATH_ENCODING, _PATH_ERRORS)") == 2, (
+            "the captured record reader and the streamed one, each decoding for itself"
+        )
 
     def test_a_failed_untracked_sweep_makes_the_listing_unavailable(self, tmp_path, monkeypatch):
         """`or []` turned a failed `ls-files` into an empty one, so the report came back
@@ -929,6 +937,81 @@ class TestTheCeilingIsSharedAndTheSweepIsStreamed:
 
         assert captured == streamed == ["café.py"]
         assert total == 1
+
+    @pytest.mark.parametrize("raw", [b"cr\rname.py", b"crlf\r\nname.py", b"lf\nname.py"],
+                             ids=["cr", "crlf", "lf"])
+    def test_both_readers_keep_the_bytes_git_gave_them(self, tmp_path, raw):
+        """The codec was shared, but `text=True` also switches on *universal newlines*,
+        and `subprocess` offers no way to turn that off.
+
+        So the captured reader translated a CR in a path to LF while the streamed one,
+        decoding raw slices, kept it. A path may hold any byte but NUL and `/`, and only
+        NUL separates records here — nothing in this output needs translating, so
+        anything translated is corruption. Every newline shape is checked, because the
+        translation rewrites lone CR, CRLF and neither in three different ways.
+        """
+        if os.name == "nt":
+            pytest.skip("CR and LF are not legal file-name characters on Windows")
+        repo = _repo_with_base(tmp_path)
+        with open(os.path.join(os.fsencode(repo), raw), "wb") as handle:
+            handle.write(b"x = 1\n")
+        expected = raw.decode(cs._PATH_ENCODING, cs._PATH_ERRORS)
+        args = ["ls-files", "--others", "--exclude-standard", "-z"]
+
+        captured = cs._git_records(repo, args)
+        streamed, total = cs._git_records_bounded(repo, args, 5)
+
+        assert captured == [expected], "the captured reader must not translate"
+        assert streamed == [expected]
+        assert total == 1
+
+    def test_a_tracked_path_holding_a_cr_is_not_reported_as_deleted(self, tmp_path):
+        """The consequence that mattered more than the missed dedup.
+
+        A translated name opens nothing, so `_link_changed_entry` found no file where
+        git had just said one changed — and a *tracked* file sitting on disk was
+        reported as "file no longer present", which is a false statement about a
+        present file rather than a merely incomplete one.
+        """
+        if os.name == "nt":
+            pytest.skip("a carriage return is not a legal file-name character on Windows")
+        repo = _repo_with_base(tmp_path)
+        with open(os.path.join(os.fsencode(repo), b"tracked\rname.py"), "wb") as handle:
+            handle.write(_code().encode("utf-8"))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "cr")
+
+        report = _report(repo)
+
+        assert report.available is True, report.reason
+        assert report.deleted == 0, "the file is present"
+        assert [(f.path, f.reason) for f in report.files] == [("tracked\rname.py", cs.REASON_OK)]
+        assert [f.references for f in report.files] == [(MARKER,)], "and it was read"
+
+    def test_a_cr_path_in_both_listings_is_deduplicated(self, tmp_path):
+        """The reported failure, end to end. `git rm --cached` leaves one file deleted in
+        the index and untracked on disk, so it appears in both listings — and with the
+        two readers naming it differently the sweep's dedup missed it, so one file was
+        two rows and every counter was inflated."""
+        if os.name == "nt":
+            pytest.skip("a carriage return is not a legal file-name character on Windows")
+        repo = _make_repo(tmp_path / "r")
+        with open(os.path.join(os.fsencode(repo), b"both\rname.py"), "wb") as handle:
+            handle.write(b"x = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "cr")
+        # The base must *contain* the file, or `git diff` never reports it and only the
+        # sweep sees it — which is one row whether or not the readers agree, and the
+        # first version of this test passed the very mutation it was written to catch.
+        _point_ref(repo, "refs/remotes/upstream/main", _git(repo, "rev-parse", "HEAD"))
+        _commit(repo, "later.txt")
+        _git(repo, "rm", "-q", "--cached", "both\rname.py")
+
+        report = _report(repo)
+
+        rows = [f.path for f in report.files]
+        assert rows.count("both\rname.py") == 1, f"one file, one row: {rows}"
+        assert "both\nname.py" not in rows, "and not a second row under a translated name"
 
     def test_a_stream_that_fails_part_way_is_a_tool_failure_not_a_shorter_listing(
         self, tmp_path, monkeypatch, caplog,
@@ -1223,6 +1306,84 @@ class TestTheCeilingIsSharedAndTheSweepIsStreamed:
 
         assert cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5) == (["a.py", "b.py"], 2)
         assert cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 1) == (["a.py"], 2)
+
+    def test_text_mode_translates_a_cr_which_is_why_these_readers_take_bytes(self):
+        """The mechanism behind the fix, pinned without a CR file name or git.
+
+        The three tests above need a real path containing CR, which Windows rejects, so
+        they skip there and this regression class had no platform-independent cover.
+        A mock cannot supply it: patching `subprocess.run` replaces the very code that
+        does the translating, so a faked `stdout` proves nothing about text mode. What
+        *is* portable is the translation itself — so this drives a real subprocess whose
+        output holds a CR, reads it both ways, and shows they disagree.
+
+        Any Python interpreter will do, so it runs everywhere the suite does.
+        """
+        emit = [sys.executable, "-c",
+                r"import sys; sys.stdout.buffer.write(b'cr\rname.py\x00')"]
+
+        as_text = subprocess.run(
+            emit, capture_output=True, text=True,
+            encoding=cs._PATH_ENCODING, errors=cs._PATH_ERRORS, check=True,
+        ).stdout
+        as_bytes = subprocess.run(emit, capture_output=True, check=True).stdout
+
+        assert as_bytes.split(b"\0")[0] == b"cr\rname.py", "the bytes git actually wrote"
+        assert as_text.split("\0")[0] == "cr\nname.py", (
+            "text mode rewrites the CR -- this is the corruption the fix avoids"
+        )
+        assert as_text.split("\0")[0] != as_bytes.split(b"\0")[0].decode(
+            cs._PATH_ENCODING, cs._PATH_ERRORS,
+        ), "so the two readers could not have agreed while one used text mode"
+
+    def test_both_readers_agree_on_a_cr_record_without_touching_the_filesystem(
+        self, tmp_path, monkeypatch,
+    ):
+        """The paired decode, portable: identical bytes in, identical strings out.
+
+        The fake for `run` honours the `text`/`encoding` keywords the way `subprocess`
+        itself does — decode, then translate newlines — rather than ignoring them. That
+        is what makes this catch a reader switching back to text mode *on the value*
+        instead of on a type error: with `text=True` restored it returns the translated
+        string, exactly as the real thing would, and the comparison below fails on the
+        corrupted path. The test above proves the fake's translation is faithful.
+        """
+        record = b"cr\rname.py\0crlf\r\nname.py\0"
+        expected = ["cr\rname.py", "crlf\r\nname.py"]
+
+        def _fake_run(*_a, **kwargs):
+            if not (kwargs.get("text") or kwargs.get("encoding")):
+                return subprocess.CompletedProcess([], 0, record, b"")
+            decoded = record.decode(kwargs.get("encoding") or "utf-8",
+                                    kwargs.get("errors") or "strict")
+            translated = decoded.replace("\r\n", "\n").replace("\r", "\n")
+            return subprocess.CompletedProcess([], 0, translated, "")
+
+        class _Emitting:
+            def __init__(self, *_a, **_k):
+                self.stdout = io.BytesIO(record)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                pass
+
+        monkeypatch.setattr(cs.subprocess, "run", _fake_run)
+        monkeypatch.setattr(cs.subprocess, "Popen", _Emitting)
+
+        captured = cs._git_records(tmp_path, ["ls-files", "-z"])
+        streamed, total = cs._git_records_bounded(tmp_path, ["ls-files", "-z"], 5)
+
+        assert captured == expected, "the captured reader keeps both newline shapes"
+        assert streamed == expected
+        assert total == 2
 
     def test_a_launch_failure_is_a_warning_and_a_miss_is_not(self, tmp_path, monkeypatch, caplog):
         """The tool failing and git answering "no" must not look alike in a log."""
