@@ -14,12 +14,14 @@
   - [TOC Generation](#toc-generation)
   - [Resolve Variables](#resolve-variables)
   - [Shell Completions](#shell-completions)
+  - [Change Summary Digest](#change-summary-digest)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Run Doctor Checks](#run-doctor-checks)
   - [Run Self-Check](#run-self-check)
   - [Resolve Variables](#resolve-variables-1)
   - [Pylint Rollout Phase 0](#pylint-rollout-phase-0)
   - [Change Summary Window And Events](#change-summary-window-and-events)
+  - [Change Summary Digest Composition](#change-summary-digest-composition)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Developer Experience State](#developer-experience-state)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -28,6 +30,7 @@
   - [Resolve Variables Command](#resolve-variables-command)
   - [Pre-Commit Hooks](#pre-commit-hooks-1)
   - [Shell Completions](#shell-completions-1)
+  - [Change Summary Command](#change-summary-command)
 - [6. Implementation Modules](#6-implementation-modules)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
 
@@ -184,6 +187,25 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 1. - `p3` - User invokes `cfs completions install` - `inst-install-completions`
 2. - `p3` - Detect shell (bash/zsh/fish) and write completion script - `inst-write-completions`
 
+### Change Summary Digest
+
+- [x] `p1` - **ID**: `cpt-studio-flow-developer-experience-change-summary`
+
+**Actor**: `cpt-studio-actor-user`
+
+**Success Scenarios**:
+- User runs `cfs change-summary` on a branch → a digest of at most ten lines: the window it covers, the changed files with their marker denominator, the requirements they serve, and the decisions recorded while the work was done; exit 0
+- User runs `cfs change-summary --json` → the same lines plus the full data behind each of them, as JSON
+
+**Error Scenarios**:
+- Not a git repository · git unavailable · decision log disabled, absent or unreadable · corrupt log lines · not a Studio project → each states its own reason, and a denominator wherever one exists — a dimension that is unavailable has nothing to count and states its reason alone — and the exit code is still 0
+- No changes against the base → one line, `no changes against <ref>`, naming the base and nothing else: there is nothing to review, so no other dimension is consulted for a line, and a zero-file denominator would restate what the line already says; exit 0
+- Unknown flag → usage error, exit 2 — the only non-zero exit the command has
+
+**Steps**:
+1. [x] - `p1` - User invokes `cfs change-summary [--root P] [--base REF] [--since TS]`; the digest is composed from the window, the changed-file linkage and the decision-log selection, and a usage error is the only path that returns non-zero — a stage that raises yields a stated reason, not a traceback - `inst-change-summary-cmd`
+2. [x] - `p1` - Render the digest's lines for a human — the lines and nothing else, so they paste cleanly — or the full payload as JSON, and return 0 - `inst-change-summary-cmd-format`
+
 ## 3. Processes / Business Logic (CDSL)
 
 ### Run Doctor Checks
@@ -271,6 +293,25 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 29. [x] - `p1` - Establish which repository git answers about and which commit it is compared against, since naming the directory alone is not sufficient on either count: clear the variables that redirect git to another repository, and clear the variables that inject configuration into it, because injected configuration can suppress a brand-new file from the changed-file listing while the report still calls itself complete; and prefer the canonical remote's own default branch over a fork's, which lags it - `inst-change-summary-git-environment`
 30. [x] - `p1` - Name every outcome this module can report as one shared vocabulary, so producer, renderer and tests agree on what an unavailable dimension is called rather than matching on prose that drifts, and bound how many changed entries are examined from the feature's own premise rather than arbitrarily - `inst-change-summary-reason-vocabulary`
 
+### Change Summary Digest Composition
+
+- [x] `p1` - **ID**: `cpt-studio-algo-developer-experience-change-summary-digest`
+
+**Input**: A project root, plus an optional base ref or explicit lower-bound timestamp
+
+**Output**: At most ten lines, each backed by data and each degraded dimension stating its reason and denominator, together with the JSON payload behind them
+
+**Rules**:
+1. [x] - `p1` - Define the line ceiling, the caps on names listed inline, and the telemetry event kinds that are recorded cost rather than decisions, so every later rule shares one vocabulary - `inst-digest-datamodel`
+2. [x] - `p1` - Refuse to summarise outside a Studio project with one stated reason, rather than three dimensions each reporting unavailable, and say when the check itself failed rather than report a machine fault as a fact about the directory - `inst-digest-project-gate`
+3. [x] - `p1` - State the window as its lower bound and the base ref and commit that anchor the diff — the bound being the base commit's time unless the caller pinned it — or the reason no window exists together with the flag that scopes decisions by time without git - `inst-digest-window-line`
+4. [x] - `p1` - State what changed with its denominator on every line: how many files, how many carry markers, and every excluded, deleted, unreadable, not-a-file or unexamined file, naming a tally only when it is non-zero and naming the examined population when the scan was capped so a breakdown never reads as one of the whole - `inst-digest-changes-lines`
+5. [x] - `p1` - Name the requirements the changed files reference or declare, capped and counted rather than truncated silently, and emit no line at all when there are none - `inst-digest-requirements-line`
+6. [x] - `p1` - State the decisions recorded in the window by kind and by run, naming runs by a prefix long enough to keep the shown ones distinct, excluding telemetry events and this command's own invocations so a digest never counts itself, and give every skipped line, undated event and shared-log condition a line of its own, emitted ahead of the per-run breakdown so that the lines admitting the log could not be read fully outrank the detail of what was read - `inst-digest-decision-lines`
+7. [x] - `p1` - Enforce the ceiling by omitting lines and saying how many were omitted, never by padding to fill it, cutting from the end so the order lines are emitted in is the order they are sacrificed in - `inst-digest-ceiling`
+8. [x] - `p1` - Carry the data behind every line in a payload that names no absolute path, so nothing a home directory or username could reach a review through is present, and in which every string is encodable, so an undecodable filename is escaped rather than allowed to crash the output - `inst-digest-payload`
+9. [x] - `p1` - Compose the digest: one line when there is no window and one when there are no changes, since repeating a reason or consulting the log for nothing to review would be padding, and the full set otherwise - `inst-digest-compose`
+
 ## 4. States (CDSL)
 
 ### Developer Experience State
@@ -322,6 +363,16 @@ No feature-specific state machines. Self-check is stateless (run → report).
 - [ ] - `p3` - `cfs completions install` writes shell-appropriate completion script
 - [ ] - `p3` - Supports bash, zsh, and fish
 
+### Change Summary Command
+
+- [x] `p1` - **ID**: `cpt-studio-dod-developer-experience-change-summary`
+
+- [x] - `p1` - `cfs change-summary` renders at most ten lines, each backed by data; when the ceiling bites, the last line says how many were omitted
+- [x] - `p1` - Every degraded dimension states its own reason and its denominator
+- [x] - `p1` - Exit 0 on every path except a usage error (2), enforced by tests that force each failure the behaviour matrix names and by a last-resort guard that turns an unforeseen exception into a stated reason - `inst-advisory-exit-zero`
+- [x] - `p1` - `--json` carries the full payload behind every line, with no absolute path in it
+- [x] - `p1` - Wired into no Makefile target, CI gate or required status check
+
 ## 6. Implementation Modules
 
 | Module | Path | Responsibility |
@@ -331,12 +382,14 @@ No feature-specific state machines. Self-check is stateless (run → report).
 | TOC Utils | `skills/.../utils/toc.py` | Unified TOC generation, anchor slugs, code block awareness |
 | Resolve Vars Command | `skills/.../commands/resolve_vars.py` | Template variable resolution to absolute paths |
 | Change Summary Core | `skills/.../utils/change_summary.py` | Window resolution from git, decision-log event selection inside it, and resolution of the changed files in that window to the requirement IDs they reference or declare |
+| Change Summary Command | `skills/.../commands/change_summary.py` | Advisory digest: composes at most ten data-backed lines from the window, the changed-file linkage and the decision log, and exits non-zero only on a usage error |
 
 ## 7. Acceptance Criteria
 
 - [x] `cfs self-check` validates kit integrity and reports per-kind results
 - [x] `cfs resolve-vars` resolves all template variables to absolute paths
 - [x] `cfs info` includes `variables` in output for agent variable resolution
+- [x] `cfs change-summary` prints an advisory digest that states a reason and denominator on every degraded path, exits 0 everywhere except a usage error, and is wired into no gate
 - [ ] Architecture records the Phase 0 Pylint rollout scope before enabling any of `R0911`, `R0914`, `R0801`, `R0912`, `R0915`, or `R0913`
 - [ ] `cfs doctor` reports environment health with pass/fail/warn per check (including optional `ralphex` availability)
 - [ ] Pre-commit hooks enforce validation on staged artifacts
