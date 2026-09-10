@@ -57,7 +57,7 @@
     },
     "ui": {
       "$ref": "#/$defs/ui",
-      "description": "Optional UI/output preferences for interactive skill and workflow runs."
+      "description": "Optional UI/output preferences for skill and workflow runs."
     }
   },
   "$defs": {
