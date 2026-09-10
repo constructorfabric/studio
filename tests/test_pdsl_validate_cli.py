@@ -1285,6 +1285,79 @@ def test_an_indented_sub_header_still_opens_its_section() -> None:
     assert _rule_ids(options_deeper_than_title) == ["PDSL400"]
 
 
+def test_a_deeper_non_exempt_header_is_continuation_so_a_later_type_is_read() -> None:
+    """The other half of the indentation rule: only three headers are exempt.
+
+    `TITLE:`, `OPTIONS:` and `INVALID:` keep section status at any indentation,
+    so a deeper `OPTIONS:` still ends the declaration region (covered above).
+    Every other recognized header is subject to the continuation rule instead,
+    so a deeper `NOTES:` is continuation text, the region has *not* ended, and a
+    `TYPE:` after it *is* the declaration.
+
+    Only the exempt half was pinned. The three fixtures below separate the two
+    conditions that a first draft of this test ran together: whether the deeper
+    header ended the region, and whether the `TYPE:` was itself at the level.
+    A valid `TYPE:` cannot tell those apart, because an omitted declaration is
+    legal and yields no finding either way -- so each fixture uses an invalid
+    value, which is reported only when the declaration is actually read.
+    """
+    # An *invalid* value, because a valid one is indistinguishable: an omitted
+    # declaration is legal, so `TYPE: blocking` yields no finding whether it was
+    # read or ignored as continuation text. `urgent` is reported only if read.
+    deeper_notes_then_type_at_level = (
+        "MENU G:\n  TITLE: t\n    NOTES: prose\n  TYPE: urgent\n  OPTIONS:\n    1 a -> RUN X\n"
+    )
+    assert _rule_ids(deeper_notes_then_type_at_level) == ["PDSL700"]
+
+    # The `TYPE:` must sit at the level to be read. Indented deeper it is
+    # continuation text by the same rule, so its invalid value is never reached.
+    deeper_notes_then_deeper_type = (
+        "MENU G:\n  TITLE: t\n    NOTES: prose\n    TYPE: urgent\n  OPTIONS:\n    1 a -> RUN X\n"
+    )
+    assert _rule_ids(deeper_notes_then_deeper_type) == []
+
+    # At the learned level, `NOTES:` ends the region, so a later `TYPE:` is inert
+    # and reported as a declaration nothing reads.
+    notes_at_level_then_type = (
+        "MENU G:\n  TITLE: t\n  NOTES: prose\n  TYPE: urgent\n  OPTIONS:\n    1 a -> RUN X\n"
+    )
+    assert _rule_ids(notes_at_level_then_type) == ["PDSL702"]
+
+
+def test_the_indentation_rule_is_reported_through_the_real_cli() -> None:
+    """The same three fixtures, driven end-to-end rather than through the validator.
+
+    Every other test for this rule calls `_rule_ids`, which reaches
+    `validate_source` in-process and so never exercises argument parsing, the
+    exit-code mapping or the JSON rendering. A review of #153 raised that gap on
+    this module and it was extended rather than closed, so one fixture per
+    outcome now goes through `main()`: a read declaration, an ignored one, and a
+    declaration nothing reads.
+
+    Exit codes are asserted because they are the part `_rule_ids` cannot see: a
+    finding must map to 2, not 1, and a clean source to 0.
+    """
+    for text, expected_ids, expected_rc in (
+            ("MENU G:\n  TITLE: t\n    NOTES: prose\n  TYPE: urgent\n"
+             "  OPTIONS:\n    1 a -> RUN X\n", ["PDSL700"], 2),
+            ("MENU G:\n  TITLE: t\n    NOTES: prose\n    TYPE: urgent\n"
+             "  OPTIONS:\n    1 a -> RUN X\n", [], 0),
+            ("MENU G:\n  TITLE: t\n  NOTES: prose\n  TYPE: urgent\n"
+             "  OPTIONS:\n    1 a -> RUN X\n", ["PDSL702"], 2),
+    ):
+        set_json_mode(False)
+        rc, stdout, stderr = _run(["pdsl", "validate", "--text", text, "--json"])
+
+        assert rc == expected_rc, (text, stdout, stderr)
+        assert stderr == ""
+        payload = json.loads(stdout)
+        assert payload["command"] == "pdsl validate"
+        assert payload["ok"] is not bool(expected_ids)
+        assert payload["summary"]["finding_count"] == len(expected_ids)
+        found = [f["rule_id"] for f in payload["results"][0]["findings"]]
+        assert found == expected_ids, (text, found)
+
+
 def test_an_unrecognized_first_sub_header_sets_the_level() -> None:
     """`NOTE:` and `ELSE:` are legitimate menu headers, so they set it too.
 

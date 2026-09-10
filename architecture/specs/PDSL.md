@@ -115,6 +115,7 @@ Use this small keyword set before inventing new words.
 | `WAIT` | Stop for user input |
 | `STOP_TURN` | End assistant turn immediately |
 | `CONTINUE` | Move to named unit or phase |
+| `CONTINUE … after user.reply` | Deferred move, taken when the turn resumes |
 | `DISPATCH` | Invoke a named sub-agent or worker contract |
 | `RETURN` | Return a manifest, report, checkpoint, or handoff |
 | `REQUIRE` | Required precondition |
@@ -186,6 +187,17 @@ controller or sub-agent interpreting PDSL applies these rules:
 - `WAIT` plus `STOP_TURN` is a hard assistant-turn boundary.
 - `CONTINUE <unit-or-phase>` transfers control to that target; it is not
   optional advice.
+- `CONTINUE <unit-or-phase> after user.reply` defers that transfer to the turn
+  which resumes after the boundary, and **must be written before the `WAIT` it
+  defers past** — a `CONTINUE` placed after `WAIT`/`STOP_TURN` is unreachable,
+  because the boundary has already transferred control. Use it where a branch
+  must collect a reply and then continue somewhere other than where it stopped.
+  **Defined here only for a clause carrying a single boundary.** Four cases are
+  deliberately left open: a block holding more than one `WAIT`, two deferred
+  continuations before one boundary, control leaving the branch before the
+  boundary is reached, and a boundary never reached at all. Both present uses
+  carry exactly one boundary, so the corpus does not settle any of the four, and
+  binding them would need an enforced check rather than a sentence.
 - `DISPATCH` invokes a named sub-agent or worker contract. Concurrency,
   isolation, and join behavior belong in explicit dispatch options or
   surrounding rules, not in separate dispatch keywords.
@@ -380,8 +392,8 @@ Rules:
   undeclared menu is treated as `blocking` — the conservative direction, in
   which a gate asks rather than proceeds.
 - **Nothing resolves a gate from a declared type today**, so this lint changes
-  no runtime behaviour. Two shipped paths *do* auto-resolve gates, and neither
-  reads a declaration: assistant mode's own auto-selection rule
+  no runtime behaviour. Three shipped paths *do* auto-resolve gates, and none of
+  them reads a declaration: assistant mode's own auto-selection rule
   (`skills/studio/modules/gates/simple-mode-rules.md:19`), the autonomy overlay
   (`workflows/brave-new-world.md`), and sub-agent dispatch's pre-set rule
   (`skills/studio/modules/subagents/dispatch.md:43`), all of which decide by
@@ -392,7 +404,7 @@ Rules:
   that introduces declaration-driven resolution, which is where the obligation
   and a test asserting that an omitted `TYPE` produces blocking behaviour
   belong. Until then, omission is *unvalidated*, and the safety of the
-  grandfathered set rests on those two paths being narrow and reviewed — not on
+  grandfathered set rests on those three paths being narrow and reviewed — not on
   a default that has been demonstrated.
 - **`TYPE` is read only in the menu's declaration region:** from the menu
   header up to the first section that is not `TITLE` or `TYPE`. A declaration
@@ -403,7 +415,17 @@ Rules:
   onto a second line is read as title text. A `TYPE:` written there is not read
   as the declaration, and a near-miss written there is not reported. The level
   is taken from the menu's first sub-header, whichever that is, and measured per
-  menu rather than per block.
+  menu rather than per block — **that first sub-header's own indentation sets the
+  level even where it is itself over-indented**, and the exemption below changes
+  whether a header is a section, never whether it sets the level. **`TITLE:`, `OPTIONS:` and `INVALID:` are exempt
+  from this rule** and keep their section status at any indentation, so an
+  over-indented `OPTIONS:` still ends the region and a `TYPE:` after it is
+  inert — reported as a declaration nothing reads. Every other recognized
+  header is subject to it: an over-indented `NOTES:` is continuation text, so the
+  region has *not* ended — and a `TYPE:` after it is read **only if that `TYPE:`
+  itself sits at the level**, since a `TYPE:` indented deeper is continuation
+  text by this same rule. Resolve the two rules in that order — the exemption
+  first, then the region-ending rule below.
 - **Any recognized section other than `TITLE` or `TYPE` ends the region** — `OPTIONS:`,
   `INVALID:`, and also `NOTES:`, `RULES:`, `ON_ERROR:`, `PURPOSE:` and the
   rest. Unrecognized prose headers such as `NOTE:` and `ELSE:` do not. So put

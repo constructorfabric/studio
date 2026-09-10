@@ -25,6 +25,9 @@ RULES:
   ALWAYS treat `WAIT` plus `STOP_TURN` as a hard assistant-turn boundary.
   ALWAYS treat `CONTINUE <unit-or-phase>` as transfer of control to that target,
     not optional advice.
+  ALWAYS treat `CONTINUE <unit-or-phase> after user.reply` as a transfer deferred
+    to the turn that resumes after the boundary, and write it BEFORE the `WAIT`
+    it defers past; a `CONTINUE` placed after `WAIT`/`STOP_TURN` is unreachable.
   ALWAYS after any `WAIT`/`STOP_TURN` resume at the exact active PDSL
     continuation target; REQUIRED: do not reinterpret the user's reply as
     broad permission for generic autonomous execution.
@@ -54,8 +57,9 @@ RULES:
   NEVER weaken `ALWAYS`, `NEVER`, `REQUIRE`, `WAIT`, `STOP_TURN`, or
     `INVARIANTS` because nearby prose sounds softer.
 NOTES:
-  No core module declares a gate `TYPE` or resolves a gate from one today —
-  see `architecture/specs/PDSL.md` and `cpt-studio-adr-autonomous-default-and-gate-risk`
+  A core module now declares a gate `TYPE` — `plan-compile.md`'s production
+  choice — but nothing resolves a gate from one yet. See
+  `architecture/specs/PDSL.md` and `cpt-studio-adr-autonomous-default-and-gate-risk`
   (ADR-0023). This carve-out only removes the prohibition against such
   resolution once it exists; it does not itself define or implement how a
   gate is resolved from its declared type.
