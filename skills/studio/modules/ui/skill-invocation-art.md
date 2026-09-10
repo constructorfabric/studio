@@ -10,13 +10,17 @@ purpose: Defines SkillInvocationArt — the ASCII-art entry picture rendered at 
 ```pdsl
 UNIT SkillInvocationArt
 PURPOSE: Prefix each cf, cf-studio, or cf-* skill entry with one small ASCII-art picture relevant to the skill name, with a plain-text label below, without changing the workflow's control flow.
+STATE:
+  SET SKILL_INVOCATION_ART_ENABLED: true | false | unset (default unset, scope session)
 WHEN:
   REQUIRE a cf, cf-studio, or cf-* skill or workflow entry is beginning execution
   SKIP silently (no picture, no output) WHEN this unit is loaded in a context that does not satisfy the above REQUIRE
 DO:
-  RUN SkillInvocationArtGuard
+  RUN resolve SKILL_INVOCATION_ART_ENABLED from `[ui].skill_invocation_art_enabled` in `{cf-studio-path}/config/core.toml` (false when the key or file is absent) WHEN SKILL_INVOCATION_ART_ENABLED == unset
+  RUN SkillInvocationArtGuard WHEN SKILL_INVOCATION_ART_ENABLED == true
   RUN SkillInvocationArtGenerate WHEN SkillInvocationArtGuard passes
 RULES:
+  ALWAYS default to disabled and resolve the config flag at most once per session: skip the picture with no further state read unless `[ui].skill_invocation_art_enabled` is explicitly `true` in `{cf-studio-path}/config/core.toml`
   ALWAYS run this unit once at the start of every cf, cf-studio, or cf-* workflow bootstrap or alias entry, before the workflow's first normal EMIT, EMIT_MENU, WAIT, CONTINUE, INVOKE, DISPATCH, RETURN, or STOP_TURN
   NEVER alter, delay, or suppress any existing output directive; the picture precedes but does not replace or reorder normal output
   NEVER replace, delay, reorder, suppress, or alter any load report
