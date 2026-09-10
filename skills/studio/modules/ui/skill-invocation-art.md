@@ -9,7 +9,7 @@ purpose: Defines SkillInvocationArt — the ASCII-art entry picture rendered at 
 
 ```pdsl
 UNIT SkillInvocationArt
-PURPOSE: When enabled via `[ui].skill_invocation_art_enabled` in `{cf-studio-path}/config/core.toml`, prefix each cf, cf-studio, or cf-* skill entry with one small ASCII-art picture relevant to the skill name, with a plain-text label below, without changing the workflow's control flow.
+PURPOSE: When enabled via `[ui].skill_invocation_art_enabled` in `{cf-studio-path}/config/core.toml`, prefix each cf, cf-studio, or cf-* skill or workflow entry with one small ASCII-art picture relevant to the entry name, with a plain-text label below, without changing the workflow's control flow.
 STATE:
   SET SKILL_INVOCATION_ART_ENABLED: true | false | unset (default unset, scope session)
 WHEN:
