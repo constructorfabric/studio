@@ -2648,7 +2648,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                         {"id": "cpt-test-req-1", "type": "definition", "line": 2},
                     ]
                 buf = io.StringIO()
-                with patch("studio.commands.list_ids.scan_cpt_ids", side_effect=fake_scan):
+                with patch("studio.utils.cpt_reference_scan.scan_cpt_ids", side_effect=fake_scan):
                     with redirect_stdout(buf):
                         rc = main(["list-ids"])
                 self.assertEqual(rc, 0)

@@ -2,10 +2,10 @@
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 import argparse
-from typing import Dict, List
+from typing import List
 
+from ..utils import cpt_reference_scan
 from ..utils.context import resolve_target_and_artifacts
-from ..utils.document import scan_cpt_ids
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 
@@ -35,25 +35,7 @@ def cmd_where_defined(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-def
 
     # Search for definitions
-    definitions: List[Dict[str, object]] = []
-
-    for artifact_path, artifact_type in artifacts_to_scan:
-        for h in scan_cpt_ids(artifact_path):
-            if h.get("type") != "definition":
-                continue
-            if str(h.get("id") or "") != target_id:
-                continue
-            d: Dict[str, object] = {
-                "artifact": str(artifact_path),
-                "artifact_type": artifact_type,
-                "line": int(h.get("line", 1) or 1),
-                "kind": None,
-                "checked": bool(h.get("checked", False)),
-            }
-            src = path_to_source.get(str(artifact_path))
-            if src:
-                d["source"] = src
-            definitions.append(d)
+    definitions = cpt_reference_scan.definitions(target_id, artifacts_to_scan, path_to_source)
 
     if not definitions:
         ui.result(

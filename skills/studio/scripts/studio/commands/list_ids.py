@@ -7,8 +7,8 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from ..utils import cpt_reference_scan
 from ..utils.codebase import scan_registered_codebase_references
-from ..utils.document import scan_cpt_ids
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 
@@ -211,23 +211,22 @@ def _collect_artifact_hits(
     """Scan artifact IDs and annotate each hit with inferred kind metadata."""
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-scan-all
     hits: List[Dict[str, object]] = []
-    for artifact_path, artifact_type in artifacts_to_scan:
-        for fh in scan_cpt_ids(artifact_path):
-            cid = str(fh.get("id") or "").strip()
-            if not cid:
-                continue
-            hit: Dict[str, object] = {
-                "id": cid,
-                "kind": _infer_primary_kind(cid, registered_systems, known_kinds),
-                "type": fh.get("type"),
-                "artifact_type": artifact_type,
-                "line": fh.get("line"),
-                "artifact": str(artifact_path),
-                "checked": bool(fh.get("checked", False)),
-            }
-            if fh.get("priority") is not None:
-                hit["priority"] = fh.get("priority")
-            hits.append(hit)
+    for artifact_path, artifact_type, fh in cpt_reference_scan.scan_records(artifacts_to_scan):
+        cid = str(fh.get("id") or "").strip()
+        if not cid:
+            continue
+        hit: Dict[str, object] = {
+            "id": cid,
+            "kind": _infer_primary_kind(cid, registered_systems, known_kinds),
+            "type": fh.get("type"),
+            "artifact_type": artifact_type,
+            "line": fh.get("line"),
+            "artifact": str(artifact_path),
+            "checked": bool(fh.get("checked", False)),
+        }
+        if fh.get("priority") is not None:
+            hit["priority"] = fh.get("priority")
+        hits.append(hit)
     return hits
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-scan-all
 

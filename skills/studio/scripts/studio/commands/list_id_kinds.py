@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..utils.document import scan_cpt_ids
+from ..utils import cpt_reference_scan
 from ..utils.ui import ui
 from .list_ids import (
     _collect_known_kinds,
@@ -62,19 +62,18 @@ def _collect_kind_maps(
     kind_to_templates: Dict[str, Set[str]] = {}
     kind_counts: Dict[str, int] = {}
 
-    for artifact_path, artifact_type in artifacts_to_scan:
-        for hit in scan_cpt_ids(artifact_path):
-            if hit.get("type") != "definition":
-                continue
-            cpt_id = str(hit.get("id") or "").strip()
-            if not cpt_id:
-                continue
-            # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
-            for kind_name in _infer_kinds(cpt_id, registered_systems, known_kinds):
-                kind_to_templates.setdefault(kind_name, set()).add(artifact_type)
-                template_to_kinds.setdefault(artifact_type, set()).add(kind_name)
-                kind_counts[kind_name] = kind_counts.get(kind_name, 0) + 1
-            # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
+    for _artifact_path, artifact_type, hit in cpt_reference_scan.scan_records(artifacts_to_scan):
+        if hit.get("type") != "definition":
+            continue
+        cpt_id = str(hit.get("id") or "").strip()
+        if not cpt_id:
+            continue
+        # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
+        for kind_name in _infer_kinds(cpt_id, registered_systems, known_kinds):
+            kind_to_templates.setdefault(kind_name, set()).add(artifact_type)
+            template_to_kinds.setdefault(artifact_type, set()).add(kind_name)
+            kind_counts[kind_name] = kind_counts.get(kind_name, 0) + 1
+        # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-aggregate
     return template_to_kinds, kind_to_templates, kind_counts
 # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-scan-ids
 

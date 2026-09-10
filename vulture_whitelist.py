@@ -186,3 +186,13 @@ RUN_UNATTRIBUTED  # noqa: B018
 # If a later refactor leaves one genuinely unused, delete its line rather than keep suppressing it.
 ArtifactFinding  # noqa: B018
 finding_json_schema  # noqa: B018
+
+# cpt_reference_scan.graph_for — the def↔ref graph view for the artifact-quality
+# gap / traceability / contradiction detectors (later tasks). The four query commands
+# consume references / definitions / scan_records now; graph_for is unreferenced until
+# the first detector imports it. REMOVAL TRIGGER — delete this entry once a detector
+# imports graph_for (i.e. once `cpt-studio-flow-artifact-quality-assess` is implemented
+# — grep that id in architecture/features/artifact-quality.md and check its `[ ]`→`[x]`).
+# The algo itself is declared in architecture/features/traceability-validation.md (### CPT Reference Scan).
+from studio.utils.cpt_reference_scan import graph_for  # noqa: E402
+graph_for  # noqa: B018

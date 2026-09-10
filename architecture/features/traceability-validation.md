@@ -13,6 +13,7 @@
   - [Query Traceability](#query-traceability)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Scan Artifact IDs](#scan-artifact-ids)
+  - [CPT Reference Scan](#cpt-reference-scan)
   - [Scan CDSL Instructions](#scan-cdsl-instructions)
   - [Validate Artifact Structure](#validate-artifact-structure)
   - [Cross-Validate Artifacts](#cross-validate-artifacts)
@@ -227,6 +228,25 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 - [x] - `p1` - Content scoped extraction: hash-fence blocks, heading scopes, ID-definition scopes - `inst-scan-ids-get-content`
 - [x] - `p1` - File I/O utilities: safe text reader, text file iterator, relative path converter - `inst-scan-ids-file-utils`
 - [x] - `p1` - Wrapper function for `parse_cpt` identifier parser - `inst-parse-cpt-fn`
+
+### CPT Reference Scan
+
+- [x] `p1` - **ID**: `cpt-studio-algo-cpt-reference-scan`
+
+**Input**: Artifacts to scan `[(path, artifact_type)]`, a target `cpt-id`, and a path→source map
+
+**Output**: Reference records `{artifact, artifact_type, line, kind, type, checked, source?}` (definition records omit `type`; `kind` is always `null` here — callers infer and fill it), or a def↔ref graph `{defined_in, referenced_in}`
+
+**Scope**: `cpt-*` identifiers only — `PRD-NNN` requirement references are out of scope (a documented v1 limit), the same scope as `where-used` / `where-defined`. The def↔ref graph is assembled from two independent scans (one per side), so `defined_in` and `referenced_in` carry no cross-list atomicity guarantee; a caller that needs many ids should build a single scan pass and partition it locally rather than call the graph per id.
+
+**Steps**:
+1. [x] - `p1` - Iterate every `scan_cpt_ids` hit across the artifacts, yielding it with its artifact context — the shared scan the query commands reuse - `inst-scan-records`
+2. [x] - `p1` - Project the scan into references to a target id, optionally including its definitions - `inst-references`
+3. [x] - `p1` - Project the scan into a target id's definitions only - `inst-definitions`
+4. [x] - `p1` - Assemble a cpt-id's def↔ref graph view (`defined_in` / `referenced_in`) for the artifact-quality detectors - `inst-graph-for`
+
+**Supporting**:
+- [x] - `p1` - The shared locus record both projections build — reference records carry `type`, definitions omit it - `inst-record`
 
 ### Scan CDSL Instructions
 
@@ -831,6 +851,7 @@ The system **MUST** provide CLI commands for navigating the ID graph: `list-ids 
 **Implements**:
 - `cpt-studio-flow-traceability-validation-query`
 - `cpt-studio-algo-traceability-validation-scan-ids`
+- `cpt-studio-algo-cpt-reference-scan`
 
 **Covers (PRD)**:
 - `cpt-studio-fr-core-traceability`
@@ -867,6 +888,7 @@ The system **MUST** scan CDSL instruction markers (`inst-{slug}` suffixes in num
 | Where Defined | `skills/.../commands/where_defined.py` | Find where an ID is defined |
 | Where Used | `skills/.../commands/where_used.py` | Find all references to an ID |
 | Document Utils | `skills/.../utils/document.py` | ID scanning, CDSL instruction scanning |
+| CPT Reference Scan | `skills/.../utils/cpt_reference_scan.py` | Shared cpt-id def↔ref scan for the query commands; def↔ref graph view for the artifact-quality detectors |
 | Constraints Utils | `skills/.../utils/constraints.py` | Constraint loading, heading validation, cross-validation |
 | Codebase Utils | `skills/.../utils/codebase.py` | Code file scanning, `@cpt-*` marker validation |
 | Error Codes | `skills/.../utils/error_codes.py` | Stable error codes for validation issues |
