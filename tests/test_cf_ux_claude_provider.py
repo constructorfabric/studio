@@ -152,6 +152,107 @@ class TestARunThatLoadedTheSkillIsScored:
         assert out["metadata"]["skill_state"] == "ran"
         assert out["metadata"]["skills_invoked"] == ["cf"]
 
+    def test_a_bare_cf_in_an_unrelated_field_still_counts(self, run_provider):
+        """A known false positive, pinned rather than closed.
+
+        Which key holds the skill name is not contractual, so every
+        identifier-shaped value is a candidate — and a rival skill invoked with
+        some field whose *whole* value is `cf` therefore reads as this skill
+        running. Prose does not do this (the test above), but a single token in
+        an unrelated field does.
+
+        Narrowing to a fixed set of name keys would close this and open a worse
+        hole: guess the key wrong and *every* run errors, because the name would
+        never be found where it actually lives. This way round the failure is a
+        rare false pass; that way round it is a certain false failure. Erring
+        toward recall is what makes the harness work without knowing the key,
+        and `skill_call_inputs` keeps the raw input so the verdict stays
+        inspectable. If the key is ever pinned down, this test is where the
+        trade gets renegotiated.
+        """
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "command": "superpowers:brainstorming", "mode": "cf",
+            }},
+        ]}}
+
+        out, _seen = run_provider(_stream(rival, _skill_result(), _result()))
+
+        assert out["output"] == "the answer", "the point of the false positive: it gets scored"
+        assert "error" not in out
+        assert out["metadata"]["skill_state"] == "ran"
+        assert out["metadata"]["skills_invoked"] == ["brainstorming", "cf"]
+        assert out["metadata"]["skill_call_inputs"] == [
+            '{"command": "superpowers:brainstorming", "mode": "cf"}'
+        ], "the raw input shows where the name was found, so a false pass is visible"
+
+    def test_a_namespaced_value_in_an_unrelated_field_counts_the_same_way(self, run_provider):
+        """The same false-positive class through a second mechanism: the value is
+        not literally `cf`, it reduces to it once the namespace is dropped. The
+        comparison is whole-value *after* stripping, which is what lets
+        `plugin:cf` count while `cf-generate` does not."""
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "command": "superpowers:brainstorming", "mode": "plugin:cf",
+            }},
+        ]}}
+
+        out, _seen = run_provider(_stream(rival, _skill_result(), _result()))
+
+        assert out["metadata"]["skill_state"] == "ran"
+        assert out["metadata"]["skills_invoked"] == ["brainstorming", "cf"]
+
+    @pytest.mark.parametrize("shape", [
+        pytest.param({"options": {"skill": "cf"}}, id="one-level"),
+        pytest.param({"o": {"p": {"skill": "cf"}}}, id="two-levels"),
+        pytest.param({"args": [{"skill": "cf"}]}, id="list-of-dicts"),
+        pytest.param({"a": [{"b": {"skill": "cf"}}]}, id="dict-in-list-in-dict"),
+        pytest.param({"a": [["cf"]]}, id="nested-lists"),
+    ])
+    def test_a_nested_identifier_is_found_at_any_depth(self, run_provider, shape):
+        """Stopping at the top level would contradict the trade above rather than
+        implement it: a tool input that nests its identifier is a shape this
+        cannot rule out, and missing it means *every* run errors — the certain
+        false failure, not the rare false pass.
+
+        Parametrized past depth one because "any depth" is the claim; a single
+        level would leave a regression below it uncaught.
+        """
+        nested = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": shape},
+        ]}}
+
+        out, _seen = run_provider(_stream(nested, _skill_result(), _result()))
+
+        assert out["metadata"]["skill_state"] == "ran"
+        assert out["metadata"]["skills_invoked"] == ["cf"]
+
+    @pytest.mark.parametrize("payload", ["cf", ["cf"], ["other", {"skill": "cf"}]])
+    def test_an_input_that_is_not_a_dict_is_scanned_rather_than_refused(
+        self, run_provider, payload,
+    ):
+        """A boundary the earlier version refused outright (`if not
+        isinstance(payload, dict): return []`). Scanning it follows from the same
+        reasoning as the depth walk: a bare string or list input is a shape that
+        cannot be ruled out, and refusing it means the name is never found and
+        every run errors. Called out because it is a behaviour change, not a
+        side effect."""
+        odd = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": payload},
+        ]}}
+
+        out, _seen = run_provider(_stream(odd, _skill_result(), _result()))
+
+        assert out["metadata"]["skill_state"] == "ran"
+
+    def test_a_sole_candidate_leaves_the_other_candidates_empty(self, run_provider):
+        """The field has to distinguish, or it says nothing."""
+        out, _seen = run_provider(
+            _stream(_skill_call(skill="studio:cf"), _skill_result(), _result()),
+        )
+
+        assert out["metadata"]["skill_match_other_candidates"] == []
+
     def test_a_result_event_with_no_subtype_is_still_an_answer(self, run_provider):
         """Only a subtype that is present and says otherwise means a short turn.
         An unfamiliar event shape must not be able to manufacture failures."""
@@ -204,6 +305,7 @@ class TestARunThatNeverLoadedTheSkillIsNotScored:
 
         assert "output" not in out
         assert "did not run (failed)" in out["error"]
+        assert out["metadata"]["skill_state"] == "failed"
 
     def test_the_real_failure_signature_is_recognised(self, run_provider):
         """The observed failure is `<error>Execute skill: cf</error>`. The previous
@@ -215,6 +317,7 @@ class TestARunThatNeverLoadedTheSkillIsNotScored:
 
         assert "output" not in out
         assert "Execute skill:" in out["error"]
+        assert out["metadata"]["skill_state"] == "failed"
 
     @pytest.mark.parametrize("rival", ["superpowers", "cf-generate"])
     def test_another_skill_failing_does_not_fail_the_cf_run(self, run_provider, rival):
@@ -236,6 +339,7 @@ class TestARunThatNeverLoadedTheSkillIsNotScored:
 
         assert "output" not in out
         assert "none of them named 'cf'" in out["error"]
+        assert out["metadata"]["skill_state"] == "failed"
         assert out["metadata"]["skills_invoked"] == ["superpowers"], "and it says which did run"
 
     def test_a_skill_whose_name_merely_begins_with_cf_is_not_the_cf_skill(self, run_provider):
@@ -245,6 +349,44 @@ class TestARunThatNeverLoadedTheSkillIsNotScored:
 
         assert "output" not in out
         assert "none of them named 'cf'" in out["error"]
+        assert out["metadata"]["skill_state"] == "failed"
+
+    def test_a_single_token_that_is_not_cf_does_not_count_either(self, run_provider):
+        """The trade pinned above is not "any short token wins". The comparison
+        stays whole-value in every field, so a sibling name sitting in the same
+        unrelated position does not match."""
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "command": "superpowers:brainstorming", "mode": "cf-generate",
+            }},
+        ]}}
+
+        out, _seen = run_provider(_stream(rival, _skill_result(), _result()))
+
+        assert "output" not in out
+        assert "none of them named 'cf'" in out["error"]
+        assert out["metadata"]["skill_state"] == "failed"
+        assert out["metadata"]["skills_invoked"] == ["brainstorming", "cf-generate"], (
+            "both candidates were parsed and neither matched — not one silently dropped"
+        )
+
+    def test_a_false_positive_match_whose_call_errored_is_still_a_failure(self, run_provider):
+        """The accepted false positive buys a *name* match, not a verdict. The
+        matched call still has to have come back clean, so the interaction of
+        the loose match with the error branch is the one worth pinning."""
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "command": "superpowers:brainstorming", "mode": "cf",
+            }},
+        ]}}
+
+        out, _seen = run_provider(
+            _stream(rival, _skill_result(is_error=True), _result("answered directly")),
+        )
+
+        assert "output" not in out
+        assert "came back as an error" in out["error"]
+        assert out["metadata"]["skill_state"] == "failed"
 
     def test_argument_text_naming_cf_is_not_the_skill_naming_cf(self, run_provider):
         """The prompt this suite sends is `/cf <request>`, so every scenario's
@@ -278,6 +420,7 @@ class TestARunThatNeverLoadedTheSkillIsNotScored:
 
         assert "output" not in out
         assert "came back as an error" in out["error"]
+        assert out["metadata"]["skill_state"] == "failed"
 
     def test_a_cf_call_with_no_result_at_all_is_not_a_confirmed_run(self, run_provider):
         """Absence of a result is not a non-error result. A trace cut off after
@@ -287,6 +430,7 @@ class TestARunThatNeverLoadedTheSkillIsNotScored:
 
         assert "output" not in out
         assert "no result in the transcript" in out["error"]
+        assert out["metadata"]["skill_state"] == "failed"
 
     def test_a_repeated_call_id_collapses_to_the_last_one(self, run_provider):
         """The id is the only binding between a call and its result, so a
@@ -401,6 +545,60 @@ class TestAnUnreadableRunIsNeverScored:
         out, _seen = run_provider(transcript)
 
         assert out["metadata"]["unparsed_lines"] == 1
+
+    def test_the_other_candidates_are_surfaced_not_merely_inspectable(self, run_provider, caplog):
+        """"Inspectable" only mitigates the false positive if someone inspects.
+        A verdict reached from an input naming more than one identifier is the
+        shape a false pass takes, so it is reported per run — on stderr and in
+        the metadata — rather than left for whoever thinks to diff
+        `skill_call_inputs` afterwards."""
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "command": "superpowers:brainstorming", "mode": "cf",
+            }},
+        ]}}
+
+        with caplog.at_level("WARNING", logger=claude_provider.logger.name):
+            out, _seen = run_provider(_stream(rival, _skill_result(), _result()))
+
+        assert out["metadata"]["skill_match_other_candidates"] == ["brainstorming"]
+        assert "may rest on a field that is not the skill name" in caplog.text
+        assert "brainstorming" in caplog.text, "and names the other candidate"
+
+    def test_the_other_candidates_are_deduplicated_and_ordered(self, run_provider, caplog):
+        """This list reaches a message a person reads, and the traversal is a
+        stack — so left raw it repeats a value that appears twice and orders the
+        rest by an implementation detail. Two runs of the same transcript would
+        then produce different prose for the same finding."""
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "a": "zebra", "b": "alpha", "c": "cf",
+                "d": {"e": "zebra"}, "f": ["alpha", "middle"],
+            }},
+        ]}}
+
+        with caplog.at_level("WARNING", logger=claude_provider.logger.name):
+            out, _seen = run_provider(_stream(rival, _skill_result(), _result()))
+
+        assert out["metadata"]["skill_match_other_candidates"] == [
+            "alpha", "middle", "zebra",
+        ], "each named once, in an order that does not depend on the walk"
+        assert "['alpha', 'middle', 'zebra']" in caplog.text
+
+    def test_a_second_identifier_beside_a_genuine_call_is_reported_too(self, run_provider):
+        """The field is an over-approximation and says so: it cannot tell a
+        wrong-field match from a correct call that merely carries a second
+        identifier, because telling them apart needs the very knowledge whose
+        absence created the trade. Reported, not judged — `ran` still stands."""
+        genuine = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill",
+             "input": {"command": "cf", "mode": "auto"}},
+        ]}}
+
+        out, _seen = run_provider(_stream(genuine, _skill_result(), _result()))
+
+        assert out["output"] == "the answer", "a flag, not a verdict"
+        assert out["metadata"]["skill_match_other_candidates"] == ["auto"]
 
     def test_a_dropped_line_also_warns_where_a_person_will_see_it(self, run_provider, caplog):
         """A count riding along in a metadata dict is not the same as saying so.

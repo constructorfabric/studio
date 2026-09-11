@@ -71,6 +71,46 @@ bound to *that* call's id. Each half of that matters.
 - No result at all is not a non-error result. A trace cut off after the call is
   refused, not read as a success.
 
+### One false positive is accepted on purpose
+
+Which key holds the skill name is not part of any stable contract, so **every
+identifier-shaped value in the tool input is a candidate, at any depth** — and
+an input that is not a dict at all is scanned rather than refused, for the same
+reason. That means a rival skill invoked with some unrelated field whose value
+happens to be `cf` — `{"command": "superpowers:brainstorming", "mode": "cf"}` —
+reads as this skill running. `plugin:cf` in that position does too, since the
+comparison happens after the namespace is dropped.
+
+This is a deliberate trade, not an oversight. Narrowing the scan to a fixed set
+of name keys would close it and open a worse hole:
+
+| | every value (today) | narrowed to name keys |
+|---|---|---|
+| rival skill with a bare `cf` field | rare false **pass** | correct |
+| the real key is not in the list | correct | certain false **failure**, on every run |
+
+Nobody here has run the CLI, so the input's real shape is unknown — the fixtures
+use `{"command": …}` because someone chose it, not because it was measured. Under
+that uncertainty the scan errs toward recall, which is also why it descends into
+nested values: a name one level down that went unfound would produce the certain
+failure rather than the rare pass.
+
+Two things keep the accepted case from being silent:
+
+- **`skill_match_other_candidates`**, and a matching stderr warning, listing the
+  other identifiers whenever the matched call's input named more than one. That
+  is the shape a false pass takes, so it is reported per run rather than left
+  for whoever thinks to look. It is an **over-approximation, named for what it
+  observes rather than what it suspects**: it cannot tell a wrong-field match
+  from a correct call that merely carries a second identifier, so a genuine
+  `{"command": "cf", "mode": "auto"}` is listed too. Narrowing it would need the
+  very knowledge whose absence created the trade. It is a flag, not a verdict —
+  the run is still scored.
+- **`skill_call_inputs`**, the raw inputs verbatim, so the verdict can be checked.
+
+`test_a_bare_cf_in_an_unrelated_field_still_counts` pins the trade. If the real
+key is ever established, that test is where it gets renegotiated.
+
 Three more shapes are errors for the same reason — there is no answer to grade,
 or no trace to trust:
 
@@ -82,7 +122,8 @@ or no trace to trust:
 
 Metadata: `skill_state` (`ran` / `failed` / `absent`), `skills_invoked` (the
 names), `skill_call_inputs` (those inputs verbatim, for when a name did not
-resolve), `unparsed_lines`, and `unscored_output` — the answer that was withheld
+resolve), `skill_match_other_candidates` (above), `unparsed_lines`, and
+`unscored_output` — the answer that was withheld
 from the grader, kept for diagnosis. Every return *that reached the CLI*, answer
 or error, carries `duration_s` and `sandbox`; a failure before the sandbox
 exists — setup error, setup timeout — has no sandbox path to name. The
