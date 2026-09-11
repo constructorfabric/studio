@@ -2642,6 +2642,26 @@ def test_required_bootstrap_activates_content_and_resource_context_memory() -> N
     assert "RUN ResourceContextMemory" in required_bootstrap
 
 
+def test_pdsl_execution_card_routes_emit_menu_through_native_ask_tool() -> None:
+    """Issue #142: blocking EMIT_MENU gates route through a harness's native
+    question dialog when the generated shim's ask_tool_name binding and the
+    menu's shape (<=4 fixed-choice options) allow it, else fall back to text."""
+    repo_root = Path(__file__).resolve().parents[1]
+    execution_card = (
+        repo_root / "skills" / "studio" / "modules" / "runtime" / "pdsl-execution-card.md"
+    ).read_text(encoding="utf-8")
+    normalized = " ".join(execution_card.split())
+
+    assert "native-dialog shape-compatible" in normalized
+    assert "at most 4 top-level `OPTIONS` entries" in normalized
+    assert "no entry documented as accepting free-text" in normalized
+    assert "`ask_tool_name` context is a real tool name (not `unset`)" in normalized
+    assert "invoke that tool instead of rendering the menu as prose" in normalized
+    assert "`ask_tool_description` can match it" in normalized
+    assert "shape-incompatible `EMIT_MENU`" in normalized
+    assert "NEVER treat a harness with no matching native affordance as an error" in normalized
+
+
 def test_studio_instruction_memory_runs_in_concrete_workflows() -> None:
     """Concrete workflows load generated/project Studio instructions before work."""
     repo_root = Path(__file__).resolve().parents[1]

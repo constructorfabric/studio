@@ -40,6 +40,27 @@ RULES:
     handles all unmatched input.
   ALWAYS require every top-level `OPTIONS` entry to start with a decimal
     number; aliases or patterns follow the number, not replace it.
+  ALWAYS, when executing `EMIT_MENU`, first check the menu is native-dialog
+    shape-compatible: at most 4 top-level `OPTIONS` entries, and no entry
+    documented as accepting free-text/arbitrary input (a path, a name, "or
+    describe your own", etc.) rather than choosing among the listed entries.
+  ALWAYS, for a shape-compatible `EMIT_MENU` where the active `ask_tool_name`
+    context is a real tool name (not `unset`), invoke that tool instead of
+    rendering the menu as prose: pass `TITLE` as the question/header text and
+    each numbered `OPTIONS` entry as one selectable option (its short label as
+    the option label, its action clause as the option description).
+  ALWAYS, for a shape-compatible `EMIT_MENU` where `ask_tool_name` is `unset`,
+    still surface the menu so a harness exposing an equivalent affordance it
+    recognizes by `ask_tool_description` can match it: state the question,
+    list the numbered options, and mark it explicitly as a blocking question
+    the assistant is waiting on — placed as the last content in the turn.
+  ALWAYS, for a shape-incompatible `EMIT_MENU` (more than 4 options, or any
+    free-text-accepting entry), render as today's text menu regardless of
+    `ask_tool_name` — a native dialog's fixed-choice shape cannot represent it
+    faithfully — but still place it last in the turn and mark it blocking.
+  NEVER treat a harness with no matching native affordance as an error;
+    fall back to the same explicitly-marked, end-of-turn text rendering used
+    for shape-incompatible menus.
   ALWAYS treat `ON_ERROR` as the named recovery path for matching failures.
   ALWAYS treat `NOTES` as explanatory only; NOTES do not create executable
     obligations unless an active rule references them.
