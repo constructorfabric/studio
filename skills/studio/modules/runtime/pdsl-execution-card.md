@@ -54,17 +54,19 @@ RULES:
     no different behavior.
   ALWAYS, for a shape-compatible `EMIT_MENU` where the active `ask_tool_name`
     context is a real tool name (not `unset` or never established), invoke
-    that tool instead of rendering the menu as prose, mapped onto that tool's
-    own question/options schema: `TITLE` fills its single question/header
-    field (there is one `EMIT_MENU` per invocation, never a multi-question
-    batch), and each numbered `OPTIONS` entry becomes one selectable option —
-    label from the entry's short form, description from its action clause —
-    with the entry's number/alias retained as that option's canonical,
-    non-displayed identity so the returned selection resumes the exact
+    that tool instead of rendering the menu as prose, built from this fixed
+    abstract contract — not the tool's own literal field names, which vary by
+    harness: one prompt string (from `TITLE`); an ordered list of options,
+    each carrying a display label (the entry's short form), a display
+    description (its action clause), and a canonical, non-displayed identity
+    (the entry's number/alias) so the returned selection resumes the exact
     numbered branch regardless of how the harness renders or truncates the
-    displayed label; that invocation is itself the turn's `WAIT`/`STOP_TURN`
-    boundary — NEVER additionally re-render the menu as text or execute a
-    redundant `STOP_TURN` after it.
+    displayed label. For Claude's bound `AskUserQuestion`: one `questions`
+    entry, its `question`/`header` set to the prompt, `options[].label` and
+    `options[].description` set from each option's display label/description.
+    That invocation is itself the turn's `WAIT`/`STOP_TURN` boundary — NEVER
+    additionally re-render the menu as text or execute a redundant
+    `STOP_TURN` after it.
   ALWAYS treat a native-tool result that selects none of the numbered
     `OPTIONS` — an out-of-band/free-text answer, a cancellation, a dismissal,
     or a tool error — as unmatched input for the menu's own `INVALID` handler;

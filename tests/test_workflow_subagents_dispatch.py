@@ -2668,9 +2668,17 @@ def test_pdsl_execution_card_routes_emit_menu_through_native_ask_tool() -> None:
     assert "identically to `unset`" in normalized
     assert "cancellation, a dismissal, or a tool error" in normalized
     assert "unmatched input for the menu's own `INVALID` handler" in normalized
-    assert "that invocation is itself the turn's" in normalized
+    assert "invocation is itself the turn's" in normalized
     assert "boundary" in normalized
     assert "blocking gate paired with" in normalized
+
+    # Concrete field-mapping contract (issue #142 follow-up): an abstract
+    # prompt/options shape independent of any one tool's literal field names,
+    # plus a worked example for the one tool actually bound today.
+    assert "not the tool's own literal field names, which vary by" in normalized
+    assert "one prompt string (from `TITLE`)" in normalized
+    assert "canonical, non-displayed identity" in normalized
+    assert "one `questions` entry, its `question`/`header`" in normalized
 
 
 def test_required_bootstrap_ask_tool_handoff_names_match_the_generated_lines() -> None:
