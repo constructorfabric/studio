@@ -32,6 +32,7 @@ RULES:
   ALWAYS keep template-vars and context-memory loaded so downstream protocols can resolve variables and classify remembered context deterministically
   ALWAYS activate ContentMemory so downstream content payloads inherit the runtime lifecycle rules from bootstrap
   ALWAYS activate ResourceContextMemory so downstream workflows can safely store and forward resource_context without reintroducing bootstrap gaps
+  ALWAYS treat the generated shim's `ask_tool_name` / `ask_tool_description` context (set above this unit, per generation target) as input to PdslExecutionSemantics' `EMIT_MENU` native-dialog rule; NEVER invent a binding this bootstrap did not receive
   ALWAYS treat this bootstrap as exclusively for generated shims and thin skills that bypass workflow-bootstrap; NEVER load required-bootstrap in a flow that has already run WorkflowBootstrapRouterPrelude unless ContentMemory and ResourceContextMemory are idempotent on re-activation
   NEVER allow a generated shim to interpret skill-local blocked, override, or
   result-envelope behavior before ThinSkillRuntimeContracts has executed

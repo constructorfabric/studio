@@ -2642,6 +2642,72 @@ def test_required_bootstrap_activates_content_and_resource_context_memory() -> N
     assert "RUN ResourceContextMemory" in required_bootstrap
 
 
+def test_pdsl_execution_card_routes_emit_menu_through_native_ask_tool() -> None:
+    """Issue #142: blocking EMIT_MENU gates route through a harness's native
+    question dialog when the generated shim's ask_tool_name binding and the
+    menu's shape (<=4 fixed-choice options) allow it, else fall back to text."""
+    repo_root = Path(__file__).resolve().parents[1]
+    execution_card = (
+        repo_root / "skills" / "studio" / "modules" / "runtime" / "pdsl-execution-card.md"
+    ).read_text(encoding="utf-8")
+    normalized = " ".join(execution_card.split())
+
+    assert "native-dialog shape-compatible" in normalized
+    assert "at most 4 top-level `OPTIONS` entries" in normalized
+    assert "no entry documented as accepting free-text" in normalized
+    assert "`ask_tool_name` context is a real tool name (not `unset` or never established)" in normalized
+    assert "invoke that tool instead of rendering the menu as prose" in normalized
+    assert "`ask_tool_description` can match it" in normalized
+    assert "shape-incompatible `EMIT_MENU`" in normalized
+    assert "NEVER treat a harness with no matching native affordance as an error" in normalized
+
+    # Reviewer-identified gaps (issue #142 follow-up): never-bound treated as
+    # unset, out-of-band/cancelled native answers routed to INVALID, and
+    # native invocation itself satisfying the turn's WAIT/STOP_TURN boundary.
+    assert "never established (no" in normalized
+    assert "identically to `unset`" in normalized
+    assert "cancellation, a dismissal, or a tool error" in normalized
+    assert "unmatched input for the menu's own `INVALID` handler" in normalized
+    assert "invocation is itself the turn's" in normalized
+    assert "boundary" in normalized
+    assert "blocking gate paired with" in normalized
+
+    # Concrete field-mapping contract (issue #142 follow-up): an abstract
+    # prompt/options shape independent of any one tool's literal field names,
+    # plus a worked example for the one tool actually bound today.
+    assert "not the tool's own literal field names, which vary by" in normalized
+    assert "one prompt string (from `TITLE`)" in normalized
+    assert "canonical, non-displayed identity" in normalized
+    assert "one `questions` entry, its `question`/`header`" in normalized
+
+
+def test_required_bootstrap_ask_tool_handoff_names_match_the_generated_lines() -> None:
+    """Issue #142 follow-up: the bridging rule in required-bootstrap.md must
+    name the exact variables agents.py actually emits, so a rename/removal on
+    either side is caught instead of two independently-passing test halves."""
+    repo_root = Path(__file__).resolve().parents[1]
+    required_bootstrap = (
+        repo_root / "skills" / "studio" / "modules" / "runtime" / "required-bootstrap.md"
+    ).read_text(encoding="utf-8")
+
+    assert "`ask_tool_name`" in required_bootstrap
+    assert "`ask_tool_description`" in required_bootstrap
+    assert "PdslExecutionSemantics" in required_bootstrap
+    assert "EMIT_MENU" in required_bootstrap
+
+    from studio.commands.agents import _follow_protocol_lines, _REQUIRED_BOOTSTRAP_PATH
+
+    generated = "\n".join(
+        _follow_protocol_lines(
+            "{cf-studio-path}/.core/workflows/analyze.md",
+            required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+            ask_tool_name="AskUserQuestion",
+        )
+    )
+    assert "ask_tool_name = " in generated
+    assert "ask_tool_description = " in generated
+
+
 def test_studio_instruction_memory_runs_in_concrete_workflows() -> None:
     """Concrete workflows load generated/project Studio instructions before work."""
     repo_root = Path(__file__).resolve().parents[1]

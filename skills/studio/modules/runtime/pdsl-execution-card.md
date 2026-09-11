@@ -51,6 +51,51 @@ RULES:
     handles all unmatched input.
   ALWAYS require every top-level `OPTIONS` entry to start with a decimal
     number; aliases or patterns follow the number, not replace it.
+  ALWAYS treat every `EMIT_MENU` in this corpus as a blocking gate paired with
+    `WAIT`/`STOP_TURN` in the same `DO` block; the native-dialog routing below
+    applies to that pairing, not to text output that merely lists choices
+    without waiting on a reply.
+  ALWAYS, when executing `EMIT_MENU`, first check the menu is native-dialog
+    shape-compatible: at most 4 top-level `OPTIONS` entries, and no entry
+    documented as accepting free-text/arbitrary input (a path, a name, "or
+    describe your own", etc.) rather than choosing among the listed entries.
+  ALWAYS treat an `ask_tool_name` context that was never established (no
+    generated shim or dispatch prompt set it at all) identically to `unset`;
+    the distinction between "explicitly no binding" and "never bound" carries
+    no different behavior.
+  ALWAYS, for a shape-compatible `EMIT_MENU` where the active `ask_tool_name`
+    context is a real tool name (not `unset` or never established), invoke
+    that tool instead of rendering the menu as prose, built from this fixed
+    abstract contract — not the tool's own literal field names, which vary by
+    harness: one prompt string (from `TITLE`); an ordered list of options,
+    each carrying a display label (the entry's short form), a display
+    description (its action clause), and a canonical, non-displayed identity
+    (the entry's number/alias) so the returned selection resumes the exact
+    numbered branch regardless of how the harness renders or truncates the
+    displayed label. For Claude's bound `AskUserQuestion`: one `questions`
+    entry, its `question`/`header` set to the prompt, `options[].label` and
+    `options[].description` set from each option's display label/description.
+    That invocation is itself the turn's `WAIT`/`STOP_TURN` boundary — NEVER
+    additionally re-render the menu as text or execute a redundant
+    `STOP_TURN` after it.
+  ALWAYS treat a native-tool result that selects none of the numbered
+    `OPTIONS` — an out-of-band/free-text answer, a cancellation, a dismissal,
+    or a tool error — as unmatched input for the menu's own `INVALID` handler;
+    NEVER treat any such outcome as silently choosing a default option or
+    advancing past the gate.
+  ALWAYS, for a shape-compatible `EMIT_MENU` where `ask_tool_name` is `unset`
+    or never established, still surface the menu so a harness exposing an
+    equivalent affordance it recognizes by `ask_tool_description` can match
+    it: state the question, list the numbered options, and mark it explicitly
+    as a blocking question the assistant is waiting on — placed as the last
+    content in the turn.
+  ALWAYS, for a shape-incompatible `EMIT_MENU` (more than 4 options, or any
+    free-text-accepting entry), render as today's text menu regardless of
+    `ask_tool_name` — a native dialog's fixed-choice shape cannot represent it
+    faithfully — but still place it last in the turn and mark it blocking.
+  NEVER treat a harness with no matching native affordance as an error;
+    fall back to the same explicitly-marked, end-of-turn text rendering used
+    for shape-incompatible menus.
   ALWAYS treat `ON_ERROR` as the named recovery path for matching failures.
   ALWAYS treat `NOTES` as explanatory only; NOTES do not create executable
     obligations unless an active rule references them.

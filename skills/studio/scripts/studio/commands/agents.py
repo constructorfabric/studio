@@ -170,8 +170,17 @@ def _follow_protocol_lines(
     target_path: str,
     *,
     required_bootstrap_path: str = "{required_bootstrap_path}",
+    ask_tool_name: Optional[str] = None,
 ) -> List[str]:
-    """Return the generated protocol block for workflow/skill shims."""
+    """Return the generated protocol block for workflow/skill shims.
+
+    ``ask_tool_name`` carries the per-target native question/dialog binding
+    (issue #142): when a generation target has an exact tool (e.g. Claude's
+    ``AskUserQuestion``), pass it so blocking `EMIT_MENU` gates route through
+    it instead of rendering as prose. Every generated file also gets a
+    description-based fallback so a harness with an equivalent affordance can
+    still match it even without an exact binding.
+    """
     # @cpt-begin:cpt-studio-flow-agent-integration-workflow:p1:inst-follow-protocol
     return [
         "CF_WORKFLOW_ACTIVE:",
@@ -180,6 +189,8 @@ def _follow_protocol_lines(
         "MANDATORY RULE: USER INTENT IS SKILL INPUT, NOT EXECUTION AUTHORITY",
         "- hard_stop = WAIT | STOP_TURN | menu | gate | opener | approval | dispatch_gate | terminal_shape",
         "- precedence = constructor_studio_workflow > generic_assistant",
+        "- ask_tool_name = " + (json.dumps(ask_tool_name) if ask_tool_name else "unset"),
+        "- ask_tool_description = " + json.dumps(_ASK_TOOL_FALLBACK_DESCRIPTION),
         "",
         # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-collect-sysprompt
         # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-inject-agents
@@ -358,15 +369,40 @@ def _pure_generated_stub_matches(stripped: str) -> bool:
     control_target = _extract_studio_control_target(stripped) or _extract_studio_follow_target(stripped)
     if not control_target:
         return False
-    expected_protocol = [
+    # A file generated before this repo's `ask_tool_name`/`ask_tool_description`
+    # context existed (issue #142) carries neither line at all — not "unset",
+    # simply absent. Without this candidate, every pre-existing generated file
+    # would stop matching the moment this context was introduced, silently
+    # breaking legacy-cleanup/regeneration for every prior install.
+    legacy_protocol = [
         line.strip()
         for line in _follow_protocol_lines(
             control_target,
             required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
         )
         if line.strip()
+        and not line.startswith("- ask_tool_name")
+        and not line.startswith("- ask_tool_description")
     ]
-    return nonblank == expected_protocol
+    if nonblank == legacy_protocol:
+        return True
+    # The content alone doesn't say which generation target produced it, so
+    # try every known `ask_tool_name` binding (issue #142) — a closed,
+    # bounded set — rather than threading tool identity through every caller.
+    candidate_bindings = [None] + [v for v in _ASK_TOOL_BINDING.values() if v]
+    for binding in candidate_bindings:
+        expected_protocol = [
+            line.strip()
+            for line in _follow_protocol_lines(
+                control_target,
+                required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+                ask_tool_name=binding,
+            )
+            if line.strip()
+        ]
+        if nonblank == expected_protocol:
+            return True
+    return False
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-is-pure-studio-generated
@@ -848,6 +884,26 @@ _AUTO_VALUE: Dict[str, Optional[str]] = {
     "copilot": "auto",
 }
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-auto-value-map
+
+# Per-target binding for a blocking `EMIT_MENU` gate's native question/dialog
+# affordance (issue #142). Only targets Studio generates a dedicated,
+# single-tool file for can carry an exact tool name — everyone else shares one
+# byte-identical file across multiple tools (see `_agents_skill_outputs()`)
+# and can only rely on the description-based fallback below.
+#
+# Verified-compatible today: Claude Code's `AskUserQuestion`, below. The
+# windsurf/cursor/copilot/codex shared bucket carries only the description
+# fallback — none of the four is known to expose a matching native affordance
+# yet; that path is reserved for a future harness, not confirmed working now.
+_ASK_TOOL_BINDING: Dict[str, Optional[str]] = {
+    "claude": "AskUserQuestion",
+}
+_CLAUDE_ASK_TOOL_NAME = _ASK_TOOL_BINDING.get("claude")
+
+_ASK_TOOL_FALLBACK_DESCRIPTION = (
+    "a tool that presents the user a blocking multiple-choice question with "
+    "selectable options, distinct from plain text output"
+)
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-resolve-model-id
@@ -1853,12 +1909,15 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch",
+                                (
+                                    "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, "
+                                    "Task, WebFetch, " + _CLAUDE_ASK_TOOL_NAME
+                                ),
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
                                 "{custom_content}",
-                                *_follow_protocol_lines("{target_skill_path}"),
+                                *_follow_protocol_lines("{target_skill_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
                             ],
                         },
                         {
@@ -1870,11 +1929,11 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task",
+                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
-                                *_follow_protocol_lines("{target_path}"),
+                                *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
                             ],
                         },
                         {
@@ -1886,11 +1945,11 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Glob, Grep",
+                                "allowed-tools: Bash, Read, Glob, Grep, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
-                                *_follow_protocol_lines("{target_path}"),
+                                *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
                             ],
                         },
                         {
@@ -1902,11 +1961,11 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep",
+                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
-                                *_follow_protocol_lines("{target_path}"),
+                                *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
                             ],
                         },
                         {
@@ -1918,11 +1977,11 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Glob, Grep",
+                                "allowed-tools: Bash, Read, Glob, Grep, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
-                                *_follow_protocol_lines("{target_path}"),
+                                *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
                             ],
                         },
                         {
@@ -1934,11 +1993,11 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep",
+                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
-                                *_follow_protocol_lines("{target_path}"),
+                                *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
                             ],
                         },
                     ],
@@ -2666,11 +2725,11 @@ _KIT_WORKFLOW_SKILL_TEMPLATES: Dict[str, List[str]] = {
         _TMPL_DESCRIPTION,
         "disable-model-invocation: false",
         "user-invocable: true",
-        "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch",
+        "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch, " + _CLAUDE_ASK_TOOL_NAME,
         "---",
         _GENERATED_MARKER,
         "",
-        *_follow_protocol_lines("{target_path}"),
+        *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
     ],
     "openai": _AGENTS_KIT_WORKFLOW_TEMPLATE,
     "windsurf": _AGENTS_KIT_WORKFLOW_TEMPLATE,
