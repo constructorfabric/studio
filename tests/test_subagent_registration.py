@@ -1195,6 +1195,31 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertIn("ALWAYS stop if any required fragment or rule cannot be followed", joined)
         self.assertTrue(_is_pure_studio_generated(content, expected_name="cf-analyze"))
 
+    def test_pre_142_generated_files_still_recognized_as_pure_after_upgrade(self):
+        """A file Studio generated before ask_tool_name/ask_tool_description
+        existed carries neither line at all (not "unset" -- absent). It must
+        still be recognized as a pure, untouched Studio stub after upgrading,
+        or legacy-cleanup/regeneration silently stops touching every
+        pre-existing install's generated files."""
+        from studio.commands.agents import (
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/analyze.md"
+        pre_142_lines = [
+            line
+            for line in _follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH)
+            if line.strip()
+            and not line.startswith("- ask_tool_name")
+            and not line.startswith("- ask_tool_description")
+        ]
+        pre_142_body = "\n".join(pre_142_lines)
+
+        self.assertTrue(_pure_generated_stub_matches(pre_142_body))
+        self.assertFalse(_pure_generated_stub_matches(pre_142_body + "\nCUSTOM USER LINE"))
+
     def test_ask_tool_binding_defaults_to_unset_with_description_fallback(self):
         """Issue #142: every generated shim carries an ask-tool context, even
         when no target passes an explicit binding — the description-based

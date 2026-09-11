@@ -369,6 +369,23 @@ def _pure_generated_stub_matches(stripped: str) -> bool:
     control_target = _extract_studio_control_target(stripped) or _extract_studio_follow_target(stripped)
     if not control_target:
         return False
+    # A file generated before this repo's `ask_tool_name`/`ask_tool_description`
+    # context existed (issue #142) carries neither line at all — not "unset",
+    # simply absent. Without this candidate, every pre-existing generated file
+    # would stop matching the moment this context was introduced, silently
+    # breaking legacy-cleanup/regeneration for every prior install.
+    legacy_protocol = [
+        line.strip()
+        for line in _follow_protocol_lines(
+            control_target,
+            required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+        )
+        if line.strip()
+        and not line.startswith("- ask_tool_name")
+        and not line.startswith("- ask_tool_description")
+    ]
+    if nonblank == legacy_protocol:
+        return True
     # The content alone doesn't say which generation target produced it, so
     # try every known `ask_tool_name` binding (issue #142) — a closed,
     # bounded set — rather than threading tool identity through every caller.
