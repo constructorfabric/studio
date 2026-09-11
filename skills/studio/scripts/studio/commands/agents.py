@@ -890,6 +890,11 @@ _AUTO_VALUE: Dict[str, Optional[str]] = {
 # single-tool file for can carry an exact tool name — everyone else shares one
 # byte-identical file across multiple tools (see `_agents_skill_outputs()`)
 # and can only rely on the description-based fallback below.
+#
+# Verified-compatible today: Claude Code's `AskUserQuestion`, below. The
+# windsurf/cursor/copilot/codex shared bucket carries only the description
+# fallback — none of the four is known to expose a matching native affordance
+# yet; that path is reserved for a future harness, not confirmed working now.
 _ASK_TOOL_BINDING: Dict[str, Optional[str]] = {
     "claude": "AskUserQuestion",
 }
@@ -1904,7 +1909,10 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch",
+                                (
+                                    "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, "
+                                    "Task, WebFetch, " + _CLAUDE_ASK_TOOL_NAME
+                                ),
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
@@ -1921,7 +1929,7 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task",
+                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
@@ -1937,7 +1945,7 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Glob, Grep",
+                                "allowed-tools: Bash, Read, Glob, Grep, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
@@ -1953,7 +1961,7 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep",
+                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
@@ -1969,7 +1977,7 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Glob, Grep",
+                                "allowed-tools: Bash, Read, Glob, Grep, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
@@ -1985,7 +1993,7 @@ def _default_agents_config() -> dict:
                                 _TMPL_DESCRIPTION,
                                 "disable-model-invocation: false",
                                 "user-invocable: true",
-                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep",
+                                "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, " + _CLAUDE_ASK_TOOL_NAME,
                                 "---",
                                 _GENERATED_MARKER,
                                 "",
@@ -2717,7 +2725,7 @@ _KIT_WORKFLOW_SKILL_TEMPLATES: Dict[str, List[str]] = {
         _TMPL_DESCRIPTION,
         "disable-model-invocation: false",
         "user-invocable: true",
-        "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch",
+        "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch, " + _CLAUDE_ASK_TOOL_NAME,
         "---",
         _GENERATED_MARKER,
         "",

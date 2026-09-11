@@ -1274,7 +1274,9 @@ class TestLegacyStubClassification(unittest.TestCase):
 
     def test_claude_skill_outputs_bind_ask_user_question(self):
         """Every Claude-specific generated skill template (the only per-tool
-        bucket that can name an exact tool) must request AskUserQuestion."""
+        bucket that can name an exact tool) must request AskUserQuestion, and
+        must also grant it in `allowed-tools:` -- naming a tool the shim isn't
+        permitted to call would make the instruction unusable."""
         from studio.commands.agents import _default_agents_config
 
         config = _default_agents_config()
@@ -1287,6 +1289,33 @@ class TestLegacyStubClassification(unittest.TestCase):
                 template,
                 msg=f"missing ask_tool_name binding in {entry['path']}",
             )
+            allowed_tools_line = next(
+                (line for line in entry["template"] if line.lstrip().startswith("allowed-tools:")),
+                None,
+            )
+            self.assertIsNotNone(allowed_tools_line, msg=f"no allowed-tools line in {entry['path']}")
+            self.assertIn(
+                "AskUserQuestion",
+                allowed_tools_line,
+                msg=f"AskUserQuestion instructed but not permitted in {entry['path']}",
+            )
+
+    def test_kit_workflow_skill_template_claude_binds_and_permits_ask_user_question(self):
+        """Issue #142 follow-up: `_KIT_WORKFLOW_SKILL_TEMPLATES['claude']` is a
+        separate production call site from `_default_agents_config()`'s
+        outputs -- it needs its own coverage, both for the binding and for
+        `allowed-tools:` actually granting it."""
+        from studio.commands.agents import _KIT_WORKFLOW_SKILL_TEMPLATES
+
+        template = _KIT_WORKFLOW_SKILL_TEMPLATES["claude"]
+        joined = "\n".join(template)
+        self.assertIn('- ask_tool_name = "AskUserQuestion"', joined)
+        allowed_tools_line = next(
+            (line for line in template if line.lstrip().startswith("allowed-tools:")),
+            None,
+        )
+        self.assertIsNotNone(allowed_tools_line)
+        self.assertIn("AskUserQuestion", allowed_tools_line)
 
     def test_shared_skill_outputs_have_no_exact_ask_tool_binding(self):
         """The shared `.agents/skills/` bucket is byte-identical across
