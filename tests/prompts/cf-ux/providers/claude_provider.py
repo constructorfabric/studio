@@ -79,6 +79,20 @@ _RESULT_OK = "success"
 #: a person will see it, and the house rule is that a swallowed exception warns
 #: on stderr rather than only in a return value (`architecture/DESIGN.md`).
 _LOG_UNPARSED_LINE = "cf-ux claude provider: stream line %d would not parse; skipped"
+#: A `ran` verdict reached from an input that names more than one identifier is
+#: the shape a false pass takes, so it is reported per run rather than left to
+#: whoever thinks to inspect `skill_call_inputs` afterwards.
+#:
+#: Deliberately an over-approximation, and named for what it observes rather
+#: than what it suspects. Since the name's key is unknown, this cannot tell a
+#: wrong-field match from a correct call that merely carries a second
+#: identifier: every false positive of this class is reported, and so are some
+#: perfectly good runs. Narrowing it would need the very knowledge whose absence
+#: created the trade.
+_LOG_AMBIGUOUS_MATCH = (
+    "cf-ux claude provider: matched %r in a Skill input that also names %s; "
+    "the verdict may rest on a field that is not the skill name"
+)
 
 
 def _stream_events(raw: str) -> tuple[list[dict[str, Any]], int]:
@@ -133,23 +147,44 @@ def _invoked_names(payload: Any) -> list[str]:
     """The skill identifiers a `Skill` tool input names.
 
     Which key holds the name is not part of any stable contract, so every string
-    value shaped like an identifier is a candidate — but each is compared
-    *whole*, after dropping any `plugin:` namespace. That is what separates the
-    skill's name from the argument text, which in this suite always quotes a
-    `/cf …` prompt.
+    value shaped like an identifier is a candidate — *at any depth*, because a
+    tool input that nests its identifier one level down (`{"options": {"skill":
+    "cf"}}`) is a shape this cannot rule out either. Stopping at the top level
+    would mean a nested name is never found, and then every run errors: the
+    certain false failure this trade exists to avoid, rather than the rare false
+    pass it accepts.
+
+    Each candidate is compared *whole* — but only after any `plugin:` or `path/`
+    namespace is dropped, so `plugin:cf` counts and `cf-generate` does not. What
+    the shape filter excludes is the argument text, which in this suite always
+    quotes a `/cf …` prompt.
+
+    A top-level input that is not a dict is scanned rather than refused, for the
+    same reason: a bare string or a list is a shape this cannot rule out either,
+    and refusing it would mean the name is never found and every run errors.
+
+    Returned sorted and deduplicated. The traversal is a stack, so its own order
+    is an implementation detail, and nothing downstream should vary with it —
+    this list reaches a warning message a person reads.
     """
-    if not isinstance(payload, dict):
-        return []
-    names = []
-    for value in payload.values():
-        if not isinstance(value, str) or not _NAME_SHAPE.fullmatch(value.strip()):
+    names = set()
+    pending = [payload]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, dict):
+            pending.extend(current.values())
             continue
-        name = value.strip()
+        if isinstance(current, list):
+            pending.extend(current)
+            continue
+        if not isinstance(current, str) or not _NAME_SHAPE.fullmatch(current.strip()):
+            continue
+        name = current.strip()
         for separator in _NAME_SEPARATORS:
             name = name.rsplit(separator, 1)[-1]
         if name:
-            names.append(name)
-    return names
+            names.add(name)
+    return sorted(names)
 
 
 class _SkillTrace(NamedTuple):
@@ -159,6 +194,9 @@ class _SkillTrace(NamedTuple):
     names: list[str]    # skill identifiers the transcript names
     inputs: list[str]   # the tool inputs verbatim, serialized, for diagnosis
     detail: str
+    #: The other identifiers in the matched call, when there were any. Reported
+    #: rather than judged: see `_LOG_AMBIGUOUS_MATCH`.
+    other_candidates: tuple[str, ...] = ()
 
 
 def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
@@ -205,8 +243,19 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
             "failed", names, inputs,
             f"a {_SKILL_TOOL} ran but none of them named {_SKILL_NAME!r}",
         )
-    if any(results.get(call_id) is False for call_id in targeted):
-        return _SkillTrace("ran", names, inputs, "")
+    for call_id in targeted:
+        if results.get(call_id) is not False:
+            continue
+        # Because the name's key is unknown, `cf` may have been matched against a
+        # field that is not the name at all — a rival skill invoked with some
+        # unrelated value of `cf` reads as this one running. That trade is
+        # accepted (a rare false pass beats a certain false failure), but a
+        # verdict resting on one of several candidates is said out loud rather
+        # than left for whoever thinks to diff the metadata afterwards.
+        others = tuple(name for name in named[call_id] if name != _SKILL_NAME)
+        if others:
+            logger.warning(_LOG_AMBIGUOUS_MATCH, _SKILL_NAME, list(others))
+        return _SkillTrace("ran", names, inputs, "", others)
     if any(call_id not in results for call_id in targeted):
         return _SkillTrace(
             "failed", names, inputs,
@@ -327,6 +376,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "skill_state": state,
         "skills_invoked": trace.names,
         "skill_call_inputs": trace.inputs,
+        "skill_match_other_candidates": list(trace.other_candidates),
     }
     cost = payload.get("total_cost_usd")
 
