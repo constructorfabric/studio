@@ -158,6 +158,10 @@ def _cmd_read_gate(argv: List[str]) -> int:
     from .commands.read_gate import cmd_read_gate
     return cmd_read_gate(argv)
 
+def _cmd_gate_log(argv: List[str]) -> int:
+    from .commands.gate_log import cmd_gate_log
+    return cmd_gate_log(argv)
+
 def _cmd_usage_report(argv: List[str]) -> int:
     from .commands.usage_report import cmd_usage_report
     return cmd_usage_report(argv)
@@ -254,6 +258,7 @@ _COMMAND_DESCRIPTIONS = {
     "heading-nav": "Find a Markdown file's retrieval sections containing a query's literal text",
     "retrieve": "Route a query through the two-tier JIT-retrieval cascade (heading-nav + TF-IDF, OKF vs. baseline)",
     "read-gate": "Check whether a Markdown file's line count crosses the large-read confirmation threshold",
+    "gate-log": "Record how one gate resolved in the local decision log",
     "usage-report": "Aggregate the local decision log's read events into a per-method token table",
     "change-summary": "Advisory digest of what changed on this branch, why, and which requirements it serves",
     "pdsl": "Validate PDSL prompt blocks",
@@ -274,7 +279,8 @@ _COMMAND_SECTIONS = [
     ("Kit Management", ["kit"]),
     ("Utility", [
         "toc", "chunk-input", "doc-index", "tfidf-score", "okf-status",
-        "heading-nav", "retrieve", "read-gate", "usage-report", "change-summary", "pdsl",
+        "heading-nav", "retrieve", "read-gate", "gate-log", "usage-report", "change-summary",
+        "pdsl",
     ]),
     ("Workspace", ["workspace-init", "workspace-add", "workspace-info", "workspace-sync"]),
     ("Delegation", ["delegate"]),
@@ -312,6 +318,7 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "heading-nav": "_cmd_heading_nav",
     "retrieve": "_cmd_retrieve",
     "read-gate": "_cmd_read_gate",
+    "gate-log": "_cmd_gate_log",
     "usage-report": "_cmd_usage_report",
     "change-summary": "_cmd_change_summary",
     "workspace-init": "_cmd_workspace_init",
@@ -353,6 +360,7 @@ _COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
     _cmd_heading_nav,
     _cmd_retrieve,
     _cmd_read_gate,
+    _cmd_gate_log,
     _cmd_usage_report,
     _cmd_change_summary,
     _cmd_workspace_init,
