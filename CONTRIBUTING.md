@@ -108,7 +108,7 @@ studio/                           # Project root
 
 ### Critical Rule
 
-> **Do not edit files under `.bootstrap/` directly when contributing.**
+> **Do not edit generated mirrors under `.bootstrap/.core/` or `.bootstrap/.gen/` directly when contributing.**
 > In this self-hosted repo, `.bootstrap/` is a bootstrap copy of a Constructor Studio version used
 > to develop Constructor Studio itself — similar to bootstrapping a compiler.
 > This is a repo-specific self-hosted setup, not the general user-project layout described in the README.
@@ -119,6 +119,8 @@ studio/                           # Project root
 > copy and agent integrations are in sync with the canonical source. Re-run `make update`
 > whenever you need to refresh the local bootstrap for manual verification, but do not commit
 > `.bootstrap/.core/`, `.bootstrap/.gen/`, or generated host integration files.
+
+The tracked `.bootstrap/config/AGENTS.md` and `.bootstrap/config/SKILL.md` are user-editable instructions for this repository. Edit them directly when changing local workflow guidance; they are not source-code mirrors. Generated kit outputs under `.bootstrap/config/kits/` still come from their canonical kit sources.
 
 The `make update` command runs `cfs update --source . --force`, which:
 1. Copies canonical sources into `.bootstrap/.core/`
@@ -384,6 +386,8 @@ list.
 ## Making Changes
 
 ### Code Changes
+
+For maintenance that preserves an existing specified contract, edit the canonical code directly and preserve its traceability markers. If requirements, architecture, or a specified contract change, update the affected specifications first. `/cf-generate` applies when the selected workflow calls for generation, rather than to every code edit.
 
 1. Edit canonical files under `skills/studio/scripts/studio/` (skill engine), `src/studio_proxy/` (CLI proxy), or other project-root source directories
 2. Do not patch mirrored files under `.bootstrap/` directly
