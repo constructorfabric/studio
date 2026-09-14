@@ -1763,12 +1763,15 @@ def _render_toml_agent(agent: Dict[str, Any], target_agent_path: str) -> str:
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-define-registry
-def _agents_skill_outputs() -> list:
-    """Shared .agents/skills/ outputs for all non-Claude tools.
+def _agents_skill_outputs(tool: str) -> list:
+    """Per-tool `.agents/skills/` outputs (issue #142 AC#6).
 
-    These templates are tool-agnostic — no ``{custom_content}`` because the
-    same file is written identically regardless of which tool triggers it.
+    Content is identical across windsurf/cursor/copilot/openai today because
+    none of them has an entry in `_ASK_TOOL_BINDING` — but each call now
+    returns its own independent list, so a future per-tool binding no longer
+    requires breaking the "one shared file" structure to express it.
     """
+    ask_tool_name = _ASK_TOOL_BINDING.get(tool)
     agents_skill_template = [
         "---",
         "name: {name}",
@@ -1776,7 +1779,7 @@ def _agents_skill_outputs() -> list:
         "---",
         _GENERATED_MARKER,
         "",
-        *_follow_protocol_lines("{target_skill_path}"),
+        *_follow_protocol_lines("{target_skill_path}", ask_tool_name=ask_tool_name),
     ]
     agents_workflow_skill_template = [
         "---",
@@ -1785,7 +1788,7 @@ def _agents_skill_outputs() -> list:
         "---",
         _GENERATED_MARKER,
         "",
-        *_follow_protocol_lines("{target_path}"),
+        *_follow_protocol_lines("{target_path}", ask_tool_name=ask_tool_name),
     ]
     return [
         {
@@ -1832,7 +1835,6 @@ def _default_agents_config() -> dict:
 
     Workflow outputs remain tool-specific (slash commands need per-tool dirs).
     """
-    shared_skills = _agents_skill_outputs()
     return {
         "version": 1,
         "agents": {
@@ -1853,7 +1855,7 @@ def _default_agents_config() -> dict:
                 "skills": {
                     "skill_name": "cf",
                     "custom_content": "",
-                    "outputs": shared_skills + [
+                    "outputs": _agents_skill_outputs("windsurf") + [
                         {
                             "path": ".windsurf/workflows/cf.md",
                             "template": [
@@ -1883,7 +1885,7 @@ def _default_agents_config() -> dict:
                 },
                 "skills": {
                     "custom_content": "",
-                    "outputs": shared_skills + [
+                    "outputs": _agents_skill_outputs("cursor") + [
                         {
                             "path": ".cursor/commands/cf.md",
                             "template": [
@@ -2022,7 +2024,7 @@ def _default_agents_config() -> dict:
                 },
                 "skills": {
                     "custom_content": "",
-                    "outputs": shared_skills + [
+                    "outputs": _agents_skill_outputs("copilot") + [
                         {
                             "path": ".github/prompts/cf.prompt.md",
                             "template": [
@@ -2042,7 +2044,7 @@ def _default_agents_config() -> dict:
             "openai": {
                 "skills": {
                     "custom_content": "",
-                    "outputs": list(shared_skills),
+                    "outputs": _agents_skill_outputs("openai"),
                 },
             },
             # OpenCode discovers the shared skills natively.  Its adapter
@@ -2708,15 +2710,24 @@ _KIT_WORKFLOW_SKILL_PATHS: Dict[str, str] = {
     "copilot": ".agents/skills/{skill_id}/SKILL.md",
 }
 
-_AGENTS_KIT_WORKFLOW_TEMPLATE: List[str] = [
-    "---",
-    "name: {name}",
-    _TMPL_DESCRIPTION,
-    "---",
-    _GENERATED_MARKER,
-    "",
-    *_follow_protocol_lines("{target_path}"),
-]
+def _build_agents_kit_workflow_template(tool: str) -> List[str]:
+    """Per-tool kit-workflow-as-skill template (issue #142 AC#6).
+
+    Content-identical to the old shared `_AGENTS_KIT_WORKFLOW_TEMPLATE`
+    constant for every tool with no `_ASK_TOOL_BINDING` entry — but each call
+    returns its own independent list, so a future binding for one of these
+    tools doesn't require restructuring a shared object first.
+    """
+    return [
+        "---",
+        "name: {name}",
+        _TMPL_DESCRIPTION,
+        "---",
+        _GENERATED_MARKER,
+        "",
+        *_follow_protocol_lines("{target_path}", ask_tool_name=_ASK_TOOL_BINDING.get(tool)),
+    ]
+
 
 _KIT_WORKFLOW_SKILL_TEMPLATES: Dict[str, List[str]] = {
     "claude": [
@@ -2731,10 +2742,10 @@ _KIT_WORKFLOW_SKILL_TEMPLATES: Dict[str, List[str]] = {
         "",
         *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
     ],
-    "openai": _AGENTS_KIT_WORKFLOW_TEMPLATE,
-    "windsurf": _AGENTS_KIT_WORKFLOW_TEMPLATE,
-    "cursor": _AGENTS_KIT_WORKFLOW_TEMPLATE,
-    "copilot": _AGENTS_KIT_WORKFLOW_TEMPLATE,
+    "openai": _build_agents_kit_workflow_template("openai"),
+    "windsurf": _build_agents_kit_workflow_template("windsurf"),
+    "cursor": _build_agents_kit_workflow_template("cursor"),
+    "copilot": _build_agents_kit_workflow_template("copilot"),
 }
 # @cpt-end:cpt-studio-algo-agent-integration-list-workflows:p1:inst-kit-workflow-skill-paths
 

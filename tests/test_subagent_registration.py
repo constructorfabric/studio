@@ -1318,15 +1318,21 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertIn("AskUserQuestion", allowed_tools_line)
 
     def test_shared_skill_outputs_have_no_exact_ask_tool_binding(self):
-        """The shared `.agents/skills/` bucket is byte-identical across
-        windsurf/cursor/copilot/codex, so it must never bake in an exact
-        tool name — only the description-based fallback."""
+        """Issue #142 AC#6 follow-up: windsurf/cursor/copilot/openai each get
+        their own independent output list now (no longer one shared Python
+        object), but content stays identical -- no exact tool binding -- for
+        every tool absent from _ASK_TOOL_BINDING."""
         from studio.commands.agents import _agents_skill_outputs
 
-        for entry in _agents_skill_outputs():
-            template = "\n".join(entry["template"])
-            self.assertIn("- ask_tool_name = unset", template)
-            self.assertNotIn("AskUserQuestion", template)
+        for tool in ("windsurf", "cursor", "copilot", "openai"):
+            for entry in _agents_skill_outputs(tool):
+                template = "\n".join(entry["template"])
+                self.assertIn(
+                    "- ask_tool_name = unset",
+                    template,
+                    msg=f"unexpected exact binding for tool={tool!r} in {entry['path']}",
+                )
+                self.assertNotIn("AskUserQuestion", template)
 
 
 if __name__ == "__main__":

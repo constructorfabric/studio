@@ -3228,10 +3228,11 @@ class TestMultiToolCoexistence(unittest.TestCase):
         """Shared .agents/skills/ templates must not contain {custom_content}."""
         from studio.commands.agents import _agents_skill_outputs
 
-        for out in _agents_skill_outputs():
-            template_text = "\n".join(out["template"])
-            self.assertNotIn("{custom_content}", template_text,
-                             f"Shared output {out['path']} must not reference custom_content")
+        for tool in ("windsurf", "cursor", "copilot", "openai"):
+            for out in _agents_skill_outputs(tool):
+                template_text = "\n".join(out["template"])
+                self.assertNotIn("{custom_content}", template_text,
+                                 f"Shared output {out['path']} (tool={tool!r}) must not reference custom_content")
 
     def test_second_tool_reports_shared_unchanged(self):
         """Second tool writing same shared files sees them as unchanged, not updated."""
