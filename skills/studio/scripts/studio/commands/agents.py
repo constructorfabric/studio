@@ -2740,17 +2740,18 @@ def _kit_workflow_skill_template(tool: str) -> Optional[List[str]]:
     the other frozen at import.
     """
     if tool == "claude":
+        claude_ask_tool_name = _ASK_TOOL_BINDING.get("claude")
         return [
             "---",
             "name: {name}",
             _TMPL_DESCRIPTION,
             "disable-model-invocation: false",
             "user-invocable: true",
-            "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch, " + _CLAUDE_ASK_TOOL_NAME,
+            "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch, " + claude_ask_tool_name,
             "---",
             _GENERATED_MARKER,
             "",
-            *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
+            *_follow_protocol_lines("{target_path}", ask_tool_name=claude_ask_tool_name),
         ]
     if tool in _KIT_WORKFLOW_SKILL_PATHS:
         return _build_agents_kit_workflow_template(tool)

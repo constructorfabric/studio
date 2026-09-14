@@ -1317,6 +1317,25 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertIsNotNone(allowed_tools_line)
         self.assertIn("AskUserQuestion", allowed_tools_line)
 
+    def test_kit_workflow_skill_template_claude_resolves_binding_fresh_per_call(self):
+        """CodeRabbit-caught follow-up: the claude branch of
+        _kit_workflow_skill_template must resolve _ASK_TOOL_BINDING['claude']
+        fresh on every call, not the import-time _CLAUDE_ASK_TOOL_NAME
+        constant -- otherwise a patched binding would silently keep both
+        `ask_tool_name` and `allowed-tools:` stale, unlike every other tool
+        this same function already handles correctly."""
+        import studio.commands.agents as agents_mod
+
+        with patch.dict(agents_mod._ASK_TOOL_BINDING, {"claude": "TestOnlyClaudeTool"}):
+            template = agents_mod._kit_workflow_skill_template("claude")
+            joined = "\n".join(template)
+            self.assertIn('- ask_tool_name = "TestOnlyClaudeTool"', joined)
+            allowed_tools_line = next(
+                (line for line in template if line.lstrip().startswith("allowed-tools:")),
+                None,
+            )
+            self.assertIn("TestOnlyClaudeTool", allowed_tools_line)
+
     def test_shared_skill_outputs_have_no_exact_ask_tool_binding(self):
         """Issue #142 AC#6 follow-up: every non-Claude tool gets its own
         independent output list now (no longer one shared Python object), but
