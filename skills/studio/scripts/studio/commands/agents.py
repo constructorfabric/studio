@@ -886,15 +886,17 @@ _AUTO_VALUE: Dict[str, Optional[str]] = {
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-auto-value-map
 
 # Per-target binding for a blocking `EMIT_MENU` gate's native question/dialog
-# affordance (issue #142). Only targets Studio generates a dedicated,
-# single-tool file for can carry an exact tool name — everyone else shares one
-# byte-identical file across multiple tools (see `_agents_skill_outputs()`)
-# and can only rely on the description-based fallback below.
+# affordance (issue #142). Every generation target can carry an exact tool
+# name here — `_agents_skill_outputs(tool)` and
+# `_build_agents_kit_workflow_template(tool)` both resolve `.get(tool)` fresh
+# per call, so adding an entry for a currently-unbound tool needs no
+# structural change (AC#6). A tool absent from this dict falls back to the
+# description-based mechanism below.
 #
-# Verified-compatible today: Claude Code's `AskUserQuestion`, below. The
-# windsurf/cursor/copilot/codex shared bucket carries only the description
-# fallback — none of the four is known to expose a matching native affordance
-# yet; that path is reserved for a future harness, not confirmed working now.
+# Verified-compatible today: Claude Code's `AskUserQuestion`, below. None of
+# windsurf/cursor/copilot/codex is known to expose a matching native
+# affordance yet — each still gets only the description fallback; adding one
+# is reserved for a future change, not confirmed working now.
 _ASK_TOOL_BINDING: Dict[str, Optional[str]] = {
     "claude": "AskUserQuestion",
 }
@@ -2729,24 +2731,30 @@ def _build_agents_kit_workflow_template(tool: str) -> List[str]:
     ]
 
 
-_KIT_WORKFLOW_SKILL_TEMPLATES: Dict[str, List[str]] = {
-    "claude": [
-        "---",
-        "name: {name}",
-        _TMPL_DESCRIPTION,
-        "disable-model-invocation: false",
-        "user-invocable: true",
-        "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch, " + _CLAUDE_ASK_TOOL_NAME,
-        "---",
-        _GENERATED_MARKER,
-        "",
-        *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
-    ],
-    "openai": _build_agents_kit_workflow_template("openai"),
-    "windsurf": _build_agents_kit_workflow_template("windsurf"),
-    "cursor": _build_agents_kit_workflow_template("cursor"),
-    "copilot": _build_agents_kit_workflow_template("copilot"),
-}
+def _kit_workflow_skill_template(tool: str) -> Optional[List[str]]:
+    """Per-tool kit-workflow-as-skill template, resolved fresh on every call.
+
+    A function rather than a module-level dict (issue #142 AC#6 follow-up)
+    so it reads `_ASK_TOOL_BINDING` the same way `_agents_skill_outputs` does
+    -- the two structures previously diverged: one was re-evaluated per call,
+    the other frozen at import.
+    """
+    if tool == "claude":
+        return [
+            "---",
+            "name: {name}",
+            _TMPL_DESCRIPTION,
+            "disable-model-invocation: false",
+            "user-invocable: true",
+            "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch, " + _CLAUDE_ASK_TOOL_NAME,
+            "---",
+            _GENERATED_MARKER,
+            "",
+            *_follow_protocol_lines("{target_path}", ask_tool_name=_CLAUDE_ASK_TOOL_NAME),
+        ]
+    if tool in _KIT_WORKFLOW_SKILL_PATHS:
+        return _build_agents_kit_workflow_template(tool)
+    return None
 # @cpt-end:cpt-studio-algo-agent-integration-list-workflows:p1:inst-kit-workflow-skill-paths
 
 
@@ -2898,7 +2906,7 @@ def _generate_kit_workflow_skills(  # pylint: disable=too-many-locals
     skill files instead of legacy slash-command proxies.
     """
     path_pattern = _KIT_WORKFLOW_SKILL_PATHS.get(agent)
-    template = _KIT_WORKFLOW_SKILL_TEMPLATES.get(agent)
+    template = _kit_workflow_skill_template(agent)
     if not path_pattern or not template:
         return
 

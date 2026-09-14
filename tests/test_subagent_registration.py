@@ -1301,13 +1301,13 @@ class TestLegacyStubClassification(unittest.TestCase):
             )
 
     def test_kit_workflow_skill_template_claude_binds_and_permits_ask_user_question(self):
-        """Issue #142 follow-up: `_KIT_WORKFLOW_SKILL_TEMPLATES['claude']` is a
+        """Issue #142 follow-up: `_kit_workflow_skill_template('claude')` is a
         separate production call site from `_default_agents_config()`'s
         outputs -- it needs its own coverage, both for the binding and for
         `allowed-tools:` actually granting it."""
-        from studio.commands.agents import _KIT_WORKFLOW_SKILL_TEMPLATES
+        from studio.commands.agents import _kit_workflow_skill_template
 
-        template = _KIT_WORKFLOW_SKILL_TEMPLATES["claude"]
+        template = _kit_workflow_skill_template("claude")
         joined = "\n".join(template)
         self.assertIn('- ask_tool_name = "AskUserQuestion"', joined)
         allowed_tools_line = next(
@@ -1318,13 +1318,20 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertIn("AskUserQuestion", allowed_tools_line)
 
     def test_shared_skill_outputs_have_no_exact_ask_tool_binding(self):
-        """Issue #142 AC#6 follow-up: windsurf/cursor/copilot/openai each get
-        their own independent output list now (no longer one shared Python
-        object), but content stays identical -- no exact tool binding -- for
-        every tool absent from _ASK_TOOL_BINDING."""
-        from studio.commands.agents import _agents_skill_outputs
+        """Issue #142 AC#6 follow-up: every non-Claude tool gets its own
+        independent output list now (no longer one shared Python object), but
+        content stays identical -- no exact tool binding -- for every tool
+        absent from _ASK_TOOL_BINDING. The tool set is derived from
+        _default_agents_config() itself so a newly added tool is
+        automatically covered, rather than requiring this tuple be
+        remembered and edited by hand."""
+        from studio.commands.agents import _agents_skill_outputs, _default_agents_config
 
-        for tool in ("windsurf", "cursor", "copilot", "openai"):
+        non_claude_tools = [
+            tool for tool in _default_agents_config()["agents"] if tool not in ("claude", "opencode")
+        ]
+        self.assertTrue(non_claude_tools)
+        for tool in non_claude_tools:
             for entry in _agents_skill_outputs(tool):
                 template = "\n".join(entry["template"])
                 self.assertIn(
@@ -1333,6 +1340,107 @@ class TestLegacyStubClassification(unittest.TestCase):
                     msg=f"unexpected exact binding for tool={tool!r} in {entry['path']}",
                 )
                 self.assertNotIn("AskUserQuestion", template)
+
+    def test_kit_workflow_skill_templates_have_no_exact_binding_for_non_claude(self):
+        """The parallel _kit_workflow_skill_template() structure must carry
+        the same no-exact-binding / no-{custom_content} contract as
+        _agents_skill_outputs for every non-Claude tool -- previously only
+        the latter was covered, so a regression in
+        _build_agents_kit_workflow_template would have gone uncaught."""
+        from studio.commands.agents import _kit_workflow_skill_template, _default_agents_config
+
+        non_claude_tools = [
+            tool for tool in _default_agents_config()["agents"] if tool not in ("claude", "opencode")
+        ]
+        self.assertTrue(non_claude_tools)
+        for tool in non_claude_tools:
+            template = "\n".join(_kit_workflow_skill_template(tool))
+            self.assertIn("- ask_tool_name = unset", template, msg=f"tool={tool!r}")
+            self.assertNotIn("AskUserQuestion", template, msg=f"tool={tool!r}")
+            self.assertNotIn("{custom_content}", template, msg=f"tool={tool!r}")
+
+    def test_agents_skill_outputs_are_content_identical_across_unbound_tools(self):
+        """Pins the invariant test_second_tool_reports_shared_unchanged (in
+        test_agents_coverage.py) relies on: every tool absent from
+        _ASK_TOOL_BINDING must render byte-identical output, so a future
+        binding added for only one of them fails here first with a clear
+        message, rather than surfacing as a confusing diff in the
+        shared-file-reuse test."""
+        from studio.commands.agents import _agents_skill_outputs, _default_agents_config
+
+        non_claude_tools = [
+            tool for tool in _default_agents_config()["agents"] if tool not in ("claude", "opencode")
+        ]
+        self.assertTrue(len(non_claude_tools) >= 2)
+        first_tool, *rest = non_claude_tools
+        baseline = _agents_skill_outputs(first_tool)
+        for tool in rest:
+            self.assertEqual(
+                baseline,
+                _agents_skill_outputs(tool),
+                msg=f"{first_tool!r} vs {tool!r} output diverged despite neither having an _ASK_TOOL_BINDING entry",
+            )
+
+    def test_kit_workflow_skill_templates_are_content_identical_across_unbound_tools(self):
+        """Same invariant as test_agents_skill_outputs_are_content_identical_
+        across_unbound_tools, for the parallel _kit_workflow_skill_template()
+        structure -- it shares the same '.agents/skills/{skill_id}/SKILL.md'
+        path across tools per _KIT_WORKFLOW_SKILL_PATHS, so an accidental
+        per-tool special-case here would break that shared-file contract
+        without the byte-identity test on the other structure catching it."""
+        from studio.commands.agents import _kit_workflow_skill_template, _default_agents_config
+
+        non_claude_tools = [
+            tool for tool in _default_agents_config()["agents"] if tool not in ("claude", "opencode")
+        ]
+        self.assertTrue(len(non_claude_tools) >= 2)
+        first_tool, *rest = non_claude_tools
+        baseline = _kit_workflow_skill_template(first_tool)
+        for tool in rest:
+            self.assertEqual(
+                baseline,
+                _kit_workflow_skill_template(tool),
+                msg=f"{first_tool!r} vs {tool!r} kit-workflow template diverged despite neither having an _ASK_TOOL_BINDING entry",
+            )
+
+    def test_default_agents_config_wires_each_tool_to_its_own_skill_outputs(self):
+        """Guards against a copy-paste swap in _default_agents_config (e.g.
+        windsurf accidentally wired to _agents_skill_outputs('cursor')).
+
+        Content is identical across every unbound tool today (see
+        test_agents_skill_outputs_are_content_identical_across_unbound_tools
+        above), so comparing rendered output alone cannot actually detect a
+        swap -- a wrong-but-identical-content wiring would pass unnoticed.
+        This test forces the tools to diverge via a temporary
+        _ASK_TOOL_BINDING patch, so a real swap becomes observable: the
+        patched tool's config output must carry its own patched binding and
+        no other tool's output may pick it up. Tool set is derived from
+        _default_agents_config() itself, matching the sibling tests above,
+        rather than a hardcoded tuple.
+        """
+        import studio.commands.agents as agents_mod
+
+        non_claude_tools = [
+            tool for tool in agents_mod._default_agents_config()["agents"] if tool not in ("claude", "opencode")
+        ]
+        self.assertTrue(len(non_claude_tools) >= 2)
+        pivot_tool, *other_tools = non_claude_tools
+
+        with patch.dict(agents_mod._ASK_TOOL_BINDING, {pivot_tool: "TestOnlyPivotTool"}):
+            cfg = agents_mod._default_agents_config()
+            pivot_template = "\n".join(cfg["agents"][pivot_tool]["skills"]["outputs"][0]["template"])
+            self.assertIn(
+                "TestOnlyPivotTool",
+                pivot_template,
+                msg=f"{pivot_tool!r}'s config output did not pick up its own patched binding",
+            )
+            for other_tool in other_tools:
+                other_template = "\n".join(cfg["agents"][other_tool]["skills"]["outputs"][0]["template"])
+                self.assertNotIn(
+                    "TestOnlyPivotTool",
+                    other_template,
+                    msg=f"{other_tool!r} config output leaked {pivot_tool!r}'s binding -- possible tool-name swap",
+                )
 
 
 if __name__ == "__main__":
