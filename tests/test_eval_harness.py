@@ -74,6 +74,24 @@ def test_load_run_absent_phase_file_is_simply_missing(tmp_path: Path) -> None:
     assert "gone.md" not in run.phase_texts
 
 
+def test_load_run_undecodable_phase_file_is_missing_not_fatal(tmp_path: Path) -> None:
+    """Non-UTF-8 bytes in one phase must not abort the suite.
+
+    UnicodeDecodeError is a ValueError, not an OSError, so it used to escape load_run,
+    propagate through load_cases into run_suite, and discard every other scenario's
+    result. An undecodable file is just one more way a declared phase cannot be read.
+    """
+    (tmp_path / "plan.toml").write_text(
+        '[plan]\ntask = "t"\n[[phases]]\nnumber = 1\nfile = "ok.md"\n'
+        '[[phases]]\nnumber = 2\nfile = "bad.md"\n')
+    (tmp_path / "ok.md").write_text("# ok\n")
+    (tmp_path / "bad.md").write_bytes(b"\xff\xfe invalid utf-8")
+    run = eh.load_run(tmp_path)
+    assert run is not None
+    assert "ok.md" in run.phase_texts
+    assert "bad.md" not in run.phase_texts
+
+
 def test_load_run_phase_without_file_key_is_skipped(tmp_path: Path) -> None:
     (tmp_path / "plan.toml").write_text('[plan]\ntask = "t"\n[[phases]]\nnumber = 1\n')
     run = eh.load_run(tmp_path)

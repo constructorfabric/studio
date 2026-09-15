@@ -257,8 +257,13 @@ def load_run(run_dir: Path) -> Optional[RunArtifacts]:
             continue
         try:
             phase_texts[name] = target.read_text(encoding="utf-8")
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             # Absent/unreadable phase → left out of phase_texts so a scorer flags it.
+            # UnicodeDecodeError belongs here with OSError, not in the caller: it is a
+            # ValueError, so leaving it out let one phase file of non-UTF-8 bytes
+            # propagate through load_cases into run_suite and abort the whole suite,
+            # discarding every other scenario's result. Undecodable is just one more
+            # way a declared file cannot be read.
             logger.warning("eval: declared phase file unreadable (%s): %s", name, exc)
             continue
     return RunArtifacts(plan_meta=plan_meta, phases=phases, phase_texts=phase_texts)

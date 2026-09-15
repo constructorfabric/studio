@@ -10,6 +10,7 @@
 import argparse
 import json
 import logging
+import math
 from pathlib import Path
 from typing import List, Tuple
 
@@ -32,6 +33,36 @@ def _warn_spec_coverage(message: str) -> None:
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers
 
 
+# @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-threshold-argtype
+def _finite_threshold(flag: str):
+    """argparse type for a threshold flag: any finite number.
+
+    A bare ``type=float`` is not enough here, because NaN survives it and then
+    disappears. :func:`_requested_thresholds` counts a threshold as demanded only when
+    ``value > 0``, and ``float("nan") > 0`` is ``False`` -- so ``--min-coverage nan``
+    was dropped from the demanded set, and an empty scope (which can honour no
+    guarantee at all) exited 0 instead of 2. A misconfigured CI threshold reported
+    success for a gate that never ran. Rejecting it at parse time keeps the exit code
+    answering its one question: was a guarantee demanded that cannot be given?
+
+    Only finiteness is checked, deliberately. A negative floor is meaningful here --
+    it is met by any scope, so it demands nothing, which is the behaviour
+    :func:`_requested_thresholds` documents and ``test_enforcement_empty_scan`` pins.
+    Clamping to ``[0, upper]`` would reject ``--min-coverage -5`` and break that.
+    """
+    def parse(value: str) -> float:
+        try:
+            parsed = float(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"invalid float value: {value!r}") from exc
+        if not math.isfinite(parsed):
+            raise argparse.ArgumentTypeError(
+                f"{flag} must be a finite number, got {value!r}")
+        return parsed
+    return parse
+# @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-threshold-argtype
+
+
 def _build_spec_coverage_parser() -> argparse.ArgumentParser:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-build-parser
     parser = argparse.ArgumentParser(
@@ -40,28 +71,28 @@ def _build_spec_coverage_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--min-coverage",
-        type=float,
+        type=_finite_threshold("--min-coverage"),
         default=None,
         help="Minimum coverage percentage (0-100). Exit 2 if below; a positive value also "
              "exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-file-coverage",
-        type=float,
+        type=_finite_threshold("--min-file-coverage"),
         default=None,
         help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below; "
              "a positive value also exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-granularity",
-        type=float,
+        type=_finite_threshold("--min-granularity"),
         default=None,
         help="Minimum granularity score (0-1). Exit 2 if below; a positive value also "
              "exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-file-granularity",
-        type=float,
+        type=_finite_threshold("--min-file-granularity"),
         default=None,
         help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below; "
              "a positive value also exits 2 if nothing was assessed.",

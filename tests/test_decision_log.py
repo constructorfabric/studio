@@ -11,6 +11,7 @@ import dataclasses
 import json
 import logging
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -1252,3 +1253,37 @@ def test_the_cap_boundary_is_exact(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         out = dl._capped("x" * length)
         assert len(out) <= cap, (length, len(out))
         assert out.endswith(dl._TRUNCATION_MARKER) is truncated, (length, out[-20:])
+
+
+# ---------------------------------------------------------------------------
+# the append lock is bounded
+
+def test_a_lock_held_by_someone_else_does_not_block_the_append(
+        log_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """record() must return even while another process holds the append lock.
+
+    The append lock used to be a blocking ``flock(LOCK_EX)`` -- the read lock next to
+    it was already bounded. A hung sibling, or one killed without releasing, would
+    freeze the caller inside instrumentation, and record()'s ``except Exception``
+    cannot intercept a call that blocks rather than raises. The wait is now bounded and
+    a timeout degrades to an unlocked append.
+    """
+    fcntl = pytest.importorskip("fcntl")
+    monkeypatch.setattr(dl, "_APPEND_LOCK_TIMEOUT_SECONDS", 0.2)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = log_path.with_name(log_path.name + ".lock")
+
+    with open(lock_path, "a", encoding="utf-8") as holder:
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+        started = time.monotonic()
+        wrote = dl.record("validation", {"check": "toc"}, path=log_path)
+        waited = time.monotonic() - started
+
+    assert wrote is True                       # degraded to unlocked, did not give up
+    assert waited < 5.0                        # bounded by the timeout, not by the holder
+    assert json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])["event"] == "validation"
+
+
+def test_the_append_lock_bound_is_sane_and_below_the_read_bound() -> None:
+    assert isinstance(dl._APPEND_LOCK_TIMEOUT_SECONDS, float)
+    assert 0 < dl._APPEND_LOCK_TIMEOUT_SECONDS <= dl._READ_LOCK_TIMEOUT_SECONDS
