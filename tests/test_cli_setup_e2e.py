@@ -180,7 +180,11 @@ def _bootstrap_legacy_project(root: Path, legacy_dir: str = "cypilot", version: 
         'format = "CFS"\n'
         'path = "config/kits/sdlc"\n'
         'version = "1.0.0"\n'
-        'source = "github:constructorfabric/studio-kit-sdlc"\n',
+        # This must stay the legacy source: it is the fixture's only legacy
+        # signal (format and path are already the migrated values), so it is
+        # what makes _rewrite_legacy_kit_entry set had_legacy_kit_signal and
+        # force version = "0" in the migrated core.toml.
+        'source = "github:cyberfabric/cyber-pilot-kit-sdlc"\n',
         encoding="utf-8",
     )
     (config / "artifacts.toml").write_text(

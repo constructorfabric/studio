@@ -2661,12 +2661,12 @@ class TestMigrateKitSources(unittest.TestCase):
         self.assertEqual(_migrate_kit_sources(Path("/nonexistent")), {})
 
     def test_already_has_source(self):
-        from studio.commands.update import _migrate_kit_sources
+        from studio.commands.update import _migrate_kit_sources, _KNOWN_KIT_SOURCES
         from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             config = Path(td)
             toml_utils.dump({
-                "kits": {"sdlc": {"source": "github:constructorfabric/studio-kit-sdlc"}},
+                "kits": {"sdlc": {"source": _KNOWN_KIT_SOURCES["sdlc"]}},
             }, config / "core.toml")
             self.assertEqual(_migrate_kit_sources(config), {})
 
