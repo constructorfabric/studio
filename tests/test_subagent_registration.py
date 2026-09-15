@@ -1272,6 +1272,50 @@ class TestLegacyStubClassification(unittest.TestCase):
         )
         self.assertTrue(_is_pure_studio_generated(content, expected_name="cf-analyze"))
 
+    def test_cursor_root_skill_binds_ask_question_via_dedicated_launcher(self):
+        """Issue #142 AC#2 (constructorfabric/studio#206 Option A): Cursor's
+        root `cf` skill has its own dedicated, non-shared launcher file
+        (.cursor/commands/cf.md), so it can carry an exact native-dialog
+        binding (AskQuestion) the way Claude's dedicated bucket does.
+
+        Note: this file is written via _write_or_skip's plain content-diff,
+        not the _is_pure_studio_generated purity check (that check is only
+        reached by separate legacy-cleanup paths for deprecated file naming),
+        so there's no equivalent "untouched stub" assertion to make here --
+        the binding's presence in the rendered template is the whole
+        contract for this file.
+        """
+        from studio.commands.agents import _default_agents_config
+
+        config = _default_agents_config()
+        outputs = config["agents"]["cursor"]["skills"]["outputs"]
+        cf_md = next(o for o in outputs if o["path"] == ".cursor/commands/cf.md")
+        template = "\n".join(cf_md["template"])
+        self.assertIn('- ask_tool_name = "AskQuestion"', template)
+
+    def test_cursor_shared_bucket_outputs_unaffected_by_root_skill_binding(self):
+        """Regression guard for the exact leak #206 warned about, at the
+        config-wiring level: only Cursor's dedicated .cursor/commands/cf.md
+        entry may carry the AskQuestion binding, none of cursor's other
+        config outputs should. (The per-helper invariant -- that
+        _agents_skill_outputs('cursor')/_kit_workflow_skill_template
+        ('cursor') carry no exact binding -- is already covered generically
+        for every non-Claude tool by test_shared_skill_outputs_have_no_exact_
+        ask_tool_binding and test_kit_workflow_skill_templates_have_no_exact_
+        binding_for_non_claude below; no need to re-assert it here.)"""
+        from studio.commands.agents import _default_agents_config
+
+        outputs = _default_agents_config()["agents"]["cursor"]["skills"]["outputs"]
+        for entry in outputs:
+            if entry["path"] == ".cursor/commands/cf.md":
+                continue
+            template = "\n".join(entry["template"])
+            self.assertNotIn(
+                "AskQuestion",
+                template,
+                msg=f"unexpected AskQuestion leak into {entry['path']}",
+            )
+
     def test_claude_skill_outputs_bind_ask_user_question(self):
         """Every Claude-specific generated skill template (the only per-tool
         bucket that can name an exact tool) must request AskUserQuestion, and
