@@ -180,7 +180,7 @@ def _bootstrap_legacy_project(root: Path, legacy_dir: str = "cypilot", version: 
         'format = "CFS"\n'
         'path = "config/kits/sdlc"\n'
         'version = "1.0.0"\n'
-        'source = "github:cyberfabric/cyber-pilot-kit-sdlc"\n',
+        'source = "github:constructorfabric/studio-kit-sdlc"\n',
         encoding="utf-8",
     )
     (config / "artifacts.toml").write_text(

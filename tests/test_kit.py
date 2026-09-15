@@ -6547,7 +6547,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc", "source": "github:cyberfabric/cyber-pilot-kit-sdlc"}},
+                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc", "source": "github:constructorfabric/studio-kit-sdlc"}},
             }, adapter / "config" / "core.toml")
 
             cwd = os.getcwd()

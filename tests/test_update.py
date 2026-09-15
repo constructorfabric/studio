@@ -2666,7 +2666,7 @@ class TestMigrateKitSources(unittest.TestCase):
         with TemporaryDirectory() as td:
             config = Path(td)
             toml_utils.dump({
-                "kits": {"sdlc": {"source": "github:cyberfabric/cyber-pilot-kit-sdlc"}},
+                "kits": {"sdlc": {"source": "github:constructorfabric/studio-kit-sdlc"}},
             }, config / "core.toml")
             self.assertEqual(_migrate_kit_sources(config), {})
 
