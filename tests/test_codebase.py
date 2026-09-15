@@ -1,8 +1,10 @@
 """Tests for codebase.py - Constructor Studio code traceability marker parsing."""
+import os
 import pytest
 from pathlib import Path
 from textwrap import dedent
 
+from studio.utils import document
 from studio.utils import error_codes as EC
 from studio.utils.codebase import (
     CodeFile,
@@ -10,9 +12,209 @@ from studio.utils.codebase import (
     BlockMarker,
     CodeReference,
     load_code_file,
+    read_code_text,
     validate_code_file,
     cross_validate_code,
+    scan_registered_codebase_references,
 )
+
+
+class _FakeCodebaseEntry:
+    def __init__(self, path, extensions):
+        self.path = path
+        self.extensions = extensions
+
+
+class _FakeMeta:
+    def __init__(self, entries):
+        self._entries = entries
+
+    def iter_all_codebase(self):
+        return iter((entry, None) for entry in self._entries)
+
+    def is_ignored(self, rel_path: str) -> bool:
+        return False
+
+
+class _FakeCtx:
+    def __init__(self, project_root: Path, entries):
+        self.project_root = project_root
+        self.meta = _FakeMeta(entries)
+
+
+class TestScanRegisteredCodebaseReferences:
+    """Shared marker-scan helper used by both `list-ids` and `where-used` (OLE-42)."""
+
+    def test_finds_block_marker_references(self, tmp_path: Path):
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        (code_dir / "auth.py").write_text(
+            dedent("""
+                # @cpt-begin:cpt-myapp-feature-auth-flow-login:p1:inst-check-creds
+                def login():
+                    pass
+                # @cpt-end:cpt-myapp-feature-auth-flow-login:p1:inst-check-creds
+            """)
+        )
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(code_dir, [".py"])])
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+
+        assert code_files_scanned == 1
+        assert code_files_skipped == 0
+        assert len(hits) == 1
+        assert hits[0]["id"] == "cpt-myapp-feature-auth-flow-login"
+        assert hits[0]["artifact_type"] == "CODE"
+        assert hits[0]["inst"] == "check-creds"
+
+    def test_default_ignored_directories_are_skipped_without_explicit_ignore(self, tmp_path: Path):
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        vendored = code_dir / "node_modules" / "pkg"
+        vendored.mkdir(parents=True)
+        (vendored / "lib.py").write_text(
+            "# @cpt-begin:cpt-vendored-thing:p1:inst-noop\npass\n# @cpt-end:cpt-vendored-thing:p1:inst-noop\n"
+        )
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(code_dir, [".py"])])
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+
+        assert code_files_scanned == 0
+        # Counted, not silent. `skipped` means "ignored, oversized, or
+        # unparsable", and an excluded vendored file is the first of those --
+        # reporting 0 scanned and 0 skipped would say there was nothing here
+        # when in fact there was a file the policy declined to scan.
+        assert code_files_skipped == 1
+        assert hits == []
+
+    def test_the_size_ceiling_applies_to_the_bytes_read_not_to_an_earlier_look(self, tmp_path: Path, monkeypatch):
+        """A `stat` followed by an unbounded read trusted the measurement, so a file that
+        grew between the two was read whole. The scan reads through the bounded reader:
+        a file that is past the ceiling at the moment it is read is declined, whatever
+        an earlier look at it said."""
+        from studio.utils import codebase as codebase_module
+
+        monkeypatch.setattr(codebase_module, "_MAX_CODE_FILE_BYTES", 40)
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        big = code_dir / "big.py"
+        # Valid content, so the old stat-then-read path would have *scanned* the grown
+        # file rather than rejected a malformed marker; only the ceiling declines it.
+        big.write_text("pass\n")
+        real = codebase_module.read_code_text
+
+        def grows_then_reads(path, **kwargs):
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write("pass\n" * 20)
+            return real(path, **kwargs)
+        monkeypatch.setattr(codebase_module, "read_code_text", grows_then_reads)
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(code_dir, [".py"])])
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+
+        assert (hits, code_files_scanned, code_files_skipped) == ([], 0, 1)
+
+    def test_oversized_file_is_skipped_not_read(self, tmp_path: Path, monkeypatch):
+        from studio.utils import codebase as codebase_module
+
+        monkeypatch.setattr(codebase_module, "_MAX_CODE_FILE_BYTES", 10)
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        (code_dir / "big.py").write_text(
+            "# @cpt-begin:cpt-big-thing:p1:inst-noop\npass\n# @cpt-end:cpt-big-thing:p1:inst-noop\n"
+        )
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(code_dir, [".py"])])
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+
+        assert code_files_scanned == 0
+        assert code_files_skipped == 1
+        assert hits == []
+
+    def test_codebase_entry_escaping_project_root_is_skipped(self, tmp_path: Path):
+        outside = tmp_path.parent / f"{tmp_path.name}-outside"
+        outside.mkdir(exist_ok=True)
+        (outside / "escape.py").write_text(
+            "# @cpt-begin:cpt-escape-thing:p1:inst-noop\npass\n# @cpt-end:cpt-escape-thing:p1:inst-noop\n"
+        )
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        try:
+            rel_escape = "../" + os.path.relpath(outside, project_root).replace(os.sep, "/")
+        except ValueError:
+            pytest.skip("cannot construct a relative escape path on this platform")
+        ctx = _FakeCtx(project_root, [_FakeCodebaseEntry(Path(rel_escape), [".py"])])
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+
+        assert code_files_scanned == 0
+        assert hits == []
+
+    def test_entry_code_files_are_sorted_for_determinism(self, tmp_path: Path):
+        from studio.utils.codebase import resolve_entry_code_files
+
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        for name in ("zeta.py", "alpha.py", "mid.py"):
+            (code_dir / name).write_text("pass\n")
+
+        paths, excluded = resolve_entry_code_files(code_dir, [".py"], project_root=tmp_path)
+
+        assert [p.name for p in paths] == ["alpha.py", "mid.py", "zeta.py"]
+        assert excluded == 0
+
+    def test_ignored_code_file_fails_closed_when_containment_cannot_be_established(self, tmp_path: Path):
+        from studio.utils.codebase import _is_ignored_code_file
+
+        unrelated = tmp_path.parent / f"{tmp_path.name}-unrelated" / "file.py"
+        unrelated.parent.mkdir(parents=True, exist_ok=True)
+        unrelated.write_text("pass\n")
+        ctx = _FakeCtx(tmp_path / "project-root-does-not-exist", [])
+
+        assert _is_ignored_code_file(unrelated, ctx) is True
+
+    def test_scan_fans_out_to_reachable_workspace_sources(self, tmp_path: Path):
+        from studio.utils.context import SourceContext, WorkspaceContext
+
+        primary_src = tmp_path / "primary" / "src"
+        primary_src.mkdir(parents=True)
+        (primary_src / "primary.py").write_text(
+            "# @cpt-begin:cpt-primary-thing:p1:inst-noop\npass\n# @cpt-end:cpt-primary-thing:p1:inst-noop\n"
+        )
+        primary_ctx = _FakeCtx(tmp_path / "primary", [_FakeCodebaseEntry(primary_src, [".py"])])
+
+        member_root = tmp_path / "member"
+        member_src = member_root / "src"
+        member_src.mkdir(parents=True)
+        (member_src / "member.py").write_text(
+            "# @cpt-begin:cpt-member-thing:p1:inst-noop\npass\n# @cpt-end:cpt-member-thing:p1:inst-noop\n"
+        )
+        member_meta = _FakeMeta([_FakeCodebaseEntry(member_src, [".py"])])
+
+        ws = WorkspaceContext(primary=primary_ctx)
+        ws.sources = {
+            "member": SourceContext(name="member", path=member_root, role="full", meta=member_meta),
+        }
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ws)
+
+        assert code_files_scanned == 2
+        ids = {h["id"] for h in hits}
+        assert ids == {"cpt-primary-thing", "cpt-member-thing"}
+
+    def test_scan_skips_unreachable_workspace_sources(self, tmp_path: Path):
+        from studio.utils.context import SourceContext, WorkspaceContext
+
+        primary_ctx = _FakeCtx(tmp_path, [])
+        ws = WorkspaceContext(primary=primary_ctx)
+        ws.sources = {
+            "member": SourceContext(name="member", path=None, role="full", reachable=False),
+        }
+
+        hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ws)
+
+        assert hits == []
+        assert code_files_scanned == 0
 
 
 class TestScopeMarkerParsing:
@@ -306,6 +508,132 @@ class TestLoadCodeFile:
         assert cf is None
         assert len(errs) == 1
         assert errs[0]["type"] == "file"
+        assert errs[0]["code"] == EC.FILE_READ_ERROR
+
+    def test_an_oversized_file_has_its_own_error_code(self, tmp_path: Path):
+        """Distinct from a read failure, so a caller can branch on the code instead of
+        re-measuring the file or parsing the message."""
+        code_file = tmp_path / "big.py"
+        code_file.write_text("x = 1\n" * 100)
+
+        cf, errs = load_code_file(code_file, max_bytes=16)
+
+        assert cf is None
+        assert [e["code"] for e in errs] == [EC.FILE_TOO_LARGE]
+
+    def test_the_ceiling_bounds_the_bytes_read_not_a_prior_stat(self, tmp_path: Path, monkeypatch):
+        """stat-then-read let a file growing in between slip past the limit it had just
+        been checked against. The reader no longer measures the file at all."""
+        code_file = tmp_path / "test.py"
+        code_file.write_text("# @cpt-flow:cpt-myapp-flow-test:p1\ndef foo(): pass\n")
+        real_stat = Path.stat
+
+        def _stat_fails(self, *a, **k):
+            if self == code_file:
+                raise OSError("stat refused")
+            return real_stat(self, *a, **k)
+        monkeypatch.setattr(Path, "stat", _stat_fails)
+
+        cf, errs = load_code_file(code_file, max_bytes=1000)
+        assert cf is not None and not errs
+        assert load_code_file(code_file, max_bytes=8)[1][0]["code"] == EC.FILE_TOO_LARGE
+
+    def test_from_text_parses_without_touching_the_file(self, tmp_path: Path):
+        cf, errs = CodeFile.from_text(tmp_path / "ghost.py", "# @cpt-flow:cpt-myapp-flow-test:p1\n")
+
+        assert cf is not None and not errs
+        assert len(cf.scope_markers) == 1
+
+
+class TestReadCodeText:
+    """The shared bounded reader: the ceiling applies to the bytes read, too-large has
+    its own code, and everything else that stops a read is a read error."""
+
+    def test_a_file_exactly_at_the_limit_is_read_whole(self, tmp_path: Path):
+        path = tmp_path / "f.py"
+        path.write_bytes(b"x" * 16)
+
+        assert read_code_text(path, max_bytes=16) == ("x" * 16, [])
+
+    def test_one_byte_over_the_limit_is_too_large(self, tmp_path: Path):
+        path = tmp_path / "f.py"
+        path.write_bytes(b"x" * 17)
+
+        text, errs = read_code_text(path, max_bytes=16)
+
+        assert text is None
+        assert [e["code"] for e in errs] == [EC.FILE_TOO_LARGE]
+
+    def test_a_non_positive_limit_disables_the_ceiling(self, tmp_path: Path):
+        path = tmp_path / "f.py"
+        path.write_bytes(b"x" * 5000)
+
+        assert read_code_text(path, max_bytes=0) == ("x" * 5000, [])
+        assert read_code_text(path, max_bytes=-1) == ("x" * 5000, [])
+
+    def test_a_missing_file_is_a_read_error(self, tmp_path: Path):
+        text, errs = read_code_text(tmp_path / "missing.py")
+
+        assert text is None
+        assert [e["code"] for e in errs] == [EC.FILE_READ_ERROR]
+
+    def test_invalid_utf8_is_a_read_error_not_too_large(self, tmp_path: Path):
+        path = tmp_path / "f.py"
+        path.write_bytes(b"\xff\xfe not text")
+
+        text, errs = read_code_text(path, max_bytes=100)
+
+        assert text is None
+        assert [e["code"] for e in errs] == [EC.FILE_READ_ERROR]
+
+    def test_nul_bytes_are_binary_by_the_same_rule_the_document_reader_uses(self, tmp_path: Path):
+        path = tmp_path / "f.py"
+        path.write_bytes(b"# @cpt-flow:cpt-myapp-flow-test:p1\n\x00rest")
+
+        text, errs = read_code_text(path)
+
+        assert text is None
+        assert [e["code"] for e in errs] == [EC.FILE_READ_ERROR]
+
+    def test_the_binary_rule_is_one_predicate_shared_with_the_document_reader(self, tmp_path: Path, monkeypatch):
+        """Both readers call `document.is_binary`, so the rule cannot drift between them.
+        Swapping the predicate turns a plain text file binary for both at once — which
+        two hand-kept literal checks, agreeing only by convention, could not do."""
+        path = tmp_path / "f.py"
+        path.write_bytes(b"x = 1\n")
+        monkeypatch.setattr(document, "is_binary", lambda raw: True)
+
+        text, errs = read_code_text(path)
+
+        assert text is None
+        assert [e["code"] for e in errs] == [EC.FILE_READ_ERROR]
+        assert document.read_text_safe(path) is None
+
+
+class TestFromTextParity:
+    """`from_text` must parse exactly as `from_path` does, or a pre-read caller and a
+    path-based one would disagree about the same file."""
+
+    @pytest.mark.parametrize("text", [
+        "# @cpt-flow:cpt-myapp-flow-test:p1\n# @cpt-begin:cpt-myapp-flow-test:p1:inst-a\nx = 1\n"
+        "# @cpt-end:cpt-myapp-flow-test:p1:inst-a\n",
+        "# @cpt-end:cpt-myapp-flow-test:p1:inst-never-opened\n",
+        "# @cpt-begin:cpt-myapp-flow-test:p1:inst-a\nx = 1\n# @cpt-end:cpt-myapp-flow-other:p1:inst-a\n",
+        "# @cpt-begin:cpt-myapp-flow-test:p1:inst-a\nx = 1\n",
+    ], ids=["valid", "dangling-end", "mismatched-id", "unclosed"])
+    def test_from_text_and_from_path_agree(self, tmp_path: Path, text: str):
+        path = tmp_path / "f.py"
+        path.write_text(text, encoding="utf-8")
+
+        via_path = CodeFile.from_path(path)
+        via_text = CodeFile.from_text(path, text)
+
+        assert (via_path[0] is None) == (via_text[0] is None)
+        assert via_path[1] == via_text[1], "same errors, same order"
+        if via_path[0] is not None and via_text[0] is not None:
+            assert via_path[0].scope_markers == via_text[0].scope_markers
+            assert via_path[0].block_markers == via_text[0].block_markers
+            assert via_path[0].references == via_text[0].references
 
 
 class TestValidateCodeFile:

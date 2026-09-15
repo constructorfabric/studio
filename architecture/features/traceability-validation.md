@@ -21,6 +21,13 @@
   - [List ID Kinds](#list-id-kinds)
   - [Validate TOC](#validate-toc)
   - [TOC Utilities](#toc-utilities)
+  - [Document Index](#document-index)
+  - [TF-IDF Scoring](#tf-idf-scoring)
+  - [OKF Bundle](#okf-bundle)
+  - [Atomic File I/O](#atomic-file-io)
+  - [Heading-Nav Search](#heading-nav-search)
+  - [JIT-Retrieval Cascade](#jit-retrieval-cascade)
+  - [Read Gate](#read-gate)
   - [Markdown Parsing Utilities](#markdown-parsing-utilities)
   - [Fixing Prompt Enrichment](#fixing-prompt-enrichment)
   - [Headings Contract Validation](#headings-contract-validation)
@@ -87,6 +94,9 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - Template structure mismatch â†’ FAIL with heading contract details
 - Cross-reference to undefined ID â†’ FAIL with definition hint
 - Code marker references non-existent artifact ID â†’ FAIL with orphan details
+- Codebase entry registered with FULL traceability but resolving to no files â†’ WARN naming the entry, so a run that checked nothing says so
+- Checked `to_code = true` ID with no code marker anywhere â†’ FAIL, independent of how many files the scan resolved
+- No checked `to_code = true` ID and no code â†’ PASS; nothing is claimed, so nothing is owed
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs validate [--artifact <path>] [--skip-code] [--verbose]` - `inst-user-validate`
@@ -119,6 +129,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - Run cross-artifact validation and merge only issues that apply to the actively validated artifacts - `inst-validate-cross-run`
 - [x] - `p1` - Resolve code scan targets and collect code marker state from configured codebase entries - `inst-validate-code-scan`
 - [x] - `p1` - Execute recursive system code scanning and strict code cross-validation against artifact expectations - `inst-validate-code-run`
+- [x] - `p1` - Warn for each FULL codebase entry that is registered but resolves to no files, so a run that checked nothing says so - `inst-warn-empty-codebase-entry`
 - [x] - `p1` - Build traceability lookup indexes for artifact paths, FULL-traceability IDs, and reference coverage - `inst-validate-traceability-index`
 - [x] - `p1` - Apply fallback reference coverage rules for unconstrained artifact kinds - `inst-validate-reference-coverage`
 - [x] - `p1` - Load language-validation configuration from workspace settings - `inst-validate-language-config`
@@ -184,7 +195,10 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for query commands (list-ids, where-defined, where-used) - `inst-query-imports`
+- [x] - `p1` - Resolve the code files one registered codebase entry covers, applying the shared exclusion policy and returning how many candidates were excluded - `inst-query-resolve-entry-files`
+- [x] - `p1` - Refuse a candidate that is a symlink or resolves outside the project root, so a link cannot re-open an excluded tree - `inst-query-escapes-project`
 - [x] - `p1` - Argument parsing, context resolution, and artifact collection for query commands - `inst-query-resolve`
+- [x] - `p1` - Deduplicate scan hits per ID, preferring a definition record and surfacing conflicting duplicate definitions - `inst-scan-dedupe`
 - [x] - `p1` - Human-friendly formatters for list-ids, where-defined, and where-used output - `inst-query-format`
 
 ## 3. Processes / Business Logic (CDSL)
@@ -252,7 +266,12 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
    1. [x] - `p1` - **IF** all children checked AND parent unchecked, emit error - `inst-if-all-done-parent-not`
    2. [x] - `p1` - **IF** parent checked AND any child unchecked, emit error - `inst-if-parent-done-child-not`
 7. [x] - `p1` - Validate ID format and heading scoping per constraints - `inst-validate-id-format`
-8. [x] - `p1` - **RETURN** accumulated errors and warnings - `inst-return-structure`
+8. [x] - `p1` - **FOR EACH** CDSL step candidate item (numbered/dash item inside a `**Steps**:` or `**Transitions**:` block, with continuation lines joined) - `inst-foreach-cdsl-candidate`
+   1. [x] - `p1` - **IF** the checkbox, phase token, or inst-id token is missing, emit missing-token warnings (CDSL.md S.3/S.4/S.5) and an incomplete-step-line warning (CO.4) - `inst-if-cdsl-missing-token`
+   2. [x] - `p1` - **IF** the step's description reads like code rather than plain English, emit the matching CDSL.md rule errors (S.6/CL.3, S.7, CL.2, CL.1/CL.4) - `inst-if-cdsl-prohibited-syntax`
+   3. [x] - `p1` - **IF** an `inst-{id}` repeats under the same parent ID within a `**Steps**:`/`**Transitions**:` block, emit duplicate-instruction-id error (CO.5) - `inst-if-cdsl-duplicate-inst`
+   4. [x] - `p1` - **IF** the step contains an unresolved placeholder marker, emit placeholder error (CO.6) - `inst-if-cdsl-placeholder`
+9. [x] - `p1` - **RETURN** accumulated errors and warnings - `inst-return-structure`
 
 **Supporting**:
 - [x] - `p1` - Imports, dataclasses (ReferenceRule, HeadingConstraint, IdConstraint, ArtifactKindConstraints, KitConstraints, ArtifactRecord, ParsedStudioId), error factory, and optional-bool parser - `inst-structure-datamodel`
@@ -272,6 +291,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - `validate_id_format` kind-extractor: parse kind token from ID slug for constraint lookup - `inst-validate-id-extract-kind`
 - [x] - `p1` - `validate_id_format` definitions loop: iterate all scanned ID definitions and dispatch per-ID checks - `inst-validate-id-defs-loop`
 - [x] - `p1` - `validate_id_format` required-check: emit MISSING_REQUIRED_KIND error for required kinds absent from artifact - `inst-validate-id-required-check`
+- [x] - `p1` - `_validate_cdsl_structure`: detect CDSL step candidates, classify missing tokens, prohibited syntax, duplicate inst-ids, and placeholders per CDSL.md's FAIL rules - `inst-validate-cdsl-structure`
 
 ### Cross-Validate Artifacts
 
@@ -325,6 +345,8 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 7. [x] - `p1` - Define code data model: regex patterns, ScopeMarker, BlockMarker, CodeReference, CodeFile dataclasses, error factory - `inst-code-datamodel`
 8. [x] - `p1` - Query and validation methods: list_ids, get by ID/inst, validate duplicate scopes - `inst-code-query-validate`
 9. [x] - `p1` - Convenience wrappers: load_code_file, validate_code_file entry points - `inst-code-wrappers`
+10. [x] - `p1` - Read a code file's text with the size ceiling applied to the bytes actually read rather than to a prior stat, reporting too-large under its own error code so a caller can branch on it instead of measuring the file again - `inst-code-read-bounded`
+11. [x] - `p1` - Parse already-read text as a code file, so a caller holding one snapshot can hand the same bytes to a second parser instead of reopening a file that may have changed in between - `inst-code-from-text`
 
 ### Cross-Validate Code
 
@@ -385,11 +407,12 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
    2. [x] - `p1` - Generate expected TOC from headings - `inst-toc-generate-expected`
    3. [x] - `p1` - Compare existing vs expected: check anchor validity, heading coverage, staleness - `inst-toc-compare`
    4. [x] - `p1` - **IF** mismatch, record error with diff details - `inst-toc-if-mismatch`
-4. [x] - `p1` - **RETURN** JSON: `{status, files_checked, errors}` - `inst-toc-return`
+4. [x] - `p1` - **RETURN** JSON: `{status, files_validated, error_count, warning_count, results}`, each `results[]` entry `{file, status, error_count, warning_count}` plus `errors`/`warnings` arrays when `--verbose` or non-empty - `inst-toc-return`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for validate-toc command - `inst-toc-imports`
-- [x] - `p1` - Human-friendly formatter for validate-toc output - `inst-toc-format`
+- [x] - `p1` - Validate a single file, never raising: a missing file or a read failure (permission denied, binary/non-UTF-8 content, a TOCTOU race) is reported as its own ERROR result rather than aborting the whole batch and discarding results already collected for earlier files - `inst-toc-validate-one`
+- [x] - `p1` - Human-friendly formatter for validate-toc output: a WARN-only file prints its warnings the same way a FAIL file prints its errors, not just the bare status - `inst-toc-format`
 
 ### TOC Utilities
 
@@ -403,6 +426,9 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 4. [x] - `p1` - Insert/update TOC using heading-based insertion (`## Table of Contents`) for kit file generator - `inst-toc-util-insert-heading`
 5. [x] - `p1` - Process file: strip manual TOC, insert marker-based TOC, write if changed - `inst-toc-util-process-file`
 6. [x] - `p1` - Validate TOC: check existence, anchor validity, completeness, staleness - `inst-toc-util-validate`
+7. [x] - `p1` - Parse headings with line numbers, fence-aware and front-matter-aware (skips a leading YAML block so a `#`-prefixed front-matter line is never mistaken for a heading); shared by doc-index and the JIT-retrieval readiness checks, which need section boundaries the plain heading list doesn't carry -- `parse_headings` itself now delegates here, stripping the line number, so both share one fence/heading-match implementation - `inst-toc-util-parse-headings-lines`
+8. [x] - `p1` - Collect JIT-retrieval readiness warnings for a document: gathers all four signals below over *every* heading level, independent of whatever level cap the caller configured for TOC-completeness checking - `inst-toc-jit-readiness-collect`
+9. [x] - `p1` - Compute the four JIT-retrieval readiness signals -- duplicate heading titles (compared case-insensitively, with internal whitespace collapsed and Unicode-normalized, though the original text is still shown in the warning), heading depth jumps, oversized sections (`--max-section-lines`, default 300, validated against non-finite/non-positive input independent of the CLI's own argparse guard), and a missing top-of-file description/frontmatter block -- all warning-only, never errors (see constructorfabric/studio#104) - `inst-toc-jit-readiness`
 
 **Supporting**:
 - [x] - `p1` - Imports, constants, fence tracking, GitHub anchor slug generation - `inst-toc-util-datamodel`
@@ -423,6 +449,163 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - Heading-based TOC replace branch: overwrite content under existing `## Table of Contents` heading - `inst-toc-util-insert-heading-replace`
 - [x] - `p1` - Heading-based TOC new-insert branch: inject `## Table of Contents` before first heading when absent - `inst-toc-util-insert-heading-new`
 - [x] - `p1` - TOC validate init: build heading list and expected TOC string before comparison checks - `inst-toc-util-validate-init`
+
+### Document Index
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-doc-index`
+
+**Input**: Markdown file path
+
+**Output**: `cfs doc-index`'s JSON is `{file, cache_hit, total_lines, section_count, sections, section_level, retrieval_section_count, retrieval_sections, tier2_escalations}` -- every heading's own line range in `sections[]` (`{level, heading, line_start, line_end, summary}`), plus a coarser "one chunk per real section" grouping in `retrieval_sections[]` at an inferred heading level, each with a content hash and a summary slot. `tier2_escalations` is fetched separately (`get_tier2_escalations`) and is *not* part of the underlying cached index dict at all -- see `inst-doc-index-record-escalation` below for why the two are kept fully independent. The underlying cached index dict additionally carries `schema_version`, `path`, and `etag`.
+
+A cached, read-once-per-file structural index for Markdown JIT retrieval (see
+constructorfabric/studio#104): parsing a file's headings/section boundaries
+happens once, not once per query, until its stat fingerprint (`mtime_ns` +
+size) changes.
+The cache-validity fingerprint is deliberately metadata-only (`mtime` + file
+size via `Path.stat()`), never a content hash â€” the point of the cache is to
+avoid reading the file at all on a hit, and a content hash would defeat that
+by requiring the read it's meant to save. A build reads the content and
+takes that fingerprint bracketed by a stat snapshot on each side: when the
+two snapshots agree, the fingerprint saved is provably the one that
+matches what was actually parsed even if a write lands in the narrow
+window during the read; under sustained contention past a bounded retry
+limit, it falls back to the last read paired with its own trailing,
+unverified fingerprint -- safe because that content will simply be
+detected as stale again on the very next check, never silently wrong.
+
+1. [x] - `p1` - Build a fresh structural index: parse headings + line ranges from current content, compute the stat-based fingerprint, stamp the current schema version - `inst-doc-index-build`
+2. [x] - `p1` - Load a cached index for a file, validated against current stat metadata (no content read on a hit) and against the required-field shape at the current schema version; returns `None` if missing, stale, corrupt, or an incomplete/outdated shape - `inst-doc-index-load`
+3. [x] - `p1` - Persist an index to its cache location atomically (temp file + `os.replace`, so a concurrent reader never observes a torn write); no-ops silently outside a Studio-adapted project - `inst-doc-index-save`
+4. [x] - `p1` - Return the cached index or build-and-cache a fresh one; reports cache hit/miss for benchmarking - `inst-doc-index-get-or-build`
+5. [x] - `p1` - Attach a one-line, LLM-authored summary to a cached section by its `line_start`, only once the caller's `expected_hash` matches that section's current hash -- rejecting the write on mismatch instead of silently attaching the summary to whatever content now occupies that position - `inst-doc-index-annotate`
+6. [x] - `p1` - Infer which heading level represents one retrievable section: the most-recurring level wins over a level that appears only once (however shallow), since PDF-conversion heading levels don't reliably encode true nesting depth â€” a fixed level assumption silently produces a degenerate mega-section on such documents - `inst-doc-index-infer-level`
+7. [x] - `p1` - Group headings at exactly the inferred level into retrieval sections (off-level headings stay inside whichever section they fall under, never split one apart); hash each section's own text, trailing-whitespace-stripped per line, for section-granularity staleness detection; flag a section with nothing between it and the next same-level heading as `empty`; when real content (not just blank lines) precedes the first section-level heading, capture it as a leading synthetic entry (`heading=None`) instead of leaving it invisible to every entry here - `inst-doc-index-retrieval-sections`
+8. [x] - `p1` - Diff the current file against its last cached build at section granularity: which retrieval sections are unchanged vs. changed, or whether the section count itself changed (a structural change). Matched primarily by content hash (a multiset match, so duplicate-content sections pair up correctly) rather than position, so a pure reorder with no text edits reports every section unchanged instead of misreporting the whole document as edited; a returned entry's `line_start` (not its hash) is what a caller uses to address "this specific section" afterwards, since duplicate heading titles are real - `inst-doc-index-diff-stale`
+9. [x] - `p1` - Read a document's persisted `tier2_escalations` count without incrementing it -- `0` for a document never escalated, outside a Studio project, or with a missing/corrupt/invalid (e.g. negative) counter file; read-only, so it never takes the counter's own lock. A healthy "never escalated" document and a corrupt/unreadable counter file are both `0` here -- a known, accepted ambiguity (distinguishable only via the differently-worded warnings the helpers below log, not via this return value) - `inst-doc-index-get-escalations`
+10. [x] - `p1` - Increment and persist a document's `tier2_escalations` counter in its own small counter file, independent of the structural index cache (real, observed Tier-1-escalation volume, not a human-supplied query-volume guess) -- see constructorfabric/studio#134; this is the signal `cascade.route_tier2` uses to decide automatically whether building an OKF bundle has crossed its break-even point. Kept out of the structural cache after a review-caught race (constructorfabric/studio#136): that cache's own cache-miss rebuild path takes no lock, so a counter sharing its file could be silently reverted by a concurrent unlocked rebuild; a standalone file has nothing to race with, and an increment no longer requires rewriting a document's entire section/summary payload just to change one integer. Accepts an optional `escalation_key` idempotency token (a second, review-caught gap in constructorfabric/studio#136): a caller retrying the same logical query after a transient failure/timeout would otherwise double-count, since nothing here can tell that apart from a genuinely new escalation without an explicit correlation token supplied by the caller. A bounded window of recently-seen keys is persisted alongside the count, under the same lock as the increment; a key already seen returns the current count unchanged. Passing no key preserves the original always-increment behavior - `inst-doc-index-record-escalation`
+
+**Supporting**:
+- [x] - `p1` - Stat-based cache-validity fingerprint (`mtime_ns` + size); resolved from the file's own path, never a content hash - `inst-doc-index-etag`
+- [x] - `p1` - Resolve the cache file location within the Studio directory owning the indexed file, resolved from the file's own path (not the process's working directory) - `inst-doc-index-cache-path`
+- [x] - `p1` - `cfs doc-index` CLI wrapper: parse arguments, build the JSON output payload, reporting a clean error for a missing or unreadable file - `inst-doc-index-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
+- [x] - `p1` - Read a file's content bracketed by an etag snapshot on each side, retrying on mismatch: closes the window where a write between the read and the fingerprint could save stale headings under a fresh-looking etag - `inst-doc-index-stable-read`
+- [x] - `p1` - Re-parse a file's current content into retrieval sections for staleness comparison, and build the `(heading, line_start)` identity pair that disambiguates a duplicate heading title in a diff result - `inst-doc-index-diff-stale-helpers`
+- [x] - `p1` - Slice a retrieval section's own raw text out of a file's lines by its `line_start`/`line_end` -- the one shared implementation every consumer needing a section's actual content (not just its boundaries) reuses instead of re-deriving the slice - `inst-doc-index-section-text`
+- [x] - `p1` - `cfs doc-index` CLI wrapper: parse arguments, build the JSON output payload - `inst-doc-index-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs doc-index` output - `inst-doc-index-cmd-format`
+- [x] - `p1` - Resolve the escalation-counter's own cache file location, sharing the same Studio-directory/slug resolution `inst-doc-index-cache-path` uses but writing to a separate filename -- deliberately never the same file as the structural index, so the two never share a lock - `inst-doc-index-escalation-cache-path`
+- [x] - `p1` - Best-effort read of the raw escalation-counter JSON object, returning an empty object for a missing, corrupt, or non-object file -- the same "nothing usable here" fallback every caller already treats as never-escalated. A missing file logs nothing (the routine, expected case); a corrupt/unreadable file or one holding the wrong JSON shape each log a distinct, differently-worded message, so a log reader can tell those apart from each other and from "never escalated yet" - `inst-doc-index-load-escalation-file`
+- [x] - `p1` - Extract a valid `tier2_escalations` count from an already-parsed escalation-file object, clamping anything that isn't a real non-negative int (missing, wrong type, or negative -- e.g. a hand-edited or truncated-write file) down to `0` rather than letting it propagate into the next increment; warns if the file declares a `schema_version` newer than this build understands, reading the fields it recognizes best-effort rather than failing closed - `inst-doc-index-escalation-count-from`
+- [x] - `p1` - Reduce a caller-supplied escalation idempotency key to either a real, matchable token or `None`: an empty string is treated as no key at all (an empty value was never a meaningful caller-supplied identity), and a key over the length cap is likewise normalized to `None` with a warning, rather than letting either persist verbatim as if it were a genuine correlation ID - `inst-doc-index-normalize-escalation-key`
+
+### TF-IDF Scoring
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-tfidf`
+
+**Input**: Markdown file path, query text
+
+**Output**: Retrieval sections ranked by TF-IDF score against the query, plus a confidence signal
+
+Purely mechanical, no LLM call: reuses the Document Index's `retrieval_sections` for section boundaries (read once per file, same as every other JIT-retrieval consumer), then scores each section as sum(term-frequency x inverse-document-frequency) over the query's own terms. A rare, distinctive term scores its one relevant section far above every other (verified against a real document: 0.0016 vs. 0.0000 everywhere else); a common term whose real answer lives in a longer, more thoroughly-covered section can still lose to a shorter section with a single coincidental mention, since term frequency is normalized by section length â€” a real, measured, and documented failure mode of this method on its own, not a defect in the implementation (see the "zero-shot" case in the source findings document: margin 1.06x, wrong section on top). This is exactly why a margin/unambiguous confidence signal is returned alongside the ranking rather than just the ranking alone â€” a routing layer built on top of this needs to know when the ranking itself isn't trustworthy, not just what it is.
+
+1. [x] - `p1` - Tokenize text: lowercase, alphanumeric-only, dropping tokens shorter than 3 characters - `inst-tfidf-tokenize`
+2. [x] - `p1` - Score every retrieval section against a query: build the document's inverse-document-frequency table, rank sections by term-frequency x idf, and compute a margin/unambiguous confidence signal from the top two scores - `inst-tfidf-score`
+
+**Supporting**:
+- [x] - `p1` - Inverse-document-frequency table builder, section ranker, and margin/unambiguous confidence calculator - `inst-tfidf-score-helpers`
+- [x] - `p1` - `cfs tfidf-score` CLI wrapper: parse arguments, build the JSON output payload - `inst-tfidf-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs tfidf-score` output - `inst-tfidf-cmd-format`
+
+### OKF Bundle
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-okf`
+
+**Input**: Markdown file path; a written section's `line_start`, description, and body text (from an external caller)
+
+**Output**: A local, regenerable bundle of concept files + `index.md`, and a per-section missing/stale/current status report
+
+Deterministic infrastructure only, matching `doc_index.py`/`tfidf.py`: no LLM call happens in this module. Writing an actual section summary is an external caller's job (an agent, dispatched outside this codebase) -- this module tracks which concept files should exist relative to the document's *current* retrieval sections, detects when a written one is stale (its recorded `built_from_hash` no longer matches the section's current hash from the Document Index), and persists whatever the caller writes. The whole bundle is local-only and gitignored (`.cache/okf/` â€” see `.gitignore`): unlike the content of a summary, which is expensive to regenerate (real LLM tokens), the bundle not surviving a fresh clone just means it rebuilds from scratch the same way `doc_index.py`'s own cache does â€” nothing here assumes it survives across clones, only across calls on the same machine.
+
+1. [x] - `p1` - Resolve the local bundle directory for a source file within its Studio directory, resolved from the file's own path - `inst-okf-bundle-dir`
+2. [x] - `p1` - Load/persist the bundle manifest (`manifest.json`) atomically; loading validates the decoded shape (a dict, an `entries` list, each entry carrying `line_start`/`concept_file`/`built_from_hash`), treating a malformed/pre-schema manifest as absent rather than returned broken - `inst-okf-manifest-io`
+3. [x] - `p1` - Report the bundle's state against the document's *current* retrieval sections: missing (never summarized, or its concept file was deleted out from under it), stale (source changed since summary was written), or current. Matched primarily by content *hash*, not `line_start` -- inserting or reordering other sections shifts `line_start` without touching a section's own text, so a manifest entry is reconciled to whichever current section now carries its recorded hash (consumed one at a time per hash, preserving that entry's own `concept_file`) before falling back to `line_start` to distinguish a genuine edit (stale) from never-summarized (missing) - `inst-okf-status`
+4. [x] - `p1` - Write (or overwrite) one section's concept file (YAML frontmatter values safely quoted against embedded colons/quotes/newlines) and its manifest entry under one exclusive lock spanning the whole read-modify-write-and-reindex cycle, then regenerate `index.md` from the bundle's real current status (not the raw manifest), so a deleted concept file drops out instead of becoming a dead link and a stale entry is visibly marked - `inst-okf-write-concept`
+
+**Supporting**:
+- [x] - `p1` - YAML double-quoted-scalar escaper for frontmatter values, safe against caller-supplied content (an LLM's own summary text) containing colons, quotes, backslashes, or an embedded block-close sequence - `inst-okf-yaml-quote`
+- [x] - `p1` - Concept-file frontmatter builder: title/description/resource/generated-by, every value safely quoted - `inst-okf-build-frontmatter`
+- [x] - `p1` - Deterministic `index.md` template driven by real per-section status (missing/stale/current), not just the raw manifest, so it never disagrees with `cfs okf-status` - `inst-okf-render-index`
+- [x] - `p1` - `cfs okf-status` CLI wrapper: parse arguments, build the JSON output payload - `inst-okf-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs okf-status` output, including the concept file path - `inst-okf-cmd-format`
+
+### Atomic File I/O
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-atomic-io`
+
+**Input**: A file path and content to write; a lock path and a read-modify-write callback
+
+**Output**: A file written without any observable torn/partial state; a callback run with cross-call exclusivity
+
+Shared by every local cache/bundle writer in this package (`doc_index.py`, `okf.py`) once a second consumer needed the exact same two behaviors a first implementation had already solved once -- extracted rather than reimplemented a second time. Mirrors the fallback shape `decision_log.py`'s own locking already established for this codebase (exclusive `fcntl` lock where available, unlocked elsewhere), kept separate since that module also bakes in log-rotation behavior these callers don't need.
+
+1. [x] - `p1` - Write text to a path atomically: temp file + `os.replace`, so a reader racing a concurrent writer sees either the old complete file or the new complete one, never a torn write - `inst-atomic-write`
+2. [x] - `p1` - Run a read-modify-write callback under an exclusive lock on a sibling lock file, serializing concurrent callers so two overlapping cycles can't each read the same base state and have whichever writes last silently discard the other's update. An optional `timeout` bounds the wait instead of blocking forever (`None` keeps every existing caller's original block-forever behavior unchanged) - `inst-atomic-lock`
+3. [x] - `p1` - Poll for the lock under a bounded timeout via non-blocking `flock` attempts, retrying only the errno that means "someone else holds this lock right now" (`EAGAIN`/`EWOULDBLOCK`) and raising `TimeoutError` once the deadline passes; any other `OSError` (a real filesystem/descriptor failure, not contention) propagates immediately instead of being misdiagnosed as an ordinary wait - `inst-atomic-lock-poll`
+
+### Heading-Nav Search
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-heading-nav`
+
+**Input**: Markdown file path, query text
+
+**Output**: Every retrieval section containing the query literally, plus the first (document-order) hit
+
+Purely mechanical, no LLM call: a case-insensitive literal-substring search of the query against each retrieval section's own raw text, mirroring a real `grep -i "<query>"` against the content -- deliberately not tokenized or word-split, and sharing the Document Index's `retrieval_sections` for boundaries so this reads no more of the file than every other JIT-retrieval consumer already does. Has no semantic fallback by design: a query phrased differently than the source's own vocabulary returns zero hits everywhere, even when a related concept exists under different wording (a real, documented failure mode of this method on its own, not a defect) -- that hard failure is itself the useful signal a caller needs to decide whether to escalate past this method.
+
+1. [x] - `p1` - Find every retrieval section containing a query's literal text (case-insensitive), in document order, plus the first match; excludes fenced code blocks from the match so an incidental code-sample hit can't count as a prose match - `inst-heading-nav-search`
+
+**Supporting**:
+- [x] - `p1` - Blank out fenced-code-block lines before counting hits, reusing `toc.py`'s own fence-tracking - `inst-heading-nav-strip-fences`
+- [x] - `p1` - `cfs heading-nav` CLI wrapper: parse arguments, build the JSON output payload - `inst-heading-nav-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs heading-nav` output - `inst-heading-nav-cmd-format`
+
+### JIT-Retrieval Cascade
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-cascade`
+
+**Input**: Markdown file path, query text; optional numeric margin threshold and expected future query volume
+
+**Output**: A routing decision -- resolved at Tier 1, resolved with multiple candidates, or escalated to a Tier 2 OKF-vs-baseline recommendation (plus a large-read gate check when that recommendation is baseline)
+
+Combines Heading-Nav Search and TF-IDF Scoring into the two-tier routing decision neither mechanical method answers on its own (see constructorfabric/studio#104): heading-nav's zero-hit case and TF-IDF's own agreement/margin against heading-nav's pick determine whether a query resolves for free at Tier 1, needs both methods' candidates read, or must escalate to a Tier 2 choice between the local OKF bundle and a full baseline read. Tier 1's large-margin resolution is deliberately restricted to TF-IDF's `unambiguous` signal rather than a numeric cutoff -- of the two real margins measured while designing this cascade, only an infinite (unambiguous) one was on a correct pick; every finite margin measured, however large, was on a documented wrong pick -- so a numeric `margin_threshold` exists as an explicit, off-by-default opt-in rather than a built-in assumption. Tier 2 never recommends an OKF concept file it knows is stale or missing for the section Tier 1 named as its escalation candidate: since nothing in this codebase can perform a background rebuild (no job runner, and by design no LLM call anywhere in this module or the ones it composes), falling back to baseline is the only choice that doesn't risk silently serving a known-wrong summary.
+
+1. [x] - `p1` - Apply the Tier 1 routing table: heading-nav and TF-IDF always both run (constructorfabric/studio#134, Oleg67's suggestion #4 -- a zero-hit heading-nav result no longer skips TF-IDF, since the two are genuinely different signals: exact-phrase match vs. word-level tokenized match). When heading-nav has zero hits, TF-IDF alone resolves if unambiguous, else escalates with TF-IDF's own top pick as the candidate, or escalates with no candidate at all if TF-IDF also has no positive score anywhere. When heading-nav has a hit but TF-IDF has no positive score anywhere, escalates on heading-nav's single, unconfirmed signal rather than comparing it against an arbitrary all-zero tie-break as if it were a genuine competing pick (a real bug caught in review: the all-zero pick was previously compared unconditionally, fabricating a "disagreement" out of a signal that was never there). Otherwise, agreement with TF-IDF's real top pick resolves when unambiguous (or past an explicit margin threshold), else escalates as a diffuse margin; disagreement between the two resolves with both candidates - `inst-cascade-tier1`
+2. [x] - `p1` - Choose OKF vs. baseline once Tier 1 escalates: an available bundle with no summarized sections yet counts as "no usable bundle"; otherwise every section that could actually be selected -- Tier 1's named candidate, or the whole bundle when there's no candidate to narrow to -- must be current, else recommend baseline with a rebuild flag. Every call records one real Tier-1 escalation against the document (`doc_index.record_tier2_escalation`, constructorfabric/studio#134) and, whenever the recommendation is baseline, reports that persisted `tier2_escalations` count plus an automatic `should_build_okf` flag once it crosses the real break-even derived from this module's own measured per-query rates -- replacing the need for a human-supplied `expected_future_queries` guess, which remains supported alongside it for a caller reasoning about a specific future volume - `inst-cascade-tier2`
+3. [x] - `p1` - Route one query end to end: run Tier 1, and only when it escalates run Tier 2 and -- if Tier 2 recommends baseline -- the large-read confirmation gate against the document's real line count - `inst-cascade-route`
+
+**Supporting**:
+- [x] - `p1` - `cfs retrieve` CLI wrapper: parse arguments, build the JSON output payload - `inst-cascade-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs retrieve` output - `inst-cascade-cmd-format`
+- [x] - `p1` - Guard the Tier-2 break-even constant's own invariant at import time (baseline must cost strictly more per query than OKF) and derive it from the three measured per-query rates, rather than letting a future edit to those rates silently produce a nonsensical or undefined break-even point - `inst-cascade-break-even-guard`
+- [x] - `p1` - `--escalation-key` argparse type: reject an oversized value with an immediate, actionable CLI error rather than letting it silently degrade to "no key" several layers down inside `record_tier2_escalation` - `inst-cascade-escalation-key-arg`
+
+### Read Gate
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-read-gate`
+
+**Input**: A document's total line count; an optional line-count threshold
+
+**Output**: `{needs_confirmation, total_lines, threshold}` -- a structured verdict for an external caller to act on, not an interactive prompt
+
+Pure decision logic, no I/O: this is a deterministic CLI, not the caller that actually reads a file and answers a query, so it produces the structured flag that decision depends on rather than blocking on its own `input()` call. The default threshold (5,000 lines) is the real number measured during this design's own token-tracking prototype -- the only read among nine real candidate targets against a 166-page source document that crossed it was a whole-document baseline read.
+
+1. [x] - `p1` - Decide whether a read of a given line count should pause for confirmation against a threshold - `inst-read-gate-check`
+
+**Supporting**:
+- [x] - `p1` - `cfs read-gate` CLI wrapper: build the document index, extract its total line count, apply the gate check - `inst-read-gate-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs read-gate` output - `inst-read-gate-cmd-format`
 
 ### Markdown Parsing Utilities
 
@@ -461,6 +644,10 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - Fixing prompts for cross-reference coverage rule violations (target not in scope, missing from kind, wrong headings, missing/prohibited task or priority on reference) - `inst-fix-cross-ref-coverage`
 - [x] - `p1` - Fixing prompts for code marker structural and cross-validation errors (duplicate begin, end without begin, empty block, unclosed block, duplicate scope, DOCS-ONLY, orphan ref, unchecked task, missing marker, orphaned inst block) - `inst-fix-marker-errors`
 - [x] - `p1` - Fixing prompts for TOC validation errors (missing TOC, broken anchor, heading not in TOC, stale TOC) - `inst-fix-toc`
+- [x] - `p1` - Prompts for the JIT-retrieval readiness warnings (duplicate heading, depth jump, over-long section, missing description) and for an empty codebase entry or an oversized file, so a warning-only code still arrives with a suggested action - `inst-fix-jit-readiness`
+- [x] - `p1` - Probable-cause text for those same JIT-readiness and scope warnings, so the prompt arrives with the reasons a reader can check - `inst-fix-jit-reasons`
+- [x] - `p1` - Probable-reasons templates for all 10 CDSL structure error codes - `inst-fix-define-cdsl-reasons`
+- [x] - `p1` - Fixing prompts for CDSL structure violations (missing checkbox/phase/inst token, prohibited code/type/operator syntax, not-plain-English, duplicate inst-id, placeholder) - `inst-fix-cdsl-structure`
 - [x] - `p1` - Fixing prompt for unreferenced ID warning (no scope) and final None fallback - `inst-fix-warnings`
 
 ### Headings Contract Validation
@@ -688,6 +875,9 @@ The system **MUST** scan CDSL instruction markers (`inst-{slug}` suffixes in num
 | Fixing Utils | `skills/.../utils/fixing.py` | Fixing prompt generation for LLM agents |
 | Language Config | `skills/.../utils/language_config.py` | Language-specific file extensions and comment patterns |
 | Parsing Utils | `skills/.../utils/parsing.py` | Markdown structure parsing, section extraction |
+| Heading-Nav Utils | `skills/.../utils/heading_nav.py` | Literal-substring section search for JIT retrieval |
+| Cascade Utils | `skills/.../utils/cascade.py` | Two-tier JIT-retrieval routing (heading-nav + TF-IDF, OKF vs. baseline) |
+| Read Gate Utils | `skills/.../utils/read_gate.py` | Large-read confirmation threshold check |
 
 ## 7. Acceptance Criteria
 

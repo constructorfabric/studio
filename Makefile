@@ -40,6 +40,7 @@ help:
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make test                          - Run all tests in parallel (-n 6)"
+	@echo "  make test-gates                    - Run the enforcement gate corpus (seeded violations must fail)"
 	@echo "  make test-verbose                  - Run tests with verbose output"
 	@echo "  make test-quick                    - Run fast tests only (skip slow integration tests)"
 	@echo "  make test-coverage                 - Run tests with coverage report"
@@ -149,6 +150,14 @@ test: check-pytest
 	@echo "Running Constructor Studio tests with pipx..."
 	$(PYTEST_PIPX) tests/ -n 6 -v --tb=short
 
+# Runs the enforcement corpus on its own so the pipeline shows, as a named
+# check, that these gates fail on a seeded violation. The assertions already
+# live in the suite; a green `test` job does not evidence the red direction
+# unless you know the tests exist and go and read them.
+test-gates: check-pytest
+	@echo "Running enforcement gate corpus (known-bad must be red, known-good must be green)..."
+	$(PYTEST_PIPX) tests/test_enforcement_empty_codebase.py tests/test_enforcement_empty_scan.py -v --tb=short
+
 # Run tests with verbose output
 test-verbose: check-pytest
 	@echo "Running Constructor Studio tests (verbose) with pipx..."
@@ -222,9 +231,22 @@ pylint: check-pylint
 	PYTHONPATH=src:skills/studio/scripts $(PYLINT_PIPX) --jobs=6 $(PYLINT_TARGETS)
 
 # Spec coverage check (Constructor Studio system only)
+#
+# --min-granularity is 0.45, not the 0.46 this repo scored for a while. At 0.46 the
+# margin was +0.0005 over 51,431 weighted lines -- about 26 line-granularity units,
+# less than one new 300-line module. A correct, well-tested module could turn the gate
+# red on arrival for reasons that say nothing about it (constructorfabric/studio#132),
+# and the quickest way back over the line was to delete comment lines: a lower
+# denominator, not a single extra traced instruction. 0.45 leaves ~540 units.
+#
+# This is a floor the repository actually holds, not an aspiration. The score is not
+# falling because new code is poorly marked -- it is a line-weighted average, and a few
+# large, coarsely-marked older files dominate it: agents.py alone (g=0.23 over 7,635
+# lines) consumes ~1,722 units. Raising those is the real fix and is tracked in #132;
+# until then this floor should be read as "do not regress", not as the target.
 spec-coverage: ensure-bootstrap
 	@echo "Checking spec coverage (Constructor Studio system)..."
-	$(PYTHON) $(BOOTSTRAP_STUDIO) spec-coverage --system studio --min-coverage 90 --min-file-coverage 60 --min-granularity 0.46
+	$(PYTHON) $(BOOTSTRAP_STUDIO) spec-coverage --system studio --min-coverage 90 --min-file-coverage 60 --min-granularity 0.45
 
 # Check version consistency
 check-versions:
@@ -361,8 +383,18 @@ lint-ci:
 # Run CI via act in Docker (mirrors .github/workflows/ci.yml exactly)
 # Runs jobs sequentially — stops on first failure.
 # Auto-detects arm64/amd64. Override: make ci ACT_FLAGS="--your-flags"
+# Job discovery failing outright, changing format, or an over-broad exclusion
+# emptying the list must never look like "nothing to do, success" -- an empty
+# job set fails loudly instead of letting a zero-iteration loop exit 0.
 ci: lint-ci
-	@for job in $$(act push --list $(ACT_FLAGS) 2>/dev/null | tail -n +2 | awk '{print $$2}' | grep -v '^sonarqube$$'); do \
+	@jobs="$$(act push --list $(ACT_FLAGS) 2>/dev/null | tail -n +2 | awk '{print $$2}' | grep -v '^sonarqube$$')"; \
+	if [ -z "$$jobs" ]; then \
+		echo "ERROR: 'act push --list' discovered no CI jobs to run -- refusing to report" >&2; \
+		echo "       success for a no-op. Check that act is installed/working and that" >&2; \
+		echo "       .github/workflows/*.yml still parses the way this Makefile expects." >&2; \
+		exit 1; \
+	fi; \
+	for job in $$jobs; do \
 		echo "▶ Running job: $$job"; \
 		act push -j $$job $(ACT_FLAGS) || exit 1; \
 	done

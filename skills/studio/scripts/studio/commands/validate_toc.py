@@ -14,9 +14,57 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from ..utils.toc import add_toc_max_level_argument, validate_toc
+from ..utils import error_codes as EC
+from ..utils.toc import DEFAULT_MAX_SECTION_LINES, add_toc_max_level_argument, validate_toc
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-imports
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-validate-one
+def _validate_one_file(filepath: Path, args: argparse.Namespace) -> dict:
+    """Validate a single file, returning its result dict. Never raises --
+    a missing file or a read failure (permission denied, binary/non-UTF-8
+    content, a TOCTOU race) is reported as an ERROR result instead, so one
+    bad file in a batch can't abort validation of the rest.
+    """
+    if not filepath.is_file():
+        return {
+            "file": str(filepath),
+            "status": "ERROR",
+            "message": "File not found",
+            "code": EC.FILE_LOAD_ERROR,
+        }
+
+    try:
+        content = filepath.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return {
+            "file": str(filepath),
+            "status": "ERROR",
+            "message": f"Could not read file: {exc}",
+            "code": EC.FILE_READ_ERROR,
+        }
+
+    report = validate_toc(
+        content,
+        artifact_path=filepath,
+        max_heading_level=args.max_level,
+        max_section_lines=args.max_section_lines,
+    )
+    errors = report.get("errors", [])
+    warnings = report.get("warnings", [])
+    file_result: dict = {
+        "file": str(filepath),
+        "status": "FAIL" if errors else ("WARN" if warnings else "PASS"),
+        "error_count": len(errors),
+        "warning_count": len(warnings),
+    }
+    if args.verbose or errors:
+        file_result["errors"] = errors
+    if args.verbose or warnings:
+        file_result["warnings"] = warnings
+    return file_result
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-validate-one
+
 
 def cmd_validate_toc(argv: List[str]) -> int:
     """Validate Table of Contents in markdown files."""
@@ -32,6 +80,12 @@ def cmd_validate_toc(argv: List[str]) -> int:
     )
     add_toc_max_level_argument(p)
     p.add_argument(
+        "--max-section-lines",
+        type=int,
+        default=DEFAULT_MAX_SECTION_LINES,
+        help=f"Warn when a section exceeds this many lines (default: {DEFAULT_MAX_SECTION_LINES})",
+    )
+    p.add_argument(
         "--verbose",
         action="store_true",
         help="Include full error details in output",
@@ -40,49 +94,19 @@ def cmd_validate_toc(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-args
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
-    results = []
-    total_errors = 0
-    total_warnings = 0
     files_to_validate = [Path(f).resolve() for f in args.files]
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-resolve-files
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-foreach-file
-    for filepath in files_to_validate:
-
-        if not filepath.is_file():
-            results.append({
-                "file": str(filepath),
-                "status": "ERROR",
-                "message": "File not found",
-            })
+    results = [_validate_one_file(filepath, args) for filepath in files_to_validate]
+    total_errors = 0
+    total_warnings = 0
+    for file_result in results:
+        if file_result["status"] == "ERROR":
             total_errors += 1
-            continue
-
-        content = filepath.read_text(encoding="utf-8")
-        report = validate_toc(
-            content,
-            artifact_path=filepath,
-            max_heading_level=args.max_level,
-        )
-
-        errors = report.get("errors", [])
-        warnings = report.get("warnings", [])
-        total_errors += len(errors)
-        total_warnings += len(warnings)
-
-        file_result: dict = {
-            "file": str(filepath),
-            "status": "FAIL" if errors else ("WARN" if warnings else "PASS"),
-            "error_count": len(errors),
-            "warning_count": len(warnings),
-        }
-
-        if args.verbose or errors:
-            file_result["errors"] = errors
-        if args.verbose or warnings:
-            file_result["warnings"] = warnings
-
-        results.append(file_result)
+        else:
+            total_errors += file_result["error_count"]
+            total_warnings += file_result["warning_count"]
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-foreach-file
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-return
@@ -123,6 +147,12 @@ def _human_validate_toc(data: dict) -> None:
                 ui.substep(f"  ✗ {e}")
             for w in r.get("warnings", []):
                 ui.substep(f"  ⚠ {w}")
+        elif status == "WARN":
+            ui.warn(f"{path}: {warns} warning(s)")
+            for w in r.get("warnings", []):
+                ui.substep(f"  ⚠ {w}")
+        elif status == "ERROR":
+            ui.error(f"{path}: {r.get('message', 'unknown error')}")
         else:
             ui.substep(f"{path}: {status}")
     overall = data.get("status", "")

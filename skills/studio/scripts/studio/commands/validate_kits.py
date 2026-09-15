@@ -13,6 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ..utils import decision_log
 from ..utils.constraints import error as constraints_error
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-imports
@@ -609,6 +610,9 @@ def _build_validate_kits_result(
             result["errors"] = all_errors[:10]
             if len(all_errors) > 10:
                 result["errors_truncated"] = len(all_errors) - 10
+    # Telemetry: authoritative final kit-validation verdict, correlated via the run's id.
+    decision_log.record_validation(
+        "validate-kits", overall_status, findings=len(all_errors))
     return (0 if overall_status == "PASS" else 2), result
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-build-result

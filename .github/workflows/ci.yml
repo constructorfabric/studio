@@ -1,11 +1,16 @@
 # @cpt-algo:cpt-studio-spec-init-structure-change-infrastructure:p1
 name: CI
 
+# `release/**` alongside `main`: releases are cut on a branch taken from the previous
+# tag, reviewed and tested there, and only then tagged. Filtering CI to `main` meant the
+# one branch whose whole purpose is being tested before a tag was the one branch this
+# pipeline never ran on -- a release PR showed only the checks that come from apps
+# (DCO, SonarCloud, code-ranker), and no tests, lint, coverage or artifact validation.
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,6 +20,10 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    permissions:
+      # Same reasoning as `gates` below: this job runs pull-request code, so it gets
+      # the least privilege that still lets it check out and read.
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -23,6 +32,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # `make install` and `make test` execute pull-request code -- a contributed
+          # conftest.py runs before any assertion does -- so the job token stays out of
+          # .git/config here for exactly the reason it does in `gates`. Applying it to
+          # one of the two jobs and not the other left the larger one unprotected.
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -34,13 +48,54 @@ jobs:
       - name: Run tests
         run: make test
 
-  coverage:
-    name: Coverage (≥90%)
+  # Surfaces the enforcement corpus as its own check. The `test` job already
+  # runs these assertions, but a green suite of ~4,700 tests is not evidence
+  # that a gate can fail -- and a gate that never fails is worthless. This job
+  # makes the red direction visible in the pipeline: known-bad fixtures must be
+  # rejected, known-good fixtures must stay clean.
+  #
+  # "Must" here is the corpus's contract, not the pipeline's: this repository has no
+  # branch protection and no rulesets, so no check in this file -- this one included --
+  # blocks a merge on its own. A red `gates` is a signal a reviewer has to act on. To
+  # make it binding, register "Enforcement Gates (seeded violations must fail)" as a
+  # required status check on `main`; until then, treat this comment as the honest
+  # description of what a failure here does and does not prevent.
+  gates:
+    name: Enforcement Gates (seeded violations must fail)
     runs-on: ubuntu-latest
+    permissions:
+      # This job runs pull-request code (`make install`, `make test-gates`), so
+      # it gets the least privilege that still lets it check out and read.
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Keep the job token out of .git/config so the test corpus this job
+          # executes cannot read it back. The initial fetch is unaffected.
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: make install
+
+      - name: Known-bad must be red, known-good must stay green
+        run: make test-gates
+
+  coverage:
+    name: Coverage (≥90%)
+    runs-on: ubuntu-latest
+    permissions:
+      # Runs the same `make install` + test suite over pull-request code as `test`.
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:

@@ -14,11 +14,14 @@
   - [TOC Generation](#toc-generation)
   - [Resolve Variables](#resolve-variables)
   - [Shell Completions](#shell-completions)
+  - [Change Summary Digest](#change-summary-digest)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Run Doctor Checks](#run-doctor-checks)
   - [Run Self-Check](#run-self-check)
   - [Resolve Variables](#resolve-variables-1)
   - [Pylint Rollout Phase 0](#pylint-rollout-phase-0)
+  - [Change Summary Window And Events](#change-summary-window-and-events)
+  - [Change Summary Digest Composition](#change-summary-digest-composition)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Developer Experience State](#developer-experience-state)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -27,6 +30,7 @@
   - [Resolve Variables Command](#resolve-variables-command)
   - [Pre-Commit Hooks](#pre-commit-hooks-1)
   - [Shell Completions](#shell-completions-1)
+  - [Change Summary Command](#change-summary-command)
 - [6. Implementation Modules](#6-implementation-modules)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
 
@@ -183,6 +187,25 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 1. - `p3` - User invokes `cfs completions install` - `inst-install-completions`
 2. - `p3` - Detect shell (bash/zsh/fish) and write completion script - `inst-write-completions`
 
+### Change Summary Digest
+
+- [x] `p1` - **ID**: `cpt-studio-flow-developer-experience-change-summary`
+
+**Actor**: `cpt-studio-actor-user`
+
+**Success Scenarios**:
+- User runs `cfs change-summary` on a branch → a digest of at most ten lines: the window it covers, the changed files with their marker denominator, the requirements they serve, and the decisions recorded while the work was done; exit 0
+- User runs `cfs change-summary --json` → the same lines plus the full data behind each of them, as JSON
+
+**Error Scenarios**:
+- Not a git repository · git unavailable · decision log disabled, absent or unreadable · corrupt log lines · not a Studio project → each states its own reason, and a denominator wherever one exists — a dimension that is unavailable has nothing to count and states its reason alone — and the exit code is still 0
+- No changes against the base → one line, `no changes against <ref>`, naming the base and nothing else: there is nothing to review, so no other dimension is consulted for a line, and a zero-file denominator would restate what the line already says; exit 0
+- Unknown flag → usage error, exit 2 — the only non-zero exit the command has
+
+**Steps**:
+1. [x] - `p1` - User invokes `cfs change-summary [--root P] [--base REF] [--since TS]`; the digest is composed from the window, the changed-file linkage and the decision-log selection, and a usage error is the only path that returns non-zero — a stage that raises yields a stated reason, not a traceback - `inst-change-summary-cmd`
+2. [x] - `p1` - Render the digest's lines for a human — the lines and nothing else, so they paste cleanly — or the full payload as JSON, and return 0 - `inst-change-summary-cmd-format`
+
 ## 3. Processes / Business Logic (CDSL)
 
 ### Run Doctor Checks
@@ -229,6 +252,65 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 2. - `p2` - Scope the first rollout tranche to the first half of the prioritized backlog: `R0911`, `R0914`, `R0801`, `R0912`, `R0915`, and `R0913` - `inst-pylint-phase-0-first-half`
 3. - `p2` - Keep the remaining backlog deferred for later rollout phases, starting with `R0917`, `R0902`, `C0302`, `C0415`, `R0401`, and `C0301` - `inst-pylint-phase-0-deferred-half`
 4. - `p2` - Keep the rollout aligned with `cpt-studio-nfr-zero-harm`: stage advisory cleanup before enabling additional checks - `inst-pylint-phase-0-zero-harm`
+
+### Change Summary Window And Events
+
+- [x] `p1` - **ID**: `cpt-studio-algo-developer-experience-change-summary`
+
+**Input**: A project root, plus an optional base ref or explicit lower-bound timestamp
+
+**Output**: The span of work a change digest covers, and the decision-log events recorded inside it
+
+**Rules**:
+1. [x] - `p1` - Define the window and selection result types as immutable records, so a snapshot of what git said cannot be edited after the counts describing it were taken - `inst-change-summary-datamodel`
+2. [x] - `p1` - Answer read-only git queries as one line of output or nothing, keeping a tool failure apart from a valid negative so a timeout is never reported as a conclusion about history - `inst-change-summary-git-query`
+3. [x] - `p1` - Detect whether the project root sits inside a git work tree, telling not-a-repository apart from a repository without a working tree and from git itself failing to answer - `inst-change-summary-detect-repo`
+4. [x] - `p1` - Resolve the base ref, preferring the canonical remote over a fork's lagging default, and honour or refuse an explicitly requested ref rather than substituting a fallback - `inst-change-summary-default-base`
+5. [x] - `p1` - Resolve the merge-base between HEAD and the base ref, treating unrelated histories as no window, and telling a shallow clone whose branch point was never fetched apart from histories that are genuinely unrelated - `inst-change-summary-merge-base`
+6. [x] - `p1` - Read the base commit's commit time as the window's lower bound, accepting that the boundary moves with the merge-base and that an explicit lower bound is how a caller pins it - `inst-change-summary-base-time`
+7. [x] - `p1` - Assemble the window, short-circuiting git when the caller supplies an explicit lower bound and no base, letting a named base still anchor the diff while the bound pins only the decision boundary, and returning a stated reason on every failure path instead of raising - `inst-change-summary-resolve-window`
+8. [x] - `p1` - Parse ISO-8601 timestamps to aware datetimes, normalising a trailing Z and refusing naive values rather than assuming an offset that would move events across the boundary - `inst-change-summary-parse-ts`
+9. [x] - `p1` - Read the decision log once and take readability, the events and the corruption count from that single snapshot, keeping absent apart from unreadable, so nothing appended or rotated between separate reads is reported as this window's state - `inst-change-summary-log-state`
+10. [x] - `p1` - Select events at or after the window boundary, excluding and counting undated events rather than guessing them into or out of the window - `inst-change-summary-select-events`
+11. [x] - `p1` - Group selected events by run id in first-seen order, so one invocation is a subdivision of the branch's span and never the whole story - `inst-change-summary-group-runs`
+12. [x] - `p1` - Resolve the decision log belonging to the window's own project rather than to the current working directory, following a process-wide override where the environment sets one but reporting that it did, so a digest never presents another project's decisions as this one's - `inst-change-summary-default-log`
+13. [x] - `p1` - Walk a known-good base ref down to a window, letting a git tool failure take precedence over a historical reading and keeping whatever was already learned on the returned window - `inst-change-summary-window-from-base`
+14. [x] - `p1` - Reduce a run id to a canonical form, casefolding and stripping so one logical run is not split and a non-string does not merge with its own text, while not rejecting an unrecognised-but-real identifier - `inst-change-summary-canonical-run`
+15. [x] - `p1` - Resolve the decision log a window should be read from, returning either a usable path and whether the environment chose it, or the reason no log is usable - `inst-change-summary-resolve-log`
+16. [x] - `p1` - Define the per-file link and report types as immutable records, keeping referenced IDs separate from declared IDs so a changed specification is never reported as tracing to nothing - `inst-change-summary-link-datamodel`
+17. [x] - `p1` - Answer read-only multi-record git queries by splitting NUL-delimited output, since a path may legally contain any byte except NUL, running with the same sanitised environment as the single-line query so an ambient redirect cannot list another repository's files - `inst-change-summary-git-lines`
+18. [x] - `p1` - Parse a name-status line into status and path, taking the new path for renames and copies so a rename keeps its requirement link - `inst-change-summary-parse-name-status`
+19. [x] - `p1` - Judge whether a changed path is one this project owns, delegating containment to the single shared exclusion policy rather than re-deriving it, and applying no extension filter because a changed artifact declares requirements without carrying a code extension - `inst-change-summary-classify-path`
+20. [x] - `p1` - Report what one file does with requirement IDs, asking both directions because a suffix is not a reliable guide — a document's citation of an ID it does not itself declare is a reference too — reading the file once so both directions describe one snapshot, telling too-large from unreadable by the loader's own error code, and separating could-not-read from could-not-parse from carries-no-markers - `inst-change-summary-file-markers`
+21. [x] - `p1` - List everything changed since the base commit against the working tree, including untracked files, so newly written work is never absent from the digest; pin rename detection rather than inherit the ambient git setting; capture the tracked diff whole, since the tracked-file count already bounds it, and stream the untracked sweep, keeping only as many of its paths as the shared ceiling can still seat and counting the rest, deduplicating it against the diff before either the count or the ceiling sees a record, so each path is counted once and no duplicate takes a slot from a new file; share the ceiling between tracked and untracked entries so new work is never the first thing dropped; and report the whole listing as unavailable when either query fails rather than presenting a partial list as complete - `inst-change-summary-collect-changed`
+22. [x] - `p1` - Resolve every changed file to what it declares, taking the root from the window so the report describes the project the window was built for, counting excluded, unreadable, deleted and not-a-file separately over the entries examined so the report always carries its denominator, and confining one entry's unforeseen failure to its own row - `inst-change-summary-link-changed`
+23. [x] - `p1` - Classify one changed entry into its report row and its tally, keeping could-not-determine apart from excluded-by-policy and from not-a-regular-file, and listing every entry that existed even when nothing could be read from it - `inst-change-summary-classify-entry`
+24. [x] - `p1` - After a merge-base miss, ask whether the history is shallow, and in a shallow one report the miss as undecided — the branch point may lie beyond the fetched depth, or the histories may be unrelated, and a truncated history cannot tell which — rather than as a finding about the branches; a probe that itself fails is reported as git failing, not as either - `inst-change-summary-shallow-check`
+25. [x] - `p1` - Stream the one git query whose output the repository does not bound, keeping records up to the ceiling and counting the rest as they pass, so the cost the ceiling exists to bound is the cost actually bounded; read it against the query timeout so a git that holds the pipe open in silence is killed and reported rather than waited on forever; and report a stream that failed part-way as a tool failure, never as a shorter listing - `inst-change-summary-git-stream`
+26. [x] - `p1` - Share the ceiling between tracked and untracked entries by taking from each in turn once it bites, so brand-new files are never the first thing dropped from a large change set - `inst-change-summary-share-ceiling`
+27. [x] - `p1` - Split the streamed bytes into records as they arrive, judging each against the records the caller already holds before it can take a kept slot or add to the count; bound the length of one record so a stream that never delimits cannot grow without limit; decode with the same codec as every other git reader so one path is one string; and record any failure for the caller rather than let the thread end unseen - `inst-change-summary-pump-records`
+28. [x] - `p1` - Fix the bounds every git reader in this module obeys — how long one query may run, the codec a path is decoded with, and the longest single record a stream may buffer — in one place, so the captured reader and the streamed reader cannot disagree about the same file's name or about when to give up - `inst-change-summary-reader-bounds`
+29. [x] - `p1` - Establish which repository git answers about and which commit it is compared against, since naming the directory alone is not sufficient on either count: clear the variables that redirect git to another repository, and clear the variables that inject configuration into it, because injected configuration can suppress a brand-new file from the changed-file listing while the report still calls itself complete; and prefer the canonical remote's own default branch over a fork's, which lags it - `inst-change-summary-git-environment`
+30. [x] - `p1` - Name every outcome this module can report as one shared vocabulary, so producer, renderer and tests agree on what an unavailable dimension is called rather than matching on prose that drifts, and bound how many changed entries are examined from the feature's own premise rather than arbitrarily - `inst-change-summary-reason-vocabulary`
+
+### Change Summary Digest Composition
+
+- [x] `p1` - **ID**: `cpt-studio-algo-developer-experience-change-summary-digest`
+
+**Input**: A project root, plus an optional base ref or explicit lower-bound timestamp
+
+**Output**: At most ten lines, each backed by data and each degraded dimension stating its reason and denominator, together with the JSON payload behind them
+
+**Rules**:
+1. [x] - `p1` - Define the line ceiling, the caps on names listed inline, and the telemetry event kinds that are recorded cost rather than decisions, so every later rule shares one vocabulary - `inst-digest-datamodel`
+2. [x] - `p1` - Refuse to summarise outside a Studio project with one stated reason, rather than three dimensions each reporting unavailable, and say when the check itself failed rather than report a machine fault as a fact about the directory - `inst-digest-project-gate`
+3. [x] - `p1` - State the window as its lower bound and the base ref and commit that anchor the diff — the bound being the base commit's time unless the caller pinned it — or the reason no window exists together with the flag that scopes decisions by time without git - `inst-digest-window-line`
+4. [x] - `p1` - State what changed with its denominator on every line: how many files, how many carry markers, and every excluded, deleted, unreadable, not-a-file or unexamined file, naming a tally only when it is non-zero and naming the examined population when the scan was capped so a breakdown never reads as one of the whole - `inst-digest-changes-lines`
+5. [x] - `p1` - Name the requirements the changed files reference or declare, capped and counted rather than truncated silently, and emit no line at all when there are none - `inst-digest-requirements-line`
+6. [x] - `p1` - State the decisions recorded in the window by kind and by run, naming runs by a prefix long enough to keep the shown ones distinct, excluding telemetry events and this command's own invocations so a digest never counts itself, and give every skipped line, undated event and shared-log condition a line of its own, emitted ahead of the per-run breakdown so that the lines admitting the log could not be read fully outrank the detail of what was read - `inst-digest-decision-lines`
+7. [x] - `p1` - Enforce the ceiling by omitting lines and saying how many were omitted, never by padding to fill it, cutting from the end so the order lines are emitted in is the order they are sacrificed in - `inst-digest-ceiling`
+8. [x] - `p1` - Carry the data behind every line in a payload that names no absolute path, so nothing a home directory or username could reach a review through is present, and in which every string is encodable, so an undecodable filename is escaped rather than allowed to crash the output - `inst-digest-payload`
+9. [x] - `p1` - Compose the digest: one line when there is no window and one when there are no changes, since repeating a reason or consulting the log for nothing to review would be padding, and the full set otherwise - `inst-digest-compose`
 
 ## 4. States (CDSL)
 
@@ -281,6 +363,16 @@ No feature-specific state machines. Self-check is stateless (run → report).
 - [ ] - `p3` - `cfs completions install` writes shell-appropriate completion script
 - [ ] - `p3` - Supports bash, zsh, and fish
 
+### Change Summary Command
+
+- [x] `p1` - **ID**: `cpt-studio-dod-developer-experience-change-summary`
+
+- [x] - `p1` - `cfs change-summary` renders at most ten lines, each backed by data; when the ceiling bites, the last line says how many were omitted
+- [x] - `p1` - Every degraded dimension states its own reason and its denominator
+- [x] - `p1` - Exit 0 on every path except a usage error (2), enforced by tests that force each failure the behaviour matrix names and by a last-resort guard that turns an unforeseen exception into a stated reason - `inst-advisory-exit-zero`
+- [x] - `p1` - `--json` carries the full payload behind every line, with no absolute path in it
+- [x] - `p1` - Wired into no Makefile target, CI gate or required status check
+
 ## 6. Implementation Modules
 
 | Module | Path | Responsibility |
@@ -289,12 +381,15 @@ No feature-specific state machines. Self-check is stateless (run → report).
 | TOC Command | `skills/.../commands/toc.py` | CLI wrapper for TOC generation |
 | TOC Utils | `skills/.../utils/toc.py` | Unified TOC generation, anchor slugs, code block awareness |
 | Resolve Vars Command | `skills/.../commands/resolve_vars.py` | Template variable resolution to absolute paths |
+| Change Summary Core | `skills/.../utils/change_summary.py` | Window resolution from git, decision-log event selection inside it, and resolution of the changed files in that window to the requirement IDs they reference or declare |
+| Change Summary Command | `skills/.../commands/change_summary.py` | Advisory digest: composes at most ten data-backed lines from the window, the changed-file linkage and the decision log, and exits non-zero only on a usage error |
 
 ## 7. Acceptance Criteria
 
 - [x] `cfs self-check` validates kit integrity and reports per-kind results
 - [x] `cfs resolve-vars` resolves all template variables to absolute paths
 - [x] `cfs info` includes `variables` in output for agent variable resolution
+- [x] `cfs change-summary` prints an advisory digest that states a reason and denominator on every degraded path, exits 0 everywhere except a usage error, and is wired into no gate
 - [ ] Architecture records the Phase 0 Pylint rollout scope before enabling any of `R0911`, `R0914`, `R0801`, `R0912`, `R0915`, or `R0913`
 - [ ] `cfs doctor` reports environment health with pass/fail/warn per check (including optional `ralphex` availability)
 - [ ] Pre-commit hooks enforce validation on staged artifacts

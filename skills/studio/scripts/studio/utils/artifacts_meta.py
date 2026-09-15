@@ -1271,12 +1271,16 @@ def generate_slug(name: str) -> str:
 def generate_default_registry(
     project_name: str,
     kit_slug: str = "sdlc",
+    codebase: Optional[List[Dict[str, object]]] = None,
 ) -> dict:
     """Generate default artifacts.toml registry for a new project.
 
     Args:
         project_name: Name of the project (used as system name)
         kit_slug: Slug of the kit to assign to the root system
+        codebase: Detected source roots to register. Omitted or empty leaves
+            ``codebase = []``, which scans nothing -- callers that can detect
+            roots should pass them, and say so when they find none.
 
     Returns:
         Dictionary with the default registry structure.
@@ -1289,7 +1293,7 @@ def generate_default_registry(
                 "slug": generate_slug(project_name),
                 "kit": kit_slug,
                 "artifacts": [],
-                "codebase": [],
+                "codebase": list(codebase or []),
                 "children": [],
             },
         ],

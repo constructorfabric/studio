@@ -10,9 +10,12 @@
 import argparse
 import json
 import logging
+import math
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
+from ..utils import decision_log
+from ..utils.codebase import resolve_entry_code_files
 from ..utils.coverage import (
     FileCoverage,
     calculate_metrics,
@@ -30,6 +33,36 @@ def _warn_spec_coverage(message: str) -> None:
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers
 
 
+# @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-threshold-argtype
+def _finite_threshold(flag: str):
+    """argparse type for a threshold flag: any finite number.
+
+    A bare ``type=float`` is not enough here, because NaN survives it and then
+    disappears. :func:`_requested_thresholds` counts a threshold as demanded only when
+    ``value > 0``, and ``float("nan") > 0`` is ``False`` -- so ``--min-coverage nan``
+    was dropped from the demanded set, and an empty scope (which can honour no
+    guarantee at all) exited 0 instead of 2. A misconfigured CI threshold reported
+    success for a gate that never ran. Rejecting it at parse time keeps the exit code
+    answering its one question: was a guarantee demanded that cannot be given?
+
+    Only finiteness is checked, deliberately. A negative floor is meaningful here --
+    it is met by any scope, so it demands nothing, which is the behaviour
+    :func:`_requested_thresholds` documents and ``test_enforcement_empty_scan`` pins.
+    Clamping to ``[0, upper]`` would reject ``--min-coverage -5`` and break that.
+    """
+    def parse(value: str) -> float:
+        try:
+            parsed = float(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"invalid float value: {value!r}") from exc
+        if not math.isfinite(parsed):
+            raise argparse.ArgumentTypeError(
+                f"{flag} must be a finite number, got {value!r}")
+        return parsed
+    return parse
+# @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-threshold-argtype
+
+
 def _build_spec_coverage_parser() -> argparse.ArgumentParser:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-build-parser
     parser = argparse.ArgumentParser(
@@ -38,27 +71,31 @@ def _build_spec_coverage_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--min-coverage",
-        type=float,
+        type=_finite_threshold("--min-coverage"),
         default=None,
-        help="Minimum coverage percentage (0-100). Exit 2 if below.",
+        help="Minimum coverage percentage (0-100). Exit 2 if below; a positive value also "
+             "exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-file-coverage",
-        type=float,
+        type=_finite_threshold("--min-file-coverage"),
         default=None,
-        help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below.",
+        help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below; "
+             "a positive value also exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-granularity",
-        type=float,
+        type=_finite_threshold("--min-granularity"),
         default=None,
-        help="Minimum granularity score (0-1). Exit 2 if below.",
+        help="Minimum granularity score (0-1). Exit 2 if below; a positive value also "
+             "exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--min-file-granularity",
-        type=float,
+        type=_finite_threshold("--min-file-granularity"),
         default=None,
-        help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below.",
+        help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below; "
+             "a positive value also exits 2 if nothing was assessed.",
     )
     parser.add_argument(
         "--system",
@@ -69,6 +106,10 @@ def _build_spec_coverage_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--verbose", action="store_true", help="Include per-file marker details and covered ranges")
     parser.add_argument("--output", default=None, help="Write report to file instead of stdout")
+    parser.add_argument("--semantic", action="store_true",
+                        help="Attach the advisory semantic-coverage pass — assesses covered/partial/"
+                             "wrong/unjudgeable per marked block; never gates status/exit "
+                             "(see architecture/features/spec-coverage.md)")
     return parser
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-build-parser
 
@@ -99,7 +140,16 @@ def _collect_codebase_files(
     system_node: object,
     project_root: Path,
     code_files_to_scan: List[Path],
-) -> None:
+) -> int:
+    """Collect this node's code files, returning how many candidates were excluded.
+
+    The count is returned rather than dropped because switching to the shared
+    policy changes the population the coverage percentage is computed over: a
+    registered root holding a vendored subtree contributes fewer files than it
+    used to. A metric whose denominator moves has to say so, or a percentage
+    change looks like the code changed.
+    """
+    excluded = 0
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-collect-codebase-files
     for cb_entry in getattr(system_node, "codebase", []):
         path_str = (
@@ -113,17 +163,20 @@ def _collect_codebase_files(
             else cb_entry.get("extensions", None)
         ) or [".py"]
         code_path = _resolve_code_path(project_root, path_str)
-        if not code_path.exists():
-            continue
-        if code_path.is_file():
-            code_files_to_scan.append(code_path)
-            continue
-        for ext in extensions:
-            code_files_to_scan.extend(code_path.rglob(f"*{ext}"))
+        # Resolved through the shared policy rather than a bare rglob, so this
+        # command and `validate` cannot disagree about which files one entry
+        # covers -- and so a registered parent root does not re-admit the
+        # vendored trees that registration itself refuses.
+        entry_files, entry_excluded = resolve_entry_code_files(
+            code_path, extensions, project_root=project_root
+        )
+        excluded += entry_excluded
+        code_files_to_scan.extend(entry_files)
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-collect-codebase-files
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-collect-codebase-files
     for child in getattr(system_node, "children", []):
-        _collect_codebase_files(child, project_root, code_files_to_scan)
+        excluded += _collect_codebase_files(child, project_root, code_files_to_scan)
+    return excluded
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-collect-codebase-files
 
 
@@ -143,33 +196,39 @@ def _validate_selected_systems(args, meta) -> tuple[set[str] | None, dict | None
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-validate-systems
 
 
-def _collect_selected_system_files(meta, project_root: Path, system_slugs: set[str] | None) -> List[Path]:
+def _collect_selected_system_files(
+    meta, project_root: Path, system_slugs: set[str] | None
+) -> Tuple[List[Path], int]:
+    """Files the selected systems register, and how many candidates were excluded."""
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
     code_files_to_scan: List[Path] = []
+    excluded = 0
 
     def visit(node: object) -> None:
+        nonlocal excluded
         if system_slugs is None:
-            _collect_codebase_files(node, project_root, code_files_to_scan)
+            excluded += _collect_codebase_files(node, project_root, code_files_to_scan)
             return
         slug = getattr(node, "slug", "")
         if slug in system_slugs:
-            _collect_codebase_files(node, project_root, code_files_to_scan)
+            excluded += _collect_codebase_files(node, project_root, code_files_to_scan)
             return
         for child in getattr(node, "children", []):
             visit(child)
 
     for system_node in meta.systems:
         visit(system_node)
-    return code_files_to_scan
+    return code_files_to_scan, excluded
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
 
 
 def _filter_ignored_files(code_files_to_scan: List[Path], project_root: Path, meta) -> List[Path]:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-filter-ignored-files
     filtered_files: List[Path] = []
-    for file_path in code_files_to_scan:
+    root = project_root.resolve()   # resolve both sides so a symlinked/unresolved root
+    for file_path in code_files_to_scan:   # (e.g. macOS /var -> /private/var) still matches
         try:
-            rel = file_path.resolve().relative_to(project_root).as_posix()
+            rel = file_path.resolve().relative_to(root).as_posix()
         except ValueError as exc:
             _warn_spec_coverage(f"code file {file_path} is outside project root {project_root}: {exc}")
             rel = None
@@ -180,18 +239,88 @@ def _filter_ignored_files(code_files_to_scan: List[Path], project_root: Path, me
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-filter-ignored-files
 
 
-def _empty_coverage_result() -> dict:
+def _count_selected_codebase_entries(meta, system_slugs: set[str] | None) -> int:
+    """Count codebase entries registered by the selected systems.
+
+    Distinguishes "nothing is registered" from "what is registered resolves to
+    no files" -- two different mistakes that otherwise produce identical output.
+    """
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-count-registered-entries
+    def count_subtree(node: object) -> int:
+        """Entries registered by ``node`` and every descendant of it."""
+        return len(getattr(node, "codebase", None) or []) + sum(
+            count_subtree(child) for child in getattr(node, "children", [])
+        )
+
+    def visit(node: object) -> int:
+        """Count ``node``'s subtree once it is in scope, mirroring file collection."""
+        if system_slugs is None or getattr(node, "slug", "") in system_slugs:
+            return count_subtree(node)
+        return sum(visit(child) for child in getattr(node, "children", []))
+
+    return sum(visit(system_node) for system_node in meta.systems)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-count-registered-entries
+
+
+def _requested_thresholds(args) -> List[str]:
+    """Names of the thresholds whose satisfaction the caller actually demanded.
+
+    A non-positive threshold is met by any scope, empty or not, so it demands no
+    guarantee and is not counted as one. Without that, ``--min-coverage 0`` would
+    fail an empty scope while passing a populated one sitting at 0.0% -- and the
+    exit code has to keep answering a single question: was a guarantee demanded
+    that cannot be given?
+    """
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-detect-requested-thresholds
+    requested = []
+    for flag, attr in (
+        ("--min-coverage", "min_coverage"),
+        ("--min-file-coverage", "min_file_coverage"),
+        ("--min-granularity", "min_granularity"),
+        ("--min-file-granularity", "min_file_granularity"),
+    ):
+        value = getattr(args, attr, None)
+        if value is not None and value > 0:
+            requested.append(flag)
+    return requested
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-detect-requested-thresholds
+
+
+def _empty_coverage_result(registered_entries: int = 0, requested_thresholds=None) -> dict:
+    """Report for a scan that completed with nothing in scope.
+
+    The check ran and found nothing to cover, so nothing failed -- unless the
+    caller demanded a guarantee, which cannot be given over an empty scope.
+    Either way ``applicable`` records that there was nothing to assess, so an
+    empty result is no longer indistinguishable from a fully covered one.
+    """
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-empty-report
-    return {
-        "status": "PASS",
+    requested_thresholds = requested_thresholds or []
+    if registered_entries:
+        message = (
+            f"No code files found: {registered_entries} registered codebase "
+            f"{'entry' if registered_entries == 1 else 'entries'} resolved to 0 files"
+        )
+    else:
+        message = "No codebase entries are registered, so no code files were scanned"
+    result = {
+        "status": "FAIL" if requested_thresholds else "PASS",
+        "applicable": False,
         "summary": {
             "total_files": 0,
             "covered_files": 0,
             "coverage_pct": 0.0,
             "granularity_score": 0.0,
         },
-        "message": "No codebase files found in registry",
+        "message": message,
     }
+    if requested_thresholds:
+        result["threshold_failures"] = [
+            f"cannot assess {flag}: 0 files from {registered_entries} registered "
+            f"codebase {'entry' if registered_entries == 1 else 'entries'}"
+            for flag in requested_thresholds
+        ]
+    return result
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-empty-report
 
 
@@ -260,6 +389,14 @@ def _check_min_file_granularity(
     for file_coverage in report.per_file:
         if not file_coverage.effective_lines or not file_coverage.covered_lines:
             continue
+        # A scope-only file scores 0.0 by definition rather than by measurement:
+        # the metric deliberately refuses to credit a whole-file claim. Reading
+        # that sentinel as a low score makes any positive floor reject every
+        # re-export module and entry point in the tree, which is why this
+        # threshold is currently unusable as a gate. Those files are reported
+        # under their own heading instead, so exempting them here hides nothing.
+        if file_coverage.has_scope_only:
+            continue
         if file_coverage.granularity >= args.min_file_granularity:
             continue
         failed = True
@@ -301,6 +438,27 @@ def _load_spec_coverage_context():
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
 
 
+# @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-attach-semantic
+def _attach_semantic_section(args, filtered_files, json_report) -> None:
+    """Attach the advisory semantic pass AFTER status/exit are set, so a verdict can never gate."""
+    if not getattr(args, "semantic", False):
+        return
+    try:
+        # Everything advisory lives inside the guard — imports, context resolution, and the pass
+        # itself — so NOTHING (an import failure included) can change the structural status/exit
+        # already computed above. A failure is recorded as an advisory error rather than crashing.
+        from ..utils.context import get_context
+        from ..utils.semantic_coverage import run_semantic_pass
+        ctx = get_context()
+        if ctx is None:
+            return
+        json_report["semantic"] = run_semantic_pass(ctx, filtered_files, json_report)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("semantic pass failed (advisory, ignored): %s", exc)
+        json_report["semantic"] = {"advisory": True, "error": str(exc)}
+# @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-attach-semantic
+
+
 def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict, int]:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-validate-systems
     system_slugs, validation_error = _validate_selected_systems(args, meta)
@@ -309,19 +467,27 @@ def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict
     if system_slugs == set():
         return {}, 2
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-validate-systems
-    filtered_files = _filter_ignored_files(
-        _collect_selected_system_files(meta, project_root, system_slugs),
-        project_root,
-        meta,
+    collected_files, files_excluded = _collect_selected_system_files(
+        meta, project_root, system_slugs
     )
+    filtered_files = _filter_ignored_files(collected_files, project_root, meta)
     # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
     if not filtered_files:
-        return _empty_coverage_result(), 0
+        requested = _requested_thresholds(args)
+        json_report = _empty_coverage_result(
+            _count_selected_codebase_entries(meta, system_slugs), requested)
+        # --semantic still attaches its (empty) advisory section here, so the flag's presence
+        # is consistent whether or not the codebase resolved to any files.
+        _attach_semantic_section(args, filtered_files, json_report)
+        return json_report, 2 if requested else 0
     # @cpt-end:cpt-studio-state-spec-coverage-report:p1:inst-state-uncovered
-    file_coverages = _scan_file_coverages(filtered_files)
-    report = calculate_metrics(file_coverages)
+    report = calculate_metrics(_scan_file_coverages(filtered_files))
     json_report = generate_report(report, verbose=args.verbose, project_root=project_root)
+    # The population this percentage is computed over, so a shift in it is
+    # attributable rather than looking like a change in the code.
+    json_report["summary"]["files_excluded"] = files_excluded
     status = _apply_thresholds(report, args, project_root, json_report)
+    _attach_semantic_section(args, filtered_files, json_report)
     # @cpt-begin:cpt-studio-state-spec-coverage-report:p1:inst-state-covered
     if status == "PASS" and report.covered_lines > 0:
         return json_report, 0
@@ -347,6 +513,10 @@ def cmd_spec_coverage(argv: List[str]) -> int:
     json_report, exit_code = _generate_spec_coverage_report(args, meta, project_root)
 
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-return-report
+    # Telemetry: authoritative final coverage verdict (the report's own status, so an
+    # input error isn't recorded as a coverage FAIL), correlated via the run's id.
+    decision_log.record_validation(
+        "spec-coverage", json_report.get("status") or ("FAIL" if exit_code else "PASS"))
     _output(json_report, args)
     return exit_code
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-return-report
@@ -357,7 +527,7 @@ def _rel_path(p: str, project_root: Path) -> str:
     """Return path relative to project_root, or original if not possible."""
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-rel-path
     try:
-        return str(Path(p).relative_to(project_root))
+        return Path(p).resolve().relative_to(project_root.resolve()).as_posix()
     except ValueError as exc:
         _warn_spec_coverage(f"path {p} is outside project root {project_root}: {exc}")
         return p
@@ -406,17 +576,44 @@ def _show_spec_coverage_files(files: dict) -> None:
         ui.step(f"Uncovered files ({len(uncovered)})")
         for path, entry in uncovered.items():
             ui.substep(f"  {path}  ({entry.get('total_lines', 0)} lines)")
+    _show_whole_file_claims(files)
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers
 
 
-def _show_spec_coverage_status(status: str, failures: list) -> None:
+def _show_whole_file_claims(files: dict) -> None:
+    """Name the files whose coverage rests on a whole-file scope marker.
+
+    These are counted as covered but carry no instruction block, so they raise
+    the coverage percentage without being traced to anything. Some are
+    structurally unmarkable -- an entry point, a re-export module -- and some are
+    implementations that were never traced, and the two are indistinguishable
+    from the summary line alone. Listing them by size puts the largest claims in
+    front of the reader instead of leaving them inside an average.
+    """
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-claims
+    claims = {
+        path: entry for path, entry in files.items()
+        if entry.get("scope_only") and entry.get("covered_lines", 0)
+    }
+    if not claims:
+        return
+    lines_claimed = sum(entry.get("total_lines", 0) for entry in claims.values())
+    ui.blank()
+    ui.step(f"Whole-file scope claims ({len(claims)} files, {lines_claimed} lines, no instruction tracing)")
+    for path, entry in sorted(claims.items(), key=lambda kv: -kv[1].get("total_lines", 0)):
+        ui.substep(f"  {path}  ({entry.get('total_lines', 0)} lines)")
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-claims
+
+
+def _show_spec_coverage_status(status: str, failures: list, assessed: bool = True) -> None:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers
     if failures:
         ui.blank()
         for failure in failures:
             ui.warn(failure)
     if status == "PASS":
-        ui.success("All thresholds met.")
+        if assessed:
+            ui.success("All thresholds met.")
     elif status == "FAIL":
         ui.error("Threshold check failed.")
     else:
@@ -436,10 +633,30 @@ def _human_spec_coverage(data: dict) -> None:
         ui.blank()
         return
 
+    # Say up front when nothing was assessed, so the zeroes below are read as the
+    # denominator they are and not as a measured result.
+    applicable = data.get("applicable", True)
+    if applicable is False:
+        ui.warn(data.get("message", "Nothing was assessed"))
+        ui.blank()
+
     summary = data.get("summary", {})
-    ui.detail("Files", f"{summary.get('covered_files', 0)}/{summary.get('total_files', 0)} covered")
+    files_line = f"{summary.get('covered_files', 0)}/{summary.get('total_files', 0)} covered"
+    excluded = summary.get("files_excluded") or 0
+    ui.detail("Files", f"{files_line} ({excluded} excluded)" if excluded else files_line)
     ui.detail("Coverage", f"{summary.get('coverage_pct', 0):.1f}%")
     ui.detail("Granularity", f"{summary.get('granularity_score', 0):.4f}")
+
+    # Advisory semantic line — never part of the gate; only shown when --semantic ran.
+    semantic = data.get("semantic")
+    if semantic and semantic.get("error"):
+        # The advisory pass recorded a failure (possibly an import failure of semantic_coverage
+        # itself) — render it WITHOUT importing summary_line, which could re-raise here, after the
+        # structural status/exit are already set.
+        ui.info(f"semantic (advisory, never gates): pass errored, skipped — {semantic['error']}")
+    elif semantic:
+        from ..utils.semantic_coverage import summary_line
+        ui.info(summary_line(semantic))
 
     # Per-file details — files is a dict {path: entry_dict}
     files = data.get("files", {})
@@ -448,6 +665,6 @@ def _human_spec_coverage(data: dict) -> None:
         _show_spec_coverage_files(files)
 
     failures = data.get("threshold_failures", [])
-    _show_spec_coverage_status(status, failures)
+    _show_spec_coverage_status(status, failures, assessed=applicable is not False)
     ui.blank()
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-human-report-helpers

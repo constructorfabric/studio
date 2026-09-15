@@ -350,7 +350,27 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
             self.assertEqual(result["status"], "FAIL")
             self.assertIn("not accessible on this OS", result["errors"][0])
 
+    def test_posix_absolute_registered_root_rejected_when_os_is_windows(self):
+        """A POSIX absolute path is rejected under Windows semantics.
+
+        Asserted on the resolver directly rather than through the full
+        migration: ``pathlib.Path.__new__`` reads ``os.name`` at call time to
+        choose its concrete flavour, so patching ``os.name`` globally turns
+        every ``Path(...)`` in the call graph into a ``WindowsPath``, which
+        pathlib refuses to instantiate on a POSIX host. This keeps the Windows
+        branch covered on every platform; the end-to-end variant below runs
+        on Windows.
+        """
+        import studio.commands.kit as kit_module
+
+        with patch.object(kit_module.os, "name", "nt"):
+            self.assertIsNone(
+                kit_module._resolve_same_os_absolute_path("/external-kits/mykit")
+            )
+
     def test_posix_absolute_registered_root_fails_on_windows(self):
+        if os.name != "nt":
+            self.skipTest("Windows-only absolute path regression")
         import studio.commands.kit as kit_module
         from studio.commands.kit import migrate_legacy_kit_to_manifest
         from studio.utils import toml_utils

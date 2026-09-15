@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 import argparse
+import math
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -134,13 +136,54 @@ def parse_headings(
         max_level: Maximum heading level to include.
         skip_first: If True, skip the very first heading (document title).
         skip_toc_heading: If True, skip headings named "Table of Contents" or "TOC".
+
+    Thin wrapper over :func:`parse_headings_with_lines` (stripping the line
+    number): one fence-tracking/heading-matching implementation instead of
+    two that could silently diverge.
     """
-    headings: List[Tuple[int, str]] = []
+    return [
+        (level, text)
+        for level, text, _line in parse_headings_with_lines(
+            lines,
+            min_level=min_level,
+            max_level=max_level,
+            skip_first=skip_first,
+            skip_toc_heading=skip_toc_heading,
+        )
+    ]
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings-lines
+def parse_headings_with_lines(
+    lines: List[str],
+    *,
+    min_level: int = 1,
+    max_level: int = 6,
+    skip_first: bool = False,
+    skip_toc_heading: bool = False,
+) -> List[Tuple[int, str, int]]:
+    """Extract ``(level, text, line_number)`` triples from markdown lines.
+
+    Fence-aware like :func:`parse_headings` (which delegates here), and
+    skips a leading YAML front-matter block (see
+    :func:`_find_frontmatter_end`) so a ``#``-prefixed line inside
+    front-matter data (a comment, a value) is never mistaken for a real
+    heading. ``line_number`` is 1-based.
+
+    ``skip_first``/``skip_toc_heading`` mirror :func:`parse_headings`'s own
+    options: ``skip_first`` drops the very first heading matched
+    (regardless of level, checked before the level filter, same order as
+    the original standalone implementation), ``skip_toc_heading`` drops
+    headings named "Table of Contents"/"TOC" after the level filter.
+    """
+    headings: List[Tuple[int, str, int]] = []
     fence: Optional[Tuple[str, int]] = None
+    frontmatter_end = _find_frontmatter_end(lines)
     first_skipped = False
 
-    for line in lines:
-        # Track fenced code blocks (``` or ~~~ with 3+ chars)
+    for idx, line in enumerate(lines):
+        if idx < frontmatter_end:
+            continue
         new_fence = _fence_update(line, fence)
         if new_fence != fence:
             fence = new_fence
@@ -165,10 +208,10 @@ def parse_headings(
         if skip_toc_heading and text.lower() in _TOC_HEADING_NAMES:
             continue
 
-        headings.append((level, text))
+        headings.append((level, text, idx + 1))
 
     return headings
-# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-parse-headings-lines
 
 # ---------------------------------------------------------------------------
 # TOC building
@@ -327,11 +370,28 @@ def add_toc_max_level_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def _find_frontmatter_end(lines: List[str]) -> int:
-    """Return the index after YAML frontmatter when present."""
-    if not lines or lines[0].strip() != "---":
+    """Return the index after YAML frontmatter when present.
+
+    YAML allows a document to close with either ``---`` (a new document
+    marker, which this codebase treats as "end of frontmatter") or ``...``
+    (the explicit end-of-document marker) -- accepting only ``---`` meant
+    frontmatter closed with ``...`` was never recognized as closed at all,
+    so every line after it (including every real heading) was treated as
+    still inside frontmatter and skipped entirely.
+
+    Both the opening and closing delimiter must start at column zero:
+    ``rstrip()`` (trailing whitespace only), never ``strip()``. An indented
+    ``  ---`` on the first line is valid Markdown as an indented thematic
+    break, not frontmatter at all; an indented ``---``/``...`` later on is
+    valid content inside a YAML block-scalar value (e.g.
+    ``description: |\\n  ---``). Treating either as a real delimiter would
+    mis-scope frontmatter and let the rest of it parse as Markdown (a
+    stray ``# note`` becoming a heading).
+    """
+    if not lines or lines[0].rstrip() != "---":
         return 0
     idx = 1
-    while idx < len(lines) and lines[idx].strip() != "---":
+    while idx < len(lines) and lines[idx].rstrip() not in ("---", "..."):
         idx += 1
     if idx < len(lines):
         idx += 1
@@ -687,6 +747,236 @@ def _record_missing_toc_error(
     ))
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-jit-readiness
+# ---------------------------------------------------------------------------
+# JIT-retrieval readiness — structural signals beyond TOC correctness
+# ---------------------------------------------------------------------------
+# These four checks are additive warnings only (never errors): they flag
+# structural properties that make a document harder to navigate via
+# heading-based just-in-time retrieval, without invalidating documents that
+# are otherwise fine. See constructorfabric/studio#104.
+
+DEFAULT_MAX_SECTION_LINES = 300
+# Below this size, a missing description is not worth flagging — the whole
+# point of a description is to let a caller pick the right *file* before
+# reading it, among many; a trivial file doesn't need that.
+MIN_LINES_FOR_DESCRIPTION_CHECK = 100
+
+
+def _normalize_heading_key(text: str) -> str:
+    """Fold a heading's text to a comparison key for duplicate detection.
+
+    Casefolds, collapses internal whitespace runs to a single space, and
+    NFC-normalizes so two headings that render identically -- differing
+    only in case, incidental whitespace, or Unicode composition -- are
+    still recognized as the same title. The original text is kept for
+    display; only the comparison key is normalized.
+    """
+    return unicodedata.normalize("NFC", " ".join(text.split())).casefold()
+
+
+def _check_duplicate_heading_titles(
+    headings_with_lines: List[Tuple[int, str, int]],
+    path: Path,
+) -> List[Dict[str, Any]]:
+    """Warn when the same heading text appears more than once.
+
+    Duplicate titles are tolerated by anchor-suffixing elsewhere (see
+    ``_unique_slug``) and are NOT errors, but they make it impossible to
+    unambiguously address a section by its heading text alone.
+    """
+    from . import error_codes as EC
+    from .constraints import error
+
+    seen: Dict[str, int] = {}
+    warnings: List[Dict[str, Any]] = []
+    for _level, text, line in headings_with_lines:
+        key = _normalize_heading_key(text)
+        if key in seen:
+            warnings.append(error(
+                "toc",
+                f"Heading `{text}` duplicates an earlier heading (first seen at line {seen[key]})",
+                code=EC.TOC_HEADING_DUPLICATE,
+                path=path,
+                line=line,
+                heading_text=text,
+                first_seen_line=seen[key],
+            ))
+        else:
+            seen[key] = line
+    return warnings
+
+
+def _check_heading_depth_jumps(
+    headings_with_lines: List[Tuple[int, str, int]],
+    path: Path,
+) -> List[Dict[str, Any]]:
+    """Warn when heading depth increases by more than one level at once.
+
+    E.g. an H2 followed directly by an H4 skips H3 — this breaks the
+    "read from this heading to the next heading at the same or higher
+    level" boundary computation JIT retrieval relies on.
+    """
+    from . import error_codes as EC
+    from .constraints import error
+
+    warnings: List[Dict[str, Any]] = []
+    prev_level: Optional[int] = None
+    for level, text, line in headings_with_lines:
+        if prev_level is not None and level > prev_level + 1:
+            warnings.append(error(
+                "toc",
+                f"Heading `{text}` jumps from H{prev_level} to H{level}, skipping intermediate level(s)",
+                code=EC.TOC_HEADING_DEPTH_JUMP,
+                path=path,
+                line=line,
+                heading_text=text,
+                from_level=prev_level,
+                to_level=level,
+            ))
+        prev_level = level
+    return warnings
+
+
+def _check_section_lengths(
+    headings_with_lines: List[Tuple[int, str, int]],
+    total_lines: int,
+    path: Path,
+    max_section_lines: int,
+) -> List[Dict[str, Any]]:
+    """Warn when a section's body (up to the next heading, any level) is too long.
+
+    An oversized section with no sub-headings defeats heading-based JIT
+    retrieval: reading "one section" still means reading the whole thing.
+
+    ``max_section_lines`` is validated here, independent of any CLI
+    argparse guard: a non-finite value (``nan``/``inf``) or a non-positive
+    one falls back to :data:`DEFAULT_MAX_SECTION_LINES` rather than
+    silently disabling the check (``nan``) or flagging virtually every
+    section (a negative threshold) for a direct library caller.
+    """
+    from . import error_codes as EC
+    from .constraints import error
+
+    if not math.isfinite(max_section_lines) or max_section_lines <= 0:
+        max_section_lines = DEFAULT_MAX_SECTION_LINES
+
+    warnings: List[Dict[str, Any]] = []
+    for i, (_level, text, line) in enumerate(headings_with_lines):
+        next_line = (
+            headings_with_lines[i + 1][2]
+            if i + 1 < len(headings_with_lines)
+            else total_lines + 1
+        )
+        section_length = next_line - line
+        if section_length > max_section_lines:
+            warnings.append(error(
+                "toc",
+                f"Section `{text}` is {section_length} lines long (max recommended: {max_section_lines})",
+                code=EC.TOC_SECTION_TOO_LONG,
+                path=path,
+                line=line,
+                heading_text=text,
+                section_length=section_length,
+                max_section_lines=max_section_lines,
+            ))
+    return warnings
+
+
+_DESCRIPTION_FIELD_RE = re.compile(r"^description\s*:\s*(.*)$")
+# YAML 1.2.2 allows the chomping (+/-) and indentation (1-9) indicators in
+# either order, and a trailing "# comment" (preceded by whitespace) on the
+# header line itself: |, |-, |2, |2-, |-2, | # comment. The original regex
+# only matched one indicator order and rejected any trailing comment, so a
+# real header like "|2-" or "| # TODO" fell through to the "has a real
+# description" branch instead of being recognized as an (possibly empty)
+# block scalar at all.
+_BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[+\-]?[1-9]?|[1-9][+\-]?)(?:\s+#.*)?$")
+
+
+def _quoted_value_is_empty(value: str) -> bool:
+    """``value`` starts with a quote char -- True if the quoted text is empty."""
+    quote = value[0]
+    closing = value.find(quote, 1)
+    inner = value[1:closing] if closing != -1 else value[1:]
+    return not inner.strip()
+
+
+def _block_scalar_is_empty(body: List[str], start_index: int) -> bool:
+    """``value`` was a YAML block scalar marker (``|``, ``>``, ``|-``, ...) --
+    its real content, if any, is on indented lines below it, not on the
+    marker's own line. True if the first non-blank following line isn't
+    indented under it (i.e. the block scalar has no content at all)."""
+    for line in body[start_index:]:
+        if not line.strip():
+            continue
+        return not line[0].isspace()
+    return True
+
+
+def _frontmatter_has_description(lines: List[str], frontmatter_end: int) -> bool:
+    """Check whether a YAML frontmatter block declares a non-empty ``description``.
+
+    ``frontmatter_end`` is the index returned by :func:`_find_frontmatter_end`
+    (one past the closing ``---``); the body being scanned is
+    ``lines[1:frontmatter_end - 1]``, excluding both delimiter lines.
+
+    A field that's present but carries no real value doesn't satisfy this:
+    a YAML comment (``description: # TODO``), an empty quoted string
+    (``description: ""``), or a block-scalar marker
+    (``description: |``) with nothing indented beneath it all parse as "no
+    description" just as much as the field being absent entirely would --
+    the point of this check is to guarantee a caller gets something to
+    actually read, not just a matching key.
+    """
+    body = lines[1:frontmatter_end - 1]
+    for i, line in enumerate(body):
+        match = _DESCRIPTION_FIELD_RE.match(line)
+        if not match:
+            continue
+        value = match.group(1).strip()
+        if not value or value.startswith("#"):
+            continue
+        if _BLOCK_SCALAR_RE.match(value):
+            if _block_scalar_is_empty(body, i + 1):
+                continue
+        elif value[0] in "\"'" and _quoted_value_is_empty(value):
+            continue
+        return True
+    return False
+
+
+def _check_missing_description(
+    lines: List[str],
+    path: Path,
+) -> List[Dict[str, Any]]:
+    """Warn when a document has no frontmatter block with a real description.
+
+    A short description lets a caller pick the right *document* before
+    reading any of its headings — the same principle as heading
+    descriptiveness, one level up. Frontmatter that exists but carries no
+    ``description`` field (e.g. only a ``title``) does not satisfy this —
+    an empty promise is the same as no promise. Only checked above
+    ``MIN_LINES_FOR_DESCRIPTION_CHECK`` lines — a trivial file doesn't need
+    a description, and flagging every small file drowns the signal.
+    """
+    from . import error_codes as EC
+    from .constraints import error
+
+    if len(lines) < MIN_LINES_FOR_DESCRIPTION_CHECK:
+        return []
+    frontmatter_end = _find_frontmatter_end(lines)
+    if frontmatter_end > 0 and _frontmatter_has_description(lines, frontmatter_end):
+        return []
+    return [error(
+        "toc",
+        "Document has no frontmatter/description block at the top",
+        code=EC.TOC_MISSING_DESCRIPTION,
+        path=path,
+        line=1,
+    )]
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-jit-readiness
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-compare
 def _validate_toc_entries(
     toc_entries: List[Tuple[str, str, int]],
@@ -764,12 +1054,38 @@ def _append_stale_toc_warning(
         ))
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-jit-readiness-collect
+def _collect_jit_readiness_warnings(
+    lines: List[str],
+    path: Path,
+    max_section_lines: int,
+) -> List[Dict[str, Any]]:
+    """Gather all four JIT-retrieval readiness warnings for a document.
+
+    Always parses *every* heading level, independent of whatever
+    ``max_heading_level`` the caller configured for TOC-completeness
+    checking above — these signals are about the document's real structure
+    (would a duplicate/depth-jump/oversized-section problem trip up
+    heading-based retrieval), not about which levels belong in a
+    human-authored TOC. Filtering by the TOC's level cap would hide real H4-H6
+    issues under a shallow default (e.g. the CLI's own ``--max-level 3``).
+    """
+    warnings: List[Dict[str, Any]] = []
+    warnings.extend(_check_missing_description(lines, path))
+    all_headings = parse_headings_with_lines(lines)
+    warnings.extend(_check_duplicate_heading_titles(all_headings, path))
+    warnings.extend(_check_heading_depth_jumps(all_headings, path))
+    warnings.extend(_check_section_lengths(all_headings, len(lines), path, max_section_lines))
+    return warnings
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-jit-readiness-collect
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate
 def validate_toc(
     content: str,
     *,
     artifact_path: Optional[Path] = None,
     max_heading_level: int = 6,
+    max_section_lines: int = DEFAULT_MAX_SECTION_LINES,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Validate the Table of Contents in a markdown document.
 
@@ -784,6 +1100,11 @@ def validate_toc(
     4. **Freshness** — if the TOC were regenerated, it would match the
        current content (catches reordering / renamed headings).
 
+    Plus four additive, warning-only JIT-retrieval readiness signals that
+    run regardless of TOC presence/errors above (see constructorfabric/studio#104):
+    duplicate heading titles, heading depth jumps, oversized sections, and a
+    missing top-of-file description/frontmatter block.
+
     Returns ``{"errors": [...], "warnings": [...]}`` in the same format
     as ``validate_artifact_file``.
     """
@@ -796,8 +1117,12 @@ def validate_toc(
         max_heading_level,
     )
 
+    # JIT-retrieval readiness signals (warning-only, run regardless of
+    # TOC presence below — independent of the TOC-filtered `headings`).
+    warnings.extend(_collect_jit_readiness_warnings(lines, path, max_section_lines))
+
     if not headings:
-        # No headings → nothing to validate
+        # No headings → nothing further to validate
         return {"errors": errors, "warnings": warnings}
     # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate-init
 

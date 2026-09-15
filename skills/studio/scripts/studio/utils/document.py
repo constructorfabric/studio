@@ -134,11 +134,21 @@ def scan_cpt_ids(path: Path) -> List[Dict[str, object]]:
     lines = read_text_safe(path)
     if lines is None:
         return []
+    return scan_cpt_id_lines(lines)
     # @cpt-end:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-read-file
 
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-foreach-line
+def scan_cpt_id_lines(lines: List[str]) -> List[Dict[str, object]]:
+    """Scan already-read document lines for Studio IDs — :func:`scan_cpt_ids` without
+    the read.
+
+    For a caller that has the file's content in hand and wants the document-side scan
+    to see the *same* bytes another parser just saw, rather than re-opening a file that
+    may have changed in between.
+    """
     hits: List[Dict[str, object]] = []
 
-    # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-foreach-line
     for idx0, raw, stripped in _iter_non_fenced_lines(lines):
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-match-def
         m = _ID_DEF_RE.match(stripped)
@@ -552,6 +562,13 @@ def _should_skip_text_file(
         logger.warning("Failed to stat %s: %s", path, exc)
         return True
 
+def is_binary(raw: bytes) -> bool:
+    """Whether ``raw`` is binary, by the one rule every text reader applies: a NUL byte
+    is never text. Shared so the readers cannot drift — this module's and the code
+    reader's must agree on what is text, or one scans a file the other refuses."""
+    return b"\x00" in raw
+
+
 def read_text_safe(path: Path) -> Optional[List[str]]:
     """
     Safely read text file to lines.
@@ -570,7 +587,7 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
         logger.warning("Failed to read text file %s: %s", path, exc)
         return None
 
-    if b"\x00" in raw:
+    if is_binary(raw):
         return None
 
     try:

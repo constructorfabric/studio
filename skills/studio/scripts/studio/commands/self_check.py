@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ..utils import decision_log
 from ..utils.artifacts_meta import ArtifactsMeta
 from ..utils.constraints import (
     error as constraints_error,
@@ -960,6 +961,8 @@ def run_self_check_from_meta(  # pylint: disable=too-many-locals
         "templates_checked": len(results),
         "results": results,
     }
+    # Telemetry: authoritative final self-check verdict, correlated via the run's id.
+    decision_log.record_validation("self-check", overall_status)
     return (0 if overall_status == "PASS" else 2), out
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
 

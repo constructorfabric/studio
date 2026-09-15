@@ -394,7 +394,16 @@ Find where an ID is referenced.
 
 ```
 cfs where-used --id <id>
+cfs where-used --id <id> --include-code
 ```
+
+`--include-code` also scans code files under Studio-registered `codebase`
+paths (declared in `artifacts.toml`) for `@cpt-*` marker references — it does
+not scan the whole repository. It is ignored (no-op, no warning) when
+combined with `--artifact`. Output gains a `code_files_scanned` count (and a
+`code_files_skipped` count, when non-zero) so a caller can tell "flag not
+passed" apart from "flag passed but every candidate file was ignored,
+oversized, or unparsable".
 
 **Output** (JSON):
 ```json
