@@ -24,7 +24,7 @@ from typing import Dict, List, Optional
 from ..utils import eval_harness
 from ..utils.eval_judge import AdvisoryJudge, calibrate, load_gold, reference_stub_judge
 from ..utils.eval_structural import StructuralScorer
-from ..utils.ui import ui
+from ..utils.ui import JsonSafeArgumentParser, parse_args_or_json_error, ui
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,11 @@ def _compliance_arg(value: str) -> float:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    # JsonSafeArgumentParser, not the plain one: `cfs eval` speaks JSON, and argparse's
+    # own failure path writes a plain-text usage banner to stderr and exits without ever
+    # reaching `result()`. A consumer parsing stdout as JSON got an empty payload and an
+    # unparseable stderr string for something as ordinary as a misspelled flag.
+    parser = JsonSafeArgumentParser(
         prog="cfs eval",
         description="Run the workflow eval-harness over a suite of scenarios.")
     parser.add_argument(
@@ -282,7 +286,9 @@ def _judge_calibration(cases: list) -> Dict[str, object]:
 # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-user-eval
 def cmd_eval(argv: List[str]) -> int:
     """Entry point for ``cfs eval``."""
-    args = _build_parser().parse_args(argv)
+    args = parse_args_or_json_error(_build_parser(), argv)
+    if args is None:
+        return 2
 
     # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-load-context
     from ..utils.context import get_context  # noqa: PLC0415 - local keeps get_context patchable

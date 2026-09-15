@@ -26,6 +26,31 @@ from . import error_codes as EC
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-define-reasons
 _REASONS: Dict[str, List[str]] = {
+    # JIT-retrieval readiness signals, and the two non-TOC warnings alongside them
+    EC.TOC_HEADING_DUPLICATE: [
+        "Two sections were given the same heading text, so retrieval cannot address them separately",
+        "A section was copied and its heading was never adjusted",
+    ],
+    EC.TOC_HEADING_DEPTH_JUMP: [
+        "An intermediate heading level was skipped, leaving a gap in the section tree",
+        "A heading was demoted or promoted without adjusting the ones around it",
+    ],
+    EC.TOC_SECTION_TOO_LONG: [
+        "A section grew past the point where retrieving it returns more than the answer",
+        "Several topics accumulated under one heading instead of getting their own",
+    ],
+    EC.TOC_MISSING_DESCRIPTION: [
+        "The document has no short description under its top heading for retrieval to rank on",
+    ],
+    EC.CODEBASE_ENTRY_EMPTY: [
+        "Registered path `{path}` does not exist, or was moved without updating the registry",
+        "The entry's extension filter matches nothing under `{path}`",
+    ],
+    EC.FILE_TOO_LARGE: [
+        "`{path}` is past the size ceiling and was skipped rather than scanned",
+        "A generated or vendored file was registered as source",
+    ],
+
     # Structure — task / checkbox consistency
     EC.CDSL_STEP_UNCHECKED: [
         "CDSL child step `{id}` was not marked as done after completing the work",
@@ -706,6 +731,48 @@ def _prompt_for_toc_and_warnings(ctx: _FixPromptContext) -> Optional[str]:
         )
     if ctx.code == EC.TOC_STALE:
         return f"Table of Contents in `{path_s}` is outdated. Run `cfs toc {path_s}` to regenerate."
+    # JIT-retrieval readiness (warning-only) and the two non-TOC warnings that shipped
+    # with them. Without a branch here they reached the user as a bare code with no
+    # suggested action, which is the one thing this module exists to prevent.
+    if ctx.code == EC.TOC_HEADING_DUPLICATE:
+        heading = str(ctx.issue.get("heading_text") or "")
+        first = ctx.issue.get("first_seen_line")
+        where = f" (first seen at line {first})" if first else ""
+        return (
+            f"Open `{ctx.loc}`: heading `{heading}` repeats an earlier one{where}. "
+            f"Retrieval addresses a section by its heading, so two identical headings "
+            f"cannot be told apart — make this one distinct."
+        )
+    if ctx.code == EC.TOC_HEADING_DEPTH_JUMP:
+        frm, to = ctx.issue.get("from_level"), ctx.issue.get("to_level")
+        jump = f" (h{frm} → h{to})" if frm and to else ""
+        return (
+            f"Open `{ctx.loc}`: heading depth jumps{jump}, skipping a level. "
+            f"Insert the intermediate heading, or lift this one, so the section tree "
+            f"a retriever walks has no gaps."
+        )
+    if ctx.code == EC.TOC_SECTION_TOO_LONG:
+        return (
+            f"Open `{ctx.loc}`: this section is long enough that retrieving it returns "
+            f"far more than the answer. Split it under narrower sub-headings."
+        )
+    if ctx.code == EC.TOC_MISSING_DESCRIPTION:
+        return (
+            f"Add a short description under the top heading of `{path_s}`: retrieval "
+            f"ranks a document on it before any section is read."
+        )
+    if ctx.code == EC.CODEBASE_ENTRY_EMPTY:
+        return (
+            f"Registered codebase entry `{path_s}` resolves to no files. Fix the path or "
+            f"its extensions in the artifact registry, or remove the entry — an entry that "
+            f"matches nothing reports full coverage over an empty scope."
+        )
+    if ctx.code == EC.FILE_TOO_LARGE:
+        return (
+            f"`{path_s}` is past the size ceiling and was skipped rather than scanned, so "
+            f"it counts toward nothing. Split it, or raise the ceiling deliberately if it "
+            f"is meant to be this big."
+        )
     if ctx.code == EC.ID_NOT_REFERENCED_NO_SCOPE:
         return (
             f"At `{ctx.loc}`: `{ctx.cpt_id}` has no references — "

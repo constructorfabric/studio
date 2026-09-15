@@ -203,8 +203,15 @@ class TestRouteTier1:
         result = route_tier1(f, "gadget")
         assert result["tier"] == "resolved_multi"
         assert result["reason"] == "heading_nav_tfidf_disagree"
-        headings = {c["heading"] for c in result["candidates"]}
-        assert headings == {"SectionA", "SectionB"}
+        # Full ordered equality, like every other row test. A set of headings hid the
+        # two things this row actually promises: that heading-nav's pick comes first
+        # (`[_as_candidate(nav_pick), _as_candidate(tfidf_pick)]`), and that each
+        # candidate carries the line range `route_tier2` uses for its `by_line_start`
+        # OKF lookup. Either could regress with the set assertion still green.
+        assert result["candidates"] == [
+            {"heading": "SectionA", "line_start": 1, "line_end": 4},   # nav_pick, first by contract
+            {"heading": "SectionB", "line_start": 5, "line_end": 8},   # tfidf_pick
+        ]
 
     def test_row7_agree_diffuse_margin_escalates(self, tmp_path: Path, monkeypatch):
         """Real, reproduced shape of findings.md's "zero-shot" adversarial

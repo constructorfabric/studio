@@ -919,7 +919,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 - [x] `p1` - **ID**: `cpt-studio-feature-eval-harness`
 
-- **Purpose**: Score completed workflow runs for how faithfully they followed their plan. Provide the scaffold — a scenario format and a runner — that a deterministic structural scorer and an advisory LLM-judge plug into, keeping the honest-signal discipline (unscoreable reports UNKNOWN, advisory never gates).
+- **Purpose**: Score completed workflow runs for how faithfully they followed their plan — a scenario format and a runner, the deterministic structural scorer that gates, and the advisory LLM-judge that does not, keeping the honest-signal discipline (unscoreable reports UNKNOWN, advisory never gates).
 
 - **Depends On**: `cpt-studio-feature-traceability-validation`
 
@@ -928,11 +928,11 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - Runner: load scenarios, apply pluggable scorers, aggregate a JSON report
   - Gate contract: only deterministic scorer verdicts affect the exit code
   - Regression diff against a baseline report
-  - A placeholder reference scorer to exercise the seam
+  - Deterministic structural scorer (`utils/eval_structural.py`): required sections, frontmatter, duplicate and invalid ids, per-workflow section policy
+  - Advisory LLM-judge seam (`utils/eval_judge.py`) with a gold set and reference-stub calibration, reported via `cfs eval --calibrate`
 
 - **Out of scope**:
-  - The real deterministic structural scorer (separate task)
-  - The LLM-judge and its gold set (separate task)
+  - A production judge backend: the seam ships with a reference stub, and wiring a real model behind it is a separate task
 
 - **Requirements Covered**:
 

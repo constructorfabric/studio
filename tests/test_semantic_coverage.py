@@ -84,7 +84,15 @@ def test_serialises_a_wrong_finding_with_the_full_shape(tmp_path: Path, monkeypa
 def test_excluded_scope_is_honoured(tmp_path: Path, monkeypatch) -> None:
     code = _marked(tmp_path)
     monkeypatch.setattr(sc, "_definition_map", lambda ctx: {})
-    section = sc.run_semantic_pass(None, [code], {"excluded": [{"path": str(code)}]}, judge_fn=None)
+    # A real ctx, so both sides of the scope comparison are project-relative -- which is
+    # what production does: `_rel_path` builds the report's `excluded` paths against the
+    # project root, and pairings are relativised against the same root. The test used to
+    # pass `None` for ctx and an absolute path for the exclusion, and matched only
+    # because `_relative_posix` handed back an absolute path in the no-root case. That
+    # was the leak, so the pairing path is now the bare filename there and the two sides
+    # no longer line up -- the coincidence this assertion rested on is gone.
+    section = sc.run_semantic_pass(_ctx(tmp_path, code), [code],
+                                   {"excluded": [{"path": code.name}]}, judge_fn=None)
     assert section["skipped_excluded"] == 2                     # both blocks in the excluded file
     assert section["unjudgeable"] == []
 
@@ -158,8 +166,8 @@ def test_pairings_skip_a_file_that_does_not_parse(tmp_path: Path) -> None:
     bad = tmp_path / "bad.py"
     bad.write_text(f"# @cpt-begin:{_ALGO}:p1:inst-orphan\ndef f():\n    return 1\n", encoding="utf-8")  # no @cpt-end
     good = _marked(tmp_path)
-    pairings = sc._pairings_for_files([bad, good], {})
-    assert {p.path for p in pairings} == {str(good)}    # only the good file contributed blocks
+    pairings = sc._pairings_for_files([bad, good], {}, tmp_path)
+    assert {p.path for p in pairings} == {good.name}    # only the good file contributed blocks
 
 
 def test_semantic_summary_line_rendered_in_human_mode(tmp_path: Path, capsys) -> None:
@@ -335,3 +343,24 @@ def test_human_error_section_renders_without_summary_line(tmp_path: Path, capsys
         set_json_mode(True)
     assert "errored" in out
     assert "boom-import" in out
+
+
+def test_relative_posix_never_returns_an_absolute_path_without_a_root():
+    """The docstring promises "never absolute"; the no-root branch used to break it.
+
+    `run_semantic_pass` resolves the root with `getattr(ctx, "project_root", None)`, so a
+    context that carries none arrives here as None. Returning `path.as_posix()` for that
+    case put the full absolute path -- username and directory layout -- into the
+    serialised report and the out-of-tree judge prompt.
+    """
+    got = sc._relative_posix(Path("/home/someone/work/proj/src/mod.py"), None)
+    assert not got.startswith("/")
+    assert "someone" not in got
+    assert got == "mod.py"
+
+
+def test_relative_posix_still_relativises_against_a_root(tmp_path: Path):
+    (tmp_path / "src").mkdir()
+    target = tmp_path / "src" / "mod.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+    assert sc._relative_posix(target, tmp_path) == "src/mod.py"

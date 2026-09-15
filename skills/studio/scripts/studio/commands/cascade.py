@@ -165,6 +165,21 @@ def _human_retrieve(data: dict) -> None:
                 )
             else:
                 ui.substep(f"  {escalations} Tier-2 escalations recorded for this document")
+        # Same defect as the escalation count above, one round later: both of these are
+        # already in the JSON payload, and both are the cost rationale for the
+        # recommendation being printed one line up. Rendering the verdict but not the
+        # arithmetic behind it leaves an interactive user with nothing to disagree with.
+        break_even = tier2.get("build_okf_break_even")
+        if isinstance(break_even, dict):
+            okf = break_even.get("okf_total_tokens")
+            baseline = break_even.get("baseline_total_tokens")
+            verdict = ("building an OKF bundle would pay off"
+                       if break_even.get("building_okf_would_pay_off")
+                       else "staying on baseline is cheaper")
+            ui.substep(f"  break-even: OKF {okf} tokens vs baseline {baseline} -- {verdict}")
+        bundle_dir = tier2.get("bundle_dir")
+        if bundle_dir:
+            ui.substep(f"  OKF bundle: {bundle_dir}")
     if "read_gate" in data and data["read_gate"]["needs_confirmation"]:
         gate = data["read_gate"]
         ui.substep(f"read gate: needs confirmation ({gate['total_lines']} lines > {gate['threshold']})")

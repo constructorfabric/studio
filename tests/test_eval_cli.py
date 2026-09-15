@@ -60,10 +60,27 @@ def test_cmd_eval_missing_scenarios_dir_errors(capsys, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("bad", ["nan", "inf", "-0.1", "1.5", "abc"])
-def test_cmd_eval_rejects_invalid_min(bad: str) -> None:
-    # argparse rejects a non-finite / out-of-range --min so a failing run can't slip past --check.
-    with pytest.raises(SystemExit):
-        cmd_eval(["--min", bad, "--scenarios-dir", "unused"])
+def test_cmd_eval_rejects_invalid_min(bad: str, capsys) -> None:
+    """A non-finite / out-of-range --min is refused, so a failing run can't slip past --check.
+
+    Refused through the JSON error channel rather than argparse's own `SystemExit`:
+    `cfs eval` speaks JSON, and argparse's failure path writes a plain-text usage banner
+    to stderr and exits without ever reaching `result()`, leaving a caller that parses
+    stdout with an empty payload and an unparseable string on the side.
+    """
+    rc = cmd_eval(["--min", bad, "--scenarios-dir", "unused"])
+    assert rc == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ERROR"
+    assert "--min" in payload["message"]
+
+
+def test_cmd_eval_rejects_an_unknown_flag_as_json(capsys) -> None:
+    rc = cmd_eval(["--no-such-flag"])
+    assert rc == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ERROR"
+    assert "--no-such-flag" in payload["message"]
 
 
 def test_cmd_eval_gate_field_matches_exit(capsys, tmp_path: Path) -> None:

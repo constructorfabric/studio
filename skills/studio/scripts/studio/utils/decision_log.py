@@ -224,6 +224,29 @@ def _show_notice_once(path: Path) -> None:
     )
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-restrict-perms
+def _restrict_to_owner(path: Path, mode: int) -> None:
+    """Best-effort ``chmod`` so the log stays as private as this module says it is.
+
+    The docstring at the top of this file calls the log private; nothing enforced that.
+    ``mkdir`` and ``open`` take their permissions from the ambient umask, so the usual
+    0o022 produced a 0o755 directory and a 0o644 log -- world-readable on any shared
+    machine, for a file recording which commands ran against which paths.
+
+    Applied at creation rather than on every append, and on POSIX only: ``chmod`` is a
+    no-op for this purpose on Windows, where the ACL is what matters. Failure is
+    ignored on purpose -- the same reasoning as everything else here, that telemetry
+    must never be the thing that breaks a command.
+    """
+    if os.name != "posix":
+        return
+    try:
+        os.chmod(path, mode)
+    except OSError as exc:
+        logger.debug("decision log: could not restrict %s: %s", _redact(str(path)), exc)
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-restrict-perms
+
+
 def _rotate_if_large(path: Path) -> None:
     """Keep a single ``.1`` backup once the log passes ``_MAX_BYTES``. Best-effort."""
     try:
@@ -316,9 +339,16 @@ def record(
             "payload": _redact(payload or {}),
         }
         line = json.dumps(record_obj, ensure_ascii=False, default=str)
+        parent_is_new = not target.parent.exists()
         target.parent.mkdir(parents=True, exist_ok=True)
+        if parent_is_new:
+            _restrict_to_owner(target.parent, 0o700)
         _append_locked(target, line)
         if is_new:
+            # Both files, and only once: a rotated `.1` inherits its mode through
+            # `os.replace`, so restricting the live log covers the backup too.
+            _restrict_to_owner(target, 0o600)
+            _restrict_to_owner(target.with_name(target.name + ".lock"), 0o600)
             _show_notice_once(target)
         return True
     except Exception as exc:  # pylint: disable=broad-except

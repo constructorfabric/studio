@@ -373,3 +373,52 @@ def test_registry_check_names_are_unique() -> None:
 def test_registry_check_names_contain_no_colon() -> None:
     # Findings serialise as "name: detail"; a colon in a name would break that contract.
     assert all(":" not in check.name for check in CHECKS)
+
+
+# --- workflow resolution ---------------------------------------------------
+
+def _workflow_warnings(caplog) -> List[str]:
+    """Only this module's own workflow warnings.
+
+    Counting every record in caplog made these tests depend on what the rest of the
+    suite happened to log first -- green alone, red in a full run.
+    """
+    return [r.getMessage() for r in caplog.records
+            if r.name == "studio.utils.eval_structural" and "scenario workflow" in r.getMessage()]
+
+
+def test_a_known_workflow_resolves_without_warning(caplog) -> None:
+    from studio.utils.eval_structural import DEFAULT_SECTIONS, _required_sections_for
+    with caplog.at_level(logging.WARNING, logger="studio.utils.eval_structural"):
+        assert _required_sections_for("verify") == ("Preamble", "What")
+    assert not _workflow_warnings(caplog)
+
+
+def test_an_unspecified_workflow_takes_the_default_silently(caplog) -> None:
+    """"unknown" is what load_scenarios writes when a scenario declares no workflow.
+
+    It is the documented default rather than a mistake, so it must not be reported as
+    one -- warning on it would put a line in every run of every suite that never set
+    the field.
+    """
+    from studio.utils.eval_structural import DEFAULT_SECTIONS, _required_sections_for
+    with caplog.at_level(logging.WARNING, logger="studio.utils.eval_structural"):
+        assert _required_sections_for("unknown") == DEFAULT_SECTIONS
+    assert not _workflow_warnings(caplog)
+
+
+def test_a_misspelled_workflow_warns_and_says_what_it_used(caplog) -> None:
+    """A typo used to be indistinguishable from a deliberate coding workflow.
+
+    Both missed WORKFLOW_SECTIONS and both got the universal set, so `verificaton`
+    was scored against a `## Rules` block it was never meant to have -- and the FAIL
+    named the missing section rather than the misspelled field behind it.
+    """
+    from studio.utils.eval_structural import DEFAULT_SECTIONS, _required_sections_for
+    with caplog.at_level(logging.WARNING, logger="studio.utils.eval_structural"):
+        assert _required_sections_for("verificaton") == DEFAULT_SECTIONS
+    warnings = _workflow_warnings(caplog)
+    assert len(warnings) == 1
+    message = warnings[0]
+    assert "verificaton" in message
+    assert "verify" in message                 # names what it would have accepted
