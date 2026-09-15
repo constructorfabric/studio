@@ -664,6 +664,8 @@ Pure decision logic, no I/O: this is a deterministic CLI, not the caller that ac
 - [x] - `p1` - Fixing prompts for cross-reference coverage rule violations (target not in scope, missing from kind, wrong headings, missing/prohibited task or priority on reference) - `inst-fix-cross-ref-coverage`
 - [x] - `p1` - Fixing prompts for code marker structural and cross-validation errors (duplicate begin, end without begin, empty block, unclosed block, duplicate scope, DOCS-ONLY, orphan ref, unchecked task, missing marker, orphaned inst block) - `inst-fix-marker-errors`
 - [x] - `p1` - Fixing prompts for TOC validation errors (missing TOC, broken anchor, heading not in TOC, stale TOC) - `inst-fix-toc`
+- [x] - `p1` - Prompts for the JIT-retrieval readiness warnings (duplicate heading, depth jump, over-long section, missing description) and for an empty codebase entry or an oversized file, so a warning-only code still arrives with a suggested action - `inst-fix-jit-readiness`
+- [x] - `p1` - Probable-cause text for those same JIT-readiness and scope warnings, so the prompt arrives with the reasons a reader can check - `inst-fix-jit-reasons`
 - [x] - `p1` - Probable-reasons templates for all 10 CDSL structure error codes - `inst-fix-define-cdsl-reasons`
 - [x] - `p1` - Fixing prompts for CDSL structure violations (missing checkbox/phase/inst token, prohibited code/type/operator syntax, not-plain-English, duplicate inst-id, placeholder) - `inst-fix-cdsl-structure`
 - [x] - `p1` - Fixing prompt for unreferenced ID warning (no scope) and final None fallback - `inst-fix-warnings`

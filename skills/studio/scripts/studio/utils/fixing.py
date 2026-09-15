@@ -26,6 +26,7 @@ from . import error_codes as EC
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-define-reasons
 _REASONS: Dict[str, List[str]] = {
+    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-jit-reasons
     # JIT-retrieval readiness signals, and the two non-TOC warnings alongside them
     EC.TOC_HEADING_DUPLICATE: [
         "Two sections were given the same heading text, so retrieval cannot address them separately",
@@ -50,6 +51,7 @@ _REASONS: Dict[str, List[str]] = {
         "`{path}` is past the size ceiling and was skipped rather than scanned",
         "A generated or vendored file was registered as source",
     ],
+    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-jit-reasons
 
     # Structure — task / checkbox consistency
     EC.CDSL_STEP_UNCHECKED: [
@@ -731,6 +733,7 @@ def _prompt_for_toc_and_warnings(ctx: _FixPromptContext) -> Optional[str]:
         )
     if ctx.code == EC.TOC_STALE:
         return f"Table of Contents in `{path_s}` is outdated. Run `cfs toc {path_s}` to regenerate."
+    # @cpt-begin:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-jit-readiness
     # JIT-retrieval readiness (warning-only) and the two non-TOC warnings that shipped
     # with them. Without a branch here they reached the user as a bare code with no
     # suggested action, which is the one thing this module exists to prevent.
@@ -773,6 +776,7 @@ def _prompt_for_toc_and_warnings(ctx: _FixPromptContext) -> Optional[str]:
             f"it counts toward nothing. Split it, or raise the ceiling deliberately if it "
             f"is meant to be this big."
         )
+    # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-jit-readiness
     if ctx.code == EC.ID_NOT_REFERENCED_NO_SCOPE:
         return (
             f"At `{ctx.loc}`: `{ctx.cpt_id}` has no references — "
