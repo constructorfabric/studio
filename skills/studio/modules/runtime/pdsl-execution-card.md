@@ -96,6 +96,12 @@ RULES:
   NEVER treat a harness with no matching native affordance as an error;
     fall back to the same explicitly-marked, end-of-turn text rendering used
     for shape-incompatible menus.
+  ALWAYS treat a bound `ask_tool_name` that is absent from the current
+    session's actual available tool list — not merely a call that returns an
+    unmatched result, but the tool never being offered at all — identically
+    to `unset`; a per-target binding declares intent, not a runtime
+    guarantee the tool is present (e.g. availability gated by the harness's
+    own mode or model choice, outside this workflow's control).
   ALWAYS treat `ON_ERROR` as the named recovery path for matching failures.
   ALWAYS treat `NOTES` as explanatory only; NOTES do not create executable
     obligations unless an active rule references them.

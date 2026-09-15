@@ -389,6 +389,24 @@ def _pure_generated_stub_matches(stripped: str) -> bool:
     # The content alone doesn't say which generation target produced it, so
     # try every known `ask_tool_name` binding (issue #142) — a closed,
     # bounded set — rather than threading tool identity through every caller.
+    #
+    # _ASK_TOOL_BINDING_BY_OUTPUT's values are deliberately NOT folded in
+    # here, unlike _ASK_TOOL_BINDING's. This candidate list is tool-agnostic
+    # -- it's tried against content from *any* tool's legacy path -- so
+    # adding a value here makes it a valid "pure generated" match everywhere,
+    # not just for the one dedicated output it's actually bound to. That's
+    # already the cross-tool collision risk tracked in
+    # constructorfabric/studio#185 for _ASK_TOOL_BINDING itself; widening the
+    # pool further here would let e.g. a Windsurf legacy file matching
+    # Cursor's "AskQuestion" content get misclassified as Windsurf's own pure
+    # stub and silently deleted by `_cleanup_legacy_skill_files`, even though
+    # Windsurf never emits that binding. `.cursor/commands/cf.md` itself
+    # never reaches this check in practice today (`_classify_generated_
+    # output_owner` short-circuits on `_extract_studio_owned_target` first,
+    # and its only writer, `_write_or_skip`, has no purity gate at all) --
+    # verified directly, not assumed. If that ever changes, fix it by
+    # threading tool/path identity through this function (#185's own
+    # direction), not by widening this already-risky global pool further.
     candidate_bindings = [None] + [v for v in _ASK_TOOL_BINDING.values() if v]
     for binding in candidate_bindings:
         expected_protocol = [
@@ -894,13 +912,43 @@ _AUTO_VALUE: Dict[str, Optional[str]] = {
 # description-based mechanism below.
 #
 # Verified-compatible today: Claude Code's `AskUserQuestion`, below. None of
-# windsurf/cursor/copilot/codex is known to expose a matching native
-# affordance yet — each still gets only the description fallback; adding one
-# is reserved for a future change, not confirmed working now.
+# windsurf/copilot/codex is known to expose a matching native affordance yet
+# — each still gets only the description fallback; adding one is reserved
+# for a future change, not confirmed working now.
+#
+# Cursor is NOT added here even though it does have a real tool (`AskQuestion`
+# — see _ASK_TOOL_BINDING_BY_OUTPUT below): this dict's key `"cursor"` is
+# also read by `_agents_skill_outputs("cursor")` and
+# `_kit_workflow_skill_template("cursor")`, which both feed the *shared*
+# `.agents/skills/` bucket also consumed by windsurf/copilot/openai/OpenCode
+# (constructorfabric/studio#206). Adding `"cursor"` here would leak the
+# binding into that shared file and misroute those other tools onto a tool
+# they don't have. Cursor's binding is scoped narrowly instead — see below.
 _ASK_TOOL_BINDING: Dict[str, Optional[str]] = {
     "claude": "AskUserQuestion",
 }
 _CLAUDE_ASK_TOOL_NAME = _ASK_TOOL_BINDING.get("claude")
+
+# Bindings scoped to one specific dedicated output path rather than a whole
+# tool (constructorfabric/studio#206, Option A) -- for a tool's outputs that
+# are NOT all part of a shared bucket, only some of them. Keyed by output
+# path so a second such case is a one-line addition here, not a new
+# module-level constant plus a new hand-verified exclusion elsewhere; its
+# values are folded into `_pure_generated_stub_matches`'s candidate set
+# below for the same reason.
+#
+# `.cursor/commands/cf.md` -> `AskQuestion`: Cursor's root `cf` skill has its
+# own dedicated, non-shared launcher file, unlike its other five kit-workflow
+# skills (shared-bucket-only, see above). Caveats (issue #142 AC#2):
+# `AskQuestion`'s availability is gated by Cursor's own mode/model support
+# (confirmed disabled for at least one model), not by any project-level
+# config Studio can set, and it has no native free-text escape hatch unlike
+# Claude's/Codex's tools. Corroborated by Cursor staff across multiple forum
+# threads, not from an official schema dump — treat the exact casing as
+# highly likely correct, not certified.
+_ASK_TOOL_BINDING_BY_OUTPUT: Dict[str, str] = {
+    ".cursor/commands/cf.md": "AskQuestion",
+}
 
 _ASK_TOOL_FALLBACK_DESCRIPTION = (
     "a tool that presents the user a blocking multiple-choice question with "
@@ -1895,7 +1943,10 @@ def _default_agents_config() -> dict:
                                 "# /cf",
                                 "",
                                 "{custom_content}",
-                                *_follow_protocol_lines("{target_skill_path}"),
+                                *_follow_protocol_lines(
+                                    "{target_skill_path}",
+                                    ask_tool_name=_ASK_TOOL_BINDING_BY_OUTPUT.get(".cursor/commands/cf.md"),
+                                ),
                             ],
                         },
                     ],
