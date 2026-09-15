@@ -3,7 +3,7 @@
 import json
 import sys
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -19,6 +19,7 @@ from studio.utils.artifacts_meta import (
 )
 from studio.commands.spec_coverage import (
     cmd_spec_coverage,
+    _build_spec_coverage_parser,
     _output,
     _filter_ignored_files,
     _rel_path,
@@ -722,3 +723,51 @@ class TestHumanSpecCoverage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestThresholdFlagsRejectNonFiniteValues(unittest.TestCase):
+    """A threshold that cannot be satisfied must be refused, not silently dropped.
+
+    `_requested_thresholds` counts a threshold as demanded only when `value > 0`, and
+    `float("nan") > 0` is False. A NaN threshold therefore vanished from the demanded
+    set, and an empty scope -- which can honour no guarantee at all -- exited 0 instead
+    of 2, reporting success for a gate that never ran.
+    """
+
+    def _usage_error(self, argv):
+        err = StringIO()
+        with self.assertRaises(SystemExit) as raised:
+            with redirect_stderr(err):
+                cmd_spec_coverage(argv)
+        self.assertEqual(raised.exception.code, 2)
+        return err.getvalue()
+
+    def test_nan_is_refused_on_every_threshold_flag(self):
+        for flag in ("--min-coverage", "--min-file-coverage",
+                     "--min-granularity", "--min-file-granularity"):
+            with self.subTest(flag=flag):
+                self.assertIn("finite", self._usage_error([flag, "nan"]))
+
+    def test_infinity_is_refused(self):
+        self.assertIn("finite", self._usage_error(["--min-coverage", "inf"]))
+
+    def test_non_numeric_is_still_refused(self):
+        self.assertIn("invalid float value", self._usage_error(["--min-coverage", "abc"]))
+
+    def test_a_negative_floor_is_still_accepted(self):
+        """Only finiteness is checked -- the range must not be clamped.
+
+        A negative floor is met by any scope, so it demands nothing; that is the
+        contract `_requested_thresholds` documents and `test_enforcement_empty_scan`
+        pins. Rejecting it here would break an empty scope's documented PASS.
+        """
+        parser = _build_spec_coverage_parser()
+        args = parser.parse_args(["--min-coverage", "-5", "--min-granularity", "0"])
+        self.assertEqual(args.min_coverage, -5.0)
+        self.assertEqual(args.min_granularity, 0.0)
+
+    def test_a_valid_threshold_still_parses(self):
+        parser = _build_spec_coverage_parser()
+        args = parser.parse_args(["--min-coverage", "90", "--min-granularity", "0.5"])
+        self.assertEqual(args.min_coverage, 90.0)
+        self.assertEqual(args.min_granularity, 0.5)

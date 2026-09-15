@@ -235,29 +235,49 @@ def _rotate_if_large(path: Path) -> None:
         logger.debug("decision log rotation skipped: %s", exc)
 
 
+#: Seconds an append waits for a sibling process's lock before writing unlocked. Short
+#: by design: this runs on the hot path of every command, so waiting to record an event
+#: must never be something the user notices.
+_APPEND_LOCK_TIMEOUT_SECONDS = 2.0
+
+
 def _append_locked(target: Path, line: str) -> None:
     """Append one line, serialising rotation + write across processes where possible.
 
     Two concurrent invocations can both observe an oversized log; without a lock, one
-    could rotate the file the other is mid-write on, dropping events. Where ``fcntl`` is
-    available (POSIX) an exclusive advisory lock on a sibling ``.lock`` file serialises
-    the rotate-then-append; elsewhere it degrades to a best-effort unlocked append.
+    could rotate the file the other is mid-write on, dropping events. An exclusive
+    advisory lock on a sibling ``.lock`` file serialises the rotate-then-append via
+    :func:`studio.utils.atomic_io.with_file_lock`, which degrades to running unlocked
+    where ``fcntl`` is unavailable (e.g. Windows).
+
+    The wait for that lock is **bounded**. :func:`record` promises never to change what
+    a command does, and a blocking ``flock`` cannot keep that promise: a sibling process
+    that is hung -- or was killed without releasing the lock -- would freeze the user's
+    terminal inside instrumentation, and :func:`record`'s ``except Exception`` cannot
+    intercept a call that blocks rather than raises. On timeout this falls back to the
+    same best-effort unlocked append already used off POSIX: under contention, losing
+    the rotation guarantee for one event is a better failure than losing the command.
+
+    The bounded helper is the one #136 introduced for exactly this defect in
+    ``doc_index``; the decision log's append was missed at the time.
     """
+    def _append() -> None:
+        _rotate_if_large(target)
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+
+    from .atomic_io import with_file_lock  # pylint: disable=import-outside-toplevel
+
+    lock_path = target.with_name(target.name + ".lock")
     try:
-        import fcntl  # pylint: disable=import-outside-toplevel
-    except ImportError:
-        fcntl = None
-    if fcntl is None:
-        _rotate_if_large(target)
-        with target.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-        return
-    with open(target.with_name(target.name + ".lock"), "a", encoding="utf-8") as lock_fh:
-        fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
-        _rotate_if_large(target)
-        with target.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-        # The exclusive lock is released when lock_fh closes.
+        with_file_lock(lock_path, _append, timeout=_APPEND_LOCK_TIMEOUT_SECONDS)
+    except TimeoutError:
+        # Debug, not warning: contention is normal for parallel commands, and the event
+        # is still recorded. Only a genuine write failure deserves the user's attention.
+        logger.debug(
+            "decision log: lock busy after %.1fs, appending unlocked",
+            _APPEND_LOCK_TIMEOUT_SECONDS)
+        _append()
 
 
 def record(

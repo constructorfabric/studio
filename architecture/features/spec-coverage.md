@@ -85,6 +85,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for spec-coverage command - `inst-coverage-imports`
+- [x] - `p1` - Reject a non-finite threshold at parse time, so a NaN floor cannot be dropped from the demanded set and let an empty scope pass a gate it never ran - `inst-threshold-argtype`
 - [x] - `p1` - Build CLI parser for threshold, system, verbosity, and output flags - `inst-build-parser`
 - [x] - `p1` - Collect known system slugs from nested system tree for selector validation - `inst-collect-system-slugs`
 - [x] - `p1` - Collect codebase file paths from registered entries and recurse into child systems - `inst-collect-codebase-files`
