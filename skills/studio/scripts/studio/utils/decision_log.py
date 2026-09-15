@@ -243,7 +243,11 @@ def _restrict_to_owner(path: Path, mode: int) -> None:
     try:
         os.chmod(path, mode)
     except OSError as exc:
-        logger.debug("decision log: could not restrict %s: %s", _redact(str(path)), exc)
+        # `_redact` on the exception too, not only the path: an OSError renders as
+        # "[Errno 13] Permission denied: '/home/<user>/...'", so passing it raw puts
+        # back the $HOME this module strips everywhere else.
+        logger.debug("decision log: could not restrict %s: %s",
+                     _redact(str(path)), _redact(str(exc)))
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-restrict-perms
 
 
