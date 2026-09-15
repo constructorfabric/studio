@@ -31,6 +31,24 @@ RULES:
   ALWAYS after any `WAIT`/`STOP_TURN` resume at the exact active PDSL
     continuation target; REQUIRED: do not reinterpret the user's reply as
     broad permission for generic autonomous execution.
+  ALWAYS record exactly one outcome for a gate that cannot be resolved: an open
+    question naming the decision key it turns on, or a ruling — never both, and
+    never neither. An indeterminate gate that records nothing has silently become
+    a guess.
+  NEVER record the question's wording; an unresolved gate is registered as the
+    decision key it turns on, written to the phase it blocks as
+    `awaiting_decision` — never named for the brainstorm carryover it is not — so
+    the register cannot become a second copy of the prompt and the consent rule
+    governing saved open questions stays satisfied.
+  ALWAYS write `awaiting_decision` as a list of every key that phase is waiting
+    on, never the first one found: a phase blocked on two keys and told about one
+    sends its author back for the second, which is the serial rediscovery this
+    register exists to end.
+  NEVER treat `awaiting_decision` as the authority on whether a phase may run; it
+    records what was outstanding when it was written, and dispatch re-resolves a
+    phase's declared `needs` at dispatch time. Nothing clears the field, and
+    nothing has to: a record that has since been answered cannot hold work,
+    because no decision is taken from it.
   ALWAYS treat a session's declared mode and a gate's declared risk type —
     the literal type named in that gate's own MENU block — as workflow-owned
     behaviour, not an interpretation of the user's reply; resolving a gate by

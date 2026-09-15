@@ -210,3 +210,13 @@ from studio.utils.armed_reversal import ReversalCheck, armed_reversal  # noqa: E
 armed_reversal  # noqa: B018
 ReversalCheck.mechanism  # noqa: B018
 ReversalCheck.refused  # noqa: B018
+
+# plan_decisions.PhaseOutlook.will_run — the forecast a caller reads, with no caller yet.
+# `preflight` returns `blocked_on` and uses `PlanLookup.resolved` itself; `will_run` is the
+# shape the consumer wants and the consumer is the enforcement increment, which does not
+# import this module yet. REMOVAL TRIGGER — delete this entry once a dispatch module's
+# Python reads it (grep `will_run` outside plan_decisions.py and its tests). Deleting the
+# property instead would have the first consumer reinvent `not blocked_on` under a name
+# that reads as permission, which this one deliberately is not.
+from studio.utils.plan_decisions import PhaseOutlook  # noqa: E402
+PhaseOutlook.will_run  # noqa: B018

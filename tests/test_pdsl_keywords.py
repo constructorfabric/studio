@@ -2225,3 +2225,324 @@ def test_no_plan_first_continuation_is_a_phase_dispatcher() -> None:
         f"a plan-first plan can now reach phase dispatch, so it does need the "
         f"dispatcher's approval field: {overlap}"
     )
+
+
+#: The per-phase register's two fields in `plan.toml`. `status` already existed on every
+#: `[[phases]]` entry, so the blocked state reuses it rather than adding a parallel flag.
+#:
+#: `awaiting_decision`, not `open_question`. The execution card's rule names the reason:
+#: "never named for the brainstorm carryover it is not" — brainstorm already carries an
+#: open-question concept, and one name over two meanings is how a register becomes a second
+#: copy of the prompt. These tests were written against the rejected name and asserted it
+#: for four days while the modules said otherwise.
+REGISTER_FIELDS = ("awaiting_decision", 'status = "blocked"')
+
+
+def test_an_indeterminate_gate_records_one_outcome_and_never_two() -> None:
+    """A gate that records neither a ruling nor a question has silently guessed.
+
+    This is the half the acceptance criteria call the register's reason for
+    existing: without it the feature is "a ruling with worse bookkeeping".
+    """
+    rows = _sectioned_lines(
+        Path("skills/studio/modules/runtime/pdsl-execution-card.md"), actions_only=True
+    )
+    rules = " ".join(line for _, section, _, line in rows if section == "RULES")
+    assert "exactly one outcome" in rules, "the exactly-one semantics are not stated"
+    # Split, because the two halves fail for different reasons and a composite assertion
+    # reports whichever it likes: "never both" is the rule against recording a ruling and a
+    # question together, "never neither" the rule against recording nothing at all, and an
+    # indeterminate gate that records nothing has silently become a guess.
+    assert "never both" in rules, f"nothing forbids recording both outcomes: {rules}"
+    assert "never neither" in rules, f"nothing forbids recording no outcome: {rules}"
+
+
+def test_the_register_never_stores_the_question_wording() -> None:
+    """`explain-deliver-wrap.md:34` forbids saving open questions without consent.
+
+    Recording *that* a gate ended in an open question, keyed by its decision key, is
+    a fact about the gate. Recording the prose would be saving the question, which
+    that shipped rule governs — so the register holds the key and the phase only.
+    """
+    rows = _sectioned_lines(
+        Path("skills/studio/modules/runtime/pdsl-execution-card.md"), actions_only=True
+    )
+    rules = " ".join(line for _, section, _, line in rows if section == "RULES")
+    assert "NEVER record the question's wording" in rules, rules
+    # and the constraint it is protecting still exists to be protected
+    consent = Path("skills/studio/modules/explain-deliver-wrap.md").read_text(encoding="utf-8")
+    assert "without explicit user consent" in consent, (
+        "the consent rule this design was shaped around is gone; re-check the design"
+    )
+
+
+def test_the_rejected_field_name_is_never_presented_as_the_canonical_one() -> None:
+    """Two comment blocks sat here, the first naming `open_question` as the field.
+
+    It was left behind by the rename and contradicted the block directly below it, which
+    exists to say the name was rejected. A reader stopping at the first one takes the
+    wrong name into the next module. Raised in review.
+    """
+    text = Path("tests/test_pdsl_keywords.py").read_text(encoding="utf-8")
+    # The comment block directly above the constant, which is where the two contradicting
+    # versions sat. Scoped there rather than file-wide, so this test's own prose about the
+    # rejected name does not trip it.
+    lines = text.splitlines()
+    marker = next(i for i, line in enumerate(lines) if line.startswith("REGISTER_FIELDS ="))
+    block = [line for line in lines[:marker][::-1]]
+    comment = []
+    for line in block:
+        if not line.startswith("#"):
+            break
+        comment.append(line)
+    said = " ".join(comment)
+    assert "open_question" in said, (
+        "the note explaining why the rejected name is not used has gone; without it the "
+        "next author reintroduces it"
+    )
+    assert "not `open_question`" in said, (
+        f"the comment block names the rejected field as canonical: {said}"
+    )
+    assert said.count("The per-phase register's two fields") == 1, (
+        f"the superseded copy of this comment block is back: {said}"
+    )
+
+
+def test_a_blocked_phase_is_held_and_the_rest_still_run() -> None:
+    """Phase-level blocking: the question stops its phase, not the whole plan.
+
+    Blocking everything would be safest and unusable; blocking by decision key needs
+    a key registry increment 3 has not built. The plan is already decomposed into
+    phases with declared dependencies, so the phase is the unit that exists today.
+    """
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        # the action and the rule are asserted apart, because an `or` across both let
+        # the rule satisfy a claim about the action: stripping "dispatch only the rest"
+        # from the DO action left this test passing.
+        action = " ".join(
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO"
+            and ("decision_held =" in line or "manually_held =" in line)
+        )
+        rules = " ".join(
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "RULES" and "held" in line
+        )
+        # The hold is **computed**, not read off the stored field. Review found that
+        # nothing anywhere clears `awaiting_decision`, so a phase held once stayed held
+        # after its answer arrived. Deciding from the phase's declared `needs` at dispatch
+        # time removes that by construction: there is nothing to clear, because no
+        # decision is taken from the record.
+        assert "declared needs still leave a key unresolved" in action, (
+            f"{unit} decides the hold from a stored field rather than by re-resolving: {action}"
+        )
+        assert 'status = "blocked"' in action, (
+            f"{unit}'s DO does not honour the by-hand hold: {action}"
+        )
+        # The notice is its own line, and asserted separately from the set definitions:
+        # joining them is what let one line satisfy a claim about another earlier in this
+        # same test. It states the hold and dispatches nothing — review read "dispatch
+        # only the rest", sitting before the git-policy gate, as an action verb.
+        notice = " ".join(
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO"
+            and line.strip().startswith("EMIT every phase in held_phases")
+        )
+        assert "runnable_phases minus held_phases" in notice, (
+            f"{unit}'s notice does not say which phases are left to dispatch: {notice}"
+        )
+        assert "performs no dispatch" in notice, (
+            f"{unit}'s notice still reads as if it dispatched: {notice}"
+        )
+        assert "dispatch the rest" in rules, (
+            f"{unit} has no rule that unblocked phases still run: {rules}"
+        )
+
+
+def test_a_finished_phase_is_not_dispatched_again() -> None:
+    """Held is not the only reason a phase must not run: done is another.
+
+    Selecting the lowest-numbered *unheld* phase picked phase 1 of a plan whose phase 1
+    had already finished, so resuming a part-done plan re-ran work and overwrote its
+    output. Raised in review as a Major on both dispatch paths.
+    """
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        runnable = " ".join(
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO" and "runnable_phases" in line
+        )
+        assert runnable, f"{unit} does not narrow the group to runnable phases: {unit}"
+        assert "pending or unset" in runnable, (
+            f"{unit} does not say which statuses may run: {runnable}"
+        )
+        for finished in ("done", "in_progress", "failed"):
+            assert finished in runnable, (
+                f"{unit} does not exclude a phase that is {finished}: {runnable}"
+            )
+        # A by-hand hold is not a lifecycle state, so scoping it to the runnable set hid
+        # every manually blocked phase and its notice could never fire. Raised in review.
+        manual = " ".join(
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO" and "manually_held =" in line
+        )
+        assert "runnable or not" in manual, (
+            f"{unit} scopes the by-hand hold to the runnable set, hiding it: {manual}"
+        )
+        # Declaring the runnable set is not using it. Reverting the selection line to
+        # "the lowest-numbered [[phases]] entry" left the declaration in place and this
+        # test green, which is the same shape as declaring a constant nothing reads.
+        # Each line on its own: joining them let the `held_phases` line, which also says
+        # "runnable", satisfy a claim about the selection line. That is the composite
+        # assertion the analyser objects to, arrived at from the other direction.
+        for name in ("decision_held =", "target_phase ="):
+            line = " ".join(
+                text for row_unit, section, _, text in rows
+                if row_unit == unit and section == "DO" and name in text
+            )
+            if not line:
+                continue                    # the compiler path selects no single phase
+            assert "runnable" in line, (
+                f"{unit} declares a runnable set and then ignores it in `{name}`: {line}"
+            )
+        rules = " ".join(
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "RULES" and "runnable" in line
+        )
+        assert "never one held" in rules or "nor one held" in rules, (
+            f"{unit}'s rule does not keep both reasons a phase may not run: {rules}"
+        )
+
+
+def test_a_plan_held_only_by_hand_is_not_told_to_answer_keys() -> None:
+    """The notice has to match the reason, or it sends its reader to do nothing.
+
+    Every phase blocked by hand and none waiting on a decision produced "answer the keys
+    listed above" — with no keys listed, because a by-hand hold has none. Raised in review.
+
+    Asserted on **both** dispatch paths, because the follow-up finding was exactly that:
+    the native unit got three branches and the compiler unit got none, so a plan whose
+    every runnable phase was held fell through to dispatching an empty group. A guard one
+    of two siblings has is the shape that keeps coming back here.
+    """
+    stops = []
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        found = [
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO"
+            and line.strip().startswith("EMIT") and "STOP_TURN" in line
+            and ("no phase was dispatched" in line or "nothing to dispatch" in line
+                 or "no compiler was dispatched" in line or "nothing to compile" in line)
+        ]
+        assert len(found) >= 4, (
+            f"{unit} does not tell the four reasons nothing ran apart: {found}"
+        )
+        stops.extend(found)
+    joined = " ".join(stops)
+    assert "Lift those holds" in joined, f"a by-hand hold has no instruction of its own: {joined}"
+    assert "no decision outstanding" in joined, (
+        f"a by-hand hold is still reported as an open decision: {joined}"
+    )
+    assert "already done, in_progress or failed" in joined, (
+        f"a plan with nothing left to run is reported as blocked: {joined}"
+    )
+    # Four reasons, and the conditions must not overlap: an all-done plan satisfied the
+    # manual-hold branch vacuously, and a plan held both ways reported as decision-held
+    # only. Raised in review.
+    assert "some on an open decision, some by hand" in joined, (
+        f"a plan held both ways is reported as one or the other: {joined}"
+    )
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        terminal = [
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO"
+            and line.strip().startswith("EMIT") and "STOP_TURN" in line
+            and ("held" in line.lower() or "already done" in line)
+        ]
+        assert len(terminal) >= 4, f"{unit} has fewer than four terminal branches: {terminal}"
+        for line in terminal:
+            assert ("manually_held is empty" in line or "manually_held is not empty" in line), (
+                f"{unit} has a hold branch that does not say where the manual holds are: {line}"
+            )
+    # Both units, not one: the count above would be satisfied by three branches on either.
+    assert joined.count("Lift those holds") == len(PLAN_EXECUTION_ENTRIES), (
+        f"only one dispatch path distinguishes a by-hand hold: {joined}"
+    )
+
+
+def test_the_completion_check_expects_only_what_was_dispatched() -> None:
+    """A held phase produces no output, and that is not a compiler failure.
+
+    Raised in review as a Major: holding phases back changed what "every expected output"
+    means, and the paired completion unit still said every phase in the plan. It would
+    report the hold as a failed compiler and send its author to re-dispatch work that was
+    correctly withheld — the feature's own success looking like its failure.
+    """
+    rows = _sectioned_lines(Path("skills/studio/modules/plan-compiler-dispatch.md"),
+                            actions_only=True)
+    verify = " ".join(
+        line for unit, section, _, line in rows
+        if unit == "PlanPhaseCompilerComplete" and section == "DO" and "expected" in line
+    )
+    assert verify, "the completion unit no longer verifies expected outputs at all"
+    assert "dispatch_group_id" in verify, (
+        f"the expected-output set is not scoped to what was dispatched: {verify}"
+    )
+    assert "never every phase in the plan" in verify, (
+        f"nothing rules out demanding output from a phase that was held: {verify}"
+    )
+    # `"held" in line` matched the verify line too — it contains "withheld" — so removing
+    # this EMIT entirely left the assertion green off the wrong line. Anchored to the EMIT
+    # and to a phrase the other line does not carry.
+    held = " ".join(
+        line for unit, section, _, line in rows
+        if unit == "PlanPhaseCompilerComplete" and section == "DO"
+        and line.strip().startswith("EMIT") and "still held" in line
+    )
+    assert held, "a plan that compiled only its unheld phases reports as fully compiled"
+
+
+def test_the_register_is_a_record_and_never_the_authority() -> None:
+    """Nothing clears `awaiting_decision`, so nothing may decide from it.
+
+    Raised in review as a Major: the write path set the field and no rule, module or
+    function ever removed it, so a phase held on an open decision stayed held after the
+    answer was supplied. The lifecycle is fixed by taking the decision elsewhere rather
+    than by adding a clear step whose omission would recreate exactly this.
+    """
+    rows = _sectioned_lines(
+        Path("skills/studio/modules/runtime/pdsl-execution-card.md"), actions_only=True
+    )
+    rules = " ".join(line for _, section, _, line in rows if section == "RULES")
+    assert "NEVER treat `awaiting_decision` as the authority" in rules, rules
+    assert "re-resolves" in rules, f"the card does not say what decides instead: {rules}"
+    # And the multi-key format, which was undefined: a phase blocked on two keys and told
+    # about one sends its author back for the second.
+    assert "list of every key" in rules, f"the register's shape is still singular: {rules}"
+
+
+def test_holding_a_phase_back_is_announced_not_silent() -> None:
+    """Skipping work in silence is the failure mode the loud-refusal rule exists for."""
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        # The per-phase notice specifically, not the all-held stop branches, which name
+        # `held_phases` in their condition while being a different message.
+        held = [
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO"
+            and line.strip().startswith("EMIT every phase in held_phases")
+        ]
+        assert held, f"{unit} holds phases back without emitting which, or why"
+        for line in held:
+            assert "unresolved keys it is waiting on" in line, (
+                f"the notice does not name what the phase is waiting on: {line}"
+            )
+            # Every key, not the first. And the one hold that has no key to name says so
+            # rather than naming one it does not have.
+            assert "all of them" in line, f"the notice names one key of several: {line}"
+            assert "held by status alone" in line, (
+                f"a by-hand hold would be announced as waiting on a key it has none of: {line}"
+            )
