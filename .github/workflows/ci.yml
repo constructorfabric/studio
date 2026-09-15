@@ -1,11 +1,16 @@
 # @cpt-algo:cpt-studio-spec-init-structure-change-infrastructure:p1
 name: CI
 
+# `release/**` alongside `main`: releases are cut on a branch taken from the previous
+# tag, reviewed and tested there, and only then tagged. Filtering CI to `main` meant the
+# one branch whose whole purpose is being tested before a tag was the one branch this
+# pipeline never ran on -- a release PR showed only the checks that come from apps
+# (DCO, SonarCloud, code-ranker), and no tests, lint, coverage or artifact validation.
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
