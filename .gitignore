@@ -643,3 +643,6 @@ prompt-instruction-severity-low-med.md
 prompt-instruction-severity-table.md
 outputs/
 .debug-skill/
+
+# code-ranker reports
+.code-ranker/
