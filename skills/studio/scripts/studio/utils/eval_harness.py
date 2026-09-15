@@ -360,12 +360,20 @@ def gate_exit_code(compliance: Optional[float], check: bool, min_compliance: flo
     """Opt-in gating: exit 2 only under ``check`` when compliance is below the floor.
 
     Gating is off by default (running eval reports, it does not fail a build unless
-    asked). Nothing-scoreable (``compliance is None``) never fails. Advisory verdicts
-    never reach here because they are excluded from ``compliance``.
+    asked). Advisory verdicts never reach here because they are excluded from ``compliance``.
+
+    Nothing-scoreable (``compliance is None`` — an empty suite, or one whose every scenario
+    was unscoreable) fails a ``check`` that demanded a positive floor: a gate asked to enforce
+    a minimum and given nothing to measure has failed to assess, not passed — the rule
+    ``spec-coverage`` already applies, and the "cannot assess is not PASS" principle (HYP-2925,
+    and the empty-codebase ruling). A non-positive floor demands nothing, so a suite that
+    scored nothing still clears it.
     """
-    if check and compliance is not None and compliance < min_compliance:
-        return 2
-    return 0
+    if not check:
+        return 0
+    if compliance is None:
+        return 2 if min_compliance > 0 else 0
+    return 2 if compliance < min_compliance else 0
 # @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-gate
 
 

@@ -108,16 +108,97 @@ def test_check_help_documents_baseline_regression() -> None:
     assert "regression" in _build_parser().format_help()   # A2: full gate contract documented
 
 
-def test_cmd_eval_empty_suite_is_honest_zero(capsys, tmp_path: Path) -> None:
-    # An existing but empty scenarios dir scores nothing → honest exit 0, compliance null.
+def test_cmd_eval_empty_suite_fails_the_gate_but_not_the_plain_run(capsys, tmp_path: Path) -> None:
+    # An existing but empty scenarios dir scores nothing. Under --check that is a failure to
+    # assess -- exit 2 (HYP-2961), matching spec-coverage's rule -- not a pass. A plain report
+    # run stays exit 0, and --check with a zero floor (demanding nothing) also clears.
     empty = tmp_path / "empty"
     empty.mkdir()
     with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
-        rc = cmd_eval(["--scenarios-dir", str(empty), "--check"])
+        rc_check = cmd_eval(["--scenarios-dir", str(empty), "--check"])
     out = json.loads(capsys.readouterr().out)
-    assert rc == 0
+    assert rc_check == 2                                    # positive floor, nothing scored → fail
     assert out["summary"]["scenarios"] == 0
     assert out["summary"]["structural_compliance"] is None
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        assert cmd_eval(["--scenarios-dir", str(empty)]) == 0            # report only → still 0
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        assert cmd_eval(["--scenarios-dir", str(empty), "--check", "--min", "0"]) == 0  # no floor
+
+
+def test_human_report_names_each_scenario_and_its_failing_check(capsys) -> None:
+    # HYP-2960: the human console must name each scenario's verdict and the check it failed, so
+    # a reader can act without falling back to the global --json flag. The findings are already
+    # in the payload; the report only renders them. (The autouse fixture forces JSON mode on;
+    # the human report only runs in text mode, so flip it off for this one.)
+    from studio.commands.eval import _report_scenarios
+    from studio.utils import eval_harness
+    from studio.utils.ui import set_json_mode
+    set_json_mode(False)
+    det = eval_harness.ScorerKind.DETERMINISTIC.value
+    per_scenario = [
+        {"scenario": "s1-good", "compliance": 1.0,
+         "results": [{"scorer": "sections", "kind": det, "verdict": "PASS", "findings": []}]},
+        {"scenario": "s2-broken", "compliance": 0.8,
+         "results": [{"scorer": "numbering-contiguous-from-1", "kind": det,
+                      "verdict": eval_harness.VERDICT_FAIL, "findings": ["numbers=[1, 3]"]}]},
+    ]
+    _report_scenarios(per_scenario)
+    out = capsys.readouterr().out
+    assert "s1-good" in out                                          # the passing control, by name
+    assert "PASS" in out
+    assert "s2-broken" in out
+    assert "FAIL" in out
+    assert "numbering-contiguous-from-1: numbers=[1, 3]" in out      # the check named, with its finding
+    _report_scenarios([None, {"scenario": "x"}])                     # malformed rows tolerated, no raise
+
+
+def test_report_scenarios_honest_verdict_and_malformed_tolerance(capsys) -> None:
+    # D2: a scenario with nothing deterministically assessed is UNKNOWN, never PASS — the same
+    # "cannot assess is not PASS" rule the gate applies. S1: a FAIL with no finding string still
+    # names its scorer. D1: a non-list `findings` must not crash the report.
+    from studio.commands.eval import _report_scenarios
+    from studio.utils import eval_harness
+    from studio.utils.ui import set_json_mode
+    set_json_mode(False)
+    det = eval_harness.ScorerKind.DETERMINISTIC.value
+    _report_scenarios([
+        {"scenario": "all-unknown", "compliance": None,
+         "results": [{"scorer": "structural", "kind": det, "verdict": "UNKNOWN", "findings": []}]},
+        {"scenario": "advisory-only", "compliance": None,
+         "results": [{"scorer": "judge", "kind": eval_harness.ScorerKind.ADVISORY.value,
+                      "verdict": "UNKNOWN", "findings": ["no judge"]}]},
+        {"scenario": "fail-no-detail", "compliance": 0.0,
+         "results": [{"scorer": "structural", "kind": det,
+                      "verdict": eval_harness.VERDICT_FAIL, "findings": 5}]},  # D1: non-list
+    ])
+    out = capsys.readouterr().out
+    assert "all-unknown  UNKNOWN" in out          # D2: an unscored deterministic run is not PASS
+    assert "advisory-only  UNKNOWN" in out         # D2: advisory-only is not a pass either
+    assert "PASS" not in out                        # nothing here should read as a pass
+    assert "fail-no-detail  FAIL" in out            # D1: non-list findings did not crash the row
+    assert "structural: (no detail)" in out         # S1: the failing scorer is still named
+
+
+def test_report_scenarios_verdict_precedence_and_findings_are_fail_only(capsys) -> None:
+    # Precedence: a scenario mixing a PASS and a FAIL deterministic result renders FAIL (FAIL
+    # wins). And only a FAIL contributes to findings= — a passing scorer's informational note is
+    # never rendered as if it were a failure.
+    from studio.commands.eval import _report_scenarios
+    from studio.utils import eval_harness
+    from studio.utils.ui import set_json_mode
+    set_json_mode(False)
+    det = eval_harness.ScorerKind.DETERMINISTIC.value
+    _report_scenarios([
+        {"scenario": "mixed", "compliance": 0.5,
+         "results": [{"scorer": "a", "kind": det, "verdict": "PASS", "findings": ["fyi note"]},
+                     {"scorer": "b", "kind": det,
+                      "verdict": eval_harness.VERDICT_FAIL, "findings": ["broke"]}]},
+    ])
+    out = capsys.readouterr().out
+    assert "mixed  FAIL" in out                      # FAIL wins over a co-occurring PASS
+    assert "b: broke" in out                         # the failing check is named
+    assert "fyi note" not in out                     # a passing scorer's note is never rendered
 
 
 def test_cmd_eval_check_gates_on_broke_scenario(capsys, tmp_path: Path) -> None:
@@ -367,6 +448,12 @@ def test_human_report_shows_compliance(capsys, tmp_path: Path) -> None:
     out = capsys.readouterr().out
     assert rc == 0
     assert "compliance" in out
+    # Wiring: _human_report must call _report_scenarios so the per-scenario rows reach the human
+    # output (not only via the leaf helper's own unit test). Deleting that call fails here.
+    assert "non-compliant-run" in out              # the failing scenario is named
+    assert "FAIL" in out
+    assert "compliant-run" in out                  # and the passing control is shown too
+    assert "PASS" in out
 
 
 def test_human_report_explains_advisory_unknown(capsys, tmp_path: Path) -> None:

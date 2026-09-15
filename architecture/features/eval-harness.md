@@ -74,14 +74,14 @@ advisory verdict can never gate a build.
 - User runs `cfs eval` → every scenario under `<project>/eval` is scored, JSON report emitted, exit 0 (gating is off by default — eval reports, it does not fail the build)
 - User runs `cfs eval --scenarios-dir DIR` → scenarios discovered under `DIR`
 - User runs `cfs eval --baseline report.json` → same, plus a per-scenario regression diff; the exit code is unchanged unless `--check` is also given
-- User runs `cfs eval --check [--min N]` → exit 2 when structural compliance is below `--min`, **or** when `--baseline` shows a per-scenario compliance regression
+- User runs `cfs eval --check [--min N]` → exit 2 when structural compliance is below `--min`, **or** when a positive `--min` scored nothing (an empty or all-unscoreable suite — a failure to assess is not a pass), **or** when `--baseline` shows a per-scenario compliance regression
 - User runs `cfs eval --calibrate` → the report gains a `judge_calibration` object (reference-stub accuracy/consistency over gold-backed scenarios); advisory only, the exit code is unchanged
 - User runs `cfs eval --save FILE` → the run's report JSON is written to `FILE` to serve as a later `--baseline`; the payload gains `saved` (the path, or `null` on failure) and, only on failure, `save_error`
 - The JSON report always carries a `gate` field (`pass`/`fail`) matching the exit code, so a CI step can cross-check from `--json` alone
 
 **Error Scenarios**:
 - Constructor Studio not initialized, or the scenarios directory does not exist → ERROR, exit 1
-- With `--check`: structural compliance below `--min`, or a baseline regression (a compliance drop, or a scenario that broke while still in the suite) → exit 2. A scenario removed from the suite entirely (`no_longer_scoreable`), or a `--baseline` that cannot be loaded (surfaced via the regression `error` field), is reported but does not by itself gate.
+- With `--check`: structural compliance below `--min`, a positive `--min` over a suite that scored nothing (empty or all-unscoreable — cannot assess is not a pass), or a baseline regression (a compliance drop, or a scenario that broke while still in the suite) → exit 2. A scenario removed from the suite entirely (`no_longer_scoreable`), or a `--baseline` that cannot be loaded (surfaced via the regression `error` field), is reported but does not by itself gate.
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs eval [--scenarios-dir DIR] [--check] [--min N] [--baseline FILE] [--save FILE] [--calibrate]` - `inst-user-eval`
@@ -94,6 +94,7 @@ advisory verdict can never gate a build.
 - [x] - `p1` - Load an optional baseline report JSON, degrading to no-diff on error - `inst-load-baseline`
 - [x] - `p1` - Save this run's report JSON to serve as a later baseline - `inst-save-report`
 - [x] - `p1` - Render a short human-readable summary when not in JSON mode - `inst-human-report`
+- [x] - `p1` - In the human summary, name each scenario's verdict and the checks it failed (findings prefixed by their scorer), rendering the per-scenario rows already in the payload so a reader need not fall back to the global `--json` flag - `inst-human-scenarios`
 - [x] - `p1` - In the human summary, explain advisory-only UNKNOWNs (unwired judge, never gates) - `inst-human-advisory`
 - [x] - `p1` - In the human summary, print the calibration metrics and note under `--calibrate`, tolerating a malformed payload - `inst-human-calibration`
 - [x] - `p1` - In the human summary, render a `--baseline` regression (regressed scenarios, no-longer-scoreable count) and any save failure - `inst-human-regression`
@@ -114,7 +115,7 @@ under the gate contract (only deterministic verdicts affect the exit code).
 3. [x] - `p1` - Load one scenario's run and apply every scorer to it, isolating a raising scorer as UNKNOWN - `inst-run-scenario`
 4. [x] - `p1` - Run every scenario under the root through the scorers and aggregate into a report - `inst-run-suite`
 5. [x] - `p1` - Compute structural compliance (deterministic pass ratio) per scenario and in aggregate, `None` when nothing was scored - `inst-compliance`
-6. [x] - `p1` - Derive the exit code: gate only under `--check` when compliance is below the floor; advisory verdicts never gate - `inst-gate`
+6. [x] - `p1` - Derive the exit code: under `--check`, gate (exit 2) when compliance is below the floor, or when a positive floor scored nothing (an empty or all-unscoreable suite — cannot assess is not a pass); a non-positive floor demands nothing and clears; advisory verdicts never gate - `inst-gate`
 7. [x] - `p1` - Serialise the report: per-scenario compliance, a failing-check histogram, and an UNKNOWN-aware coverage-stating summary - `inst-report-json`
 8. [x] - `p1` - Bucket per-scenario compliance changes against a baseline (regressed / improved / newly- and no-longer-scoreable) - `inst-diff-reports`
 

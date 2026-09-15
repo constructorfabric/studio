@@ -291,7 +291,11 @@ def test_gate_is_opt_in_and_threshold_aware() -> None:
     assert eh.gate_exit_code(0.5, True, 1.0) == 2      # below floor → exit 2
     assert eh.gate_exit_code(1.0, True, 1.0) == 0      # meets floor
     assert eh.gate_exit_code(0.5, True, 0.4) == 0      # above a lower floor
-    assert eh.gate_exit_code(None, True, 1.0) == 0     # nothing scored never fails
+    # Nothing scored under a positive floor is a failure to assess, not a pass (HYP-2961) —
+    # the same rule spec-coverage applies. A non-positive floor demands nothing, so it clears.
+    assert eh.gate_exit_code(None, True, 1.0) == 2     # positive floor, nothing scored → fail
+    assert eh.gate_exit_code(None, True, 0.0) == 0     # no floor demanded → empty is fine
+    assert eh.gate_exit_code(None, False, 1.0) == 0    # no --check → never gates, even empty
 
 
 # --- report serialisation --------------------------------------------------
