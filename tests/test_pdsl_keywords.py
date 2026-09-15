@@ -1647,3 +1647,581 @@ def test_the_guard_ignores_an_over_indented_declaration_like_the_validator(tmp_p
         "  OPTIONS:\n    1 a -> RUN X\n```\n"
     )
     assert list(_declarations_for(tmp_path, "level.md", at_level).values()) == ["blocking"]
+
+
+#: Units that begin plan execution — a phase is dispatched from each. Named rather than
+#: pattern-matched so the intent is explicit, and kept honest by
+#: `test_the_execution_entry_list_covers_every_dispatching_unit`, which fails when a unit
+#: dispatches phase work without appearing here. An earlier version of this comment
+#: claimed a completeness guard that did not exist.
+PLAN_EXECUTION_ENTRIES = {
+    "PlanNativeExecute": str(REPO_ROOT / "skills/studio/modules/plan-native-dispatch.md"),
+    "PlanPhaseCompilerDispatch": str(REPO_ROOT / "skills/studio/modules/plan-compiler-dispatch.md"),
+}
+
+#: The points at which a plan is genuinely approved: the decomposition was shown and
+#: the user chose to proceed with it. `PlanProduceChoice`'s own title says options 1-4
+#: "authorise writing plan.toml + N brief files", and it is already a declared
+#: `decision` gate; `PlanStorageChoice` presents the drafted plan for review first.
+#:
+#: Deliberately *not* `PlanSaveGateMenu`: it asks where to put the file, and its module
+#: never shows the plan, so neither answer is consent to the plan's content. Recording
+#: approval there would manufacture it. That path has no approval point, so its gates
+#: ask — which is the safe direction and the honest one.
+#:
+#: Deliberately *not* `Phase4NextStepsMenu` either: it routes an already-approved plan.
+#: Approval there would sit *after* phase compilation, which requires approval — a
+#: deadlock that killed the sub-agent option outright before this test existed.
+PLAN_APPROVAL_POINTS = {
+    "PlanProduceChoice": str(REPO_ROOT / "skills/studio/modules/plan-compile.md"),
+    "PlanStorageChoice": str(REPO_ROOT / "skills/studio/modules/gates/plan-first.md"),
+}
+
+#: Menu options that change a plan after it was approved. Each must revoke the
+#: approval: one left in place would vouch for a plan that no longer exists.
+PLAN_REVISION_OPTIONS = {
+    "PlanProduceChoice": str(REPO_ROOT / "skills/studio/modules/plan-compile.md"),
+    "Phase4NextStepsMenu": str(REPO_ROOT / "skills/studio/modules/plan-validate-finalize.md"),
+}
+
+APPROVAL_FLAG = "accepted_plan_active"
+APPROVAL_ARTIFACT_FIELD = "plan.approval_status"
+
+
+def test_the_approval_flag_is_declared_state_somewhere() -> None:
+    """It was set in menu options and read only in prose, declared nowhere.
+
+    The flag the whole anchor rests on was an undeclared variable: no `STATE:` block
+    named it, so nothing recorded its type, default or scope, and a reader had to
+    infer all three from an assignment inside a menu option.
+    """
+    declarations = [
+        (path, unit, line.strip())
+        for path in _prompt_files()
+        for unit, section, _, line in _sectioned_lines(path)
+        if section == "STATE" and APPROVAL_FLAG in line
+    ]
+    assert declarations, f"{APPROVAL_FLAG} is set but never declared in a STATE block"
+    assert any("scope workflow_run" in line for _, _, line in declarations), declarations
+    # Declared once, by the gate whose contract reads it. "Somewhere" was too weak: two
+    # modules could each declare it with different defaults and this would pass, which
+    # is precisely the shared-state confusion this flag has already caused once.
+    owners = {(str(path), unit) for path, unit, _ in declarations}
+    assert len(owners) == 1, f"{APPROVAL_FLAG} is declared in more than one place: {owners}"
+    owner_path, owner_unit = owners.pop()
+    assert owner_path.endswith("gates/plan-first.md"), owner_path
+    assert owner_unit == "PlanFirstGate", owner_unit
+
+
+def test_every_approval_point_sets_the_flag() -> None:
+    """One flag, set at each path's approval, rather than a second concept per path."""
+    for menu, module in PLAN_APPROVAL_POINTS.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        # Every option that authorises the work, not merely one of them. The first
+        # version asserted the list was non-empty, so deleting the setter from a
+        # single option left it passing while that path approved nothing.
+        # Each gate records its approval where its own consumer reads it: `cf-plan`
+        # writes `plan.approval_status` to the plan it just produced, and the
+        # plan-first gate sets its run-scoped flag. They are deliberately not the
+        # same channel — the flag carries `PlanAcceptedExecutionContract`, whose
+        # `DISPATCH:`/`INLINE:` directives a cf-plan plan does not use.
+        expected = (f'{APPROVAL_ARTIFACT_FIELD}="approved"'
+                    if "plan-compile" in module else f"SET {APPROVAL_FLAG} = true")
+        authorising = [
+            line for unit, section, _, line in rows
+            if unit == menu and section in CLAUSE_SECTIONS
+            and ("RUN PlanWriteBriefPackage" in line or APPROVAL_FLAG in line)
+            and "unset" not in line and "revised" not in line
+        ]
+        assert authorising, f"{menu} in {module} has no authorising option"
+        missing = [line for line in authorising if expected not in line]
+        assert not missing, f"{menu} authorises work without recording {expected}: {missing}"
+
+
+def test_every_execution_entry_refuses_an_unapproved_plan_out_loud() -> None:
+    """No path may start work unapproved — and it must say so, not just not happen.
+
+    Two mistakes are pinned here. `PlanNativeExecute` and the compiler dispatch gated
+    only on their own `CF_PHASE_GATE`, so nothing asserted the plan had been approved.
+    The first fix used a `WHEN` clause, which is worse than it looks: an unmet `WHEN`
+    skips the unit silently, so an unapproved run produced no phases and no message.
+    The check has to be an action that emits and stops.
+    """
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        # `startswith`, not `in`: the first version matched the text anywhere on the
+        # line, so commenting the refusal out left it passing — the mutation that
+        # exposed this removed the behaviour and no guard noticed.
+        refusals = [
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO"
+            and line.strip().startswith("EMIT ")
+            and APPROVAL_FLAG in line and "STOP_TURN" in line
+        ]
+        assert refusals, f"{unit} in {module} does not refuse an unapproved plan out loud"
+        silent = [
+            line for row_unit, section, _, line in _sectioned_lines(Path(module))
+            if row_unit == unit and section == "WHEN" and APPROVAL_FLAG in line
+        ]
+        assert not silent, f"{unit} gates approval in WHEN, which skips in silence: {silent}"
+
+
+def test_the_approval_requirement_is_satisfiable_from_disk() -> None:
+    """A new chat has no run state, and handing off to one is a shipped option.
+
+    Requiring only the run-scoped flag would block the very path that exists to be
+    pasted into a fresh chat — the same reason correlation is done by the approved
+    plan found on disk rather than by anything carried in the session.
+    """
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rows = _sectioned_lines(Path(module))
+        when = " ".join(
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO" and APPROVAL_FLAG in line
+        )
+        assert APPROVAL_ARTIFACT_FIELD in when, (
+            f"{unit} requires only the run-scoped flag, so a handoff into a new chat "
+            f"could never satisfy it"
+        )
+
+
+def test_the_structured_path_persists_the_approval() -> None:
+    """Run state cannot reach the next session; the artifact can."""
+    rows = _sectioned_lines(REPO_ROOT / "skills/studio/modules/plan-compile.md", actions_only=True)
+    persisted = [
+        line for unit, _, _, line in rows
+        if unit == "PlanProduceChoice" and f'SET {APPROVAL_ARTIFACT_FIELD}="approved"' in line
+    ]
+    assert len(persisted) >= 4, (
+        "every option that authorises writing the plan package must record the approval "
+        f"in the artifact, found {len(persisted)}"
+    )
+
+
+def test_the_save_gate_never_records_an_approval_it_did_not_collect() -> None:
+    """The inverse of what this test first asserted, because the first version was wrong.
+
+    `PlanSaveGateMenu` asks "Save this plan as a Markdown file?" and its module emits
+    the plan nowhere. An earlier draft of this change set the approval flag on *both*
+    of its options and called resolving the gate "the point the plan was shown and
+    accepted". It was not shown, so neither answer is consent to its content, and
+    recording approval there would have manufactured it — the one thing an audit
+    anchor must never do.
+
+    That path therefore has no approval point. Its `decision` gates ask, which is the
+    safe direction, and this test exists so the shortcut is not taken again.
+    """
+    rows = _sectioned_lines(
+        REPO_ROOT / "skills/studio/modules/planning-runtime.md", actions_only=True
+    )
+    approvals = [
+        line for unit, _, _, line in rows
+        if unit == "PlanSaveGateMenu" and APPROVAL_FLAG in line
+    ]
+    assert not approvals, (
+        "the save gate records an approval the user was never asked for: " + str(approvals)
+    )
+
+
+def test_every_revision_option_revokes_the_approval() -> None:
+    """Changing an approved plan must revoke the approval it no longer describes.
+
+    Both revision paths return the user to the same menu with the flag still set, so
+    an approval granted before the change would vouch for a plan that no longer
+    exists — and on the cf-plan path it is also written to the artifact, where it
+    would outlive the session.
+    """
+    for menu, module in PLAN_REVISION_OPTIONS.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        revisers = [
+            line for unit, section, _, line in rows
+            if unit == menu and section in CLAUSE_SECTIONS
+            and ("revise" in line or "modify" in line)
+        ]
+        assert revisers, f"no revision option found in {menu}"
+        for line in revisers:
+            # The artifact is the channel that outlives the session and the one phase
+            # dispatch reads, so it is the one a revision must mark. An earlier version
+            # asserted the run-scoped flag instead, which cf-plan no longer sets.
+            assert f'{APPROVAL_ARTIFACT_FIELD}="revised"' in line, (
+                f"{menu} lets the user change the plan without revoking approval: {line}"
+            )
+
+
+def test_approval_is_never_granted_after_the_work_it_authorises() -> None:
+    """The deadlock guard, written because I shipped the deadlock.
+
+    Phase compilation requires approval. An earlier draft granted approval at
+    `Phase4NextStepsMenu`, which only runs *after* phase files were produced — so
+    compilation waited for an approval that waited for compilation, and the sub-agent
+    option could never run at all. Six other tests passed while that was true,
+    because they checked that the words were present rather than that the flow closed.
+
+    So: no menu that routes an already-produced plan may be an approval point.
+    """
+    for menu, module in PLAN_APPROVAL_POINTS.items():
+        assert menu != "Phase4NextStepsMenu", "approval moved back after compilation"
+    rows = _sectioned_lines(
+        REPO_ROOT / "skills/studio/modules/plan-validate-finalize.md", actions_only=True
+    )
+    granted = [
+        line for unit, _, _, line in rows
+        if unit == "Phase4NextStepsMenu"
+        and (f"SET {APPROVAL_FLAG} = true" in line
+             or f'{APPROVAL_ARTIFACT_FIELD}="approved"' in line)
+    ]
+    assert not granted, f"approval granted after the compilation that requires it: {granted}"
+
+
+def test_revoking_an_approval_leaves_a_route_to_a_new_one() -> None:
+    """Revocation without a way back is a worse failure than a stale approval.
+
+    Making `modify` revoke the approval was right, and it created a dead end: none
+    of that menu's six options routed to a gate that could grant a new one, so a
+    user who edited the plan could revoke approval and then never execute. The fix
+    routes the edit back through decomposition, which is where approval is given
+    and which re-shows the plan before asking again.
+    """
+    approval_units = set(PLAN_APPROVAL_POINTS)
+    for menu, module in PLAN_REVISION_OPTIONS.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        revisers = [
+            line for unit, section, _, line in rows
+            if unit == menu and section in CLAUSE_SECTIONS
+            and f'{APPROVAL_ARTIFACT_FIELD}="revised"' in line
+        ]
+        assert revisers, f"{menu} revokes nothing"
+        for line in revisers:
+            # the option must hand control somewhere an approval can be re-granted:
+            # either a named unit upstream of the approval gate, or the gate's menu
+            assert "CONTINUE " in line, (
+                f"{menu} revokes the approval and offers no route to a new one: {line}"
+            )
+            assert any(target in line for target in ("PlanPhase2Decompose", *approval_units)), (
+                f"{menu} routes somewhere that cannot re-approve: {line}"
+            )
+
+
+def test_the_deferred_continue_in_the_revision_route_precedes_its_wait() -> None:
+    """The resume idiom only works written before the WAIT it defers past.
+
+    `WAIT` + `STOP_TURN` is a hard turn boundary, so a `CONTINUE ... after
+    user.reply` placed after it is unreachable — the rule the spec states and
+    nothing yet enforces. The revision route added here uses that idiom, so it is
+    pinned locally until the corpus-wide check exists.
+    """
+    rows = _sectioned_lines(
+        REPO_ROOT / "skills/studio/modules/plan-validate-finalize.md", actions_only=True
+    )
+    deferred = [
+        line for unit, _, _, line in rows
+        if unit == "Phase4NextStepsMenu" and "after user.reply" in line
+    ]
+    assert deferred, "the revision route no longer defers a continuation"
+    for line in deferred:
+        assert line.index("CONTINUE ") < line.index("WAIT "), (
+            f"the deferred continue sits after its WAIT, so it can never run: {line}"
+        )
+
+
+def test_the_artifact_approval_is_written_after_the_file_exists() -> None:
+    """`plan.toml` is created by the package write, so the field cannot precede it.
+
+    Three separate drafts of this change wrote `plan.approval_status` into a file
+    that did not exist yet — once on the revise option, once on all four authorising
+    options. The corpus already showed the right order: option 4's own
+    `SET plan.execution_status` sits *after* `RUN PlanWriteBriefPackage`.
+    """
+    rows = _sectioned_lines(REPO_ROOT / "skills/studio/modules/plan-compile.md", actions_only=True)
+    lines = [
+        line for unit, _, _, line in rows
+        if unit == "PlanProduceChoice" and f'{APPROVAL_ARTIFACT_FIELD}="approved"' in line
+    ]
+    assert len(lines) >= 4, f"expected the four authorising options, found {len(lines)}"
+    for line in lines:
+        assert "RUN PlanWriteBriefPackage" in line, line
+        assert line.index("RUN PlanWriteBriefPackage") < line.index(APPROVAL_ARTIFACT_FIELD), (
+            "the approval is written to plan.toml before the step that creates it: " + line
+        )
+
+
+def test_the_execution_entry_list_covers_every_dispatching_unit() -> None:
+    """Make the list's completeness a fact rather than a comment.
+
+    The constant's own comment used to claim a guard asserted this. None did, so a new
+    unit could dispatch phase work with no approval check and every test would pass —
+    the same shape as a docstring promising a property the code does not hold.
+
+    `RUN SubAgentDispatch` is the signal: it is how a phase reaches a sub-agent, and it
+    appears in exactly the units that start phase work.
+    """
+    dispatching: dict[str, str] = {}
+    # Every prompt file, not `plan-*.md`: a unit that dispatches phase work is not
+    # obliged to live in a file whose name starts with "plan-", and a guard that only
+    # looks there would miss the one that did not.
+    for path in _prompt_files():
+        for unit, section, _, line in _sectioned_lines(path, actions_only=True):
+            # `SubAgentDispatch` alone is too broad once every file is searched: the
+            # migrator, the brainstorm panel and the reviewers all dispatch sub-agents
+            # and none of them runs a plan phase. A *phase* dispatch names one.
+            if (section == "DO" and "RUN SubAgentDispatch" in line
+                    and "phase" in line.lower()):
+                dispatching[unit] = str(path)
+    assert dispatching, "the dispatch signal changed; this guard is no longer measuring"
+    missing = {u: m for u, m in dispatching.items() if u not in PLAN_EXECUTION_ENTRIES}
+    assert not missing, (
+        f"these units dispatch phase work but are not checked for approval: {missing}"
+    )
+
+
+def test_phase_dispatch_requires_this_plans_own_artifact_not_the_shared_flag() -> None:
+    """`accepted_plan_active` is shared across two different plan systems in one run.
+
+    `gates/plan-first.md` sets it when its *own* plan is accepted — memory or disk.
+    Both live in `scope workflow_run`, so a session that accepted a plan-first plan
+    and then ran cf-plan would arrive at phase dispatch with the flag already true,
+    and dispatch phases whose decomposition was never approved. The flag says a plan
+    was approved; it does not say *which*.
+
+    `plan.approval_status` lives in that plan's own `plan.toml`, so it cannot be
+    satisfied by a different plan's approval. Phase dispatch keys on the artifact.
+    """
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        refusal = " ".join(
+            line for row_unit, section, _, line in rows
+            if row_unit == unit and section == "DO"
+            and line.strip().startswith("EMIT ") and "STOP_TURN" in line
+        )
+        assert APPROVAL_ARTIFACT_FIELD in refusal, (
+            f"{unit} does not require this plan's own recorded approval: {refusal}"
+        )
+        # and must not accept the shared flag as sufficient on its own
+        assert f"{APPROVAL_FLAG} != true AND" not in refusal, (
+            f"{unit} still treats the shared run flag as an alternative: {refusal}"
+        )
+
+
+def test_the_plan_first_gate_still_owns_its_own_flag() -> None:
+    """Tightening phase dispatch must not break the gate the flag belongs to.
+
+    `accepted_plan_active` is `PlanFirstGate`'s contract — `PlanAcceptedExecutionContract`
+    reads it to decide that an accepted plan is the controlling contract. That stays;
+    what changed is that cf-plan's phase dispatch no longer *borrows* it.
+    """
+    rows = _sectioned_lines(
+        REPO_ROOT / "skills/studio/modules/gates/plan-first.md", actions_only=True
+    )
+    setters = [line for unit, _, _, line in rows
+               if unit == "PlanStorageChoice" and f"SET {APPROVAL_FLAG} = true" in line]
+    assert len(setters) >= 2, f"the storage choice no longer records acceptance: {setters}"
+    readers = [line for _, section, _, line in rows
+               if section == "RULES" and APPROVAL_FLAG in line]
+    assert readers, "nothing reads the flag any more, so it has become dead state"
+
+
+def test_only_the_disk_option_claims_a_record_that_outlives_the_run() -> None:
+    """The two storage options do not promise the same thing, so a test must tell them apart.
+
+    Both set `accepted_plan_active`, which is run-scoped, and the flag-count guard above
+    is satisfied by either — so it would stay green with the artifact clause deleted.
+    Raised in review, and correctly: the disk option's added promise was prose that
+    nothing asserted, which is a rule held by convention.
+
+    What separates them is durability. A plan kept in session memory has no artifact to
+    record acceptance in and must not claim one; a plan written to disk does, and that
+    record is what a later run can still see.
+    """
+    rows = _sectioned_lines(
+        REPO_ROOT / "skills/studio/modules/gates/plan-first.md", actions_only=True
+    )
+    options = {line.strip().split(" ", 1)[0]: line.strip()
+               for unit, section, _, line in rows
+               if unit == "PlanStorageChoice" and section == "OPTIONS"
+               and line.strip()[:1].isdigit()}
+    memory, disk = options.get("1", ""), options.get("2", "")
+    assert "memory" in memory, f"option 1 is no longer the memory option: {options}"
+    assert "disk" in disk, f"option 2 is no longer the disk option: {options}"
+
+    assert "accepted it" in disk, \
+        f"the disk option no longer records this gate's acceptance in what it writes: {disk}"
+    assert "accepted it" not in memory, \
+        f"the memory option claims a written record it has nowhere to keep: {memory}"
+
+
+def test_the_plan_first_gate_never_writes_cf_plans_approval_field() -> None:
+    """One record per channel, and this gate does not write the other's.
+
+    `plan.approval_status` is what the phase dispatchers require, and no plan-first plan
+    is ever phase-dispatched — `test_no_plan_first_continuation_is_a_phase_dispatcher`
+    is what holds that. Writing the field here would record an approval collected by a
+    menu that never showed the plan to the unit that would honour it, which is the exact
+    failure the dispatch refusal exists to prevent.
+
+    Naming it in prose to say which record is which is fine and is why this asserts on
+    assignment rather than on mention.
+    """
+    rows = _sectioned_lines(
+        REPO_ROOT / "skills/studio/modules/gates/plan-first.md", actions_only=True
+    )
+    writes = [line.strip() for _, _, _, line in rows
+              if re.search(r"SET\s+plan\.approval_status", line)]
+    assert not writes, f"the plan-first gate writes cf-plan's approval field: {writes}"
+
+
+def test_cf_plan_does_not_borrow_the_plan_first_flag() -> None:
+    """Two plan systems, two channels, and neither carries the other's contract.
+
+    `accepted_plan_active` activates `PlanAcceptedExecutionContract`, which requires
+    every plan item to carry a `DISPATCH:`, `INLINE:` or `GIT_FINALIZATION:` directive.
+    A cf-plan plan has phases, not directives, so setting that flag from the
+    decomposition gate imposed a contract its own plans cannot satisfy.
+
+    The reverse direction was closed first — phase dispatch keys on the artifact, so a
+    plan-first approval cannot authorise cf-plan phases. This is the other half.
+    """
+    for module in (REPO_ROOT / "skills/studio/modules/plan-compile.md",
+                   REPO_ROOT / "skills/studio/modules/plan-validate-finalize.md"):
+        borrowed = [
+            line for _, _, _, line in _sectioned_lines(module, actions_only=True)
+            if APPROVAL_FLAG in line
+        ]
+        assert not borrowed, (
+            f"{module.name} sets or reads the plan-first flag: {borrowed}"
+        )
+
+
+def test_the_executing_units_state_the_refusal_in_their_own_rules() -> None:
+    """A reader of the unit that executes must see what it refuses.
+
+    The invariant was stated only in `PlanDispatch`, a sibling that names sub-agents.
+    The units whose `DO` actually refuses said nothing about it in their own contract.
+    """
+    for unit, module in PLAN_EXECUTION_ENTRIES.items():
+        rules = " ".join(
+            line for row_unit, section, _, line in _sectioned_lines(Path(module))
+            if row_unit == unit and section == "RULES"
+        )
+        assert "approval" in rules.lower() or APPROVAL_ARTIFACT_FIELD in rules, (
+            f"{unit}'s own rules are silent on the approval it refuses without: {rules}"
+        )
+
+
+def test_a_revision_discards_phase_files_compiled_from_the_old_plan() -> None:
+    """Re-approving a changed plan must not leave the superseded phases executable.
+
+    `modify` routes back through decomposition, where a new package is written — but
+    phase files compiled from the plan being replaced sit under the same directory and
+    would be executed as though they belonged to the new one.
+    """
+    rows = _sectioned_lines(
+        REPO_ROOT / "skills/studio/modules/plan-validate-finalize.md", actions_only=True)
+    modify = [line for unit, _, _, line in rows
+              if unit == "Phase4NextStepsMenu" and "5 modify" in line]
+    assert modify, "the modify option is gone"
+    for line in modify:
+        assert "discard" in line, (
+            f"a revision leaves phase files from the superseded plan in place: {line}")
+        assert "phase file" in line, (
+            f"a revision discards something, but not the phase files: {line}")
+
+
+def test_the_approval_and_revision_maps_are_complete() -> None:
+    """The same guard `PLAN_EXECUTION_ENTRIES` has, for the other two named sets.
+
+    A hand-written list of approval points is a claim about the corpus, and a claim
+    that nothing checks goes stale the moment a menu is added. Any menu that records
+    the approval must appear in the approval map; any option that revokes it must
+    appear in the revision map.
+    """
+    recording, revoking = {}, {}
+    for path in _prompt_files():
+        for unit, section, _, line in _sectioned_lines(path, actions_only=True):
+            # Menu options only. A RULES line that *describes* the recording is not a
+            # place the recording happens, and counting it listed `PlanWriteBriefPackage`
+            # — the unit the rule is written on — as an approval point.
+            if not re.match(r"\s*\d+ ", line):
+                continue
+            if f'{APPROVAL_ARTIFACT_FIELD}="approved"' in line or \
+                    f"SET {APPROVAL_FLAG} = true" in line:
+                recording[unit] = str(path)
+            if f'{APPROVAL_ARTIFACT_FIELD}="revised"' in line or \
+                    f"SET {APPROVAL_FLAG} = unset" in line:
+                revoking[unit] = str(path)
+    assert recording, "the approval signal changed; this guard measures nothing"
+    missing_approval = set(recording) - set(PLAN_APPROVAL_POINTS)
+    assert not missing_approval, (
+        f"these menus record an approval and are unlisted: {missing_approval}")
+    missing_revision = set(revoking) - set(PLAN_REVISION_OPTIONS)
+    assert not missing_revision, (
+        f"these menus revoke an approval and are unlisted: {missing_revision}")
+
+
+def test_declining_or_stopping_never_records_an_approval() -> None:
+    """The options that say no must not say yes.
+
+    Every approval menu has a way out — decline, stop, write nothing. Those are the
+    options a user picks *because* they do not agree, and an approval recorded on one
+    would be the manufactured-consent failure in its purest form. Nothing asserted it.
+    """
+    for menu, module in PLAN_APPROVAL_POINTS.items():
+        rows = _sectioned_lines(Path(module), actions_only=True)
+        declining = [
+            line for unit, section, _, line in rows
+            if unit == menu and section in CLAUSE_SECTIONS
+            # By what the option *does*, not by a word in its label: "briefs-only —
+            # write plan.toml + briefs and stop there" contains "stop" and is an
+            # approval, since the decomposition was shown and accepted; only the work
+            # was deferred. A decline writes nothing.
+            and ("nothing written" in line.lower() or "declined" in line.lower()
+                 or re.search(r"->\s*STOP_TURN", line))
+        ]
+        for line in declining:
+            assert f"SET {APPROVAL_FLAG} = true" not in line, (
+                f"{menu} records an approval on an option that declines: {line}")
+            assert f'{APPROVAL_ARTIFACT_FIELD}="approved"' not in line, (
+                f"{menu} records an approval on an option that declines: {line}")
+
+
+def test_every_deferred_continuation_in_the_changed_files_precedes_its_wait() -> None:
+    """All of them, not the one file the first version happened to check.
+
+    `WAIT` + `STOP_TURN` is a hard turn boundary, so a `CONTINUE ... after user.reply`
+    written after it can never run. The revise option in the decomposition gate uses
+    the same idiom as the modify option in the finalize menu, and only the second was
+    pinned.
+    """
+    checked = 0
+    for module in (REPO_ROOT / "skills/studio/modules/plan-compile.md",
+                   REPO_ROOT / "skills/studio/modules/plan-validate-finalize.md"):
+        for _, _, _, line in _sectioned_lines(module, actions_only=True):
+            if "after user.reply" not in line or "WAIT " not in line:
+                continue
+            checked += 1
+            assert line.index("CONTINUE ") < line.index("WAIT "), (
+                f"{module.name}: the deferred continue sits after its WAIT: {line}")
+    assert checked >= 2, f"expected both files to use the idiom, saw {checked}"
+
+
+def test_no_plan_first_continuation_is_a_phase_dispatcher() -> None:
+    """Why the plan-first gate does not write cf-plan's approval field.
+
+    A reviewer read the disk option's "approval recorded in the file" as the field the
+    phase dispatchers check, and asked for that field to be written there. It is a
+    different record: this gate's plans resume through `PLAN_FIRST_CONTINUE`, whose
+    every target is a workflow dispatch unit, and none of them dispatches a plan phase.
+
+    Asserted rather than argued, because the answer is only true while it stays true.
+    """
+    continuations = {
+        line.split("SET PLAN_FIRST_CONTINUE = ")[1].split(",")[0].split(";")[0].strip()
+        for path in _prompt_files()
+        for _, _, _, line in _sectioned_lines(path, actions_only=True)
+        if "SET PLAN_FIRST_CONTINUE = " in line
+    }
+    assert continuations, "the continuation signal changed; this guard measures nothing"
+    overlap = continuations & set(PLAN_EXECUTION_ENTRIES)
+    assert not overlap, (
+        f"a plan-first plan can now reach phase dispatch, so it does need the "
+        f"dispatcher's approval field: {overlap}"
+    )

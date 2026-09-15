@@ -39,6 +39,7 @@ instrumentation never breaks an older reader.
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import json
 import logging
 import os
@@ -86,6 +87,11 @@ UNSPECIFIED = "unspecified"
 #: padding per event drives the 5 MiB rotation and a real `auto-proceeded` record
 #: is unreachable after ten such events and gone after twenty. Truncation is
 #: marked rather than silent.
+#: This constant has a second consumer that is easy to miss: `_capped` is also how every
+#: diagnostic message in this module renders a path or an exception, so lowering the cap
+#: shortens those too. The two uses share a bound deliberately — both are
+#: author-controlled text heading somewhere a reader trusts — but the coupling is stated
+#: here so a change made for the record's sake is known to affect the messages as well.
 _GATE_TEXT_CAP = 500
 
 #: Environment overrides.
@@ -99,6 +105,24 @@ _LOG_NAME = "decisions.jsonl"
 
 #: Rotate once the log passes this size, keeping a single ``.1`` backup.
 _MAX_BYTES = 5 * 1024 * 1024
+
+#: The largest a rotated segment can legitimately be: the rotation threshold plus one
+#: event, since `_rotate_if_large` rotates *before* the append that crossed it. Anything
+#: larger was not produced by this log, so fingerprinting it would spend a held lock on
+#: a file that cannot be claimed anyway.
+_MAX_SEGMENT_BYTES = _MAX_BYTES + 64 * 1024
+
+#: The largest one serialised event may be, and the "one event" the line above assumes.
+#: The writes are opened with ``newline="\n"`` so this arithmetic holds everywhere: in text
+#: mode Windows translates ``\n`` to ``\r\n``, which makes every event one byte longer than
+#: the bound assumes and puts a full-size event one byte past the segment bound. It also
+#: keeps one log byte-identical across platforms, which a fingerprinted audit trail needs.
+#: Rotation happens at the threshold, so the biggest segment this log can produce is one
+#: byte under it plus one whole event and its newline: `(_MAX_BYTES - 1) + L + 1`. That
+#: is within `_MAX_SEGMENT_BYTES` exactly when `L <= 64 KiB`, which is why the two
+#: constants share a number — the bound below is not a second opinion about size, it is
+#: this one restated for the reader.
+_MAX_EVENT_BYTES = 64 * 1024
 
 #: Fixed for the life of the process, so every event of one invocation shares it.
 _RUN_ID = uuid.uuid4().hex[:12]
@@ -205,7 +229,7 @@ def logging_state() -> Optional[bool]:
     try:
         return not opt_out_sentinel_path().exists()
     except OSError as exc:
-        logger.debug("decision log opt-out state undeterminable: %s", exc)
+        logger.debug("decision log opt-out state undeterminable: %s", _describe(exc))
         return None
 
 
@@ -224,7 +248,7 @@ def is_enabled() -> bool:
             return False
     except OSError as exc:
         # An unreadable home directory is not a reason to fail a command.
-        logger.debug("decision log opt-out check skipped: %s", exc)
+        logger.debug("decision log opt-out check skipped: %s", _describe(exc))
         return False
     return True
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-enabled
@@ -257,6 +281,96 @@ def _redact(value: Any) -> Any:
     return value
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-redact
 
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-event-bound
+def _utf8_len(text: str) -> int:
+    """The byte length the file will hold, measured so a lone surrogate cannot raise.
+
+    ``surrogatepass`` rather than the strict codec the write uses. Author-controlled text
+    arrives through ``surrogateescape``, so a raw byte becomes a lone surrogate; raising
+    while measuring would reach `record`'s catch-all, which latches telemetry off for the
+    whole run — turning one unmeasurable event into no trail at all. The write still
+    refuses such a line, exactly as it did before this existed.
+    """
+    return len(text.encode("utf-8", "surrogatepass"))
+
+
+def _json_key(key: Any) -> str:
+    """A payload key named the way the record would have named it.
+
+    `str()` is the obvious choice and the wrong one: `json.dumps` coerces mapping keys by
+    its own rules, so `None` becomes `"null"` and `True` becomes `"true"` while `str()`
+    gives `"None"` and `"True"`. The marker exists to tell an auditor what the event held,
+    and a name that does not match what the log would have written fails at exactly that.
+
+    Derived by running the same coercion rather than restating its table, so the two cannot
+    disagree. Only key types `json.dumps` accepts reach here -- anything else fails the
+    serialisation above before this is called.
+    """
+    return next(iter(json.loads(json.dumps({key: 0}))))
+
+
+def _bounded_event(record_obj: Dict[str, Any]) -> str:
+    """One event's JSON line, never longer than ``_MAX_EVENT_BYTES``.
+
+    Here rather than at the call sites. Eight typed wrappers reach this module and only
+    the gate path caps its fields -- through `_gate_payload`, not in `record_gate` itself
+    -- which is precisely how an uncapped 70 KiB `source` field pushed a genuine segment
+    past the reader's bound and had this log's own history refused as a substitution. A
+    choke point every wrapper already passes through covers the seven that do not cap
+    today and the ninth nobody has written yet.
+
+    Eight and seven, counted rather than carried: the report that raised this listed six
+    uncapped wrappers and omitted `record_dispatch`, and the count was repeated from it
+    three times before anyone counted.
+
+    On the serialised line, not per field: an event of many small fields still adds up,
+    and it is the line that lands in the file.
+
+    An event too large to record leaves a marker saying so. Dropping it silently would
+    put a hole in the trail where a record used to be, which is the same defect one level
+    down — the trail must say a record was cut, not go quiet.
+
+    No warning, unlike every other place this module gives something up. Those warn
+    because the trail itself cannot say what happened: a segment excluded from a read
+    leaves no trace inside the log. Here it can and does, in the record's own place in
+    the order, and a command that logs large payloads would otherwise warn on every
+    event it writes.
+
+    """
+    line = json.dumps(record_obj, ensure_ascii=False, default=str)
+    if _utf8_len(line) <= _MAX_EVENT_BYTES:
+        return line
+    # Keep what identifies the event and drop only what made it too big. A reader looking
+    # for this decision still finds it, in its place in the order, saying what is missing.
+    # Capped, not merely carried. `command`, `event` and `decision_id` are caller-supplied,
+    # so a 200 KB `command` produced a 200 KB marker -- the bound broken by the record that
+    # exists to report the bound being broken. The floor below covered `dropped_keys` only,
+    # which is the reported field rather than the class of field (B10). `schema`, `ts` and
+    # `run_id` are engine-generated and fixed-width.
+    kept: Dict[str, Any] = {key: record_obj.get(key) for key in ("schema", "ts", "run_id")}
+    kept.update({key: _capped(str(record_obj.get(key, "")))
+                 for key in ("decision_id", "event", "command")})
+    original_bytes = _utf8_len(line)
+    kept["payload"] = {
+        "truncated": True,
+        "original_bytes": original_bytes,
+        "dropped_keys": sorted(_capped(_json_key(key))
+                               for key in (record_obj.get("payload") or {})),
+    }
+    marked = json.dumps(kept, ensure_ascii=False, default=str)
+    if _utf8_len(marked) <= _MAX_EVENT_BYTES:
+        return marked
+    # The key names alone can exceed the bound, so the marker needs its own floor: a
+    # record whose own explanation does not fit still has to fit.
+    kept["payload"] = {"truncated": True,
+                       "original_bytes": original_bytes,
+                       "dropped_keys": "omitted: the key names alone exceed the bound"}
+    return json.dumps(kept, ensure_ascii=False, default=str)
+
+
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-event-bound
+
+
 
 # ---------------------------------------------------------------------------
 # Writing
@@ -272,7 +386,7 @@ def _show_notice_once(path: Path) -> None:
         "Constructor Studio is recording its decisions to a local log:\n"
         "  %s\n"
         "  Nothing is sent anywhere. Turn it off with %s=off, or permanently: touch %s",
-        _redact(str(path)), _ENV_PATH, _redact(str(opt_out_sentinel_path())),
+        _capped(str(path)), _ENV_PATH, _capped(str(opt_out_sentinel_path())),
     )
 
 
@@ -308,10 +422,162 @@ def _rotate_if_large(path: Path) -> None:
             _write_rotation_link(path, backup)
     except OSError as exc:
         # Rotation is a convenience; failing it must not stop a write attempt.
-        logger.debug("decision log rotation skipped: %s", exc)
+        logger.debug("decision log rotation skipped: %s", _describe(exc))
 
 
 # @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-rotation-link
+#: Both halves of a segment fingerprint. A claim carrying one of them was written
+#: by a rotation whose hash failed, and cannot be verified.
+_IDENTITY_FIELDS = frozenset({"segment_bytes", "segment_sha256"})
+
+
+def _claim_summary(identity: Dict[str, Any]) -> str:
+    """One short rendering of a fingerprint, for a warning an operator has to act on.
+
+    "does not match" alone cannot distinguish a truncated segment from a rewritten one
+    from a wholly different file, and those want different responses. The digest is cut
+    to twelve characters: enough to compare two lines by eye, far too little to be
+    mistaken for the value itself.
+    """
+    if not identity:
+        return "nothing readable"
+    size = identity.get("segment_bytes", "?")
+    digest = str(identity.get("segment_sha256", ""))[:12] or "no digest"
+    return f"{size} bytes / {digest}"
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-segment-bytes
+def _read_bounded(segment: Path, consequence: str) -> Optional[bytes]:
+    """A segment's bytes, or ``None`` when it is larger than any this log rotates.
+
+    The bound is enforced by the read, not by a prior ``stat()``. Those are two separate
+    observations of one path and a replacement landing between them makes the first a
+    lie, so a size check alone would let an arbitrarily large file be hashed while a
+    lock is held — on the writer's side at rotation and on the reader's on the way in.
+    One byte past the bound is enough to know.
+
+    ``consequence`` names what the caller gives up when the bytes do not arrive. The
+    two sides give up different things — the rotation falls back to a claim resting on
+    the filename, the read excludes the segment outright — and a helper that asserted
+    either one would be telling half its callers something untrue.
+
+    The cheap ``stat()`` stays as a first filter: it avoids opening a file that is
+    already known to be too large, at a small fraction of the read it saves. An earlier
+    version of this sentence put figures on that ratio and both were wrong -- the numbers
+    were never measured, so they are gone rather than restated.
+
+    The whole segment is held at once rather than streamed. That is what makes the
+    bound meaningful — the ceiling is the rotation threshold, ~5 MiB, so the peak is
+    knowable and small — and the verifying caller needs the bytes in hand anyway, since
+    fingerprinting a file and then reopening it leaves the window this exists to close.
+    """
+    try:
+        if segment.stat().st_size > _MAX_SEGMENT_BYTES:
+            logger.warning(
+                "decision log: %s is larger than any segment this log rotates, %s",
+                _capped(str(segment)), consequence)
+            return None
+        with segment.open("rb") as handle:
+            data = handle.read(_MAX_SEGMENT_BYTES + 1)
+    except OSError as exc:
+        logger.warning("decision log: the rotated segment %s could not be read, %s: %s",
+                       _capped(str(segment)), consequence, _describe(exc))
+        return None
+    if len(data) > _MAX_SEGMENT_BYTES:
+        logger.warning(
+            "decision log: %s grew past the segment bound while being read, %s",
+            _capped(str(segment)), consequence)
+        return None
+    return data
+
+
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-segment-bytes
+
+
+def _identity_of(data: bytes) -> Dict[str, Any]:
+    """The fingerprint of bytes already read, so nothing can change between the two.
+
+    Validation used to open the segment, fingerprint it, close it, and then the read
+    reopened it by path — a window in which a replacement is consumed silently, and one
+    the advisory lock does not close, since `flock` serialises this module's own callers
+    and not an external `mv`. Fingerprinting the bytes that will actually be used
+    removes the window rather than narrowing it.
+    """
+    return {"segment_bytes": len(data), "segment_sha256": hashlib.sha256(data).hexdigest()}
+
+
+def _segment_identity(segment: Path) -> Dict[str, Any]:
+    """A content-derived fingerprint of a rotated segment, taken while it is known-good.
+
+    The name alone proves only that *some* file with that name was rotated into. Any
+    file later placed at that path is then accepted as the claimed predecessor, so a
+    swapped segment joins the trail silently — which is the one thing an audit read
+    must not do.
+
+    Size plus a digest of the **whole** file. The first version hashed only the first
+    line, on the argument that a rotated segment is complete and that hashing 5 MiB per
+    read costs more than the read -- but a modification can preserve the first line and
+    the byte length while changing any later record, which is exactly the substitution
+    this exists to catch. The bound is 5 MiB by rotation, the read that follows walks
+    the same bytes anyway, and a cheap check that misses the attack is worse than a
+    costed one that does not.
+
+    Best effort: an unreadable or oversized segment yields no fingerprint rather than
+    failing the write, since a rotation that cannot be described is still a rotation
+    that happened. Both fields or neither, never a partial -- populating the dict as it
+    went left `segment_bytes` behind when `stat()` succeeded and the hash failed, which
+    is the ordinary shape of an unreadable file since mode bits gate the read and not
+    the stat. A size-only claim is weaker than no claim at all: it reads as a
+    fingerprint, and an equal-size replacement satisfies it.
+    """
+    data = _read_bounded(
+        segment, "so it is not fingerprinted and its claim will rest on the filename alone")
+    return _identity_of(data) if data is not None else {}
+
+
+def _identity_matches(claimed: Dict[str, Any], actual: Dict[str, Any],
+                      segment: Path) -> bool:
+    """Whether a claim describes `actual`, which the caller computed from bytes it holds.
+
+    Takes the actual fingerprint rather than a path, so the thing verified and the thing
+    used are the same bytes. `segment` is carried only to name the file in a warning.
+
+    A claim carrying no fingerprint is accepted: logs rotated before this existed have
+    none, and rejecting them would drop history that is very probably genuine. What is
+    rejected is a fingerprint that is *present and disagrees* — that is a different
+    file wearing the expected name.
+    """
+    if not claimed:
+        return True
+    if set(claimed) != _IDENTITY_FIELDS:
+        # A claim carrying one field of the two was written by a rotation whose hash
+        # failed. It is not a legacy claim -- those carry neither -- and it cannot be
+        # verified, so it is excluded rather than half-trusted.
+        logger.warning(
+            "decision log: %s carries an incomplete fingerprint (%s), so it is excluded "
+            "rather than matched on part of one",
+            _capped(str(segment)), ", ".join(sorted(claimed)))
+        return False
+    if not actual:
+        # A claim *with* a fingerprint that cannot be checked is not a match. An early
+        # version returned True here, conflating "no fingerprint was recorded" with
+        # "one was recorded and cannot be read" -- so a segment whose identity was
+        # unreadable at check time joined anyway, and a later successful read pulled in
+        # content nothing had verified.
+        logger.warning(
+            "decision log: %s carries a recorded fingerprint that could not be read, so "
+            "it is excluded rather than joined unverified", _capped(str(segment)))
+        return False
+    if all(actual.get(key) == value for key, value in claimed.items()):
+        return True
+    logger.warning(
+        "decision log: %s does not match the segment this log rotated into, so it is "
+        "excluded; a file with the expected name replaced the recorded one. "
+        "Recorded %s, found %s",
+        _capped(str(segment)), _claim_summary(claimed), _claim_summary(actual))
+    return False
+
+
 def _write_rotation_link(path: Path, backup: Path) -> None:
     """Open the new live segment with the event that names its predecessor.
 
@@ -325,7 +591,11 @@ def _write_rotation_link(path: Path, backup: Path) -> None:
     records its own rotation rather than hiding it.
     """
     try:
-        line = json.dumps({
+        # Through the same choke point as every other line. This one is bounded already --
+        # the only variable field is a `_capped` filename -- but "bounded because each
+        # field happens to be capped" is a property a reader has to re-derive, and the
+        # segment bound assumes it of *every* line, not of the ones `record` wrote (B10).
+        line = _bounded_event({
             "schema": SCHEMA_VERSION,
             "ts": datetime.now(timezone.utc).isoformat(),
             "run_id": _RUN_ID,
@@ -338,58 +608,49 @@ def _write_rotation_link(path: Path, backup: Path) -> None:
             # `OSError` guard below -- which aborted the write *after* `os.replace` had
             # already rotated the file, leaving the backup permanently unclaimed and so
             # unreadable by the very check this link exists to satisfy.
-            "payload": {"segment": _capped(backup.name)},
-        }, ensure_ascii=False, default=str)
-        with path.open("a", encoding="utf-8") as handle:
+            "payload": {"segment": _capped(backup.name), **_segment_identity(backup)},
+        })
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(line + "\n")
     except (OSError, ValueError) as exc:
         # A rotation whose link is unwritten costs the old segment its place in a
         # later read. That is the safe direction: a short trail, never a fabricated
         # one.
         logger.warning("decision log rotation link unwritten, so %s will be treated "
-                       "as unrelated history: %s", _redact(str(backup)), exc)
+                       "as unrelated history: %s", _capped(str(backup)), _describe(exc))
 
 
-def _rotated_segment_belongs(target: Path, backup: Path) -> bool:
-    """Whether `backup` is this log's own predecessor, per the link in the live file.
+def _rotation_payload(first_line: str) -> Optional[Dict[str, Any]]:
+    """The rotation payload in ``first_line``, or ``None`` if it is not one.
 
-    The live segment's first event is the rotation that created it. Anything else --
-    a log that was cleared and rewritten, or one rotated before this link existed --
-    leaves the `.1` unclaimed, and an unclaimed segment is excluded rather than
-    presented as continuous history.
+    Split out of the claim check, which reached eleven branch points assembling and
+    comparing this in place. A near-identical shape earned a cognitive-complexity
+    finding on the reader in this module once already; stating each question once and
+    naming it is both simpler and what stopped that recurring.
     """
     try:
-        if not backup.is_file():
-            return False
-        with target.open("r", encoding="utf-8", errors="replace") as handle:
-            first = next((line for line in handle if line.strip()), "")
-        # The first *physical* line, parsed here rather than through
-        # `parse_events`, which skips what will not parse -- so a malformed or
-        # injected first line followed by a rotation event was read as a valid
-        # claim, and the check meant to stop a stale segment being joined could be
-        # stepped over by one unparseable byte. A claim that is not the very first
-        # thing in the file is not a claim.
-        try:
-            obj = json.loads(first)
-        except (ValueError, TypeError):
-            obj = None
-        if (isinstance(obj, dict) and obj.get("event") == "rotate"
-                and isinstance(obj.get("payload"), dict)
-                and obj["payload"].get("segment") == backup.name):
-            return True
-        # Unclaimed, which is either a log that was cleared while its backup stayed,
-        # or one rotated before the link existed. Excluded either way -- but said
-        # out loud, because the two cases differ and only the reader knows which
-        # this is. Dropping half a trail in silence is the failure the level of the
-        # sibling segment warning was raised for.
-        logger.warning(
-            "decision log: %s is not claimed by this log's first event, so it is "
-            "excluded from this read; a log cleared while its backup remained would "
-            "otherwise read as continuous history", _redact(str(backup)))
-        return False
-    except (OSError, ValueError) as exc:
-        logger.debug("decision log rotation link unreadable: %s", exc)
-        return False
+        obj = json.loads(first_line)
+    except (ValueError, TypeError) as exc:
+        # Debug, not warning: a first line that will not parse is how a log with no
+        # rotation link looks, which is the ordinary case for a log that has never
+        # rotated. The caller says out loud that the segment went unclaimed.
+        logger.debug("decision log: first line is not a rotation record: %s", _describe(exc))
+        return None
+    if not isinstance(obj, dict) or obj.get("event") != "rotate":
+        return None
+    payload = obj.get("payload")
+    return payload if isinstance(payload, dict) else None
+
+
+def _names_this_segment(first_line: str, backup: Path) -> bool:
+    """Whether the first line is a rotation claiming a file of this name."""
+    payload = _rotation_payload(first_line)
+    # `_capped(backup.name)`: the link stores the capped form, which neutralises lone
+    # surrogates, so comparing the raw name meant a rotation with a hostile name could
+    # never claim its own genuine backup and the reader dropped valid history.
+    return bool(payload) and payload.get("segment") == _capped(backup.name)
+
+
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-rotation-link
 
 
@@ -418,7 +679,9 @@ def _append_locked(target: Path, line: str) -> None:
     """
     def _append() -> None:
         _rotate_if_large(target)
-        with target.open("a", encoding="utf-8") as handle:
+        # newline="\n" from origin/main (#189): the log is JSONL and must stay
+        # byte-identical across platforms, so the writer never translates to CRLF.
+        with target.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(line + "\n")
 
     from .atomic_io import with_file_lock  # pylint: disable=import-outside-toplevel
@@ -473,7 +736,7 @@ def record(
             "command": _redact(command),
             "payload": _redact(payload or {}),
         }
-        line = json.dumps(record_obj, ensure_ascii=False, default=str)
+        line = _bounded_event(record_obj)
         parent_is_new = not target.parent.exists()
         target.parent.mkdir(parents=True, exist_ok=True)
         if parent_is_new:
@@ -490,12 +753,15 @@ def record(
         # A real write/serialization failure (disabled, no-project and already-warned
         # cases return early above and never reach here, so this only fires on the first
         # failure). Surface it once — fail-open, not fail-silent — and latch telemetry off
-        # for the run via _FAILURE_WARNED. Redact the exception: an OSError carries the
-        # absolute log path ($HOME included).
+        # for the run via _FAILURE_WARNED. `_capped`, not `_redact`: an OSError carries
+        # the absolute log path ($HOME included) *and* whatever bytes are in it, and a
+        # log record holding a lone surrogate cannot be serialised — it killed a
+        # `pytest-xdist` worker and aborted a whole run when this module raised one
+        # message from debug to warning.
         _FAILURE_WARNED = True
         logger.warning(
             "Constructor Studio could not write its decision log; "
-            "telemetry is off for this run: %s", _redact(str(exc)))
+            "telemetry is off for this run: %s", _describe(exc))
         return False
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-record
 
@@ -608,7 +874,7 @@ def _gate_types() -> tuple:
         # progress -- escaped `record_gate` and broke the contract that
         # instrumentation never changes what a command does.
         logger.warning("could not read the declared gate types, so a gate record's "
-                       "type is unchecked: %s", exc)
+                       "type is unchecked: %s", _describe(exc))
         return ()
 
 
@@ -632,7 +898,7 @@ def _core_version() -> str:
         # the thing that raises into a caller who only asked to log an event.
         logger.warning(
             "Constructor Studio could not read its own version, so gate records "
-            "will carry none and cannot be pinned to a source version: %s", exc)
+            "will carry none and cannot be pinned to a source version: %s", _describe(exc))
         return ""
 
 
@@ -895,7 +1161,7 @@ def parse_events(lines: Iterable[str]) -> Iterator[Dict[str, Any]]:
         try:
             obj = json.loads(line)
         except (ValueError, TypeError) as exc:
-            logger.debug("decision log: skipping unparseable line: %s", exc)
+            logger.debug("decision log: skipping unparseable line: %s", _describe(exc))
             continue
         if not isinstance(obj, dict):
             continue
@@ -908,6 +1174,42 @@ def parse_events(lines: Iterable[str]) -> Iterator[Dict[str, Any]]:
 #: wait is indistinguishable from a hang, which is the defect this bound exists for.
 _READ_LOCK_TIMEOUT_SECONDS = 5.0
 
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-verify-before-use
+def _claimed_backup_bytes(target: Path, backup: Path) -> Optional[bytes]:
+    """The backup's bytes when the live segment's first event claims *these* bytes.
+
+    Returns ``None`` when there is no backup, no claim, no readable bytes within the
+    segment bound, or a claim that does not describe what is on disk. Reading before
+    verifying is what makes the check meaningful: the fingerprint is computed from the
+    same bytes the caller goes on to use, so there is no window between the two for a
+    substitution to slip through.
+    """
+    try:
+        if not backup.is_file():
+            return None
+        with target.open("r", encoding="utf-8", errors="replace") as handle:
+            first = next((line for line in handle if line.strip()), "")
+        if not _names_this_segment(first, backup):
+            # Before the read, so an unclaimed file is never opened: the name check is
+            # what decides whether these bytes are ours to spend a lock hashing.
+            logger.warning(
+                "decision log: %s is not claimed by this log's first event, so it is "
+                "excluded from this read; a log cleared while its backup remained would "
+                "otherwise read as continuous history", _capped(str(backup)))
+            return None
+        data = _read_bounded(backup, "so it is excluded from this read")
+        if data is None:
+            return None
+        payload = _rotation_payload(first) or {}
+        claimed = {k: payload[k] for k in _IDENTITY_FIELDS if k in payload}
+        return data if _identity_matches(claimed, _identity_of(data), backup) else None
+    except (OSError, ValueError) as exc:
+        logger.warning("decision log: %s could not be read for verification, so it is "
+                       "excluded from this read: %s", _capped(str(backup)), _describe(exc))
+        return None
+
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-verify-before-use
 
 def _read_segments_locked(target: Path) -> List[str]:
     """Read the rotated segment and the live one as one snapshot.
@@ -933,15 +1235,20 @@ def _read_segments_locked(target: Path) -> List[str]:
         # meant a missing helper was reported as a platform without file locking --
         # two unrelated causes wearing the same degradation.
         logger.warning("decision log: the shared file-lock helper is unavailable, so "
-                       "reads are unsynchronised with the writer: %s", exc)
+                       "reads are unsynchronised with the writer: %s", _describe(exc))
         fcntl = None
 
     def _both() -> List[str]:
         out: List[str] = []
         backup = target.with_name(target.name + ".1")
-        segments = [target] if not _rotated_segment_belongs(target, backup) \
-            else [backup, target]
-        for segment in segments:
+        # The backup is read once and verified against *those* bytes. Validating by
+        # path and then reopening by path leaves a window in which a replacement is
+        # consumed silently, and the advisory lock does not close it: `flock`
+        # serialises this module's own callers, not an external `mv`.
+        claimed_bytes = _claimed_backup_bytes(target, backup)
+        if claimed_bytes is not None:
+            out.extend(claimed_bytes.decode("utf-8", "replace").splitlines(keepends=True))
+        for segment in [target]:
             try:
                 if not segment.is_file():
                     continue
@@ -964,7 +1271,7 @@ def _read_segments_locked(target: Path) -> List[str]:
                 # worth more than none, but not silently.
                 logger.warning("decision log segment %s could not be read, so the "
                                "trail it holds is missing from this read: %s",
-                               _redact(str(segment)), exc)
+                               _capped(str(segment)), _describe(exc))
         return out
 
     if fcntl is None:
@@ -995,7 +1302,7 @@ def _read_segments_locked(target: Path) -> List[str]:
     except OSError as exc:
         # An unlockable log is still evidence; read it without the snapshot rather
         # than report an empty trail.
-        logger.debug("decision log lock unavailable, reading unlocked: %s", exc)
+        logger.debug("decision log lock unavailable, reading unlocked: %s", _describe(exc))
         return _both()
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-read-snapshot
 
@@ -1013,6 +1320,15 @@ def read_events(path: Optional[Path] = None, *, event: str = "",
     log passed its size bound half the history was on disk and unreachable through
     the module's own reader -- which mattered little while the log was telemetry and
     matters a great deal now that a gate resolution is audited from it.
+
+    **It is read only when the live segment claims it.** The rotation writes a link
+    naming the segment it created and fingerprinting its contents, and that fingerprint
+    is verified against the bytes this read goes on to use. A backup the live log does
+    not claim, or claims and does not describe, is **excluded with a warning** rather
+    than joined -- because a log cleared while its backup remained would otherwise read
+    as continuous history, and a substituted file would read as the real one. A link
+    carrying no fingerprint is still honoured: logs rotated before that existed have
+    none, and dropping them would discard history that is very probably genuine.
     """
     target = path or default_log_path()
     if target is None:
@@ -1094,7 +1410,8 @@ def summarize_reads(path: Optional[Path] = None) -> Dict[str, Any]:
             tokens = int(payload.get("tokens", 0) or 0)
             lines = int(payload.get("lines", 0) or 0)
         except (TypeError, ValueError) as exc:
-            logger.debug("decision log: skipping read event with non-numeric tokens/lines: %s", exc)
+            logger.debug("decision log: skipping read event with non-numeric "
+                         "tokens/lines: %s", _describe(exc))
             continue
         method = str(payload.get("method", "?"))
         entry = methods.setdefault(method, {"count": 0, "total_tokens": 0, "total_lines": 0})

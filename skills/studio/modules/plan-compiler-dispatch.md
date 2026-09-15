@@ -4,6 +4,7 @@
 UNIT PlanPhaseCompilerDispatch
 PURPOSE: Dispatch phase compiler sub-agents through an explicit lifecycle instead of blocking on an async join.
 DO:
+  EMIT "This plan has not been approved, so no phase will be dispatched. If its plan.toml carries no approval_status at all, it was written before approvals were recorded — re-run the decomposition gate to approve it; nothing is wrong with the plan. Otherwise approve it at that gate, which re-shows the plan before asking. A plan approved in an earlier session carries plan.approval_status=\"approved\" in its plan.toml; read that file to pick the approval up." and STOP_TURN WHEN plan.approval_status != "approved" in this plan's own plan.toml — the artifact, never the run-scoped flag alone, because `accepted_plan_active` is set by the plan-first gate for a different plan entirely and would authorise these phases without this decomposition ever being approved; say which case it is, since a plan.toml with no approval_status at all was written before approvals were recorded and its owner has already been through a gate they will think they passed
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
   RUN GitCommitModeGate before preparing git policy for phase compiler dispatch
   RUN select phase compiler isolation policy from plan lifecycle, gitignore state, and whether plan.toml, briefs, and declared output paths are worktree-visible

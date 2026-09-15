@@ -3225,13 +3225,23 @@ class TestMultiToolCoexistence(unittest.TestCase):
                              "Shared skill file must be identical across tool runs")
 
     def test_shared_files_no_custom_content_leak(self):
-        """Shared .agents/skills/ templates must not contain {custom_content}."""
-        from studio.commands.agents import _agents_skill_outputs
+        """Shared .agents/skills/ templates must not contain {custom_content}.
 
-        for out in _agents_skill_outputs():
-            template_text = "\n".join(out["template"])
-            self.assertNotIn("{custom_content}", template_text,
-                             f"Shared output {out['path']} must not reference custom_content")
+        Tool set is derived from _default_agents_config() itself, so a newly
+        added non-Claude tool is automatically covered here instead of
+        requiring a hardcoded tuple to be remembered and edited by hand.
+        """
+        from studio.commands.agents import _agents_skill_outputs, _default_agents_config
+
+        non_claude_tools = [
+            tool for tool in _default_agents_config()["agents"] if tool not in ("claude", "opencode")
+        ]
+        self.assertTrue(non_claude_tools)
+        for tool in non_claude_tools:
+            for out in _agents_skill_outputs(tool):
+                template_text = "\n".join(out["template"])
+                self.assertNotIn("{custom_content}", template_text,
+                                 f"Shared output {out['path']} (tool={tool!r}) must not reference custom_content")
 
     def test_second_tool_reports_shared_unchanged(self):
         """Second tool writing same shared files sees them as unchanged, not updated."""

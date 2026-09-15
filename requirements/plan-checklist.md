@@ -49,6 +49,12 @@ DO:
 ## 1. Structural Validation
 - [ ] `plan.toml` exists at `.plans/{task-slug}/`.
 - [ ] `[plan]` contains `task`, `type`, `target`, `created`, `total_phases`, and `lifecycle`.
+- [ ] `[plan].approval_status` is `approved` once the decomposition gate has authorised the
+      package, or `revised` once a change has superseded that approval. It is the record a
+      later session reads, since run-scoped state does not survive a handoff into a new chat,
+      and no phase is dispatched without it. **A plan written before approvals were recorded
+      carries no such field**; that is not a malformed plan, and re-running the decomposition
+      gate is what supplies one.
 - [ ] `[[phases]]` blocks match actual phase files.
 - [ ] Phase numbers are sequential.
 - [ ] `depends_on` forms a valid DAG.

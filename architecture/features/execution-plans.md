@@ -20,6 +20,7 @@
   - [Normalize Raw Input Sources](#normalize-raw-input-sources)
   - [Compute Raw Input Chunk Ranges](#compute-raw-input-chunk-ranges)
   - [Write Raw Input Package](#write-raw-input-package)
+  - [Resolve a Decision From the Plan](#resolve-a-decision-from-the-plan)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Raw Input Package Lifecycle](#raw-input-package-lifecycle)
   - [Plan Lifecycle](#plan-lifecycle)
@@ -306,6 +307,24 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 4. [x] - `p1` - Write deterministic filenames `NNN-SS-label-part-PP.md` and collect per-chunk metadata - `inst-write-chunk-file`
 5. [x] - `p1` - Write `manifest.json` with `input_signature`, source metadata, and chunk metadata for authoritative package reuse checks - `inst-write-package-manifest`
 6. [x] - `p1` - Replace the live package only after the staged package is fully written; restore the previous package on `OSError` - `inst-return-chunks`
+
+### Resolve a Decision From the Plan
+
+- [x] `p1` - **ID**: `cpt-studio-algo-execution-plans-decision-lookup`
+
+**Input**: A decision key, the task's plan directory, and optionally the value the caller holds for a declared dimension
+
+**Output**: One outcome in the frozen resolution contract's own field names — `decision_key` → `value` → `provenance` → `status` — plus the evidence the outcome rests on
+
+**Steps**:
+1. [x] - `p1` - Name the plan's vocabulary in one place: the file read, the `[[gate_decisions]]` array — **not** `decisions`, which this same file already carries as a table that `ralphex_export` reaches into with `.get()`, so an array there would raise inside a shipped export command — and the two keys a policy declaration carries — the dimension it is keyed on and the table of rows — so a schema change is one edit rather than a search - `inst-plan-vocab`
+2. [x] - `p1` - Return the outcome in the ledger's own four field names rather than a parallel shape, since the contract requires the ledger to share the plan's shape distinguished by provenance, and a renamed field would make a reader map between two vocabularies to answer one question - `inst-plan-outcome`
+3. [x] - `p1` - Obtain a descriptor on the plan without ever waiting for one, and judge what is behind it on that descriptor rather than on a prior look at the path. A FIFO named `plan.toml` reports a size of zero, so it passes any size guard, and opening it blocking waits for a writer that never arrives — no exception, no timeout, the gate simply never returns. Refuse anything that is not a regular file, tell a dangling symlink from nothing at all since something is sitting at that path either way, and describe a failed open by its errno and the system's own text, which is what an operator diagnoses from - `inst-plan-open`
+4. [x] - `p1` - Read and parse the plan on **every** call, never caching: a cached `resolved` is a stale authority, so a plan edited mid-run takes effect on the next lookup. Bound the read by size, since a file in the task directory that is not a plan would otherwise stall every gate that consults it, and return the reason a read failed rather than swallowing it — "no such plan" and "this plan will not parse" both stop the gate and only one is a defect - `inst-plan-read`
+5. [x] - `p1` - Select declarations by **exact** string equality on the key and nothing else — no casefold, no strip, no separator folding, each of which is a similarity match wearing a smaller name — and skip a malformed member rather than raising, counting it so a declaration lost to a typo is visible rather than merely missing - `inst-plan-entries`
+6. [x] - `p1` - Resolve a policy declaration through the enum dimension **the plan names**, never one inferred from the shape of the table: a guessed dimension is the same inference this refuses everywhere else, and it loses the distinction between a policy that misses this case and one that was never about this dimension. Every way a policy fails to determine a value is `ambiguous` - `inst-plan-policy`
+7. [x] - `p1` - Keep `absent` and `ambiguous` apart though both ask: `absent` is the plan being silent, `ambiguous` is the plan having spoken without deciding, and collapsing them files a gap in the plan under the same heading as a question the plan never undertook to answer. An unresolved lookup carries the literal `unspecified` as its value, matching the ledger's own default, so it reads as visibly unanswered rather than as an empty field - `inst-plan-verdicts`
+8. [x] - `p1` - Decide the outcome: no declaration is `absent`; more than one for a key is `ambiguous`; a declaration carrying both a direct value and a policy is `ambiguous`, since which answer is meant cannot be known; an unreadable plan is `ambiguous` and warned about rather than `absent`, because `absent` asserts something about the plan's contents that an unparseable file cannot support - `inst-plan-resolve`
 
 ## 4. States (CDSL)
 

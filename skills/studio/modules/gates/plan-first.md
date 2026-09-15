@@ -5,6 +5,7 @@ UNIT PlanFirstGate
 PURPOSE: Before substantive multi-step work, ask whether to plan first unless a user-approved plan is already active.
 STATE:
   SET PLAN_FIRST_CONTINUE: unit-name (default unset, scope workflow_run)
+  SET accepted_plan_active: true | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE a substantive multi-step task is about to start (validation, review, editing, prompts, skills, code, artifacts, analytical tasks, or other task work) AND no accepted plan is already active
 DO:
@@ -46,13 +47,13 @@ RULES:
   ALWAYS end the reviewed plan with the exit directive `CONTINUE PLAN_FIRST_CONTINUE` as the final step in the plan body, so plan execution returns through PLAN_FIRST_CONTINUE after the last phase completes
   ALWAYS present the plan for user review before executing it
   ALWAYS offer to save the plan to disk or keep it in session memory
-  ALWAYS set accepted_plan_active before continuing planned work
+  ALWAYS set accepted_plan_active before continuing planned work, and record this gate's acceptance in the plan file too WHEN the disk option wrote one; a plan kept in session memory has no artifact to record it in, and neither record is cf-plan's plan.approval_status, since this gate's plans continue through PLAN_FIRST_CONTINUE and are never phase-dispatched
   ALWAYS mark option 2 disk as (suggested) when the plan is phase-decomposed, has more than 10 actions, or needs resume-safe execution; ALWAYS mark option 1 memory as (suggested) for small, single-step plans
 MENU PlanStorageChoice
 TITLE: Plan ready — review it, then choose how to keep it before I start. Disk is suggested for large, phased, or resume-sensitive plans; memory is suggested for small plans.
 OPTIONS:
   1 memory -> keep the plan in session memory, SET accepted_plan_active = true, and CONTINUE PLAN_FIRST_CONTINUE (suggested for quick iteration)
-  2 disk -> WRITE the plan to disk, SET accepted_plan_active = true, and CONTINUE PLAN_FIRST_CONTINUE (for persistence)
+  2 disk -> WRITE the plan to disk recording that this gate accepted it, SET accepted_plan_active = true, and CONTINUE PLAN_FIRST_CONTINUE (for persistence) — this is this gate's own record, not cf-plan's plan.approval_status, which no plan-first plan is ever read for
   3 revise -> revise the plan per user feedback and EMIT_MENU PlanStorageChoice
   4 stop -> STOP_TURN
   INVALID -> EMIT_MENU PlanStorageChoice

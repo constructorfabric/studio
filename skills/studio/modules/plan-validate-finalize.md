@@ -39,6 +39,7 @@ RULES:
   ALWAYS emit "Plan created" only after validation PASS confirms plan.toml + every brief + every phase file exist on disk
   ALWAYS wrap the startup prompt in a single fenced code block with no other text
   ALWAYS keep option 2 execute safe — when sub-agents are unavailable it falls back to the handoff prompt rather than failing
+  ALWAYS mark the plan revised when option 5 changes it and route back through decomposition, discarding phase files compiled from the superseded plan, because an approval predating the change would vouch for a plan that no longer exists and a stale phase file would be executed as though it were part of the new one
 MENU Phase4NextStepsMenu
 TITLE: Plan passed self-validation — what next? Option 1 (analyze) is the suggested default before execution. Reply with a number.
 OPTIONS:
@@ -46,7 +47,7 @@ OPTIONS:
   2 execute -> CONTINUE PlanNativeExecute (native same-chat execution; if sub-agents are unavailable it falls back to the handoff prompt)
   3 handoff -> EMIT the new-chat startup prompt in a single fenced code block (read plan.toml, execute Phase 1, then report and prompt for Phase 2), EMIT "Paste the above prompt into a new chat to begin execution. Return here to continue with Phase 2.", then EMIT_MENU Phase4NextStepsMenu
   4 review -> EMIT the plan file paths to inspect, then EMIT_MENU Phase4NextStepsMenu
-  5 modify -> WAIT the user's plan changes (add/remove phases, adjust scope, update files), then EMIT_MENU Phase4NextStepsMenu
+  5 modify -> SET plan.approval_status="revised", discard any phase files compiled from the plan being replaced; EMIT "Changing the plan withdraws its approval, so the decomposition gate will ask again before anything runs."; CONTINUE PlanPhase2Decompose after user.reply; WAIT the user's plan changes (add/remove phases, adjust scope, update files); STOP_TURN
   6 done -> LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md WHEN NextActionsOffer is not yet loaded; RUN NextActionsOffer
   INVALID -> EMIT_MENU Phase4NextStepsMenu
 ```

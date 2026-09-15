@@ -134,6 +134,7 @@ RULES:
   ALWAYS also write a copy to {cf-studio-path}/.cache/planning/current.md WHEN PLAN_SAVE_MODE == save
   ALWAYS add plan_file = PLAN_FILE_PATH to the dispatch payload of every phase WHEN PLAN_SAVE_MODE == save
   NEVER block phase execution when PLAN_SAVE_MODE == skip
+  NEVER treat this gate as the plan's approval — it asks where to put the file, and this module never shows the plan, so neither answer is consent to the plan's content
 MENU PlanSaveGateMenu
 TITLE: Save this plan as a Markdown file before execution? The file will be updated with checkboxes as each phase completes.
 OPTIONS:
