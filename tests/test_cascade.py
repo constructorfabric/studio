@@ -967,6 +967,58 @@ class TestCmdRetrieve:
         assert "1 Tier-2 escalations recorded for this document" in out
         assert "pay for itself" not in out  # not yet at break-even
 
+    def test_human_output_shows_the_break_even_arithmetic_and_the_bundle_path(
+        self, capsys,
+    ):
+        """Same class of gap as the escalation count above, one round later
+        (constructorfabric/studio#192, Minor): the JSON payload carries
+        `build_okf_break_even` and `bundle_dir`, and `_human_retrieve` rendered
+        neither -- so an interactive user saw the recommendation but not the
+        arithmetic behind it, nor where an existing bundle lives. Driven through
+        the renderer directly: both fields come from `route_tier2`, and building
+        a real OKF bundle to observe them would test `okf`, not this."""
+        from studio.commands.cascade import _human_retrieve
+        from studio.utils.ui import set_json_mode
+
+        set_json_mode(False)
+        try:
+            _human_retrieve({
+                "query": "q", "tier": 1, "reason": "r",
+                "candidates": [{"heading": "H", "line_start": 1, "line_end": 9}],
+                "tier2": {
+                    "recommendation": "baseline", "reason": "no_current_okf_bundle",
+                    "build_okf_break_even": {
+                        "okf_total_tokens": 900,
+                        "baseline_total_tokens": 1200,
+                        "building_okf_would_pay_off": True,
+                    },
+                },
+            })
+            paid_off = capsys.readouterr().out
+
+            _human_retrieve({
+                "query": "q", "tier": 2, "reason": "r", "candidates": [],
+                "tier2": {
+                    "recommendation": "okf", "reason": "okf_bundle_current",
+                    "bundle_dir": ".cache/okf/doc",
+                    "build_okf_break_even": {
+                        "okf_total_tokens": 1500,
+                        "baseline_total_tokens": 900,
+                        "building_okf_would_pay_off": False,
+                    },
+                },
+            })
+            current = capsys.readouterr().out
+        finally:
+            set_json_mode(True)  # restore the autouse fixture's invariant
+
+        assert "break-even: OKF 900 tokens vs baseline 1200" in paid_off
+        assert "building an OKF bundle would pay off" in paid_off
+        assert "OKF bundle:" not in paid_off          # no bundle to name in this shape
+
+        assert "staying on baseline is cheaper" in current
+        assert "OKF bundle: .cache/okf/doc" in current
+
     def test_escalation_key_flag_prevents_a_cli_retry_from_double_counting(
         self, tmp_path: Path, capsys, monkeypatch,
     ):
