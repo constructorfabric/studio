@@ -6544,10 +6544,11 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             adapter = _bootstrap_project(root)
             kit_src = _make_kit_source(Path(td) / "dl", "sdlc")
             from studio.utils import toml_utils
+            from studio.commands.update import _KNOWN_KIT_SOURCES
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc", "source": "github:constructorfabric/studio-kit-sdlc"}},
+                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc", "source": _KNOWN_KIT_SOURCES["sdlc"]}},
             }, adapter / "config" / "core.toml")
 
             cwd = os.getcwd()
