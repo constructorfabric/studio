@@ -15,6 +15,7 @@
   - [Scan Artifact IDs](#scan-artifact-ids)
   - [CPT Reference Scan](#cpt-reference-scan)
   - [Scan CDSL Instructions](#scan-cdsl-instructions)
+  - [Finding Severity Policy](#finding-severity-policy)
   - [Validate Artifact Structure](#validate-artifact-structure)
   - [Cross-Validate Artifacts](#cross-validate-artifacts)
   - [Scan Code Markers](#scan-code-markers)
@@ -267,6 +268,29 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 **Supporting**:
 - [x] - `p1` - CDSL line regex and phase number parsing constants - `inst-scan-cdsl-datamodel`
 
+### Finding Severity Policy
+
+- [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-severity-policy`
+
+**Input**: A finding's rule code, or no code at all
+
+**Output**: One of `error`, `warning`, `off` — the finding's severity, stamped as data on the finding itself
+
+Severity is a property of a finding, not of the list a call site happened to append it to. Every
+finding is stamped at build time from one declared table, so that severity can later be configured
+per rule, per artifact kind and per constraint entry without touching a single call site.
+
+**Steps**:
+1. [x] - `p1` - Declare the severity vocabulary: `error`, `warning`, `off` - `inst-severity-vocabulary`
+2. [x] - `p1` - Declare a default severity for every code in the error-code registry, reproducing today's routing exactly - `inst-severity-default-table`
+3. [x] - `p1` - Resolve a code's default severity - `inst-severity-resolve-default`
+4. [x] - `p1` - **IF** the code is absent or unknown to the table, **RETURN** `error` — an unrecognised rule must not be silently non-blocking - `inst-severity-unknown-is-error`
+5. [x] - `p1` - **IF** a caller supplied its own severity, refuse it — severity is derived from the code and no call site may override the declared default - `inst-severity-reject-override`
+6. [x] - `p1` - **IF** the table and the error-code registry disagree at import, refuse to load — a promise of exhaustiveness that only a test enforces is not kept in production - `inst-severity-exhaustive-guard`
+
+**Supporting**:
+- [x] - `p1` - Imports and module setup for the severity policy - `inst-severity-imports`
+
 ### Validate Artifact Structure
 
 - [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-validate-structure`
@@ -302,6 +326,12 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 - [x] - `p1` - Heading context resolution for CDSL instruction line matching - `inst-check-cdsl-heading-ctx`
 - [x] - `p1` - `constraint_hint`: generate human-readable constraint hint string from an `IdConstraint` - `inst-constraint-hint`
 - [x] - `p1` - `normalize_heading_id_for_check`: strip numbering prefix and canonicalize heading text for matching - `inst-normalize-heading-id`
+- [x] - `p1` - Stable error codes for structure rules: task/checkbox consistency, references, heading numbering, cross-artifact ID coverage - `inst-codes-structure`
+- [x] - `p1` - Stable error codes for constraint rules: ID-kind presence, template placeholders, task/priority, heading placement and contract, cross-reference coverage - `inst-codes-constraints`
+- [x] - `p1` - Stable error codes for code traceability: marker errors and code cross-validation - `inst-codes-code-traceability`
+- [x] - `p1` - Stable error codes for what was in scope to check: codebase registration, TOC validation, JIT-retrieval readiness - `inst-codes-scope-and-toc`
+- [x] - `p1` - Stable error codes for file access, content language, and CDSL FAIL rules - `inst-codes-files-and-cdsl`
+- [x] - `p1` - Stable error codes for kit self-check, kit validation and context resolution - `inst-codes-kit`
 - [x] - `p1` - `validate_task_priority`: check task-checkbox and priority-marker presence/prohibition against constraints - `inst-validate-task-priority`
 - [x] - `p1` - `validate_id_heading_constraint`: verify an ID definition sits under an allowed heading pattern - `inst-validate-id-heading-constraint`
 - [x] - `p1` - `validate_id_format` kind-hint branch: emit DISALLOWED_KIND / MISSING_KIND errors per constraint - `inst-validate-id-kind-hint`

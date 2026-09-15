@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
+from . import error_codes as EC
 from .artifacts_meta import Artifact, ArtifactsMeta, CodebaseEntry, Kit, load_artifacts_meta
 from .constraints import KitConstraints, error, load_constraints_files, load_constraints_toml
 from .manifest import load_toml_file
@@ -151,6 +152,7 @@ def _build_inaccessible_kit_path_error(adapter_dir: Path, kit_id: str, kit_path:
     return error(
         "resources",
         f"Kit '{kit_id}' is registered at absolute path '{configured_path}' which is not accessible on this OS",
+        code=EC.KIT_PATH_NOT_ACCESSIBLE,
         path=_resolve_core_config_path(adapter_dir),
         line=1,
         kit=kit_id,
@@ -236,6 +238,7 @@ def load_resource_bindings(
             errors.append(error(
                 "resources",
                 binding_error,
+                code=EC.KIT_BINDING_ERROR,
                 path=(cfg_dir / "core.toml"),
                 line=1,
                 kit=kit_id,
@@ -244,6 +247,7 @@ def load_resource_bindings(
         errors.append(error(
             "resources",
             str(exc),
+            code=EC.KIT_BINDING_ERROR,
             path=(cfg_dir / "core.toml"),
             line=1,
             kit=kit_id,
@@ -430,6 +434,7 @@ def _build_constraints_error(
     return error(
         "constraints",
         "Invalid constraints",
+        code=EC.CONSTRAINTS_INVALID,
         path=constraints_path,
         line=1,
         errors=list(constraints_errs),
@@ -567,6 +572,7 @@ def _expand_autodetect_errors(meta, adapter_dir, project_root, kits):
                 errors.append(error(
                     "registry",
                     "Autodetect validation error",
+                    code=EC.REGISTRY_AUTODETECT_INVALID,
                     path=registry_path,
                     line=1,
                     details=str(msg),
@@ -576,6 +582,7 @@ def _expand_autodetect_errors(meta, adapter_dir, project_root, kits):
         errors.append(error(
             "registry",
             "Autodetect expansion failed",
+            code=EC.REGISTRY_AUTODETECT_FAILED,
             path=registry_path,
             line=1,
             error=str(e),

@@ -318,6 +318,73 @@ _REASONS: Dict[str, List[str]] = {
     EC.FILE_LOAD_ERROR: [
         "Code file failed to load — the file may be missing, empty, or have encoding issues",
     ],
+
+    # Kit self-check, kit validation and context resolution
+    EC.TEMPLATE_DEF_PLACEHOLDER_MISSING: [
+        "Template for `{artifact_kind}` has no `{id_kind_template}` placeholder for the required ID kind `{id_kind}`",
+        "Constraints declare `{id_kind}` as required but the kit's template was never updated to define it",
+    ],
+    EC.TEMPLATE_DEF_PLACEHOLDER_MISSING_OPTIONAL: [
+        "Template for `{artifact_kind}` has no `{id_kind_template}` placeholder for the optional ID kind `{id_kind}`",
+        "The kind is optional, so this is advisory — add the placeholder or drop the kind from constraints",
+    ],
+    EC.TEMPLATE_REF_PLACEHOLDER_MISSING: [
+        "Template for `{artifact_kind}` is missing the required reference placeholder `{id_kind_template}`",
+        "Constraints require a reference to `{id_kind}` that the template gives authors no place to write",
+    ],
+    EC.TEMPLATE_REF_PLACEHOLDER_MISSING_OPTIONAL: [
+        "Template for `{artifact_kind}` is missing the optional reference placeholder `{id_kind_template}`",
+        "The reference is optional, so this is advisory — add the placeholder or drop it from constraints",
+    ],
+    EC.TEMPLATE_ID_KIND_NO_TEMPLATE: [
+        "ID kind `{id_kind}` is declared in constraints.toml but no template defines it",
+        "A kind was added to constraints without a matching template placeholder",
+    ],
+    EC.TEMPLATE_DEF_PLACEHOLDER_WRONG_HEADINGS: [
+        "The `{id_kind}` placeholder sits outside the headings its constraint requires",
+        "The template was restructured but the constraint's required headings were not updated",
+    ],
+    EC.TEMPLATE_REF_PLACEHOLDER_WRONG_HEADINGS: [
+        "The required reference placeholder for `{id_kind}` sits outside its constraint's required headings",
+        "The template was restructured but the constraint's required headings were not updated",
+    ],
+    EC.TEMPLATE_READ_ERROR: [
+        "The template file is missing, empty, or has encoding issues",
+        "The kit manifest points at a template path that does not resolve on this machine",
+    ],
+    EC.CONSTRAINTS_INVALID: [
+        "constraints.toml failed to parse or violates its schema — see the `errors` list on this finding",
+        "A constraints edit introduced a malformed table, an unknown key, or a wrong value type",
+    ],
+    EC.KIT_TEMPLATE_BINDING_MISSING: [
+        "Constraints declare artifact kind `{artifact_kind}` but the manifest binds"
+        " neither a template nor examples for it",
+        "The kind is declared for validation but has no authoring material, so template self-check cannot run",
+    ],
+    EC.KIT_RESOURCE_PATH_NOT_FOUND: [
+        "A resource declared in the kit manifest does not exist at its declared path",
+        "The resource was renamed or removed without updating the manifest",
+    ],
+    EC.KIT_MODEL_INVALID: [
+        "The kit manifest could not be loaded into a valid kit model",
+        "A required manifest field is missing, malformed, or has the wrong type",
+    ],
+    EC.KIT_PATH_NOT_ACCESSIBLE: [
+        "Kit `{kit}` is registered at an absolute path that does not resolve on this operating system",
+        "core.toml was written on another machine or OS and carries a non-portable absolute path",
+    ],
+    EC.KIT_BINDING_ERROR: [
+        "A kit resource binding in core.toml could not be resolved",
+        "The kit was moved, partially installed, or its manifest and core.toml have drifted apart",
+    ],
+    EC.REGISTRY_AUTODETECT_INVALID: [
+        "An autodetect rule in the artifact registry is not valid",
+        "A registry edit introduced an autodetect pattern the loader cannot accept",
+    ],
+    EC.REGISTRY_AUTODETECT_FAILED: [
+        "Autodetect expansion raised while scanning for artifacts",
+        "An autodetect glob matched something unreadable, or the scan root does not exist",
+    ],
 }
 # @cpt-end:cpt-studio-algo-traceability-validation-fixing-prompts:p1:inst-fix-define-reasons
 

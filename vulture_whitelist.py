@@ -210,3 +210,18 @@ from studio.utils.armed_reversal import ReversalCheck, armed_reversal  # noqa: E
 armed_reversal  # noqa: B018
 ReversalCheck.mechanism  # noqa: B018
 ReversalCheck.refused  # noqa: B018
+
+# severity.VALIDATION_SEVERITIES — the declared severity vocabulary (error / warning /
+# off) for validation findings, declared by `cpt-studio-algo-traceability-validation-severity-policy`
+# in architecture/features/traceability-validation.md (### Finding Severity Policy).
+# Findings are stamped from DEFAULT_SEVERITY today; the vocabulary tuple has no reader
+# until the configuration layer validates user-supplied severities against it.
+# REMOVAL TRIGGER — delete this entry once the severity policy resolver imports
+# VALIDATION_SEVERITIES: grep `VALIDATION_SEVERITIES` under skills/studio/scripts/studio
+# and expect a hit outside utils/severity.py. That grep is the check, not a checkbox —
+# the algo above is already implemented, so its `[x]` cannot signal this entry's staleness;
+# the configuration layer extends it (public issue #174, "configurable severity per rule,
+# kind and entry"). Not to be confused with artifact_quality.SEVERITIES, which is the
+# advisory-finding vocabulary (info / warn).
+from studio.utils.severity import VALIDATION_SEVERITIES  # noqa: E402
+VALIDATION_SEVERITIES  # noqa: B018

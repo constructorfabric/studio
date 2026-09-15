@@ -16,7 +16,11 @@ if sys.version_info < (3, 11):
         pass
 
 
-def pytest_configure() -> None:
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "integration: shells out to the real CLI; deselect with -m 'not integration'",
+    )
     repo_root = Path(__file__).resolve().parents[1]
     tests_dir = repo_root / "tests"
     sys.path.insert(0, str(tests_dir))

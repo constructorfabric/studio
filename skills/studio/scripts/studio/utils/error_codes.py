@@ -7,7 +7,7 @@ Fixing prompts and downstream consumers match on codes, not messages.
 @cpt-dod:cpt-studio-dod-traceability-validation-structure:p1
 """
 
-# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-structure
 # ---------------------------------------------------------------------------
 # Structure — task / checkbox consistency
 # ---------------------------------------------------------------------------
@@ -35,6 +35,9 @@ HEADING_NUMBER_NOT_CONSECUTIVE = "heading-number-not-consecutive"
 ID_NOT_REFERENCED = "id-not-referenced"
 ID_NOT_REFERENCED_NO_SCOPE = "id-not-referenced-no-scope"
 
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-structure
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-constraints
 # ---------------------------------------------------------------------------
 # Constraints — ID kind presence
 # ---------------------------------------------------------------------------
@@ -44,6 +47,14 @@ ID_KIND_NOT_ALLOWED = "id-kind-not-allowed"
 REQUIRED_ID_KIND_MISSING = "required-id-kind-missing"
 TEMPLATE_DEF_KIND_NOT_IN_CONSTRAINTS = "template-def-kind-not-in-constraints"
 TEMPLATE_REF_KIND_NOT_IN_CONSTRAINTS = "template-ref-kind-not-in-constraints"
+# A required and an optional placeholder are two rules, not one rule at two
+# severities: they carry different messages and different defaults. Splitting
+# them keeps "one code, one default severity" true, which is what lets the
+# stamped severity be derived from the code alone.
+TEMPLATE_DEF_PLACEHOLDER_MISSING = "template-def-placeholder-missing"
+TEMPLATE_DEF_PLACEHOLDER_MISSING_OPTIONAL = "template-def-placeholder-missing-optional"
+TEMPLATE_REF_PLACEHOLDER_MISSING = "template-ref-placeholder-missing"
+TEMPLATE_REF_PLACEHOLDER_MISSING_OPTIONAL = "template-ref-placeholder-missing-optional"
 
 # ---------------------------------------------------------------------------
 # Constraints — task / priority on definitions
@@ -79,6 +90,9 @@ REF_PROHIBITED_TASK = "ref-prohibited-task"
 REF_MISSING_PRIORITY = "ref-missing-priority"
 REF_PROHIBITED_PRIORITY = "ref-prohibited-priority"
 
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-constraints
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-code-traceability
 # ---------------------------------------------------------------------------
 # Code traceability — marker errors
 # ---------------------------------------------------------------------------
@@ -98,6 +112,9 @@ CODE_NO_MARKER = "code-no-marker"
 CODE_INST_MISSING = "code-inst-missing"
 CODE_INST_ORPHAN = "code-inst-orphan"
 
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-code-traceability
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-scope-and-toc
 # ---------------------------------------------------------------------------
 # Codebase registration — what was in scope to check
 # ---------------------------------------------------------------------------
@@ -117,6 +134,9 @@ TOC_HEADING_DEPTH_JUMP = "toc-heading-depth-jump"
 TOC_SECTION_TOO_LONG = "toc-section-too-long"
 TOC_MISSING_DESCRIPTION = "toc-missing-description"
 
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-scope-and-toc
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-files-and-cdsl
 # ---------------------------------------------------------------------------
 # File errors
 # ---------------------------------------------------------------------------
@@ -145,4 +165,26 @@ CDSL_LANGUAGE_OPERATOR = "cdsl-language-operator"
 CDSL_NOT_PLAIN_ENGLISH = "cdsl-not-plain-english"
 CDSL_DUPLICATE_INST_ID = "cdsl-duplicate-inst-id"
 CDSL_PLACEHOLDER = "cdsl-placeholder"
-# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
+
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-files-and-cdsl
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-kit
+# ---------------------------------------------------------------------------
+# Kit self-check, kit validation and context resolution
+# ---------------------------------------------------------------------------
+# These findings were emitted without a code, which put them out of reach of
+# every per-rule mechanism: fixing prompts, downstream filtering, and now
+# severity. A finding with no code cannot be configured, only deleted.
+TEMPLATE_ID_KIND_NO_TEMPLATE = "template-id-kind-no-template"
+TEMPLATE_DEF_PLACEHOLDER_WRONG_HEADINGS = "template-def-placeholder-wrong-headings"
+TEMPLATE_REF_PLACEHOLDER_WRONG_HEADINGS = "template-ref-placeholder-wrong-headings"
+TEMPLATE_READ_ERROR = "template-read-error"
+CONSTRAINTS_INVALID = "constraints-invalid"
+KIT_TEMPLATE_BINDING_MISSING = "kit-template-binding-missing"
+KIT_RESOURCE_PATH_NOT_FOUND = "kit-resource-path-not-found"
+KIT_MODEL_INVALID = "kit-model-invalid"
+KIT_PATH_NOT_ACCESSIBLE = "kit-path-not-accessible"
+KIT_BINDING_ERROR = "kit-binding-error"
+REGISTRY_AUTODETECT_INVALID = "registry-autodetect-invalid"
+REGISTRY_AUTODETECT_FAILED = "registry-autodetect-failed"
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-codes-kit
