@@ -8,7 +8,6 @@ from __future__ import annotations
 import ast
 import inspect
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,26 +17,24 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/studio/scripts"))
 
 from studio.utils import armed_reversal as ar  # noqa: E402
-
-
-#: The environment the fixture's git runs in: the caller's, minus the variables that
-#: redirect git somewhere else. `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and
-#: `GIT_COMMON_DIR` are honoured even when `cwd` is an isolated tmp_path, so a developer
-#: with one of them exported would have these fixtures initialising, committing to and
-#: creating worktrees in whatever repository it names. Raised in review.
-_REDIRECTS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
-              "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-              "GIT_CEILING_DIRECTORIES", "GIT_NAMESPACE")
-
-
-def _clean_env() -> dict:
-    """The ambient environment with git's redirect variables removed."""
-    return {k: v for k, v in os.environ.items() if k not in _REDIRECTS}
+from studio.utils import change_summary  # noqa: E402
 
 
 def _git(cwd: Path, *args: str) -> None:
+    """Run git for a fixture, in the environment the production module already defines.
+
+    `_git_env` rather than a list written here. The first version of this hardcoded eight
+    redirect variables, which covered the ones I thought of and omitted every
+    *configuration* channel the shipped helper carries — `GIT_CONFIG_PARAMETERS`,
+    `GIT_CONFIG_COUNT` and the indexed `KEY_n`/`VALUE_n` pairs it gates,
+    `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` and
+    `GIT_DISCOVERY_ACROSS_FILESYSTEM`. Those were added to the production list by
+    measurement, in response to real failures, and a second copy is exactly how that work
+    gets lost: the copy is the one that stops being updated. Raised in review, twice —
+    the first fix wrote the duplicate, the second removed it.
+    """
     subprocess.run(["git", *args], cwd=str(cwd), check=True,
-                   capture_output=True, text=True, env=_clean_env())
+                   capture_output=True, text=True, env=change_summary._git_env())
 
 
 @pytest.fixture
@@ -491,6 +488,27 @@ class TestWhatReviewFoundOnTheFirstPush:
 
 class TestTheRemovalTriggerIsCheckedRatherThanWritten:
     """A comment saying "delete these when a consumer appears" is not a constraint."""
+
+    def test_the_fixture_git_uses_the_shared_sanitised_environment(self) -> None:
+        """One list, not two. A second copy is the one that stops being updated.
+
+        The first fix for this wrote its own eight-variable list, which covered the
+        redirect channels and omitted every *configuration* one the shipped helper
+        carries — the `GIT_CONFIG_*` family and `GIT_DISCOVERY_ACROSS_FILESYSTEM`, each
+        added to the production list by measurement after a real failure. Raised in
+        review twice: once for inheriting the ambient environment, and again for
+        duplicating an incomplete list instead of reusing what exists.
+        """
+        source = inspect.getsource(_git)
+        assert "change_summary._git_env()" in source, source
+        # And the helper still removes the config channels a local list forgot.
+        for channel in ("GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CONFIG_GLOBAL",
+                        "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM",
+                        "GIT_DISCOVERY_ACROSS_FILESYSTEM"):
+            assert channel in change_summary._GIT_REDIRECT_VARS, channel
+        # Asserted on behaviour too, not only on the call: a sanitised environment is one
+        # that does not carry these out to the subprocess.
+        assert not set(change_summary._git_env()) & set(change_summary._GIT_REDIRECT_VARS)
 
     def test_the_whitelist_entries_go_when_a_consumer_arrives(self) -> None:
         """The correlation the whitelist comment asserts, asserted by something that runs.
