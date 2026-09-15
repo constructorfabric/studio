@@ -47,11 +47,42 @@ DEFAULT_SECTIONS: Tuple[str, ...] = ("Preamble", "What", "Rules")
 #: Per-workflow required-section overrides. A verification-style workflow legitimately
 #: carries no ``## Rules`` block, so scoring it against the universal set would be a
 #: false-fail; a workflow absent from this map uses ``DEFAULT_SECTIONS``.
+#: What ``eval_harness.load_scenarios`` puts in ``workflow`` when a scenario declares
+#: none. Not a typo, so it takes the default section set without a warning.
+_UNSPECIFIED_WORKFLOW = "unknown"
+
 WORKFLOW_SECTIONS: Dict[str, Tuple[str, ...]] = {
     "verify": ("Preamble", "What"),
     "verification": ("Preamble", "What"),
 }
 # @cpt-end:cpt-studio-algo-eval-structural:p1:inst-structural-config
+
+# @cpt-begin:cpt-studio-algo-eval-structural:p1:inst-structural-workflow-sections
+def _required_sections_for(workflow: str) -> Tuple[str, ...]:
+    """Required sections for ``workflow``, warning when the name is not one we know.
+
+    A plain ``WORKFLOW_SECTIONS.get(workflow, DEFAULT_SECTIONS)`` cannot tell a
+    deliberate coding workflow from ``workflow = "verificaton"``. Both miss the map and
+    both get the universal set, so a typo silently scores a verification run against a
+    ``## Rules`` block it was never meant to have, and the resulting FAIL points at the
+    missing section rather than at the misspelled field that caused it.
+
+    Still a warning and not a load-time rejection: a scenario suite is data a user
+    wrote, and a scorer that refuses to run over an unfamiliar workflow name is worse
+    than one that scores it against the default and says so. ``"unknown"`` is the
+    documented default for a scenario with no ``workflow`` field, so it is deliberate
+    rather than a typo and passes without a warning.
+    """
+    if workflow in WORKFLOW_SECTIONS:
+        return WORKFLOW_SECTIONS[workflow]
+    if workflow != _UNSPECIFIED_WORKFLOW:
+        logger.warning(
+            "eval: scenario workflow %r is not one of %s; scoring it against the "
+            "default required sections %s", workflow,
+            ", ".join(sorted(WORKFLOW_SECTIONS)), ", ".join(DEFAULT_SECTIONS))
+    return DEFAULT_SECTIONS
+# @cpt-end:cpt-studio-algo-eval-structural:p1:inst-structural-workflow-sections
+
 
 
 # @cpt-begin:cpt-studio-algo-eval-structural:p1:inst-structural-datamodel
@@ -495,7 +526,7 @@ class StructuralScorer:  # pylint: disable=too-few-public-methods
             duplicates=duplicates,
             invalid=invalid,
             no_frontmatter=no_block,
-            required_sections=WORKFLOW_SECTIONS.get(scenario.workflow, DEFAULT_SECTIONS),
+            required_sections=_required_sections_for(scenario.workflow),
         )
         passed, findings = self._evaluate(inp, active)
         return ScorerResult(

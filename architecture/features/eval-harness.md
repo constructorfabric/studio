@@ -145,6 +145,7 @@ artifacts: it touches no filesystem.
 **Supporting**:
 - [x] - `p1` - Module imports and the logger - `inst-structural-imports`
 - [x] - `p1` - The frontmatter pattern and the per-workflow required-sections configuration - `inst-structural-config`
+- [x] - `p1` - Resolve a scenario's required sections from its workflow, warning when the name is not a recognised one rather than silently scoring it against the default set - `inst-structural-workflow-sections`
 - [x] - `p1` - The `StructuralInput` data model the checks read from - `inst-structural-datamodel`
 - [x] - `p1` - Shared reducers over the manifest and phases (declared numbers, totals, capped detail formatting) that the checks build on - `inst-structural-check-helpers`
 - [x] - `p1` - Dependency-graph helpers: resolve/forward problems and misspelled-key detection - `inst-structural-deps`

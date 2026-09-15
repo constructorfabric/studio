@@ -59,9 +59,17 @@ def _definition_map(ctx: object) -> Dict[str, Path]:
 def _relative_posix(path: Path, project_root: Optional[Path]) -> str:
     """A **project-relative POSIX** path, never absolute — so no local path leaks into the report or
     the out-of-tree judge prompt. Degrades to a ``..``-relative path for a file outside the root,
-    then to the bare filename if even that is impossible (Windows cross-drive)."""
+    then to the bare filename if even that is impossible (Windows cross-drive, or no root at all).
+
+    ``project_root`` is resolved by the caller with ``getattr(ctx, "project_root", None)``, so a
+    context that carries no root at all arrives here as ``None``. Returning ``path.as_posix()``
+    for that case handed back the full absolute path -- username and directory layout included --
+    straight into the judge prompt and the serialised report, which is the one thing the first
+    sentence of this docstring promises never happens. With no root to be relative to, the bare
+    filename is the most that can be said without leaking where the file lives.
+    """
     if project_root is None:
-        return path.as_posix()
+        return Path(path.name).as_posix()
     root, resolved = Path(project_root).resolve(), path.resolve()
     try:
         return resolved.relative_to(root).as_posix()
