@@ -6275,9 +6275,16 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(root)
-                with patch(
-                    "studio.commands.kit._download_kit_from_github",
-                    side_effect=RuntimeError("rate limit"),
+                # `cmd_kit_install` goes through `_download_kit_from_github_with_authority`,
+                # which resolves the ref over the network before delegating to
+                # `_download_kit_from_github`. Patching only the latter left the resolve
+                # live, so the failure under test came from api.github.com rather than
+                # from the stub (#221).
+                with (
+                    patch("studio.commands.kit._download_kit_from_github_with_authority",
+                          side_effect=RuntimeError("rate limit")),
+                    patch("studio.commands.kit._resolve_github_ref",
+                          side_effect=RuntimeError("offline")),
                 ):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
@@ -6585,9 +6592,16 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(root)
-                with patch(
-                    "studio.commands.kit._download_kit_from_github",
-                    side_effect=RuntimeError("rate limit"),
+                # Same seam as the other update tests: `cmd_kit_update` goes through
+                # `_download_kit_from_github_with_authority`, which resolves the ref over
+                # the network first, and the failure path refreshes authority metadata
+                # through `_resolve_github_ref`. Patching only `_download_kit_from_github`
+                # left both live, so the failure came from api.github.com (#221).
+                with (
+                    patch("studio.commands.kit._download_kit_from_github_with_authority",
+                          side_effect=RuntimeError("rate limit")),
+                    patch("studio.commands.kit._resolve_github_ref",
+                          side_effect=RuntimeError("offline")),
                 ):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
@@ -6886,15 +6900,32 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
                 },
             }, adapter / "config" / "core.toml")
 
-            def _mock_download(owner, repo, version):
+            def _mock_download(owner, repo, requested_ref="", previous_entry=None):
+                # Signature and return shape of `_download_kit_from_github_with_authority`:
+                # (kit_source, resolved_version, authority_metadata).
                 if repo == "goodkit":
-                    return (good_src, "1.0")
-                raise RuntimeError("rate limit")
+                    return (good_src, "1.0", {"resolved_ref": "1.0"})
+                raise RuntimeError("download failed")
 
             cwd = os.getcwd()
             try:
                 os.chdir(root)
-                with patch("studio.commands.kit._download_kit_from_github", side_effect=_mock_download):
+                # The function `cmd_kit_update` actually calls is
+                # `_download_kit_from_github_with_authority`, which resolves the ref over the
+                # network before delegating to `_download_kit_from_github`. Patching only the
+                # latter meant the resolve ran for real and raised first, so the stub was never
+                # reached and the failure under test came from api.github.com -- a 403 rate
+                # limit, in practice -- rather than from the scenario (#221).
+                with (
+                    patch("studio.commands.kit._download_kit_from_github_with_authority",
+                          side_effect=_mock_download),
+                    # The failure path also refreshes authority metadata via
+                    # `_resolve_github_ref` to enrich the error record. It catches the
+                    # RuntimeError and degrades, so the test passed either way -- but it
+                    # is a second live request, which is what this stub removes.
+                    patch("studio.commands.kit._resolve_github_ref",
+                          side_effect=RuntimeError("offline")),
+                ):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
                         rc = cmd_kit_update(["--force", "-y"])
@@ -6909,6 +6940,11 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
                 bad_r = next(r for r in out["results"] if r["kit"] == "badkit")
                 self.assertEqual(bad_r["action"], "failed")
                 self.assertIn("message", bad_r)
+                # The half this test is named for, and never asserted: with the download
+                # stubbed at the wrong seam, the ref resolve raised for *both* kits, so
+                # "one good one bad" passed with both failing. Pin the good half.
+                good_r = next(r for r in out["results"] if r["kit"] == "goodkit")
+                self.assertNotEqual(good_r["action"], "failed", good_r)
             finally:
                 os.chdir(cwd)
 
@@ -6931,9 +6967,21 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(root)
-                with patch(
-                    "studio.commands.kit._download_kit_from_github",
-                    side_effect=RuntimeError("network error"),
+                # The function `cmd_kit_update` actually calls is
+                # `_download_kit_from_github_with_authority`, which resolves the ref over the
+                # network before delegating to `_download_kit_from_github`. Patching only the
+                # latter meant the resolve ran for real and raised first, so the stub was never
+                # reached and the failure under test came from api.github.com -- a 403 rate
+                # limit, in practice -- rather than from the scenario (#221).
+                with (
+                    patch("studio.commands.kit._download_kit_from_github_with_authority",
+                          side_effect=RuntimeError("network error")),
+                    # The failure path also refreshes authority metadata via
+                    # `_resolve_github_ref` to enrich the error record. It catches the
+                    # RuntimeError and degrades, so the test passed either way -- but it
+                    # is a second live request, which is what this stub removes.
+                    patch("studio.commands.kit._resolve_github_ref",
+                          side_effect=RuntimeError("offline")),
                 ):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
