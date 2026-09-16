@@ -99,6 +99,11 @@ CODE_INST_MISSING = "code-inst-missing"
 CODE_INST_ORPHAN = "code-inst-orphan"
 
 # ---------------------------------------------------------------------------
+# Codebase registration — what was in scope to check
+# ---------------------------------------------------------------------------
+CODEBASE_ENTRY_EMPTY = "codebase-entry-empty"
+
+# ---------------------------------------------------------------------------
 # TOC (Table of Contents) validation
 # ---------------------------------------------------------------------------
 TOC_MISSING = "toc-missing"
@@ -106,14 +111,38 @@ TOC_ANCHOR_BROKEN = "toc-anchor-broken"
 TOC_HEADING_NOT_IN_TOC = "toc-heading-not-in-toc"
 TOC_STALE = "toc-stale"
 
+# JIT-retrieval readiness signals (warning-only) — see constructorfabric/studio#104
+TOC_HEADING_DUPLICATE = "toc-heading-duplicate"
+TOC_HEADING_DEPTH_JUMP = "toc-heading-depth-jump"
+TOC_SECTION_TOO_LONG = "toc-section-too-long"
+TOC_MISSING_DESCRIPTION = "toc-missing-description"
+
 # ---------------------------------------------------------------------------
 # File errors
 # ---------------------------------------------------------------------------
 FILE_READ_ERROR = "file-read-error"
 FILE_LOAD_ERROR = "file-load-error"
+#: A file the reader declined because it exceeds the scan size ceiling. Distinct from
+#: FILE_READ_ERROR so a caller can branch on the code rather than re-stat the file or
+#: parse the message.
+FILE_TOO_LARGE = "file-too-large"
 
 # ---------------------------------------------------------------------------
 # Content language validation
 # ---------------------------------------------------------------------------
 CONTENT_LANGUAGE_VIOLATION = "LANG001"
+
+# ---------------------------------------------------------------------------
+# CDSL structure — CDSL.md FAIL rules (S.3-7, CL.1-4, CO.4-6)
+# ---------------------------------------------------------------------------
+CDSL_MISSING_CHECKBOX = "cdsl-missing-checkbox"
+CDSL_MISSING_PHASE_TOKEN = "cdsl-missing-phase-token"  # noqa: S105 -- error code, not a secret
+CDSL_MISSING_INST_ID = "cdsl-missing-inst-id"
+CDSL_INCOMPLETE_STEP_LINE = "cdsl-incomplete-step-line"
+CDSL_CODE_SYNTAX = "cdsl-code-syntax"
+CDSL_TYPE_ANNOTATION = "cdsl-type-annotation"
+CDSL_LANGUAGE_OPERATOR = "cdsl-language-operator"
+CDSL_NOT_PLAIN_ENGLISH = "cdsl-not-plain-english"
+CDSL_DUPLICATE_INST_ID = "cdsl-duplicate-inst-id"
+CDSL_PLACEHOLDER = "cdsl-placeholder"
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings

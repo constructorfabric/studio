@@ -9,7 +9,7 @@ import re
 import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from . import error_codes as EC
 
@@ -1215,6 +1215,387 @@ def _validate_unchecked_cdsl_steps(
         # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-emit-cdsl-error
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-mismatch
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
+# CDSL.md step-line grammar: `N. [ ] - `pN` - description - `inst-id``.
+#
+# Line-shape alone can't tell a malformed CDSL step apart from ordinary content that
+# happens to reuse the same `pN` priority-tag shape (DoD checklists, component lists,
+# ADR prose). Two signals open a section for validation:
+#   1. An explicit `**Steps**:`/`**Transitions**:` label, up to the next heading or
+#      bold label — the convention this repo's own FEATURE docs use.
+#   2. A heading section whose first real list item (skipping ID definitions/references
+#      and other bold labels) is already a *fully well-formed* CDSL line — this covers
+#      CDSL.md's own worked examples ("**Algorithm: Name**" / "**Flow: Name**" headers
+#      with no "Steps:" label at all) and the bundled SDLC kit's FEATURE example
+#      (a bare heading + ID line, straight into numbered steps).
+# Checks below only run on lines inside a section opened by one of these two signals.
+_CDSL_CANDIDATE_START_RE = re.compile(r"^(?:\d+\.\s+|-\s+)")
+_CDSL_HEADING_RE = re.compile(r"^#{1,6}\s")
+_CDSL_BOLD_LABEL_LINE_RE = re.compile(r"^\*\*[A-Za-z][A-Za-z0-9 /_-]*\*\*:\s*$")
+_CDSL_BLOCK_OPEN_LABELS = ("**Steps**:", "**Transitions**:")
+_CDSL_CHECKBOX_TOKEN_RE = re.compile(r"\[\s*[xX ]\s*\]")
+_CDSL_PHASE_TOKEN_RE = re.compile(r"`(?:p\d+|ph-\d+)`")
+_CDSL_INST_TOKEN_RE = re.compile(r"`inst-[a-z0-9-]+`")
+_CDSL_STEP_DESC_RE = re.compile(
+    r"`(?:p\d+|ph-\d+)`\s*-\s*(?P<desc>.+?)\s*-\s*`inst-[a-z0-9-]+`\s*$"
+)
+# S.6 / CL.3 — CDSL.md "Prohibited": function syntax (`fn`, `function`, `async`, `def`).
+# `def` is scoped to real function-def shape (`def name(`) because this repo's own
+# prose uses "def" as shorthand for "definition" (e.g. "ref done but def not done").
+_CDSL_FUNCTION_SYNTAX_RE = re.compile(r"\b(?:fn|function|async)\b|\bdef\s+\w+\s*\(")
+# S.7 — CDSL.md "Prohibited": type annotations (`: string`, `<T>`, `-> Type`). The
+# `: <type>` form is scoped to a known type-keyword list (rather than any word after
+# a colon) to avoid false positives on plain-English apposition like "list: enabled_entities".
+# Common English words that double as type names (set/map/list/object/array/any) are
+# deliberately excluded — "point: set up" and "resource: map X" are prose, not types.
+# The `<T>` generic form excludes SCREAMING_SNAKE_CASE (an underscore anywhere), since
+# this repo's own docs use `<ARTIFACT_KIND>`-style angle brackets for placeholder tokens,
+# not generics — a real generic type parameter is PascalCase or a single letter (`<T>`).
+_CDSL_TYPE_KEYWORDS = "string|str|int|integer|float|double|bool|boolean|void|optional|null|none|dict"
+_CDSL_TYPE_ANNOTATION_RE = re.compile(
+    rf"(?i:\b:\s*(?:{_CDSL_TYPE_KEYWORDS})\b)|(?:<[A-Z][A-Za-z0-9]*>)|(?:->\s*[A-Za-z_]\w*)"
+)
+# CL.2 — CDSL.md "Prohibited": language operators (`&&`, `||`, `=>`, `==`).
+# Excludes runs of 3+ `=` (git conflict markers like `=======`), which aren't operators.
+_CDSL_OPERATOR_RE = re.compile(r"=>|&&|\|\||(?<!=)==(?!=)")
+_CDSL_PLACEHOLDER_RE = re.compile(r"\b(?:TODO|FIXME|XXX|TBD)\b|\[PLACEHOLDER\]", re.IGNORECASE)
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
+def _cdsl_missing_tokens(stripped: str) -> List[Tuple[str, str]]:
+    """Return (error_code, spec_rule) pairs for tokens absent from a candidate step line."""
+    missing: List[Tuple[str, str]] = []
+    if not _CDSL_CHECKBOX_TOKEN_RE.search(stripped):
+        missing.append((EC.CDSL_MISSING_CHECKBOX, "S.3"))
+    if not _CDSL_PHASE_TOKEN_RE.search(stripped):
+        missing.append((EC.CDSL_MISSING_PHASE_TOKEN, "S.4"))
+    if not _CDSL_INST_TOKEN_RE.search(stripped):
+        missing.append((EC.CDSL_MISSING_INST_ID, "S.5"))
+    return missing
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+def _append_cdsl_prohibited_syntax_errors(
+    *,
+    desc: str,
+    artifact_path: Path,
+    line_no: int,
+    step_text: str,
+    errors: List[Dict[str, object]],
+) -> None:
+    """Flag function syntax, type annotations, and operators in a CDSL step description."""
+    triggered = False
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    if _CDSL_FUNCTION_SYNTAX_RE.search(desc):
+        errors.append(error(
+            "structure",
+            f"CDSL step uses code/function syntax (S.6), not plain English: `{step_text}`",
+            code=EC.CDSL_CODE_SYNTAX,
+            path=artifact_path,
+            line=line_no,
+        ))
+        triggered = True
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    if _CDSL_TYPE_ANNOTATION_RE.search(desc):
+        errors.append(error(
+            "structure",
+            f"CDSL step uses a type annotation (S.7), not plain English: `{step_text}`",
+            code=EC.CDSL_TYPE_ANNOTATION,
+            path=artifact_path,
+            line=line_no,
+        ))
+        triggered = True
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    if _CDSL_OPERATOR_RE.search(desc):
+        errors.append(error(
+            "structure",
+            f"CDSL step uses a language operator (CL.2), not plain English: `{step_text}`",
+            code=EC.CDSL_LANGUAGE_OPERATOR,
+            path=artifact_path,
+            line=line_no,
+        ))
+        triggered = True
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    if triggered:
+        errors.append(error(
+            "structure",
+            f"CDSL step is not language-agnostic plain English (CL.1/CL.4): `{step_text}`",
+            code=EC.CDSL_NOT_PLAIN_ENGLISH,
+            path=artifact_path,
+            line=line_no,
+        ))
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-missing-token
+def _validate_cdsl_step_candidate(
+    *,
+    line_no: int,
+    step_text: str,
+    artifact_path: Path,
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+) -> None:
+    """Validate one CDSL step candidate against CDSL.md's FAIL rules.
+
+    Missing-token findings (S.3/S.4/S.5/CO.4) are reported as warnings rather
+    than errors: this repo has pre-existing FEATURE docs authored before the
+    inst-id convention (see architecture/features/dependency-mapping.md).
+    Promote these to `errors` once that backlog is retrofitted — tracked in
+    issue #85, with the current offending files enumerated and enforced by
+    `tests/test_cdsl_structure_validate.py::test_cdsl_missing_token_warnings_match_known_backlog_allowlist`.
+    """
+    missing = _cdsl_missing_tokens(step_text)
+    for code, rule in missing:
+        warnings.append(error(
+            "structure",
+            f"CDSL step is missing its {rule} token: `{step_text}`",
+            code=code,
+            path=artifact_path,
+            line=line_no,
+        ))
+    if missing:
+        warnings.append(error(
+            "structure",
+            f"Incomplete CDSL step line, missing required token(s): `{step_text}`",
+            code=EC.CDSL_INCOMPLETE_STEP_LINE,
+            path=artifact_path,
+            line=line_no,
+        ))
+        return
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-missing-token
+
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+    full_match = _CDSL_STEP_DESC_RE.search(step_text)
+    if not full_match:
+        return
+    _append_cdsl_prohibited_syntax_errors(
+        desc=full_match.group("desc"),
+        artifact_path=artifact_path,
+        line_no=line_no,
+        step_text=step_text,
+        errors=errors,
+    )
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-prohibited-syntax
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
+def _validate_cdsl_duplicate_inst_ids(
+    *,
+    cdsl_hits: Sequence[Dict[str, object]],
+    artifact_path: Path,
+    errors: List[Dict[str, object]],
+) -> None:
+    """Flag a repeated `inst-{id}` under the same parent ID (CO.5)."""
+    seen: Dict[Tuple[str, str], int] = {}
+    for hit in cdsl_hits:
+        pid = str(hit.get("parent_id") or "").strip()
+        inst_s = str(hit.get("inst") or "").strip()
+        if not pid or not inst_s:
+            continue
+        key = (pid, inst_s)
+        if key in seen:
+            errors.append(error(
+                "structure",
+                f"Duplicate instruction ID (CO.5) `inst-{inst_s}` under `{pid}` (first seen at line {seen[key]})",
+                code=EC.CDSL_DUPLICATE_INST_ID,
+                path=artifact_path,
+                line=int(hit.get("line", 1) or 1),
+                id=pid,
+                inst=inst_s,
+            ))
+        else:
+            seen[key] = int(hit.get("line", 1) or 1)
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
+def _is_real_cdsl_item_start(stripped: str) -> bool:
+    """Return whether *stripped* starts a genuine CDSL list item.
+
+    Excludes ID definitions/references, which use the same dash-prefixed
+    shape but aren't CDSL steps.
+    """
+    from .document import _ID_DEF_RE, _ID_REF_RE, _normalize_reference_candidate
+
+    if not _CDSL_CANDIDATE_START_RE.match(stripped):
+        return False
+    return not (_ID_DEF_RE.match(stripped) or _ID_REF_RE.match(_normalize_reference_candidate(stripped)))
+
+
+def _section_starts_with_wellformed_cdsl_line(entries: List[Tuple[int, str, str]]) -> bool:
+    """Return whether a heading section's first real list item is fully well-formed CDSL.
+
+    Skips any non-list-item pre-amble — blank lines, bold labels/headers of any
+    shape (`**Steps**:`, `**Actors**:`, `**Algorithm: Name**`, ...), and plain
+    prose (`Input: ...`, `Actor: ...`) — while looking for the first genuine
+    CDSL-shaped list item. That item's *full* well-formedness (checkbox +
+    phase + inst, all present) is the signal, so ordinary checklists that
+    merely start with a numbered item (no inst-id at all) don't qualify. An
+    explicit `**Steps**:`/`**Transitions**:` label short-circuits to True.
+    """
+    from .document import _CDSL_LINE_RE
+
+    for _line_no0, _raw_line, stripped in entries:
+        if not stripped:
+            continue
+        if stripped in _CDSL_BLOCK_OPEN_LABELS:
+            return True
+        if not _CDSL_CANDIDATE_START_RE.match(stripped):
+            continue
+        if not _is_real_cdsl_item_start(stripped):
+            continue
+        return bool(_CDSL_LINE_RE.match(stripped))
+    return False
+
+
+def _iter_cdsl_block_lines(lines: List[str]):  # pylint: disable=too-many-locals,too-many-branches
+    """Yield fenced-out lines inside a recognized CDSL section.
+
+    A section (the lines between one heading and the next) is in scope when
+    either an explicit `**Steps**:`/`**Transitions**:` label opens it, or its
+    first real list item is already fully well-formed CDSL — see
+    `_section_starts_with_wellformed_cdsl_line`. Either way, a later bold
+    label that isn't a recognized opener (e.g. `**Supporting**:`) still ends
+    the scope early within the same section.
+
+    Unlike `document._iter_non_fenced_lines`, blank lines are yielded too (as
+    an empty `stripped`) rather than skipped — callers use them as an item
+    boundary, so trailing prose after the last step (before any heading or
+    label closes the block) isn't folded into it as a continuation.
+    """
+    from .document import _CODE_FENCE_RE
+
+    entries: List[Tuple[int, str, str]] = []
+    in_fence = False
+    for line_no0, raw_line in enumerate(lines):
+        if _CODE_FENCE_RE.match(raw_line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        entries.append((line_no0, raw_line, raw_line.strip()))
+
+    sections: List[Tuple[int, int]] = []
+    section_start = 0
+    for idx, (_line_no0, _raw_line, stripped) in enumerate(entries):
+        if _CDSL_HEADING_RE.match(stripped):
+            if idx > section_start:
+                sections.append((section_start, idx))
+            section_start = idx + 1
+    sections.append((section_start, len(entries)))
+
+    for start, end in sections:
+        in_scope = _section_starts_with_wellformed_cdsl_line(entries[start:end])
+        seen_first_item = False
+        for idx in range(start, end):
+            line_no0, raw_line, stripped = entries[idx]
+            if _CDSL_BOLD_LABEL_LINE_RE.match(stripped):
+                if stripped in _CDSL_BLOCK_OPEN_LABELS:
+                    in_scope = True
+                    seen_first_item = True
+                elif seen_first_item:
+                    # A non-opening label (e.g. **Supporting**:) only closes scope
+                    # once real content has been seen — before that it's pre-amble
+                    # (**Actors**:, **Algorithm: Name**, ...), not a closing label.
+                    in_scope = False
+                continue
+            if _is_real_cdsl_item_start(stripped):
+                seen_first_item = True
+            if in_scope:
+                yield line_no0 + 1, raw_line, stripped
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-cdsl-structure
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-candidate
+def _iter_cdsl_step_candidates(lines: List[str]):
+    """Group CDSL-block lines into logical step items, joining continuation lines.
+
+    A new item starts at any numbered/dash list marker; non-item lines that
+    follow are continuation text and get folded into the open item, so a step
+    description (and its trailing `inst-id` token) may wrap onto later lines.
+    A blank line always closes the current item, so trailing prose separated
+    from the last step by a blank line is never folded into it.
+    """
+    current_line_no: Optional[int] = None
+    current_parts: List[str] = []
+    for line_no, _raw_line, stripped in _iter_cdsl_block_lines(lines):
+        if not stripped:
+            if current_line_no is not None:
+                yield current_line_no, " ".join(current_parts)
+            current_line_no = None
+            current_parts = []
+            continue
+        if _CDSL_CANDIDATE_START_RE.match(stripped):
+            if current_line_no is not None:
+                yield current_line_no, " ".join(current_parts)
+            current_line_no = line_no
+            current_parts = [stripped]
+        elif current_line_no is not None:
+            current_parts.append(stripped)
+    if current_line_no is not None:
+        yield current_line_no, " ".join(current_parts)
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-candidate
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
+def _cdsl_block_line_numbers(lines: List[str]) -> Set[int]:
+    """Return the 1-indexed line numbers that fall inside a CDSL Steps:/Transitions: block."""
+    return {line_no for line_no, _raw_line, _stripped in _iter_cdsl_block_lines(lines)}
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-duplicate-inst
+
+
+def _validate_cdsl_structure(
+    *,
+    artifact_path: Path,
+    cdsl_hits: Sequence[Dict[str, object]],
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+) -> None:
+    """Enforce CDSL.md's FAIL rules (S.3-7, CL.1-4, CO.4-6) across an artifact."""
+    from .document import _ID_DEF_RE, _ID_REF_RE, _normalize_reference_candidate, read_text_safe
+
+    lines = read_text_safe(artifact_path)
+    if lines is None:
+        return
+
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-candidate
+    for line_no, joined_text in _iter_cdsl_step_candidates(lines):
+        # Task-tracked ID definitions/references use the same `pN` priority-token
+        # shape as a CDSL phase token — exclude anything the ID scanner already
+        # classifies as a definition or reference line.
+        if _ID_DEF_RE.match(joined_text) or _ID_REF_RE.match(_normalize_reference_candidate(joined_text)):
+            continue
+        # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-placeholder
+        if _CDSL_PLACEHOLDER_RE.search(joined_text):
+            errors.append(error(
+                "structure",
+                f"CDSL step contains a placeholder or TODO marker (CO.6): `{joined_text}`",
+                code=EC.CDSL_PLACEHOLDER,
+                path=artifact_path,
+                line=line_no,
+            ))
+        # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-placeholder
+        _validate_cdsl_step_candidate(
+            line_no=line_no,
+            step_text=joined_text,
+            warnings=warnings,
+            artifact_path=artifact_path,
+            errors=errors,
+        )
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-foreach-cdsl-candidate
+
+    # scan_cdsl_instructions scans the whole document, not just Steps:/Transitions:
+    # blocks — e.g. Supporting: bullets reuse the same well-formed CDSL line shape.
+    # Restrict the duplicate-ID check to hits that actually fall inside a block.
+    in_scope_lines = _cdsl_block_line_numbers(lines)
+    scoped_hits = [hit for hit in cdsl_hits if int(hit.get("line", 0) or 0) in in_scope_lines]
+    _validate_cdsl_duplicate_inst_ids(cdsl_hits=scoped_hits, artifact_path=artifact_path, errors=errors)
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
 def _validate_artifact_heading_phase(
@@ -1385,6 +1766,7 @@ def _validate_artifact_identifier_phase(
     kind: str,
     registered_systems: Optional[Iterable[str]],
     errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
 ) -> None:
     from .document import scan_cpt_ids, scan_cdsl_instructions
 
@@ -1403,6 +1785,12 @@ def _validate_artifact_identifier_phase(
         kind=kind,
         artifact_path=artifact_path,
         errors=errors,
+    )
+    _validate_cdsl_structure(
+        artifact_path=artifact_path,
+        cdsl_hits=cdsl_hits,
+        errors=errors,
+        warnings=warnings,
     )
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-scan-cdsl
     _validate_cdsl_parent_child_state(
@@ -1485,6 +1873,7 @@ def validate_artifact_file(
         kind=kind,
         registered_systems=registered_systems,
         errors=errors,
+        warnings=warnings,
     )
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-return-structure

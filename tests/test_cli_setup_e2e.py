@@ -880,7 +880,15 @@ class TestValidateKitsAndInitE2E(unittest.TestCase):
             root = Path(td) / "proj"
             _bootstrap_legacy_project(root, legacy_dir=".bootstrap")
 
-            with patch("studio.commands.migrate_from_cypilot._run_followup_update", return_value=(0, {"status": "PASS"})):
+            with (
+                patch("studio.commands.migrate_from_cypilot._run_followup_update", return_value=(0, {"status": "PASS"})),
+                # The kit update too. Left live, it is not a local call: `cmd_kit_update`
+                # queries api.github.com for each kit's latest tag and downloads from
+                # codeload.github.com, and a throttled request turns the migration result
+                # into WARN -- failing an assertion about migration for a reason that has
+                # nothing to do with it. Same omission as the fixture in #214.
+                patch("studio.commands.migrate_from_cypilot._run_followup_kit_update", return_value=0),
+            ):
                 rc, out, stderr = _run_main_json(
                     [
                         "init",
@@ -941,7 +949,15 @@ class TestValidateKitsAndInitE2E(unittest.TestCase):
             root = Path(td) / "proj"
             _bootstrap_legacy_project(root, legacy_dir="cypilot", version="3.9.0")
 
-            with patch("studio.commands.migrate_from_cypilot._run_followup_update", return_value=(0, {"status": "PASS"})):
+            with (
+                patch("studio.commands.migrate_from_cypilot._run_followup_update", return_value=(0, {"status": "PASS"})),
+                # The kit update too. Left live, it is not a local call: `cmd_kit_update`
+                # queries api.github.com for each kit's latest tag and downloads from
+                # codeload.github.com, and a throttled request turns the migration result
+                # into WARN -- failing an assertion about migration for a reason that has
+                # nothing to do with it. Same omission as the fixture in #214.
+                patch("studio.commands.migrate_from_cypilot._run_followup_kit_update", return_value=0),
+            ):
                 rc, out, stderr = _run_main_json(
                     [
                         "init",
@@ -983,6 +999,7 @@ class TestValidateKitsAndInitE2E(unittest.TestCase):
             with (
                 patch("studio.commands.migrate_from_cypilot._run_legacy_update_to_baseline", side_effect=_upgrade_legacy),
                 patch("studio.commands.migrate_from_cypilot._run_followup_update", return_value=(0, {"status": "PASS"})),
+                patch("studio.commands.migrate_from_cypilot._run_followup_kit_update", return_value=0),
             ):
                 rc, out, stderr = _run_main_json(
                     [

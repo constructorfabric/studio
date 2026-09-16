@@ -245,6 +245,18 @@ def _scan_scope_markers(lines: List[str]) -> List[int]:
 
 
 # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-block-markers
+def _has_block_marker(lines: List[str]) -> bool:
+    """Whether any block marker appears, matched or not.
+
+    Separates "no block tracing here" from "block tracing that did not close",
+    which closed-pair counting cannot tell apart.
+    """
+    return any(
+        _BLOCK_BEGIN_RE.search(line) or _BLOCK_END_RE.search(line)
+        for line in lines
+    )
+
+
 def _scan_block_ranges(lines: List[str]) -> List[Tuple[int, int]]:
     """Scan closed block-marker ranges in a file."""
     return _collect_block_ranges(lines)
@@ -357,7 +369,13 @@ def scan_file_coverage(path: Path) -> Optional[FileCoverage]:
 
     scope_count = len(scope_markers)
     block_count = len(block_ranges)
-    has_scope_only = scope_count > 0 and not block_count
+    # "Scope-only" means no block tracing was attempted, not that none of it
+    # closed. Deriving it from closed pairs alone made a file with a scope
+    # marker and an unmatched @cpt-begin indistinguishable from a deliberate
+    # whole-file claim -- so broken tracing inherited whatever treatment the
+    # deliberate case gets. Granularity stays 0.0 for both, since no pair
+    # closed; only the classification differs.
+    has_scope_only = scope_count > 0 and not block_count and not _has_block_marker(lines)
     # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-init
 
     # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-calc-ranges

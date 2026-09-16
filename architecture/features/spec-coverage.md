@@ -14,6 +14,7 @@
   - [Calculate Coverage Metrics](#calculate-coverage-metrics)
   - [Calculate Granularity Score](#calculate-granularity-score)
   - [Generate Coverage Report](#generate-coverage-report)
+  - [Assess Semantic Coverage (advisory)](#assess-semantic-coverage-advisory)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Coverage Report Lifecycle](#coverage-report-lifecycle)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -65,35 +66,40 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 - User runs `cfs spec-coverage` → all registered codebase files scanned, coverage report generated with per-file and summary statistics
 - User runs `cfs spec-coverage --min-coverage 80` → same as above, exit code 2 if coverage below threshold
 - User runs `cfs spec-coverage --min-granularity 0.7` → same as above, exit code 2 if granularity below threshold
-- User runs `cfs spec-coverage --min-file-granularity 0.3` → same as above, exit code 2 if any covered file granularity below threshold
+- User runs `cfs spec-coverage --min-file-granularity 0.3` → same as above, exit code 2 if any **block-traced** file's granularity is below threshold. A file whose coverage rests on a whole-file scope marker scores 0.0 by definition rather than by measurement, so it is reported under its own heading instead of judged against this floor — judging it would make any positive floor reject every re-export module and entry point, which is what made this threshold unusable as a gate
 
 **Error Scenarios**:
-- No codebase entries registered → ERROR with hint to configure artifacts.toml
-- No code files found → report with 0% coverage
+- No codebase entries registered → report with `applicable: false` and a hint to configure artifacts.toml; exit code 2 only if a positive threshold was demanded
+- No code files found → report with `applicable: false` naming how many registered entries resolved to no files, and 0% coverage
 
 **Steps**:
-1. [x] - `p1` - User invokes `cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose]` - `inst-user-spec-coverage`
+1. [x] - `p1` - User invokes `cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose] [--semantic]` - `inst-user-spec-coverage`
 2. [x] - `p1` - Load project context: studio config, registry, systems, codebase entries - `inst-load-context`
 3. [x] - `p1` - Resolve all code files from registered codebase entries - `inst-resolve-code-files`
 4. [x] - `p1` - **FOR EACH** code file, scan for `@cpt-*` markers using `cpt-studio-algo-spec-coverage-scan` - `inst-foreach-file`
 5. [x] - `p1` - Calculate coverage metrics using `cpt-studio-algo-spec-coverage-metrics` - `inst-calc-metrics`
 6. [x] - `p1` - Calculate granularity scores using `cpt-studio-algo-spec-coverage-granularity` - `inst-calc-granularity`
 7. [x] - `p1` - Generate report using `cpt-studio-algo-spec-coverage-report` - `inst-gen-report`
-8. [x] - `p1` - **IF** any threshold flag set AND metric below threshold → exit code 2 - `inst-if-threshold`
+8. [x] - `p1` - **IF** any positive threshold flag set AND (metric below threshold OR nothing was assessed) → exit code 2 - `inst-if-threshold`
 9. [x] - `p1` - **RETURN** JSON report (summary, per-file stats, uncovered files) - `inst-return-report`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for spec-coverage command - `inst-coverage-imports`
+- [x] - `p1` - Reject a non-finite threshold at parse time, so a NaN floor cannot be dropped from the demanded set and let an empty scope pass a gate it never ran - `inst-threshold-argtype`
 - [x] - `p1` - Build CLI parser for threshold, system, verbosity, and output flags - `inst-build-parser`
 - [x] - `p1` - Collect known system slugs from nested system tree for selector validation - `inst-collect-system-slugs`
 - [x] - `p1` - Collect codebase file paths from registered entries and recurse into child systems - `inst-collect-codebase-files`
 - [x] - `p1` - Validate selected `--system` values and build unknown-system failure payloads - `inst-validate-systems`
 - [x] - `p1` - Filter ignored and out-of-root files before scanning - `inst-filter-ignored-files`
 - [x] - `p1` - Build empty coverage result when registry yields no code files - `inst-empty-report`
+- [x] - `p1` - Count codebase entries registered by the selected systems and recurse into child systems, including the default all-systems selection, so an unregistered registry is distinguishable from one that resolves to no files - `inst-count-registered-entries`
+- [x] - `p1` - Detect which threshold flags demand an enforceable guarantee, ignoring non-positive values that any scope satisfies - `inst-detect-requested-thresholds`
 - [x] - `p1` - Apply per-report threshold checks and accumulate failure messages - `inst-apply-thresholds`
 - [x] - `p1` - Resolve paths relative to project root for human-readable output - `inst-rel-path`
 - [x] - `p1` - Route JSON report to file or terminal UI - `inst-output-report`
 - [x] - `p1` - Format uncovered ranges and render human-friendly per-file/status sections - `inst-human-report-helpers`
+- [x] - `p1` - Name the files whose coverage rests on a whole-file scope marker, largest first, with their count and total claimed lines - `inst-human-report-claims`
+- [x] - `p1` - When `--semantic` is set, run the advisory semantic pass (`cpt-studio-algo-semantic-coverage-pass`) and attach its section to the report **after** status/exit are computed, so it can never gate - `inst-attach-semantic`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -165,6 +171,23 @@ A file with good granularity has approximately 1 CDSL instruction (`@cpt-begin`/
 **Supporting**:
 - [x] - `p1` - Report function signature and relative path helper - `inst-report-datamodel`
 
+### Assess Semantic Coverage (advisory)
+
+- [x] `p1` - **ID**: `cpt-studio-algo-semantic-coverage-pass`
+
+**Input**: registered artifacts (for id→doc resolution), the scanned code files, the coverage report (for scope)
+
+**Output**: an advisory `semantic` report section — never affects status/exit. Success shape: `assessed` / `presumed_covered` / `unjudgeable[]` / `findings[]` / `skipped_excluded` / `schema_version` / `advisory`. If the pass raises, it degrades to `{advisory: true, error: <message>}` instead.
+
+**Steps**:
+1. [x] - `p1` - Build the id→declaring-artifact map from cpt definition hits across the registered artifacts - `inst-scov-defmap`
+2. [x] - `p1` - Build one pairing per marked block: code = the block's lines, requirement = the algo declaration resolved from the block's id (unjudgeable when unresolved) - `inst-scov-pairings`
+3. [x] - `p1` - Run the advisory engine (`assess`) over the pairings, passing the coverage report for scope, and serialise the result as the `semantic` section (`advisory: true`) - `inst-scov-run`
+4. [x] - `p1` - Render a one-line advisory human summary (counts + weak/wrong tally) - `inst-scov-summary`
+
+**Supporting**:
+- [x] - `p1` - Module imports and setup for the semantic-coverage pass - `inst-scov-imports`
+
 ## 4. States (CDSL)
 
 ### Coverage Report Lifecycle
@@ -215,7 +238,7 @@ The system **MUST** calculate instruction density per covered file: `min(1.0, bl
 
 - [x] `p1` - **ID**: `cpt-studio-dod-spec-coverage-report`
 
-The system **MUST** output a JSON report with: summary (total files, covered files, coverage %, granularity score), per-file statistics (path, total lines, covered lines, coverage %, granularity, uncovered line ranges), and list of completely uncovered files. The report format **MUST** mirror `coverage.py` JSON output structure. Exit code 0 when above thresholds, 2 when below.
+The system **MUST** output a JSON report with: summary (total files, covered files, coverage %, granularity score), per-file statistics (path, total lines, covered lines, coverage %, granularity, uncovered line ranges), and list of completely uncovered files. The report format **MUST** mirror `coverage.py` JSON output structure. The report **MUST** state whether there was anything to assess, so a scope that yielded no code files is distinguishable from a fully covered one. Exit code 0 when at or above thresholds, 2 when below or when a positive threshold was demanded over a scope that could not be assessed.
 
 **Implements**:
 - `cpt-studio-flow-spec-coverage-report`
@@ -237,6 +260,7 @@ The system **MUST** output a JSON report with: summary (total files, covered fil
 | Report Generator | `skills/.../utils/coverage.py` | JSON report assembly |
 | Codebase Utils | `skills/.../utils/codebase.py` | Existing code scanning infrastructure (reused) |
 | Language Config | `skills/.../utils/language_config.py` | Language-specific comment patterns (reused) |
+| Semantic Coverage Pass | `skills/.../utils/semantic_coverage.py` | Advisory: build pairings, run the semantic engine, serialise the `semantic` section (never gates) |
 
 ## 7. Acceptance Criteria
 
@@ -246,9 +270,12 @@ The system **MUST** output a JSON report with: summary (total files, covered fil
 - [x] Granularity metric correctly penalizes files with few instructions relative to their size
 - [x] `--min-coverage N` flag causes exit code 2 when coverage is below threshold
 - [x] `--min-granularity N` flag causes exit code 2 when granularity is below threshold
-- [x] `--min-file-granularity N` flag causes exit code 2 when any covered file's granularity is below threshold
+- [x] `--min-file-granularity N` flag causes exit code 2 when any block-traced file's granularity is below threshold; files whose coverage rests on a whole-file scope marker are outside this floor and are listed under "Whole-file scope claims" instead
+- [x] Whole-file scope claims are reported with their count, total claimed lines, and paths ordered largest first, so an untraced claim is visible rather than averaged away
 - [x] `--min-file-coverage N` flag causes exit code 2 when any file's coverage is below threshold
 - [x] `--verbose` flag includes per-file marker details in report
 - [x] Report format mirrors `coverage.py` JSON structure (summary + per-file)
 - [x] Scanning completes in ≤ 5 seconds for typical repositories
-- [x] All output is valid JSON to stdout with exit codes 0/1/2
+- [x] An empty scope reports `applicable: false` and says why, on both the JSON and human surfaces
+- [x] A positive `--min-*` threshold over an empty scope exits 2; a non-positive one exits 0
+- [x] JSON mode emits valid JSON to stdout and human mode emits formatted text, with exit codes 0/1/2 on both

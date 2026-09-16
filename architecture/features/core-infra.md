@@ -32,6 +32,7 @@
   - [Registry Parsing](#registry-parsing)
   - [Context Loading](#context-loading)
   - [Mirror Override](#mirror-override)
+  - [Decision Log](#decision-log)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Project Installation State](#project-installation-state)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -179,7 +180,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 11. [x] - `p1` - **ELSE**: skip kit installation, display install command for later use - `inst-skip-kit-declined`
 12. [x] - `p1` - Algorithm: inject root AGENTS.md using `cpt-studio-algo-core-infra-inject-root-agents` - `inst-inject-agents`
 13. [x] - `p1` - Algorithm: create config/AGENTS.md using `cpt-studio-algo-core-infra-create-config-agents` - `inst-create-config-agents`
-14. [x] - `p1` - **RETURN** JSON: `{status, install_dir, kits_installed, agents_configured, systems}` (exit 0) - `inst-return-init-ok`
+14. [x] - `p1` - **RETURN** JSON: `{status, project_root, studio_dir, core_toml, dry_run, actions, root_system, runtime_tracking, agent_tracking, kit_tracking}`, plus `backups` when any file was replaced (exit 0) - `inst-return-init-ok`
 15. [x] - `p1` - Helper functions: copy from cache, generate READMEs for .core/.gen/config dirs, default core.toml, path prompting, slug-to-PascalCase - `inst-init-helpers`
 16. [x] - `p1` - Detect existing Studio installation by reading AGENTS.md TOML block with `cf-studio-path` variable - `inst-init-detect-existing`
 17. [x] - `p1` - Inject/update CLAUDE.md managed block for Claude agent integration - `inst-init-inject-claude`
@@ -194,6 +195,17 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - Default SDLC kit install post-processing: merge returned actions/errors and downgrade non-pass statuses to warnings for human output - `inst-default-kit-actions`
 - [x] - `p1` - Build the summarized default-kit result payload from the installed artifacts directory - `inst-summarize-default-kit`
 - [x] - `p1` - Finalize init-managed surfaces: regenerate aggregates, ensure config extension files, persist install metadata, inject managed root files, and rewrite `.gitignore` - `inst-finalize-init-surfaces`
+- [x] - `p1` - Detect every source root under the project root for the default registry's `codebase`, excluding the Constructor Studio installation tree, recording only the extensions each one holds, and warn when none is found - `inst-detect-codebase-roots`
+- [x] - `p1` - Fix the detection policy: the source extensions of record, the directory names skipped at any depth or at the top level only, and the depth bound - `inst-detect-codebase-policy`
+- [x] - `p1` - Classify filesystem errors during detection: permission and walk-race errors register less and are reported, any other error refuses to register a partial tree - `inst-detect-codebase-error-policy`
+- [x] - `p1` - Label a path relative to the project root for output, resolving both sides so a symlinked path prefix does not discard the directory context - `inst-detect-codebase-relative-label`
+- [x] - `p1` - List a candidate directory, re-checking for a symlink immediately before listing, and classify any listing failure - `inst-detect-codebase-list-children`
+- [x] - `p1` - Probe each listed child's metadata explicitly, refusing symlinks and non-regular files, and record the suffix in the case it has on disk - `inst-detect-codebase-file-probe`
+- [x] - `p1` - Collect every source extension beneath an accepted root under the same skip and depth policy, because the entry covers the whole subtree - `inst-detect-codebase-subtree-extensions`
+- [x] - `p1` - Decide whether the walk descends into a given child: never a symlink or non-directory, never hidden or skipped-anywhere, and non-product names refused at the top level only - `inst-detect-codebase-skips`
+- [x] - `p1` - Read one candidate directory during the walk: list its children and collect the source extensions they hold - `inst-detect-codebase-read-dir`
+- [x] - `p1` - Record the shallowest directory holding source as a root, never the project root itself, and descend no further than the depth bound - `inst-detect-codebase-record-root`
+- [x] - `p1` - Emit the detected roots in a deterministic order with each entry's extensions sorted - `inst-detect-codebase-emit`
 - [x] - `p1` - Build the final init result payload with paths, tracking policy, actions, and optional backups - `inst-build-init-result`
 - [x] - `p1` - Emit the structured init error result with project/install paths, dry-run state, errors, and optional backups - `inst-init-error-result`
 
@@ -584,6 +596,12 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - `file_action`: file-change icon printer (created/updated/unchanged/etc.) to stderr - `inst-ui-file-action`
 - [x] - `p1` - `result` JSON branch: serialize result dict as JSON to stdout in `--json` mode - `inst-ui-result-json`
 - [x] - `p1` - `result` human branch: invoke `human_fn` or generic status/message fallback to stderr - `inst-ui-result-human`
+- [x] - `p1` - `require_existing_file`: resolve a CLI file-path argument, emitting the standard "File not found" ERROR result and returning `None` when it doesn't exist -- shared by every single-file-argument command - `inst-ui-require-existing-file`
+- [x] - `p1` - `JsonSafeArgumentParser`/`parse_args_or_json_error`: an `ArgumentParser` whose parsing failures raise instead of printing a plain-text usage banner and exiting directly, so a missing/malformed argument still honors the `--json` output contract (`--help`/`--version` are unaffected, since those exit via a different path) - `inst-ui-json-safe-argparse`
+- [x] - `p1` - `parse_file_command`: the combined "parse args safely, then require an existing file" two-step every single-file-argument command needs, extracted once a third command repeated the pattern identically enough for pylint's duplicate-code check to catch it - `inst-ui-parse-file-command`
+- [x] - `p1` - `report_read_error`: the standard "Cannot read file" ERROR result for an `OSError`/`UnicodeDecodeError` raised while reading a file `parse_file_command` already confirmed exists, extracted once a second command repeated the identical try/except/result block - `inst-ui-report-read-error`
+- [x] - `p1` - `call_with_read_error_handling`: call a zero-arg callable that reads a file, catching `OSError`/`UnicodeDecodeError` and reporting via `report_read_error`, extracted once the identical try/except block appeared across four commands - `inst-ui-call-with-read-error-handling`
+- [x] - `p1` - `display_heading`: render a retrieval section's heading for human display, substituting a readable label for the synthetic preamble section's `None` heading instead of the literal string "None" - `inst-ui-display-heading`
 - [x] - `p1` - Create a temporary stderr-bound logger handler with plain-message formatting for UI diagnostics - `inst-ui-stderr-handler`
 - [x] - `p1` - Emit one plain-text stderr message through the dedicated helper, allowing a logger-backed implementation internally, then close the handler - `inst-ui-stderr-emit`
 - [x] - `p1` - `relpath`: convert absolute path to cwd-relative path with fallback - `inst-ui-relpath`
@@ -691,6 +709,29 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - `_load_file`: parse a single `mirrors.toml` file into `(from, to)` tuple list - `inst-mirror-load-file`
 - [x] - `p1` - `_load_overrides`: merge XDG and brand-home entries; brand-home wins on duplicate `from` - `inst-mirror-merge-overrides`
 - [x] - `p1` - `apply_override`: apply all registered overrides as substring replacements to a URL - `inst-mirror-apply-override`
+
+### Decision Log
+
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-decision-log`
+
+**Input**: A decision event (type + payload) emitted by an engine command
+
+**Output**: One appended JSONL line in the local decision log, or a silent no-op
+
+1. [x] - `p1` - Generate a decision id used to chain the events of one decision - `inst-log-id`
+2. [x] - `p1` - Resolve the log location (env override, else project `.cache/decisions.jsonl`, else no-op) and the persistent opt-out sentinel path - `inst-log-locate`
+3. [x] - `p1` - Report whether logging is enabled — an env off-value or the sentinel file disables it - `inst-log-enabled`
+4. [x] - `p1` - Redact `$HOME` to `~` recursively so no username is recorded - `inst-log-redact`
+5. [x] - `p1` - Append one schema-versioned event (run_id, decision_id, event, command, payload); never raise into the caller; rotate by size; show a one-time notice - `inst-log-record`
+   - [x] - `p1` - Restrict the log, its lock and their directory to the owner on creation, so a log this module calls private is not left world-readable by the ambient umask - `inst-log-restrict-perms`
+6. [x] - `p1` - Typed record helpers — routing, dispatch, validation, review, escalation, and command invocation (exit code, duration, arg-shape) — that call the writer - `inst-log-api`
+   - [x] - `p1` - `record_read`: log one read-and-answer event (method, target, lines, tokens, source) in the one shared schema every JIT-retrieval method's real cost is measured in - `inst-log-read-wrapper`
+7. [x] - `p1` - Read events back oldest-first (skipping unparseable lines) and summarise counts by event and run - `inst-log-read`
+   - [x] - `p1` - `summarize_reads`: aggregate logged `"read"` events into a per-method token/line/count table - `inst-log-summarize-reads`
+
+**Supporting**:
+- [x] - `p1` - `cfs usage-report` CLI wrapper: aggregate `summarize()` and `summarize_reads()` into one payload - `inst-usage-report-cmd`
+- [x] - `p1` - Human-friendly formatter for `cfs usage-report` output - `inst-usage-report-cmd-format`
 
 ## 4. States (CDSL)
 
@@ -932,6 +973,7 @@ See ADR-0020 (`architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-
 | TOML Utilities | `skills/.../utils/toml_utils.py` | TOML reading/writing, markdown TOML extraction |
 | Artifacts Meta | `skills/.../utils/artifacts_meta.py` | Artifacts registry parsing, autodetect expansion |
 | Mirror Override | `src/studio_proxy/mirrors.py` | URL override load/apply/set/remove/list; dual-location config; canonicalization |
+| Decision Log | `skills/.../utils/decision_log.py` | Local-only JSONL decision/outcome log: locate/opt-out, redact, append (never fatal), rotate, read/summarize |
 
 ## 7. Acceptance Criteria
 

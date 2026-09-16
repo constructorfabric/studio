@@ -1388,10 +1388,14 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
                 return set()
 
         with TemporaryDirectory() as td1:
-            with TemporaryDirectory() as td2:
+            with TemporaryDirectory() as _td2:
                 root = Path(td1)
-                outside = Path(td2)
-                code_file = outside / "x.py"
+                # Inside the project: a codebase entry resolving outside the
+                # project root is now refused by the shared scan policy, so an
+                # external path would exercise the refusal rather than the
+                # code-scan failure branch this test is about.
+                (root / "src").mkdir(parents=True, exist_ok=True)
+                code_file = root / "src" / "x.py"
                 code_file.write_text("print('x')\n", encoding="utf-8")
 
                 (root / "kits" / "x" / "artifacts" / "REQ").mkdir(parents=True, exist_ok=True)
@@ -2721,7 +2725,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
 
     # ---- Lines 181-182: relative_to exception in code scanning ----
     def test_include_code_relative_to_exception(self):
-        """relative_to raises ValueError → rel=None → file not ignored → processed."""
+        """relative_to raises ValueError → containment can't be established → fails closed (skipped)."""
         from studio.cli import main
 
         with TemporaryDirectory() as tmpdir, TemporaryDirectory() as outsidedir:
@@ -2748,9 +2752,10 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                     rc = main(["list-ids", "--include-code", "--all"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
-                # resolve() follows symlink outside project root → relative_to raises → rel=None → not ignored
+                # resolve() follows symlink outside project root → relative_to raises → fail closed → skipped
                 code_hits = [h for h in out.get("ids", []) if h.get("type") == "code_reference"]
-                self.assertGreaterEqual(len(code_hits), 1, f"Expected code refs, got {out}")
+                self.assertEqual(len(code_hits), 0, f"Expected no code refs (fail-closed), got {out}")
+                self.assertEqual(out.get("code_files_skipped", 0), 1)
             finally:
                 os.chdir(cwd)
 
@@ -2823,7 +2828,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                 os.chdir(root)
                 buf = io.StringIO()
                 # Make CodeFile.from_path return errors
-                with patch("studio.commands.list_ids.CodeFile.from_path", return_value=(None, [{"error": "parse fail"}])):
+                with patch("studio.utils.codebase.CodeFile.from_path", return_value=(None, [{"error": "parse fail"}])):
                     with redirect_stdout(buf):
                         rc = cmd_list_ids(["--include-code"])
                 self.assertEqual(rc, 0)

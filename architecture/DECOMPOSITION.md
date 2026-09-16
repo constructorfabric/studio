@@ -23,6 +23,8 @@
   - [2.15 Project-Level Extensibility ⏳ HIGH](#215-project-level-extensibility--high)
   - [2.16 Dependency Mapping 🔶 HIGH](#216-dependency-mapping--high)
   - [2.17 Thin Skill Runtime ⏳ HIGH](#217-thin-skill-runtime--high)
+  - [2.18 Workflow Eval-Harness ⏳ HIGH](#218-workflow-eval-harness--high)
+  - [2.19 Artifact Quality ⏳ HIGH](#219-artifact-quality--high)
 - [3. Feature Dependencies](#3-feature-dependencies)
 
 <!-- /toc -->
@@ -913,6 +915,68 @@ Studio DESIGN is decomposed into features organized around architectural layers 
     `architecture/specs/thin-skill-runtime.md`
 
 
+### 2.18 [Workflow Eval-Harness](features/eval-harness.md) ⏳ HIGH
+
+- [x] `p1` - **ID**: `cpt-studio-feature-eval-harness`
+
+- **Purpose**: Score completed workflow runs for how faithfully they followed their plan — a scenario format and a runner, the deterministic structural scorer that gates, and the advisory LLM-judge that does not, keeping the honest-signal discipline (unscoreable reports UNKNOWN, advisory never gates).
+
+- **Depends On**: `cpt-studio-feature-traceability-validation`
+
+- **Scope**:
+  - Scenario format: a per-directory `scenario.toml` pointing at a completed run
+  - Runner: load scenarios, apply pluggable scorers, aggregate a JSON report
+  - Gate contract: only deterministic scorer verdicts affect the exit code
+  - Regression diff against a baseline report
+  - Deterministic structural scorer (`utils/eval_structural.py`): required sections, frontmatter, duplicate and invalid ids, per-workflow section policy
+  - Advisory LLM-judge seam (`utils/eval_judge.py`) with a gold set and reference-stub calibration, reported via `cfs eval --calibrate`
+
+- **Out of scope**:
+  - A production judge backend: the seam ships with a reference stub, and wiring a real model behind it is a separate task
+
+- **Requirements Covered**:
+
+  - `p1` - `cpt-studio-fr-core-traceability`
+
+- **API**:
+  - `cfs eval [--scenarios-dir DIR] [--baseline FILE]`
+
+- **Data**:
+  - Scenario descriptors and completed-run artifacts under the scenarios directory
+
+
+---
+
+### 2.19 [Artifact Quality](features/artifact-quality.md) ⏳ HIGH
+
+- [ ] `p1` - **ID**: `cpt-studio-feature-artifact-quality`
+
+- **Purpose**: Surface advisory semantic-quality findings on Project Markdown artifacts (duplication, purpose-mismatch, gap, traceability-meaning, contradiction) — evidence plus a suggested action, read-only, no combined score, never gating. The first piece is the shared finding model and JSON schema every detector emits.
+
+- **Depends On**: `cpt-studio-feature-spec-coverage`
+
+- **Scope**:
+  - A shared `ArtifactFinding` model + `Locus`, advisory and read-only, with a detector-namespaced verdict
+  - A versioned wire contract from `finding_json_schema()` — the shape a presentation layer consumes
+  - Structural detectors — duplication, gap, and rule-based purpose (deterministic, in-core) — later tasks
+  - Judge-backed detectors — traceability, contradiction, and ambiguous-purpose (reuse the advisory judge seam) — later tasks
+  - A read-only `cfs artifact-quality` command — later task
+
+- **Out of scope**:
+  - Rewriting artifacts; any combined quality score
+  - Heavy embedding/clustering (stays in the dashboard-service lane)
+
+- **Requirements Covered**:
+
+  - `p1` - `cpt-studio-fr-core-traceability`
+
+- **API**:
+  - `cfs artifact-quality [--detectors ...]` (later task)
+
+- **Data**:
+  - Project Markdown artifacts (read-only)
+
+
 ---
 
 ## 3. Feature Dependencies
@@ -938,6 +1002,8 @@ cpt-studio-feature-core-infra
     │    ├─→ cpt-studio-feature-developer-experience
     │    │
     │    └─→ cpt-studio-feature-spec-coverage
+    │        ↓
+    │        └─→ cpt-studio-feature-artifact-quality
     │
     ├─→ cpt-studio-feature-workspace ←── cpt-studio-feature-traceability-validation
     │
@@ -959,4 +1025,5 @@ cpt-studio-feature-core-infra
 - `cpt-studio-feature-developer-experience` requires `cpt-studio-feature-traceability-validation`: VS Code plugin and doctor delegate to validator and traceability engine
 - `cpt-studio-feature-workspace` requires `cpt-studio-feature-core-infra` and `cpt-studio-feature-traceability-validation`: workspace federation builds on core context loading and extends cross-repo ID resolution in the traceability engine
 - `cpt-studio-feature-ralphex-delegation` requires `cpt-studio-feature-execution-plans` and `cpt-studio-feature-version-config`: delegation compiles exported plans from Studio's authoritative decomposition model and persists ralphex integration settings via the config manager
+- `cpt-studio-feature-artifact-quality` requires `cpt-studio-feature-spec-coverage`: its judged detectors reuse the advisory semantic seam (never-gating, honest-unjudgeable, evidence checks) that spec-coverage introduced
 - SDLC-specific features (F4, F6, F9) have been extracted to `constructorfabric/studio-kit-sdlc` per `cpt-studio-adr-extract-sdlc-kit`

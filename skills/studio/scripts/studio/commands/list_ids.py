@@ -7,17 +7,12 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..utils.codebase import CodeFile
+from ..utils.codebase import scan_registered_codebase_references
 from ..utils.document import scan_cpt_ids
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 
 logger = logging.getLogger(__name__)
-
-
-def _warn_list_ids(message: str) -> None:
-    logger.warning("list-ids: %s", message)
-
 
 ArtifactScanList = List[Tuple[Path, str]]
 
@@ -39,57 +34,6 @@ def _collect_workspace_source_artifacts(ctx, source_name: str) -> List[Tuple[Pat
             if art_path.exists():
                 artifacts.append((art_path, str(art.kind)))
     return artifacts
-
-
-def _code_paths_for_entry(code_path: Path, extensions: List[str]) -> List[Path]:
-    """Return code files covered by one registry codebase entry."""
-    if not code_path.exists():
-        return []
-    if code_path.is_file():
-        return [code_path]
-
-    files: List[Path] = []
-    for ext in extensions:
-        files.extend(code_path.rglob(f"*{ext}"))
-    return files
-
-
-def _scan_code_references(ctx) -> Tuple[List[Dict[str, object]], int]:
-    """Scan registered codebase entries for Studio marker references."""
-    hits: List[Dict[str, object]] = []
-    code_files_scanned = 0
-    for cb_entry, _system_node in ctx.meta.iter_all_codebase():
-        code_path = (ctx.project_root / cb_entry.path).resolve()
-        for file_path in _code_paths_for_entry(code_path, cb_entry.extensions or [".py"]):
-            try:
-                rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
-            except (OSError, ValueError) as exc:
-                _warn_list_ids(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
-                rel = None
-            if rel and ctx.meta.is_ignored(rel):
-                continue
-
-            cf, errs = CodeFile.from_path(file_path)
-            if errs or cf is None:
-                continue
-
-            code_files_scanned += 1
-            for ref in cf.references:
-                hit: Dict[str, object] = {
-                    "id": ref.id,
-                    "kind": ref.kind or "code",
-                    "type": "code_reference",
-                    "artifact_type": "CODE",
-                    "line": ref.line,
-                    "artifact": str(file_path),
-                    "marker_type": ref.marker_type,
-                }
-                if ref.phase is not None:
-                    hit["phase"] = ref.phase
-                if ref.inst:
-                    hit["inst"] = ref.inst
-                hits.append(hit)
-    return hits, code_files_scanned
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 
 
@@ -213,17 +157,50 @@ def _infer_primary_kind(
     return kind_tokens[0] if kind_tokens else None
 
 
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-scan-dedupe
 def _dedupe_hits(hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    """Keep the first hit per ID while preserving input order."""
-    seen: Set[str] = set()
-    unique_hits: List[Dict[str, object]] = []
+    """Keep one hit per ID, preferring its definition record when one exists.
+
+    IDs with no definition anywhere in the scanned hits keep the first-seen
+    hit, preserving input order either way. A second (or later) conflicting
+    definition for the same ID is surfaced rather than silently dropped: it's
+    logged as a warning and recorded on the returned hit's
+    `duplicate_definitions` field.
+    """
+    order: List[str] = []
+    first_seen: Dict[str, Dict[str, object]] = {}
+    definitions: Dict[str, Dict[str, object]] = {}
+    conflicts: Dict[str, List[Dict[str, object]]] = {}
     for hit in hits:
         id_val = str(hit.get("id", ""))
-        if id_val in seen:
-            continue
-        seen.add(id_val)
-        unique_hits.append(hit)
-    return unique_hits
+        if id_val not in first_seen:
+            first_seen[id_val] = hit
+            order.append(id_val)
+        if hit.get("type") == "definition":
+            if id_val not in definitions:
+                definitions[id_val] = hit
+            elif hit is not definitions[id_val]:
+                conflicts.setdefault(id_val, []).append(hit)
+
+    result: List[Dict[str, object]] = []
+    for id_val in order:
+        chosen = definitions.get(id_val, first_seen[id_val])
+        extra_defs = conflicts.get(id_val)
+        if extra_defs:
+            logger.warning(
+                "duplicate definitions for %s: kept %s:%s, also defined at %s",
+                id_val,
+                chosen.get("artifact"),
+                chosen.get("line"),
+                ", ".join(f"{d.get('artifact')}:{d.get('line')}" for d in extra_defs),
+            )
+            chosen = dict(chosen)
+            chosen["duplicate_definitions"] = [
+                {"artifact": d.get("artifact"), "line": d.get("line")} for d in extra_defs
+            ]
+        result.append(chosen)
+    return result
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-scan-dedupe
 
 
 def _collect_artifact_hits(
@@ -298,7 +275,7 @@ def _render_kind_hits(kind_name: str, items: List[Dict[str, object]]) -> None:
 
 
 # @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
-def cmd_list_ids(argv: List[str]) -> int:
+def cmd_list_ids(argv: List[str]) -> int:  # pylint: disable=too-many-locals
     """List Studio IDs from artifacts.
 
     If no artifact is specified, scans all Studio-format artifacts from the adapter registry.
@@ -355,7 +332,7 @@ def cmd_list_ids(argv: List[str]) -> int:
             if is_workspace:
                 artifacts_to_scan = _collect_workspace_source_artifacts(ctx, args.source)
 
-        if not artifacts_to_scan:
+        if not artifacts_to_scan and not args.include_code:
             ui.result({"count": 0, "artifacts_scanned": 0, "ids": []})
             return 0
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
@@ -370,8 +347,9 @@ def cmd_list_ids(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-list-code
     # Scan code files if requested
     code_files_scanned = 0
+    code_files_skipped = 0
     if args.include_code and not args.artifact and ctx:
-        code_hits, code_files_scanned = _scan_code_references(ctx)
+        code_hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
         hits.extend(code_hits)
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-list-code
 
@@ -386,8 +364,10 @@ def cmd_list_ids(argv: List[str]) -> int:
         "artifacts_scanned": len(artifacts_to_scan),
         "ids": hits,
     }
-    if code_files_scanned > 0:
+    if args.include_code:
         result["code_files_scanned"] = code_files_scanned
+        if code_files_skipped:
+            result["code_files_skipped"] = code_files_skipped
 
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-list
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-return-query
@@ -400,11 +380,11 @@ def _human_list_ids(data: dict) -> None:
     count = data.get("count", 0)
     n_art = data.get("artifacts_scanned", 0)
     code_scanned = data.get("code_files_scanned")
+    code_skipped = data.get("code_files_skipped")
 
     ui.header("List IDs")
     ui.detail("Artifacts scanned", str(n_art))
-    if code_scanned is not None:
-        ui.detail("Code files scanned", str(code_scanned))
+    ui.code_scan_detail(code_scanned, code_skipped)
     ui.detail("IDs found", str(count))
 
     ids = data.get("ids", [])

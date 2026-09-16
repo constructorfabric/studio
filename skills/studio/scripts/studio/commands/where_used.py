@@ -2,44 +2,28 @@
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 import argparse
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
+from ..utils.codebase import scan_registered_codebase_references
 from ..utils.context import resolve_target_and_artifacts
 from ..utils.document import scan_cpt_ids
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 
-# @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
-# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve
-def cmd_where_used(argv: List[str]) -> int:
-    """Find all references to a Studio ID."""
-    p = argparse.ArgumentParser(prog="where-used", description="Find all references to an Studio ID")
-    p.add_argument("id_positional", nargs="?", default=None, help="Studio ID to find references for")
-    p.add_argument("--id", default=None, help="Studio ID to find references for")
-    p.add_argument("--artifact", default=None, help="Limit search to specific artifact (optional)")
-    p.add_argument("--include-definitions", action="store_true", help="Include definitions in results")
-    args = p.parse_args(argv)
-
-    target_id, _, artifacts_to_scan, path_to_source, err = resolve_target_and_artifacts(args)
-    if err:
-        ui.result({"status": "ERROR", "message": err})
-        return 1
-
-    if not artifacts_to_scan:
-        ui.result({"id": target_id, "artifacts_scanned": 0, "count": 0, "references": []}, human_fn=_human_where_used)
-        return 0
-    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve
-
-    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
-
-    # Search for references
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
+def _collect_artifact_references(
+    artifacts_to_scan,
+    target_id: str,
+    include_definitions: bool,
+    path_to_source: Dict[str, str],
+) -> List[Dict[str, object]]:
+    """Scan artifacts for references to *target_id*."""
     references: List[Dict[str, object]] = []
-
     for artifact_path, artifact_type in artifacts_to_scan:
         for h in scan_cpt_ids(artifact_path):
             if str(h.get("id") or "") != target_id:
                 continue
-            if h.get("type") == "definition" and not bool(args.include_definitions):
+            if h.get("type") == "definition" and not include_definitions:
                 continue
             r: Dict[str, object] = {
                 "artifact": str(artifact_path),
@@ -53,31 +37,95 @@ def cmd_where_used(argv: List[str]) -> int:
             if src:
                 r["source"] = src
             references.append(r)
+    return references
 
-    # Sort by artifact and line
-    references = sorted(references, key=lambda r: (str(r.get("artifact", "")), int(r.get("line", 0))))
 
-    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
-    ui.result(
+def _collect_code_references(ctx, target_id: str) -> Tuple[List[Dict[str, object]], int, int]:
+    """Scan registered codebase entries for references to *target_id*."""
+    code_hits, code_files_scanned, code_files_skipped = scan_registered_codebase_references(ctx)
+    references = [
         {
-            "id": target_id,
-            "artifacts_scanned": len(artifacts_to_scan),
-            "count": len(references),
-            "references": references,
-        },
-        human_fn=_human_where_used,
+            "artifact": str(hit.get("artifact", "")),
+            "artifact_type": "CODE",
+            "line": int(hit.get("line", 1) or 1),
+            "kind": hit.get("kind"),
+            "type": str(hit.get("type")),
+            "checked": False,
+        }
+        for hit in code_hits
+        if str(hit.get("id") or "") == target_id
+    ]
+    return references, code_files_scanned, code_files_skipped
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
+
+# @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve
+def cmd_where_used(argv: List[str]) -> int:
+    """Find all references to a Studio ID."""
+    p = argparse.ArgumentParser(prog="where-used", description="Find all references to an Studio ID")
+    p.add_argument("id_positional", nargs="?", default=None, help="Studio ID to find references for")
+    p.add_argument("--id", default=None, help="Studio ID to find references for")
+    p.add_argument("--artifact", default=None, help="Limit search to specific artifact (optional)")
+    p.add_argument("--include-definitions", action="store_true", help="Include definitions in results")
+    p.add_argument(
+        "--include-code",
+        action="store_true",
+        help=(
+            "Also scan code in Studio-registered codebase paths (not the whole repo) for marker "
+            "references; ignored when combined with --artifact"
+        ),
     )
+    args = p.parse_args(argv)
+
+    target_id, ctx, artifacts_to_scan, path_to_source, err = resolve_target_and_artifacts(args)
+    if err:
+        ui.result({"status": "ERROR", "message": err})
+        return 1
+
+    if not artifacts_to_scan and not args.include_code:
+        ui.result({"id": target_id, "artifacts_scanned": 0, "count": 0, "references": []}, human_fn=_human_where_used)
+        return 0
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve
+
+    # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
+    references = _collect_artifact_references(
+        artifacts_to_scan, target_id, bool(args.include_definitions), path_to_source
+    )
+
+    code_files_scanned = 0
+    code_files_skipped = 0
+    if args.include_code and not args.artifact and ctx:
+        code_references, code_files_scanned, code_files_skipped = _collect_code_references(ctx, target_id)
+        references.extend(code_references)
+
+    references = sorted(references, key=lambda r: (str(r.get("artifact", "")), int(r.get("line", 0))))
+    # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
+
+    result: Dict[str, object] = {
+        "id": target_id,
+        "artifacts_scanned": len(artifacts_to_scan),
+        "count": len(references),
+        "references": references,
+    }
+    if args.include_code and not args.artifact:
+        result["code_files_scanned"] = code_files_scanned
+        if code_files_skipped:
+            result["code_files_skipped"] = code_files_skipped
+    ui.result(result, human_fn=_human_where_used)
     return 0
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-format
-def _human_where_used(data: dict) -> None:
+def _human_where_used(data: dict) -> None:  # pylint: disable=too-many-locals
     target = data.get("id", "?")
     refs = data.get("references", [])
     n_art = data.get("artifacts_scanned", 0)
+    code_scanned = data.get("code_files_scanned")
+    code_skipped = data.get("code_files_skipped")
 
     ui.header("Where Used")
     ui.detail("ID", target)
     ui.detail("Artifacts scanned", str(n_art))
+    ui.code_scan_detail(code_scanned, code_skipped)
     ui.detail("References found", str(data.get("count", len(refs))))
 
     if not refs:

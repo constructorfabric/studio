@@ -14,7 +14,10 @@ IMPORTANT: This module MUST NOT contain business logic.
 import sys
 import logging
 from pathlib import Path
+from time import perf_counter
 from typing import Callable, List, Optional
+
+from .utils import decision_log
 
 _CLI_STDERR_HANDLER_NAME = "studio-cli-stderr"
 
@@ -127,6 +130,42 @@ def _cmd_chunk_input(argv: List[str]) -> int:
     from .commands.chunk_input import cmd_chunk_input
     return cmd_chunk_input(argv)
 
+def _cmd_eval(argv: List[str]) -> int:
+    from .commands.eval import cmd_eval
+    return cmd_eval(argv)
+
+def _cmd_doc_index(argv: List[str]) -> int:
+    from .commands.doc_index import cmd_doc_index
+    return cmd_doc_index(argv)
+
+def _cmd_tfidf_score(argv: List[str]) -> int:
+    from .commands.tfidf import cmd_tfidf_score
+    return cmd_tfidf_score(argv)
+
+def _cmd_okf_status(argv: List[str]) -> int:
+    from .commands.okf import cmd_okf_status
+    return cmd_okf_status(argv)
+
+def _cmd_heading_nav(argv: List[str]) -> int:
+    from .commands.heading_nav import cmd_heading_nav
+    return cmd_heading_nav(argv)
+
+def _cmd_retrieve(argv: List[str]) -> int:
+    from .commands.cascade import cmd_retrieve
+    return cmd_retrieve(argv)
+
+def _cmd_read_gate(argv: List[str]) -> int:
+    from .commands.read_gate import cmd_read_gate
+    return cmd_read_gate(argv)
+
+def _cmd_usage_report(argv: List[str]) -> int:
+    from .commands.usage_report import cmd_usage_report
+    return cmd_usage_report(argv)
+
+def _cmd_change_summary(argv: List[str]) -> int:
+    from .commands.change_summary import cmd_change_summary
+    return cmd_change_summary(argv)
+
 # =============================================================================
 # ADAPTER COMMAND
 # =============================================================================
@@ -209,6 +248,14 @@ _COMMAND_DESCRIPTIONS = {
     "resolve-vars": "Resolve template variables to absolute paths",
     "toc": "Generate/update Table of Contents",
     "chunk-input": "Chunk oversized workflow input into line-bounded Markdown files",
+    "doc-index": "Build/reuse a cached heading index for a Markdown file (read once, not per query)",
+    "tfidf-score": "Rank a Markdown file's retrieval sections against a query via TF-IDF",
+    "okf-status": "Report an OKF bundle's state for a Markdown file (missing/stale/current per section)",
+    "heading-nav": "Find a Markdown file's retrieval sections containing a query's literal text",
+    "retrieve": "Route a query through the two-tier JIT-retrieval cascade (heading-nav + TF-IDF, OKF vs. baseline)",
+    "read-gate": "Check whether a Markdown file's line count crosses the large-read confirmation threshold",
+    "usage-report": "Aggregate the local decision log's read events into a per-method token table",
+    "change-summary": "Advisory digest of what changed on this branch, why, and which requirements it serves",
     "pdsl": "Validate PDSL prompt blocks",
     "workspace-init": "Initialize multi-repo workspace",
     "workspace-add": "Add a source to workspace config",
@@ -217,6 +264,7 @@ _COMMAND_DESCRIPTIONS = {
     "delegate": "Compile and delegate a plan to ralphex",
     "doctor": "Run environment health checks",
     "map": "Build interactive markdown↔source dependency map via cpt identifiers",
+    "eval": "Run the workflow eval-harness over a suite of scenarios",
 }
 
 _COMMAND_SECTIONS = [
@@ -224,11 +272,15 @@ _COMMAND_SECTIONS = [
     ("Validation", ["validate", "validate-kits", "validate-toc", "spec-coverage", "check-language"]),
     ("Search & Navigation", ["list-ids", "list-id-kinds", "get-content", "where-defined", "where-used"]),
     ("Kit Management", ["kit"]),
-    ("Utility", ["toc", "chunk-input", "pdsl"]),
+    ("Utility", [
+        "toc", "chunk-input", "doc-index", "tfidf-score", "okf-status",
+        "heading-nav", "retrieve", "read-gate", "usage-report", "change-summary", "pdsl",
+    ]),
     ("Workspace", ["workspace-init", "workspace-add", "workspace-info", "workspace-sync"]),
     ("Delegation", ["delegate"]),
     ("Diagnostics", ["doctor"]),
     ("Visualization", ["map"]),
+    ("Evaluation", ["eval"]),
 ]
 
 _COMMAND_HANDLERS: dict[str, str] = {
@@ -254,6 +306,14 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "validate-toc": "_cmd_validate_toc",
     "spec-coverage": "_cmd_spec_coverage",
     "chunk-input": "_cmd_chunk_input",
+    "doc-index": "_cmd_doc_index",
+    "tfidf-score": "_cmd_tfidf_score",
+    "okf-status": "_cmd_okf_status",
+    "heading-nav": "_cmd_heading_nav",
+    "retrieve": "_cmd_retrieve",
+    "read-gate": "_cmd_read_gate",
+    "usage-report": "_cmd_usage_report",
+    "change-summary": "_cmd_change_summary",
     "workspace-init": "_cmd_workspace_init",
     "workspace-add": "_cmd_workspace_add",
     "workspace-info": "_cmd_workspace_info",
@@ -263,6 +323,7 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "check-language": "_cmd_check_language",
     "pdsl": "_cmd_pdsl",
     "map": "_cmd_map",
+    "eval": "_cmd_eval",
 }
 
 # Keep explicit references so dead-code scanners see dynamic dispatch targets.
@@ -286,6 +347,14 @@ _COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
     _cmd_validate_toc,
     _cmd_spec_coverage,
     _cmd_chunk_input,
+    _cmd_doc_index,
+    _cmd_tfidf_score,
+    _cmd_okf_status,
+    _cmd_heading_nav,
+    _cmd_retrieve,
+    _cmd_read_gate,
+    _cmd_usage_report,
+    _cmd_change_summary,
     _cmd_workspace_init,
     _cmd_workspace_add,
     _cmd_workspace_info,
@@ -295,6 +364,7 @@ _COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
     _cmd_check_language,
     _cmd_pdsl,
     _cmd_map,
+    _cmd_eval,
 )
 
 _ALL_COMMANDS = list(_COMMAND_HANDLERS)
@@ -339,8 +409,36 @@ def _main_impl(argv_list: List[str]) -> int:
         return _report_unknown_command(cmd)
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
-    handler_result = handler(rest)
-    return handler_result
+    # Telemetry never changes command behaviour: new_decision_id / set_current /
+    # record_invocation are all non-raising (record() is fail-safe and surfaces a real
+    # write failure itself), so no guard is needed here. One decision id per run lets
+    # events recorded inside the handler (e.g. validation) correlate to this invocation.
+    decision_id = decision_log.new_decision_id()
+    decision_log.set_current_decision_id(decision_id)
+    started = perf_counter()
+    handler_result = 1
+    try:
+        handler_result = handler(rest)
+        return handler_result
+    except SystemExit as exc:
+        # argparse exits via SystemExit (--help, invalid args); record its real code.
+        if isinstance(exc.code, int):
+            handler_result = exc.code
+        else:
+            handler_result = 0 if exc.code is None else 1
+        raise
+    finally:
+        # Record on every exit — normal, SystemExit, or a raising handler — then scope
+        # the id to this run so a later event can't inherit it.
+        decision_log.record_invocation(
+            cmd,
+            exit_code=handler_result,
+            duration_ms=int((perf_counter() - started) * 1000),
+            args_shape={"argc": len(rest),
+                        "flags": sum(1 for arg in rest if arg.startswith("-"))},
+            decision_id=decision_id,
+        )
+        decision_log.set_current_decision_id("")
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
 
 

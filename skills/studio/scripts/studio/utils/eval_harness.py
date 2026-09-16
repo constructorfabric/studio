@@ -1,0 +1,489 @@
+"""Workflow eval-harness scaffold — scenario format + runner.
+
+The scaffold both halves of the eval-harness plug into: it loads *scenarios*
+(a completed workflow run + metadata), feeds each run to a set of *scorers*, and
+aggregates the results into a report. It deliberately contains no real scoring
+logic — a deterministic structural scorer and an advisory LLM-judge land later and
+plug into the ``Scorer`` seam defined here.
+
+Design principles:
+
+* **The gate contract.** Only ``DETERMINISTIC`` results contribute to structural
+  compliance, and gating is **opt-in** (``--check`` in the CLI) against a tunable
+  floor. ``ADVISORY`` results are reported but can never move the exit code.
+* **"Unscoreable != zero".** A run that cannot be loaded, or a scorer that raises,
+  yields ``UNKNOWN`` with a ``None`` score — excluded from compliance, never a 0.
+* **Honest reporting.** Compliance is reported per scenario and in aggregate, with a
+  failing-check histogram and a coverage string derived from the scorers that ran.
+
+@cpt-algo:cpt-studio-algo-eval-harness-run:p1
+"""
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-harness-imports
+from __future__ import annotations
+
+import logging
+import tomllib
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Dict, List, Optional, Protocol, Tuple, runtime_checkable
+
+logger = logging.getLogger(__name__)
+
+SCHEMA_VERSION = "1.0"
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-harness-imports
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-eval-datamodel
+class ScorerKind(str, Enum):
+    """Whether a scorer's verdict is allowed to influence the exit code."""
+
+    DETERMINISTIC = "deterministic"   # contributes to structural compliance / gating
+    ADVISORY = "advisory"             # reported only, never gates
+
+
+#: Verdicts a scorer may return. ``UNKNOWN`` is distinct from ``FAIL`` on purpose:
+#: "could not assess" is never "failed" and never scores 0.
+VERDICT_PASS = "PASS"
+VERDICT_FAIL = "FAIL"
+VERDICT_UNKNOWN = "UNKNOWN"
+
+
+@dataclass
+class ScorerResult:
+    """One scorer's verdict on one scenario."""
+
+    scorer: str
+    kind: ScorerKind
+    verdict: str
+    score_pct: Optional[float]
+    findings: List[str] = field(default_factory=list)
+    coverage: str = ""
+
+
+@dataclass
+class Scenario:
+    """A test case: a completed run to score, plus metadata."""
+
+    id: str
+    workflow: str
+    run_dir: Path
+    expect: str                      # compliant | non_compliant | unknown (oracle)
+    gold_path: Optional[Path] = None  # consumed by the advisory judge only
+
+
+@dataclass
+class RunArtifacts:
+    """The loaded artifacts of one completed workflow run."""
+
+    plan_meta: Dict[str, object]
+    phases: List[Dict[str, object]]
+    phase_texts: Dict[str, str]
+
+
+@dataclass
+class ScenarioResult:
+    """All scorers' results for one scenario."""
+
+    scenario_id: str
+    workflow: str
+    results: List[ScorerResult]
+    expect: str = ""     # the scenario's declared oracle, surfaced for declared-vs-actual
+
+
+@dataclass
+class EvalReport:
+    """The outcome of running a suite: per-scenario results."""
+
+    scenarios: List[ScenarioResult]
+
+
+@runtime_checkable
+class Scorer(Protocol):  # pylint: disable=too-few-public-methods
+    """The seam the structural scorer and the advisory judge plug into.
+
+    A scorer inspects a loaded run and returns a ``ScorerResult``. Its ``kind``
+    decides whether its verdict can reach the exit code — the runner enforces that,
+    the scorer only declares it.
+    """
+
+    name: str
+    kind: ScorerKind
+
+    def score(self, run: Optional[RunArtifacts], scenario: Scenario) -> ScorerResult:
+        """Return this scorer's verdict on ``run`` for ``scenario``."""  # pragma: no cover
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-eval-datamodel
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-reference-scorer
+class ReferencePresenceScorer:  # pylint: disable=too-few-public-methods
+    """A deliberately trivial deterministic scorer used only to exercise the seam.
+
+    **This is not the real structural scorer** (a follow-up). It checks one thing —
+    that the run loaded and every declared phase file is present — so the scaffold,
+    its fixtures, and the gate-contract test have something concrete to run.
+    """
+
+    name = "reference-presence"
+    kind = ScorerKind.DETERMINISTIC
+
+    def score(self, run: Optional[RunArtifacts],
+              scenario: Scenario) -> ScorerResult:  # pylint: disable=unused-argument
+        """PASS if every checkable phase file is present, FAIL if any missing, else UNKNOWN."""
+        if run is None:
+            return ScorerResult(
+                self.name, self.kind, VERDICT_UNKNOWN, None,
+                ["run artifacts could not be loaded"], "unscoreable: no readable plan.toml")
+        if not run.phases:
+            return ScorerResult(
+                self.name, self.kind, VERDICT_UNKNOWN, None,
+                ["run declares no phases"], "unscoreable: nothing to assess")
+        # Only phases that declare a file are checkable. A run whose phases declare no
+        # verifiable file is unscoreable by this scorer, not a vacuous 100% pass.
+        checkable = [phase["file"] for phase in run.phases
+                     if isinstance(phase.get("file"), str) and phase["file"]]
+        if not checkable:
+            return ScorerResult(
+                self.name, self.kind, VERDICT_UNKNOWN, None,
+                ["no phase declares a checkable file"], "unscoreable: nothing to verify")
+        missing = [name for name in checkable if name not in run.phase_texts]
+        if missing:
+            return ScorerResult(
+                self.name, self.kind, VERDICT_FAIL, 0.0,
+                [f"declared phase file missing: {name}" for name in missing],
+                f"{len(checkable)} checkable phase file(s)")
+        return ScorerResult(
+            self.name, self.kind, VERDICT_PASS, 100.0, [],
+            f"{len(checkable)} checkable phase file(s), all present")
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-reference-scorer
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-load-scenarios
+def load_scenarios(root: Path) -> List[Scenario]:
+    """Discover scenarios under ``root`` by globbing ``*/scenario.toml``.
+
+    A malformed, id-less, or **duplicate-id** descriptor is skipped with a warning, never
+    raised, and a ``run_dir``/gold path that escapes the scenario directory (absolute or
+    ``..``) is rejected — one bad or unsafe scenario must not sink the whole suite. IDs are
+    kept unique because calibration identities (``covered``/``excluded``/rows) key on them.
+    """
+    scenarios: List[Scenario] = []
+    seen_ids = set()
+    for descriptor in sorted(root.glob("*/scenario.toml")):
+        try:
+            with open(descriptor, "rb") as handle:
+                data = tomllib.load(handle)
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            logger.warning("eval: skipping unreadable scenario descriptor %s: %s", descriptor, exc)
+            continue
+        section = data.get("scenario", {})
+        if not isinstance(section, dict):
+            logger.warning("eval: [scenario] is not a table, skipping: %s", descriptor)
+            continue
+        scenario_id = section.get("id")
+        if not scenario_id:
+            logger.warning("eval: scenario descriptor missing [scenario].id: %s", descriptor)
+            continue
+        if str(scenario_id) in seen_ids:
+            # Reserve the id on the FIRST descriptor to declare it — before path validation — so a
+            # duplicate is deterministically skipped regardless of either descriptor's validity, and
+            # the id can never resolve to a different run_dir/gold pair. (A duplicate would make
+            # calibration identities — covered/excluded/rows — ambiguous and hide duplicate counting.)
+            logger.warning("eval: duplicate [scenario].id %r, skipping later descriptor: %s",
+                           scenario_id, descriptor)
+            continue
+        seen_ids.add(str(scenario_id))
+        base = descriptor.parent
+        run_dir = base / str(section.get("run_dir", "run"))
+        if not run_dir.resolve().is_relative_to(base.resolve()):
+            # Keep scenarios self-contained: reject absolute or ../ paths that escape the base.
+            logger.warning("eval: scenario %s run_dir escapes its directory, skipping: %s",
+                           scenario_id, section.get("run_dir"))
+            continue
+        gold = section.get("gold", {})
+        gold_rel = gold.get("path") if isinstance(gold, dict) else None
+        gold_path = None
+        if gold_rel:
+            candidate = base / str(gold_rel)
+            if candidate.resolve().is_relative_to(base.resolve()):
+                gold_path = candidate
+            else:
+                logger.warning("eval: scenario %s gold path escapes its directory, ignoring: %s",
+                               scenario_id, gold_rel)
+        scenarios.append(Scenario(
+            id=str(scenario_id),
+            workflow=str(section.get("workflow", "unknown")),
+            run_dir=run_dir,
+            expect=str(section.get("expect", "unknown")),
+            gold_path=gold_path,
+        ))
+    return scenarios
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-load-scenarios
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-load-run
+def load_run(run_dir: Path) -> Optional[RunArtifacts]:
+    """Load a completed run's ``plan.toml`` + ``phase-*.md``.
+
+    Returns ``None`` (→ UNKNOWN) for a missing or malformed plan rather than raising:
+    "unscoreable != zero". A declared phase file that cannot be read is simply absent
+    from ``phase_texts`` so a scorer can report it, not a crash.
+    """
+    plan_path = run_dir / "plan.toml"
+    try:
+        with open(plan_path, "rb") as handle:
+            manifest = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        logger.warning("eval: run has no readable plan.toml at %s: %s", plan_path, exc)
+        return None
+    plan_meta = manifest.get("plan")
+    if not isinstance(plan_meta, dict) or not plan_meta:
+        logger.warning("eval: plan.toml missing a [plan] section: %s", plan_path)
+        return None
+    phases = manifest.get("phases", [])
+    if not isinstance(phases, list):
+        logger.warning("eval: plan.toml [[phases]] is not a list: %s", plan_path)
+        return None
+    phases = [phase for phase in phases if isinstance(phase, dict)]  # drop malformed entries
+    phase_texts: Dict[str, str] = {}
+    for phase in phases:
+        name = phase.get("file")
+        if not isinstance(name, str) or not name:   # non-string file must not crash the run
+            continue
+        target = run_dir / name
+        if not target.resolve().is_relative_to(run_dir.resolve()):
+            # A phase file that escapes the run dir (absolute or ../) is never read.
+            logger.warning("eval: phase file escapes the run dir, skipping: %s", name)
+            continue
+        try:
+            phase_texts[name] = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            # Absent/unreadable phase → left out of phase_texts so a scorer flags it.
+            # UnicodeDecodeError belongs here with OSError, not in the caller: it is a
+            # ValueError, so leaving it out let one phase file of non-UTF-8 bytes
+            # propagate through load_cases into run_suite and abort the whole suite,
+            # discarding every other scenario's result. Undecodable is just one more
+            # way a declared file cannot be read.
+            logger.warning("eval: declared phase file unreadable (%s): %s", name, exc)
+            continue
+    return RunArtifacts(plan_meta=plan_meta, phases=phases, phase_texts=phase_texts)
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-load-run
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-run-scenario
+#: Sentinel for run_scenario's optional pre-loaded run — ``None`` is a valid "unreadable run",
+#: so it cannot double as "not supplied".
+_NO_PRELOAD = object()
+
+
+def run_scenario(scenario: Scenario, scorers: List[Scorer],
+                 run: "object" = _NO_PRELOAD) -> ScenarioResult:
+    """Load one scenario's run and apply every scorer to it.
+
+    A scorer that raises degrades to UNKNOWN for that scenario (with a warning) rather
+    than sinking the whole suite — the seam must tolerate a misbehaving future scorer.
+    A caller may pass an already-loaded ``run`` (``_NO_PRELOAD`` means "load it here") so the
+    report and calibration can share one disk snapshot instead of reading twice.
+    """
+    if run is _NO_PRELOAD:
+        run = load_run(scenario.run_dir)
+    results: List[ScorerResult] = []
+    for scorer in scorers:
+        try:
+            results.append(scorer.score(run, scenario))
+        # A plugged-in scorer must not crash the whole run — degrade it to UNKNOWN.
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("eval: scorer %s raised on scenario %s: %s",
+                           getattr(scorer, "name", "?"), scenario.id, exc)
+            results.append(ScorerResult(
+                getattr(scorer, "name", "unknown-scorer"),
+                getattr(scorer, "kind", ScorerKind.ADVISORY),
+                VERDICT_UNKNOWN, None, [f"scorer raised: {exc}"], "scorer error"))
+    return ScenarioResult(scenario.id, scenario.workflow, results, scenario.expect)
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-run-scenario
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-load-cases
+def load_cases(root: Path) -> List[Tuple[Scenario, Optional[RunArtifacts]]]:
+    """Load every ``(scenario, run)`` once — the single disk snapshot the report and calibration
+    share, so the two can never measure different versions of the same files."""
+    return [(scenario, load_run(scenario.run_dir)) for scenario in load_scenarios(root)]
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-load-cases
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-run-suite
+def run_suite_over(cases: List[Tuple[Scenario, Optional[RunArtifacts]]],
+                   scorers: List[Scorer]) -> EvalReport:
+    """Run pre-loaded ``(scenario, run)`` pairs through ``scorers`` — no disk read here."""
+    return EvalReport([run_scenario(scenario, scorers, run) for scenario, run in cases])
+
+
+def run_suite(root: Path, scorers: List[Scorer]) -> EvalReport:
+    """Run every scenario under ``root`` through ``scorers`` and aggregate (loads from disk)."""
+    return run_suite_over(load_cases(root), scorers)
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-run-suite
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-compliance
+def _scenario_compliance(scenario_result: ScenarioResult) -> Tuple[int, int, Optional[float]]:
+    """Deterministic (passed, total, fraction|None) for one scenario. UNKNOWN excluded."""
+    passed = 0
+    failed = 0
+    for result in scenario_result.results:
+        if result.kind is ScorerKind.DETERMINISTIC:
+            if result.verdict == VERDICT_PASS:
+                passed += 1
+            elif result.verdict == VERDICT_FAIL:
+                failed += 1
+    total = passed + failed
+    return passed, total, (round(passed / total, 4) if total else None)
+
+
+def structural_compliance(report: EvalReport) -> Optional[float]:
+    """Aggregate deterministic pass ratio across the suite. ``None`` when nothing scored.
+
+    Only deterministic verdicts count — this is the number gating reads, so an advisory
+    scorer can never affect it.
+    """
+    passed = 0
+    total = 0
+    for scenario_result in report.scenarios:
+        scenario_passed, scenario_total, _ = _scenario_compliance(scenario_result)
+        passed += scenario_passed
+        total += scenario_total
+    return round(passed / total, 4) if total else None
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-compliance
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-gate
+def gate_exit_code(compliance: Optional[float], check: bool, min_compliance: float) -> int:
+    """Opt-in gating: exit 2 only under ``check`` when compliance is below the floor.
+
+    Gating is off by default (running eval reports, it does not fail a build unless
+    asked). Nothing-scoreable (``compliance is None``) never fails. Advisory verdicts
+    never reach here because they are excluded from ``compliance``.
+    """
+    if check and compliance is not None and compliance < min_compliance:
+        return 2
+    return 0
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-gate
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-report-json
+def report_to_dict(report: EvalReport) -> Dict[str, object]:
+    """Serialise a report: per-scenario compliance, a failing-check histogram, and an
+    UNKNOWN-aware, coverage-stating summary."""
+    scored = 0
+    unknown = 0
+    agg_passed = 0                             # accumulate the aggregate here to avoid a 2nd pass
+    agg_total = 0
+    scorers_seen: Dict[str, str] = {}          # name -> kind, so coverage reflects what ran
+    failing: Dict[str, int] = {}               # deterministic FAILs per scorer (histogram)
+    per_scenario: List[Dict[str, object]] = []
+    for scenario_result in report.scenarios:
+        results_json: List[Dict[str, object]] = []
+        for result in scenario_result.results:
+            scorers_seen[result.scorer] = result.kind.value
+            if result.verdict == VERDICT_UNKNOWN:
+                unknown += 1
+            else:
+                scored += 1
+            if result.kind is ScorerKind.DETERMINISTIC and result.verdict == VERDICT_FAIL:
+                failing[result.scorer] = failing.get(result.scorer, 0) + 1
+            results_json.append({
+                "scorer": result.scorer,
+                "kind": result.kind.value,
+                "verdict": result.verdict,
+                "score_pct": result.score_pct,
+                "findings": result.findings,
+                "coverage": result.coverage,
+            })
+        scenario_passed, scenario_total, scenario_compliance = _scenario_compliance(scenario_result)
+        agg_passed += scenario_passed
+        agg_total += scenario_total
+        per_scenario.append({
+            "scenario": scenario_result.scenario_id,
+            "workflow": scenario_result.workflow,
+            "expect": scenario_result.expect,
+            "compliance": scenario_compliance,
+            "passed": scenario_passed,
+            "total": scenario_total,
+            "results": results_json,
+        })
+    coverage = "; ".join(f"{name} ({kind})" for name, kind in sorted(scorers_seen.items())) \
+        or "no scorers ran"
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "summary": {
+            "scenarios": len(report.scenarios),
+            "results": scored + unknown,   # scored/unknown count scorer-results, not scenarios
+            "scored": scored,
+            "unknown": unknown,
+            "structural_compliance": round(agg_passed / agg_total, 4) if agg_total else None,
+            "coverage": coverage,
+        },
+        "failing_checks": dict(sorted(failing.items(), key=lambda item: item[1], reverse=True)),
+        "per_scenario": per_scenario,
+    }
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-report-json
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-diff-reports
+def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, object]:
+    """Per-scenario compliance change vs a baseline report, bucketed.
+
+    A scenario whose compliance falls, **or which was scoreable in the baseline and is now
+    unscoreable while still in the suite (its run broke)**, is a regression and gates
+    ``--check``. One that scores for the first time or rises is not. A scenario that is
+    gone from the suite entirely is surfaced in ``no_longer_scoreable`` but is **not** a
+    regression — removing an obsolete scenario should not fail a build. A baseline whose
+    per-scenario compliance is missing or non-numeric is treated as "no prior value" (no
+    comparison), never a crash. ``has_regression`` reflects only ``regressed``.
+    """
+    rows = baseline.get("per_scenario", [])
+    # Only string scenario ids: a non-string/unhashable id (e.g. a list) would raise when
+    # used as a dict key and never matches a real scenario anyway.
+    prev = ({row["scenario"]: row.get("compliance")
+             for row in rows
+             if isinstance(row, dict) and isinstance(row.get("scenario"), str)}
+            if isinstance(rows, list) else {})
+    regressed: List[Dict[str, object]] = []
+    improved: List[Dict[str, object]] = []
+    newly_scoreable: List[Dict[str, object]] = []
+    no_longer_scoreable: List[Dict[str, object]] = []
+    seen = set()
+    for scenario_result in report.scenarios:
+        scenario_id = scenario_result.scenario_id
+        seen.add(scenario_id)
+        _, _, now = _scenario_compliance(scenario_result)
+        before = prev.get(scenario_id)
+        # missing / non-numeric baseline → no comparison; exclude bool (a subclass of int).
+        if not isinstance(before, (int, float)) or isinstance(before, bool):
+            before = None
+        if before is None:
+            if now is not None:
+                newly_scoreable.append({"scenario": scenario_id, "to": now})
+        elif now is None:
+            # still in the suite but no longer scoreable (its run broke) — a regression.
+            regressed.append({"scenario": scenario_id, "from": before, "to": None})
+        elif now < before:
+            regressed.append({"scenario": scenario_id, "from": before, "to": now})
+        elif now > before:
+            improved.append({"scenario": scenario_id, "from": before, "to": now})
+    for scenario_id, before in prev.items():
+        if (scenario_id not in seen and isinstance(before, (int, float))
+                and not isinstance(before, bool)):
+            # gone from the suite entirely — surfaced, but not a gate-worthy regression.
+            no_longer_scoreable.append({"scenario": scenario_id, "from": before})
+    baseline_summary = baseline.get("summary", {})
+    return {
+        "regressed": regressed,
+        "improved": improved,
+        "newly_scoreable": newly_scoreable,
+        "no_longer_scoreable": no_longer_scoreable,
+        "aggregate_before": (baseline_summary.get("structural_compliance")
+                             if isinstance(baseline_summary, dict) else None),
+        "aggregate_after": structural_compliance(report),
+        "has_regression": bool(regressed),   # removals are surfaced, not gated
+    }
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-diff-reports

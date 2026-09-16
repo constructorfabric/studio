@@ -13,12 +13,20 @@ IDs in code that don't exist in artifacts = validation FAIL.
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-datamodel
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
+from . import document
 from . import error_codes as EC
+
+logger = logging.getLogger(__name__)
+
+
+def _warn_codebase(message: str) -> None:
+    logger.warning("codebase: %s", message)
 
 # Scope marker: @cpt-{kind}:{full-id}:p{N}
 # {kind} is kit-defined; parser accepts any lowercase slug.
@@ -114,6 +122,23 @@ class CodeFile:
         if errs:
             return None, errs
         return cf, []
+
+    # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-from-text
+    @classmethod
+    def from_text(cls, code_path: Path, text: str) -> Tuple[Optional["CodeFile"], List[Dict[str, object]]]:
+        """Parse already-read text as ``code_path``, returning (CodeFile, errors).
+
+        For a caller that holds the file's content — because it read it once under a
+        size ceiling, or needs a second parser to see the *same* bytes — so the file is
+        not opened again between two reads that are meant to describe one state.
+        """
+        cf = cls(path=code_path)
+        cf._parse_markers(text.splitlines())
+        cf._loaded = True
+        if cf._errors:
+            return None, list(cf._errors)
+        return cf, []
+    # @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-from-text
     # @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-datamodel
 
     def load(self) -> List[Dict[str, object]]:
@@ -608,9 +633,24 @@ def _build_orphan_instruction_error(
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate-code:p1:inst-if-inst-orphan
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
-def load_code_file(code_path: Path) -> Tuple[Optional[CodeFile], List[Dict[str, object]]]:
-    """Convenience wrapper returning (CodeFile|None, errors)."""
-    return CodeFile.from_path(code_path)
+def load_code_file(
+    code_path: Path,
+    *,
+    max_bytes: Optional[int] = None,
+) -> Tuple[Optional[CodeFile], List[Dict[str, object]]]:
+    """Convenience wrapper returning (CodeFile|None, errors).
+
+    Applies the same size ceiling the bulk-scan path enforces. Without it a caller
+    reaching this directly reads an arbitrarily large file whole into memory, while the
+    same file routed through ``_scan_code_file_references`` would be skipped — one
+    entry point honouring a limit the other ignores. ``max_bytes`` of 0 or less
+    disables the check for callers that genuinely want the whole file; ``None`` selects
+    the module default. See :func:`read_code_text` for how the ceiling is applied.
+    """
+    text, errors = read_code_text(code_path, max_bytes=max_bytes)
+    if text is None:
+        return None, errors
+    return CodeFile.from_text(code_path, text)
 
 def validate_code_file(code_path: Path) -> Dict[str, List[Dict[str, object]]]:
     """Validate a single code file's marker structure."""
@@ -630,6 +670,306 @@ def validate_code_file(code_path: Path) -> Dict[str, List[Dict[str, object]]]:
             "warnings": [],
         }
     return cf.validate()
+# @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-read-bounded
+def read_code_text(
+    code_path: Path,
+    *,
+    max_bytes: Optional[int] = None,
+) -> Tuple[Optional[str], List[Dict[str, object]]]:
+    """Read a code file's text with the size ceiling applied to the bytes actually read.
+
+    Returns ``(text, [])`` or ``(None, [error])``. The ceiling bounds what is *read*,
+    not what a prior ``stat`` reported: the first version measured the file and then
+    read it whole, and a file growing in between slipped past the limit it was just
+    checked against. Reading ``limit + 1`` bytes needs no second look at the file and
+    cannot be raced.
+
+    Too large is :data:`EC.FILE_TOO_LARGE`, distinct from :data:`EC.FILE_READ_ERROR`, so
+    a caller can branch on the code instead of re-measuring the file or parsing the
+    message. ``max_bytes`` of 0 or less disables the ceiling; ``None`` selects the module
+    default, resolved here because the constant is defined further down this module.
+    """
+    limit = _MAX_CODE_FILE_BYTES if max_bytes is None else max_bytes
+    try:
+        with code_path.open("rb") as handle:
+            data = handle.read(limit + 1) if limit > 0 else handle.read()
+    except OSError as exc:
+        return None, [error(
+            "file", f"Failed to read `{code_path}`: {exc}",
+            code=EC.FILE_READ_ERROR, path=code_path, line=1,
+        )]
+    if 0 < limit < len(data):
+        return None, [error(
+            "file", f"`{code_path}` exceeds the {limit}-byte scan limit",
+            code=EC.FILE_TOO_LARGE, path=code_path, line=1,
+        )]
+    if document.is_binary(data):
+        # Binary, by the one predicate `document.read_text_safe` applies too, so the
+        # two readers cannot drift apart on what is text.
+        return None, [error(
+            "file", f"`{code_path}` is binary (contains NUL bytes)",
+            code=EC.FILE_READ_ERROR, path=code_path, line=1,
+        )]
+    try:
+        return data.decode("utf-8"), []
+    except UnicodeDecodeError as exc:
+        return None, [error(
+            "file", f"Failed to read `{code_path}`: {exc}",
+            code=EC.FILE_READ_ERROR, path=code_path, line=1,
+        )]
+# @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-read-bounded
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
+# Conventional non-source directories excluded from every scan, independent of
+# the project's own `artifacts.toml` `ignore` config.
+_DEFAULT_IGNORED_DIR_NAMES = frozenset(
+    {"node_modules", ".git", ".venv", "venv", "build", "dist", "vendor", ".tox", "__pycache__"}
+)
+
+# Files larger than this are skipped (with a warning) rather than fully read. A
+# consumer learns that a file was declined from `read_code_file`'s FILE_TOO_LARGE
+# error code, so no public alias of the number is needed.
+_MAX_CODE_FILE_BYTES = 2_000_000
+
+
+def _is_in_default_ignored_dir(file_path: Path, root: Path) -> bool:
+    """Return whether *file_path* sits under a conventional non-source directory."""
+    try:
+        rel_parts = file_path.resolve().relative_to(root.resolve()).parts
+    except (OSError, ValueError) as exc:
+        _warn_codebase(f"failed to resolve {file_path} relative to {root}: {exc}")
+        return False
+    return any(part in _DEFAULT_IGNORED_DIR_NAMES for part in rel_parts[:-1])
+
+
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve-entry-files
+def resolve_entry_code_files(
+    code_path: Path,
+    extensions: List[str],
+    *,
+    project_root: Path,
+) -> Tuple[List[Path], int]:
+    """Code files one registry codebase entry covers, and how many were excluded.
+
+    Every consumer of a codebase entry resolves it through here, so that a
+    directory the policy excludes cannot be skipped by one command and scanned
+    by another. Three rules apply:
+
+    * conventional non-source directory names, at any depth -- a registered
+      parent root otherwise re-admits the `vendor/` and `dist/` trees that
+      registration itself refuses;
+    * symlinked candidates, so one link cannot re-open an excluded tree or reach
+      outside the project under a name that looks local;
+    * resolved containment, because a symlinked *directory* escapes the project
+      by a different route than a symlinked file.
+
+    The excluded count is returned rather than logged so the caller can report
+    its own denominator: "scanned N, excluded M" is checkable where a bare file
+    count is not.
+    """
+    root = project_root.resolve()
+    if not code_path.exists():
+        return [], 0
+    # The entry itself is judged before anything is read, so a `../..` entry is
+    # refused rather than walked and then discarded file by file. Checking only
+    # the candidates meant an external tree was traversed first, and every file
+    # in it counted separately toward a total describing this project.
+    #
+    # This also covers the single-file case, which previously returned the path
+    # unconditionally: an entry resolving to a file outside the project was
+    # refused by `list-ids` and read by `validate` and `spec-coverage`.
+    if _escapes_project(code_path, root):
+        return [], 1
+    if code_path.is_file():
+        return [code_path], 0
+
+    # Candidates are collected before they are judged, so each one is decided
+    # once. Judging inside the extension loop counted a single excluded file
+    # once per matching extension, which made the excluded total disagree with
+    # the file list it is meant to be the denominator of.
+    candidates: Set[Path] = set()
+    for ext in extensions:
+        candidates.update(code_path.rglob(f"*{ext}"))
+
+    files: Set[Path] = set()
+    excluded = 0
+    for candidate in candidates:
+        if _is_in_default_ignored_dir(candidate, code_path):
+            excluded += 1
+            continue
+        if _escapes_project(candidate, root):
+            excluded += 1
+            continue
+        files.add(candidate)
+    return sorted(files, key=str), excluded
+
+
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve-entry-files
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-escapes-project
+def _escapes_project(candidate: Path, root: Path) -> bool:
+    """Whether *candidate* is a symlink or resolves outside *root*.
+
+    Checked on the resolved path: refusing symlinked files alone still lets a
+    symlinked directory inside a registered root carry the scan outside the
+    project.
+    """
+    try:
+        if candidate.is_symlink():
+            return True
+        resolved = candidate.resolve()
+    except OSError as exc:
+        _warn_codebase(f"failed to resolve {candidate}: {exc}")
+        return True
+    if resolved == root:
+        return False
+    return root not in resolved.parents
+
+
+
+
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-escapes-project
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
+def _is_ignored_code_file(file_path: Path, ctx) -> bool:
+    """Return whether *file_path* is registry-ignored and should be skipped.
+
+    Fails closed: when containment under the project root can't be
+    established, the file is treated as ignored rather than scanned.
+    """
+    try:
+        rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
+    except (OSError, ValueError) as exc:
+        _warn_codebase(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
+        return True
+    return ctx.meta.is_ignored(rel)
+
+
+def _code_reference_hit(ref: CodeReference, file_path: Path) -> Dict[str, object]:
+    """Build a list-ids/where-used hit dict from one parsed code reference."""
+    hit: Dict[str, object] = {
+        "id": ref.id,
+        "kind": ref.kind or "code",
+        "type": "code_reference",
+        "artifact_type": "CODE",
+        "line": ref.line,
+        "artifact": str(file_path),
+        "marker_type": ref.marker_type,
+    }
+    if ref.phase is not None:
+        hit["phase"] = ref.phase
+    if ref.inst:
+        hit["inst"] = ref.inst
+    return hit
+
+
+def _scan_code_file_references(file_path: Path, ctx) -> Optional[List[Dict[str, object]]]:
+    """Parse one code file for marker references, or None if skipped/unparsable.
+
+    Read through :func:`read_code_text`, so the size ceiling bounds the bytes actually
+    read. A ``stat`` followed by an unbounded read measured the file and then trusted the
+    measurement: a file that grew between the two was read whole however large it had
+    become, and never declined.
+    """
+    if _is_ignored_code_file(file_path, ctx):
+        return None
+    text, errs = read_code_text(file_path)
+    if text is None:
+        if any(err.get("code") == EC.FILE_TOO_LARGE for err in errs):
+            _warn_codebase(f"skipping {file_path}: exceeds {_MAX_CODE_FILE_BYTES}-byte scan limit")
+        else:
+            _warn_codebase(f"failed to read {file_path}: {errs[0].get('code') if errs else 'unknown'}")
+        return None
+    cf, errs = CodeFile.from_text(file_path, text)
+    if errs or cf is None:
+        return None
+    return [_code_reference_hit(ref, file_path) for ref in cf.references]
+
+
+@dataclass
+class _SourceScanContext:
+    """Minimal ctx shim exposing project_root/meta for a workspace source scan."""
+
+    project_root: Path
+    meta: object
+
+
+def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]:
+    """Scan all codebase entries reachable from *scan_ctx* (primary or a workspace source).
+
+    Returns (hits, files_scanned, files_skipped). A codebase entry whose
+    configured path resolves outside *scan_ctx.project_root* is skipped
+    entirely (fail closed on a misconfigured/escaping entry) rather than
+    walked.
+    """
+    hits: List[Dict[str, object]] = []
+    scanned = 0
+    skipped = 0
+    root = scan_ctx.project_root.resolve()
+    for cb_entry, _system_node in scan_ctx.meta.iter_all_codebase():
+        code_path = (root / cb_entry.path).resolve()
+        try:
+            code_path.relative_to(root)
+        except ValueError:
+            _warn_codebase(f"codebase entry {cb_entry.path!r} resolves outside {root}; skipping")
+            continue
+        entry_files, entry_excluded = resolve_entry_code_files(
+            code_path, cb_entry.extensions or [".py"], project_root=root
+        )
+        # Counted as skipped: that total already means "ignored, oversized, or
+        # unparsable", and a policy exclusion is the first of those.
+        skipped += entry_excluded
+        for file_path in entry_files:
+            file_hits = _scan_code_file_references(file_path, scan_ctx)
+            if file_hits is None:
+                skipped += 1
+                continue
+            scanned += 1
+            hits.extend(file_hits)
+    return hits, scanned, skipped
+
+
+def scan_registered_codebase_references(ctx) -> Tuple[List[Dict[str, object]], int, int]:
+    """Scan registered codebase entries for Studio marker references.
+
+    Shared by `list-ids --include-code` and `where-used --include-code` so
+    both commands see the same code-marker parser. In a multi-repo workspace
+    with cross-repo resolution enabled, also fans out to each reachable
+    workspace source's own registered codebase entries, mirroring how
+    `collect_artifacts_to_scan` fans out artifact scanning.
+
+    Returns (hits, files_scanned, files_skipped) — *files_skipped* lets a
+    caller tell "no --include-code" apart from "--include-code found nothing
+    because every candidate file was ignored, oversized, or unparsable".
+    """
+    from .context import WorkspaceContext, get_expanded_meta
+
+    hits, code_files_scanned, code_files_skipped = _scan_codebase_entries(ctx)
+
+    if isinstance(ctx, WorkspaceContext) and ctx.cross_repo and ctx.resolve_remote_ids:
+        for sc in ctx.sources.values():
+            if not sc.reachable or sc.path is None or sc.role not in ("codebase", "full"):
+                continue
+            meta = get_expanded_meta(sc)
+            if meta is None:
+                continue
+            source_hits, source_scanned, source_skipped = _scan_codebase_entries(
+                _SourceScanContext(project_root=sc.path, meta=meta)
+            )
+            hits.extend(source_hits)
+            code_files_scanned += source_scanned
+            code_files_skipped += source_skipped
+
+    return hits, code_files_scanned, code_files_skipped
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context
 
 __all__ = [
     "CodeFile",
@@ -639,5 +979,5 @@ __all__ = [
     "load_code_file",
     "validate_code_file",
     "cross_validate_code",
+    "scan_registered_codebase_references",
 ]
-# @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
