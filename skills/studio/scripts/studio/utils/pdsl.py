@@ -6,7 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
 
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-validate-source-of-truth
@@ -655,10 +655,20 @@ def _handle_section_header_line(  # pylint: disable=too-many-return-statements
     return True
 
 
-# The only `_BlockValidationState` fields `_handle_declared_menu_header` may
-# target via `state_line_attr`. See that function's own comment on why this
-# exists.
-_DECLARED_MENU_HEADER_STATE_LINE_ATTRS = frozenset({"menu_type_line", "menu_shape_line"})
+def _menu_type_line(state: _BlockValidationState) -> int:
+    return state.menu_type_line
+
+
+def _set_menu_type_line(state: _BlockValidationState, line_no: int) -> None:
+    state.menu_type_line = line_no
+
+
+def _menu_shape_line(state: _BlockValidationState) -> int:
+    return state.menu_shape_line
+
+
+def _set_menu_shape_line(state: _BlockValidationState, line_no: int) -> None:
+    state.menu_shape_line = line_no
 
 
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-gate-declaration-literal
@@ -672,7 +682,8 @@ def _handle_declared_menu_header(  # pylint: disable=too-many-arguments,too-many
     *,
     header: str,
     valid_tokens: Tuple[str, ...],
-    state_line_attr: str,
+    get_declared_line: Callable[[_BlockValidationState], int],
+    set_declared_line: Callable[[_BlockValidationState, int], None],
     outside_scope_noun: str,
     rule_outside_scope: str,
     rule_duplicate: str,
@@ -686,16 +697,16 @@ def _handle_declared_menu_header(  # pylint: disable=too-many-arguments,too-many
     against the same declaration-region/one-per-menu rules, differing only in
     the header keyword, its valid tokens, which `_BlockValidationState` field
     latches the first declaration's line, and each one's own rule IDs/wording.
+    The two accessors are plain functions using ordinary attribute syntax
+    (`state.menu_type_line`), not a field name threaded through `getattr`/
+    `setattr` -- a string-keyed version of this was tried and reverted: it
+    made the target-field-as-string read/write invisible to static dead-code
+    analysis, which flagged both fields as unused.
     An absent declaration is always valid -- an undeclared MENU falls back to
     today's default behavior, so the existing surface migrates one
     declaration at a time. Only a declaration the block cannot support is
     reported here.
     """
-    # A typo'd *state_line_attr* landing on an unrelated-but-real field (e.g.
-    # "do_count") would otherwise have `getattr`/`setattr` silently succeed
-    # and corrupt that field instead of raising -- this closed allow-list
-    # turns that into an immediate, loud failure.
-    assert state_line_attr in _DECLARED_MENU_HEADER_STATE_LINE_ATTRS, state_line_attr
     if not state.gate_scope:
         # Outside a MENU, or past its declaration region. `gate_scope` is only
         # ever set from `in_menu`, so it implies it.
@@ -705,7 +716,7 @@ def _handle_declared_menu_header(  # pylint: disable=too-many-arguments,too-many
             hint=f"Put {header} directly under its MENU header, before OPTIONS.",
         ))
         return
-    earlier_line = getattr(state, state_line_attr)
+    earlier_line = get_declared_line(state)
     if earlier_line:
         findings.append(_finding(
             block, rule_duplicate, line_no, raw_line,
@@ -713,7 +724,7 @@ def _handle_declared_menu_header(  # pylint: disable=too-many-arguments,too-many
             hint=f"Keep one {header}; the earlier declaration is at line {earlier_line}.",
         ))
         return
-    setattr(state, state_line_attr, line_no)
+    set_declared_line(state, line_no)
     value = stripped[len(header) + 1:].strip()
     if value not in valid_tokens:
         findings.append(_finding(
@@ -739,7 +750,8 @@ def _handle_gate_type_header(
     """
     _handle_declared_menu_header(
         block, line_no, raw_line, stripped, findings, state,
-        header=GATE_HEADER, valid_tokens=GATE_TYPES, state_line_attr="menu_type_line",
+        header=GATE_HEADER, valid_tokens=GATE_TYPES,
+        get_declared_line=_menu_type_line, set_declared_line=_set_menu_type_line,
         outside_scope_noun="gate risk", rule_outside_scope="PDSL702",
         rule_duplicate="PDSL701", rule_bad_value="PDSL700",
         bad_value_hint="Declare risk statically; where it varies, emit two differently-typed gates.",
@@ -761,7 +773,8 @@ def _handle_menu_shape_header(
     """
     _handle_declared_menu_header(
         block, line_no, raw_line, stripped, findings, state,
-        header=MENU_SHAPE_HEADER, valid_tokens=MENU_SHAPE_TYPES, state_line_attr="menu_shape_line",
+        header=MENU_SHAPE_HEADER, valid_tokens=MENU_SHAPE_TYPES,
+        get_declared_line=_menu_shape_line, set_declared_line=_set_menu_shape_line,
         outside_scope_noun="menu shape", rule_outside_scope="PDSL712",
         rule_duplicate="PDSL711", rule_bad_value="PDSL710",
         bad_value_hint="Declare shape statically; a free-form/multi-select reply is never native-dialog-routed.",
