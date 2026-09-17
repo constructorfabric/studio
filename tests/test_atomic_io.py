@@ -238,3 +238,63 @@ class TestWithFileLock:
         lock_path = tmp_path / "x.lock"
         assert with_file_lock(lock_path, lambda: "ok", timeout=5.0) == "ok"
         assert len(calls) == 3  # two simulated-contention retries, then a real success
+
+
+class TestTheFailurePathDoesNotBecomeTheFailure:
+    """Cleanup runs when the write already went wrong. It must not take over from it."""
+
+    def test_a_cleanup_error_does_not_replace_the_original_exception(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`unlink` inside an `except` block can raise too -- a read-only directory, a
+        vanished mount -- and when it did, its exception propagated instead of the one
+        that explained what actually happened. The caller got the janitor's error."""
+        from studio.utils import atomic_io
+
+        def _replace_boom(_src, _dst):            # the real failure
+            raise RuntimeError("disk full")
+
+        def _unlink_boom(_self, **_kwargs):       # the janitor tripping over it
+            raise PermissionError("read-only directory")
+
+        monkeypatch.setattr(atomic_io.os, "replace", _replace_boom)
+        monkeypatch.setattr(Path, "unlink", _unlink_boom)
+
+        with pytest.raises(RuntimeError, match="disk full"):
+            atomic_io.atomic_write_text(tmp_path / "out.txt", "content")
+
+    def test_a_descriptor_is_not_leaked_when_fdopen_fails(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`os.fdopen` takes ownership of the descriptor only once it succeeds.
+
+        When it raises -- an unknown encoding, memory pressure -- nobody had wrapped the
+        descriptor and nobody closed it, so it leaked for the life of the process.
+        """
+        import os as _os
+
+        from studio.utils import atomic_io
+
+        closed: list[int] = []
+        real_close = _os.close
+
+        def _fdopen_boom(_fd, *_a, **_k):
+            raise OSError("cannot wrap the descriptor")
+
+        def _tracking_close(fd):
+            closed.append(fd)
+            return real_close(fd)
+
+        monkeypatch.setattr(atomic_io.os, "fdopen", _fdopen_boom)
+        monkeypatch.setattr(atomic_io.os, "close", _tracking_close)
+
+        with pytest.raises(OSError, match="cannot wrap"):
+            atomic_io.atomic_write_text(tmp_path / "out.txt", "content")
+
+        assert closed, "the descriptor fdopen never took ownership of must still be closed"
+
+    def test_a_successful_write_is_untouched(self, tmp_path: Path) -> None:
+        """The restructured path must still do the ordinary thing."""
+        target = tmp_path / "nested" / "out.txt"
+        atomic_write_text(target, "hello")
+
+        assert target.read_text(encoding="utf-8") == "hello"
+        assert not list(tmp_path.glob("**/*.tmp"))          # no temp file left behind

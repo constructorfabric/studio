@@ -90,6 +90,15 @@ class Locus:
                 f"{self.artifact_path!r}")
         if any(ord(ch) < 0x20 for ch in self.artifact_path):
             raise ValueError(f"artifact_path must not contain control characters: {self.artifact_path!r}")
+        if len(self.artifact_path) > _MAX_PATH_LENGTH:
+            raise ValueError(
+                f"artifact_path must be at most {_MAX_PATH_LENGTH} characters; "
+                f"got {len(self.artifact_path)}")
+        segments = self.artifact_path.split("/")
+        if len(segments) > _MAX_PATH_SEGMENTS:
+            raise ValueError(
+                f"artifact_path must be at most {_MAX_PATH_SEGMENTS} segments deep; "
+                f"got {len(segments)}")
 
     def _validate_anchor(self) -> None:
         if self.anchor is not None and (not self.anchor.strip()
@@ -227,6 +236,14 @@ class ArtifactFinding:
 #: Anchor/message blankness is decided by ``str.strip()``; enumerating it explicitly — not ECMA
 #: ``\s``, which differs on U+0085/U+FEFF/U+001C–1F — lets the wire pattern mirror the constructor
 #: exactly under a standards-compliant validator.
+
+#: Upper bounds on a locus path. Findings can arrive from out-of-tree producers, so the
+#: shape is a wire contract and not only an internal invariant: without a ceiling an
+#: arbitrarily long path -- or one nested thousands of segments deep -- passed validation
+#: and went straight into a serialized report. Generous enough that no real repository
+#: path comes near them; the point is that a bound exists, not where it sits.
+_MAX_PATH_LENGTH = 1024
+_MAX_PATH_SEGMENTS = 64
 _PY_STRIP_WS = r"\t\n\x0b\x0c\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000"
 
 #: The stable JSON contract a presentation/UI layer relies on — obtain a fresh, mutable copy via
@@ -287,7 +304,12 @@ _FINDING_JSON_SCHEMA: Dict[str, object] = {
                 # non-empty, not '.'/'..', and free of '\' and control chars. This mirrors the
                 # dataclass's per-segment check (leading, interior AND trailing) — the dataclass is
                 # authoritative, but the wire pattern must reject the same set (incl. traversal).
-                "artifact_path": {"type": "string",
+                # `maxLength` mirrors the dataclass bound: the comment above says the wire
+                # pattern must reject the same set the constructor does, and a ceiling is
+                # part of that set. Depth stays a constructor check -- a segment count is
+                # not expressible as a maxLength, and a pattern that counted them would
+                # be the kind of nested quantifier this schema avoids on purpose.
+                "artifact_path": {"type": "string", "maxLength": _MAX_PATH_LENGTH,
                                   "pattern": r"^(?![A-Za-z]:(?:/|$))(?!\.\.?(?:/|$))[^/\\\x00-\x1f]+"
                                              r"(?:/(?![A-Za-z]:(?:/|$))(?!\.\.?(?:/|$))[^/\\\x00-\x1f]+)*$"},
                 # Non-blank (not all str.strip() whitespace) and control-free. Explicit classes,

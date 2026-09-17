@@ -917,6 +917,14 @@ def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]
     scanned = 0
     skipped = 0
     root = scan_ctx.project_root.resolve()
+    # One identity set across every entry. `resolve_entry_code_files` deduplicates
+    # within a single entry's own walk, and nothing spanned them -- so when one
+    # registered entry is a parent directory of another, every file under the overlap
+    # was parsed and counted once per covering entry. That inflates `files_scanned` and
+    # duplicates each CPT hit, which feeds the coverage numbers: a registry mistake
+    # read as *more* coverage rather than as a mistake.
+    seen_files: set = set()
+    overlapping: List[str] = []
     for cb_entry, _system_node in scan_ctx.meta.iter_all_codebase():
         code_path = (root / cb_entry.path).resolve()
         try:
@@ -931,12 +939,25 @@ def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]
         # unparsable", and a policy exclusion is the first of those.
         skipped += entry_excluded
         for file_path in entry_files:
+            resolved = file_path.resolve()
+            if resolved in seen_files:
+                # Already scanned under an earlier entry. Not skipped: `skipped` means
+                # "ignored, oversized, or unparsable", and this file was none of those.
+                overlapping.append(cb_entry.path)
+                continue
+            seen_files.add(resolved)
             file_hits = _scan_code_file_references(file_path, scan_ctx)
             if file_hits is None:
                 skipped += 1
                 continue
             scanned += 1
             hits.extend(file_hits)
+    if overlapping:
+        # Named, because the registry is the thing that wants correcting -- silently
+        # deduplicating would leave the overlap in place for the next reader to find.
+        _warn_codebase(
+            f"codebase entries overlap; {len(overlapping)} file(s) already covered by an "
+            f"earlier entry were scanned once: {sorted(set(overlapping))}")
     return hits, scanned, skipped
 
 

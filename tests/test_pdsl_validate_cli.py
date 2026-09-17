@@ -1444,3 +1444,71 @@ def test_the_name_capture_spans_a_non_ascii_letter() -> None:
     # and arbitrarily many do not collapse into a near-miss.
     for benign in ("Caf\u00e9: something", "\u4f60\u597d: hello", "TYPE\u04ae\u04ae: blocking"):
         assert _rule_ids(_gate_menu(extra=benign)) == [], repr(benign)
+
+
+# --- PDSL601 counts a block, not a unit ------------------------------------
+
+def _block_rule_ids(text: str) -> list[str]:
+    """Every finding a source produces, scan-level and block-level."""
+    from studio.utils import pdsl
+
+    blocks, findings = pdsl.scan_blocks("sample.md", text)
+    ids = [finding.rule_id for finding in findings]
+    for block in blocks:
+        ids += [finding.rule_id for finding in pdsl._validate_block(block)]
+    return ids
+
+
+_TWO_COMPACT_BLOCKS = """UNIT Demo
+
+PURPOSE:
+  Two compact RULES blocks, three rules each.
+
+DO:
+  - RUN Do something deterministic
+
+RULES:
+  - ALWAYS keep output stable
+  - ALWAYS validate input
+  - NEVER write outside the sandbox
+
+RULES:
+  - ALWAYS confirm before destructive work
+  - NEVER skip the gate
+  - ALWAYS record the decision
+"""
+
+
+def test_two_compact_rules_blocks_in_one_unit_do_not_trip_the_cap() -> None:
+    """PDSL.md states the cap per *block*, twice: "A `RULES` block may contain at most 5
+    rules" and authoring rule 7, "Keep each `RULES` block compact: maximum 5 rules".
+
+    The counter reset only on a UNIT/MENU line, so two three-rule blocks accumulated to
+    six and emitted PDSL601 although neither block exceeded anything. A linter's false
+    positive is expensive in a particular way: it teaches people to work around the rule
+    rather than follow it.
+    """
+    assert "PDSL601" not in _block_rule_ids(_TWO_COMPACT_BLOCKS)
+
+
+def test_a_single_oversized_rules_block_still_trips_the_cap() -> None:
+    """The reset must not disarm the check it belongs to."""
+    from studio.utils.pdsl import RULES_CAP
+
+    rules = "\n".join(f"  - ALWAYS rule number {n}" for n in range(RULES_CAP + 1))
+    text = (f"UNIT Demo\n\nPURPOSE:\n  One oversized block.\n\n"
+            f"DO:\n  - RUN Do something deterministic\n\nRULES:\n{rules}\n")
+
+    assert "PDSL601" in _block_rule_ids(text)
+
+
+def test_the_do_cap_stays_per_unit() -> None:
+    """PDSL600 reads "UNIT exceeds the N-action DO cap" — a whole-unit budget by design,
+    and deliberately not changed alongside the RULES one."""
+    from studio.utils.pdsl import DO_ACTION_CAP
+
+    actions = "\n".join(f"  - RUN Step number {n}" for n in range(DO_ACTION_CAP + 1))
+    text = (f"UNIT Demo\n\nPURPOSE:\n  Too many actions.\n\nDO:\n{actions}\n\n"
+            f"RULES:\n  - ALWAYS keep output stable\n")
+
+    assert "PDSL600" in _block_rule_ids(text)

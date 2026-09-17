@@ -568,3 +568,43 @@ def test_schema_encodes_the_consistency_rules():
                == VERDICT_UNJUDGEABLE)
     assert {"not": {"required": ["confidence"]}} in unj["then"]["allOf"]
     assert {"properties": {"evidence_ok": {"const": False}}} in unj["then"]["allOf"]
+
+
+class TestALocusPathIsBounded:
+    """Findings can arrive from out-of-tree producers, so the locus shape is a wire
+    contract and not only an internal invariant. Without a ceiling, an arbitrarily long
+    path — or one nested thousands of segments deep — passed both the constructor and
+    the JSON schema and went straight into a serialized report.
+    """
+
+    def test_an_overlong_path_is_refused(self):
+        from studio.utils.artifact_quality import _MAX_PATH_LENGTH
+
+        too_long = "a" * (_MAX_PATH_LENGTH + 1)
+        with pytest.raises(ValueError, match="at most"):
+            Locus(too_long)
+
+    def test_an_overdeep_path_is_refused(self):
+        from studio.utils.artifact_quality import _MAX_PATH_SEGMENTS
+
+        too_deep = "/".join(["seg"] * (_MAX_PATH_SEGMENTS + 1))
+        with pytest.raises(ValueError, match="segments deep"):
+            Locus(too_deep)
+
+    def test_the_wire_schema_carries_the_same_length_bound(self):
+        """The schema's own comment says the wire pattern must reject the same set the
+        constructor does. A ceiling is part of that set."""
+        from studio.utils.artifact_quality import _FINDING_JSON_SCHEMA, _MAX_PATH_LENGTH
+
+        locus = _FINDING_JSON_SCHEMA["definitions"]["locus"]
+        assert locus["properties"]["artifact_path"]["maxLength"] == _MAX_PATH_LENGTH
+
+    @pytest.mark.parametrize("path", [
+        "a.md",
+        "docs/architecture/decisions/0001-record.md",
+        "/".join(["seg"] * 20) + "/file.md",
+    ], ids=["flat", "ordinary", "deep-but-reasonable"])
+    def test_real_paths_are_untouched(self, path: str):
+        """The bounds are generous on purpose: the point is that one exists, not where
+        it sits. No path a repository actually contains should come near them."""
+        assert Locus(path).artifact_path == path

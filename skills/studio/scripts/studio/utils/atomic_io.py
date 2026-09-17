@@ -16,11 +16,14 @@ don't need.
 from __future__ import annotations
 
 import errno
+import logging
 import os
 import tempfile
 import time
 from pathlib import Path
 from typing import Callable, TypeVar
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -30,6 +33,23 @@ T = TypeVar("T")
 #: this interval trades a little latency (worst case, one interval's worth
 #: of extra wait past the real unlock moment) for not busy-spinning.
 _LOCK_POLL_INTERVAL_SECONDS = 0.05
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-discard
+def _discard(tmp_path: Path) -> None:
+    """Remove a temp file on the failure path, without becoming the failure.
+
+    ``unlink`` inside an ``except`` block is itself a call that can raise -- a
+    read-only directory, a vanished mount -- and when it did, its exception replaced
+    the one that explained what actually went wrong: the caller was handed the
+    janitor's error instead of the fire. Cleanup reports at debug and gets out of the
+    way, so the original traceback is what propagates.
+    """
+    try:
+        tmp_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.debug("atomic write: temp file %s could not be removed: %s", tmp_path, exc)
+# @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-discard
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
@@ -47,11 +67,20 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     tmp_path = Path(tmp_name)
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as tmp_fh:
+        tmp_fh = os.fdopen(fd, "w", encoding=encoding)
+    except Exception:
+        # `os.fdopen` takes ownership of the descriptor only once it succeeds. When it
+        # raises -- an unknown encoding, memory pressure -- the descriptor was neither
+        # wrapped nor closed by anyone, and leaked for the life of the process.
+        os.close(fd)
+        _discard(tmp_path)
+        raise
+    try:
+        with tmp_fh:
             tmp_fh.write(content)
         os.replace(tmp_path, path)
     except Exception:
-        tmp_path.unlink(missing_ok=True)
+        _discard(tmp_path)
         raise
 # @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
 
