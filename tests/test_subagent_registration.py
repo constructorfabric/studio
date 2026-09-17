@@ -1288,6 +1288,88 @@ class TestLegacyStubClassification(unittest.TestCase):
             "workflow",
         )
 
+    def test_pure_generated_stub_matches_rejects_a_foreign_tools_binding(self):
+        """Issue #185: a file bearing one tool's ask_tool_name binding must
+        not be misclassified as pure-generated for a *different* tool, once
+        the caller actually knows which tool it's checking. Before this fix,
+        _pure_generated_stub_matches tried every known binding regardless of
+        which tool's file was being examined. The universal unset/no-binding
+        shape is a separate case -- it carries no tool-specific signal, so
+        it's accepted for any known tool rather than treated as another
+        tool's foreign binding."""
+        from studio.commands.agents import (
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/analyze.md"
+        claude_body = "\n".join(
+            line
+            for line in _follow_protocol_lines(
+                target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH, ask_tool_name="AskUserQuestion",
+            )
+            if line.strip()
+        )
+
+        # A caller that knows this file is Claude's own recognizes it.
+        self.assertTrue(_pure_generated_stub_matches(claude_body, tool="claude"))
+        # A caller checking a DIFFERENT tool's file must not accept Claude's
+        # binding as if it were that tool's own (unset) expected shape --
+        # the exact cross-tool collision #185 was filed for.
+        self.assertFalse(_pure_generated_stub_matches(claude_body, tool="windsurf"))
+        self.assertFalse(_pure_generated_stub_matches(claude_body, tool="cursor"))
+        # Unknown tool (the pre-#185 fallback) still recognizes it via the
+        # brute-force candidate loop, preserving prior behavior when tool
+        # identity genuinely can't be resolved.
+        self.assertTrue(_pure_generated_stub_matches(claude_body, tool=None))
+        self.assertTrue(_pure_generated_stub_matches(claude_body))
+
+        # An unset-shaped body carries no tool-specific signal at all -- it's
+        # the shared "no binding recorded" state every currently-unbound tool
+        # renders identically, not a stand-in for any one tool's shape. It is
+        # therefore accepted as a candidate for any known tool, bound or not
+        # (this is what keeps a tool's own pre-binding legacy files
+        # recognized once that tool later gains a real binding -- see the
+        # follow-up test below). What must stay rejected is a DIFFERENT
+        # tool's own *real* binding value, which is the actual #185 hazard
+        # and is what the assertions above already cover.
+        unset_body = "\n".join(
+            line
+            for line in _follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH)
+            if line.strip()
+        )
+        self.assertTrue(_pure_generated_stub_matches(unset_body, tool="windsurf"))
+        self.assertTrue(_pure_generated_stub_matches(unset_body, tool="claude"))
+
+    def test_pure_generated_stub_matches_keeps_recognizing_pre_binding_files_after_a_new_binding_lands(self):
+        """Issue #185 follow-up: the tool-scoped check must not regress the
+        exact scenario legacy_protocol already handles for the pre-#142
+        case, but one step later in time -- a file generated for tool X
+        while X had no binding (ask_tool_name = unset) must still be
+        recognized as X's own pure stub after X *later* gets a real
+        binding, or every pre-existing install's stubs for that tool would
+        silently stop being cleaned up/regenerated the moment the binding
+        is added."""
+        from unittest.mock import patch as mock_patch
+
+        from studio.commands.agents import (
+            _ASK_TOOL_BINDING,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/analyze.md"
+        pre_binding_windsurf_body = "\n".join(
+            line
+            for line in _follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH)
+            if line.strip()
+        )
+
+        with mock_patch.dict(_ASK_TOOL_BINDING, {"windsurf": "SomeFutureWindsurfTool"}):
+            self.assertTrue(_pure_generated_stub_matches(pre_binding_windsurf_body, tool="windsurf"))
+
     def test_ask_tool_binding_defaults_to_unset_with_description_fallback(self):
         """Issue #142: every generated shim carries an ask-tool context, even
         when no target passes an explicit binding — the description-based
