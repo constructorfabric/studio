@@ -56,9 +56,17 @@ RULES:
     applies to that pairing, not to text output that merely lists choices
     without waiting on a reply.
   ALWAYS, when executing `EMIT_MENU`, first check the menu is native-dialog
-    shape-compatible: at most 4 top-level `OPTIONS` entries, and no entry
-    documented as accepting free-text/arbitrary input (a path, a name, "or
-    describe your own", etc.) rather than choosing among the listed entries.
+    shape-compatible. When the owning `MENU` declares exactly `SHAPE:
+    fixed-choice` or `SHAPE: free-form`, read that fact instead of inferring
+    one: `fixed-choice` is shape-compatible, `free-form` never is, regardless
+    of option count or wording (issue #186). When `SHAPE` is undeclared, OR
+    declared with any other value (unvalidated PDSL is still executable;
+    PDSL validation flags this at authoring time but a runtime reader must
+    not depend on it having run), fall back to: at most 4 top-level `OPTIONS`
+    entries, and no entry or `TITLE` documented as accepting free-text/
+    arbitrary input, an open-ended list, or more than one selection (a path,
+    a name, "or describe your own", "reply with numbers or `all`", etc.)
+    rather than a single choice among the listed entries.
   ALWAYS treat an `ask_tool_name` context that was never established (no
     generated shim or dispatch prompt set it at all) identically to `unset`;
     the distinction between "explicitly no binding" and "never bound" carries

@@ -995,6 +995,67 @@ def _menu_type_declarations() -> dict[str, str | None]:
     return declarations
 
 
+def _menu_shape_declarations() -> dict[str, str | None]:
+    """Map every `<path>::<MenuName>` in the prompt roots to its declared SHAPE.
+
+    Mirrors `_menu_type_declarations()` exactly (issue #186): built from the
+    validator's own block scanner and regexes rather than a second parser, for
+    the same reason -- this guard cannot disagree with the checker it guards
+    about what a MENU is or where a declaration is read.
+    """
+    declarations: dict[str, str | None] = {}
+    seen_declaration: set[str] = set()
+    for path in _prompt_files():
+        text, error = pdsl.read_source_file(path)
+        if error or text is None:
+            continue
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        blocks, _ = pdsl.scan_blocks(str(path), text)
+        for block in blocks:
+            current: str | None = None
+            in_region = False
+            sub_header_indent: int | None = None
+            for raw_line in block.text.splitlines():
+                stripped = raw_line.strip()
+                if not stripped or stripped.startswith("//"):
+                    continue
+                unit_or_menu = pdsl.UNIT_OR_MENU_RE.match(stripped)
+                if unit_or_menu:
+                    kind, name = unit_or_menu.group(1), unit_or_menu.group("name")
+                    current = (
+                        f"{rel}#{block.block_index}::{name}" if kind == "MENU" else None
+                    )
+                    in_region = kind == "MENU"
+                    sub_header_indent = None
+                    if current is not None:
+                        declarations.setdefault(current, None)
+                    continue
+                head = pdsl.SECTION_HEAD_RE.match(stripped)
+                if not head or current is None or not in_region:
+                    continue
+                indent = len(raw_line) - len(raw_line.lstrip(" "))
+                section = head.group("section")
+                if sub_header_indent is None:
+                    sub_header_indent = indent
+                elif section not in pdsl.MENU_SUB_HEADERS and indent > sub_header_indent:
+                    continue
+                if section == pdsl.MENU_SHAPE_HEADER:
+                    # Latch on the FIRST declaration, mirroring the validator's
+                    # `state.menu_shape_line`.
+                    if current in seen_declaration:
+                        continue
+                    seen_declaration.add(current)
+                    value = stripped[len(pdsl.MENU_SHAPE_HEADER) + 1:].strip()
+                    if value in pdsl.MENU_SHAPE_TYPES:
+                        declarations[current] = value
+                    continue
+                # Mirrors the validator: only a recognized section other than
+                # TITLE, TYPE, or SHAPE ends the region. Prose does not.
+                if section in pdsl.SECTION_HEADERS and section not in ("TITLE", pdsl.GATE_HEADER):
+                    in_region = False
+    return declarations
+
+
 #: The paths that auto-resolve a gate by runtime judgement rather than by reading
 #: a declared TYPE. Named here so the claim in UNTYPED_MENU_BASELINE's comment is
 #: pinned to something: if a path is retired or stops judging, the guard below
@@ -1118,6 +1179,170 @@ def test_the_untyped_menu_surface_does_not_grow() -> None:
     stale = sorted(UNTYPED_MENU_BASELINE - set(declarations))
     assert not stale, (
         "UNTYPED_MENU_BASELINE lists MENU(s) that no longer exist:\n  "
+        + "\n  ".join(stale)
+        + "\n\nRemove them from the baseline."
+    )
+
+
+# Every MENU that does not yet declare a shape, frozen 2026-09-17 (issue #186).
+# `SHAPE` is new: no MENU declares it yet, so this baseline currently covers the
+# entire corpus. The surface migrates menu by menu and must not grow -- anything
+# not in this set has to declare a SHAPE. Shrink this set as menus are shaped;
+# never add to it.
+UNSHAPED_MENU_BASELINE: frozenset[str] = frozenset({
+    "architecture/specs/PDSL.md#13::SubAgentApprovalMenu",
+    "architecture/specs/PDSL.md#7::ApprovalMenu",
+    "architecture/specs/PDSL.md#8::PlanApprovalGate",
+    "requirements/auto-config.md#2::ExistingRulesRefreshMenu",
+    "requirements/storytelling-modes.md#0::ModeSelectionMenu",
+    "requirements/storytelling-modes.md#5::ChallengePostRoundMenu",
+    "requirements/storytelling-modes.md#5::ChallengeReactionMenu",
+    "skills/studio/agents/cf-code-bug-finder.md#3::TerminalStates",
+    "skills/studio/agents/cf-generate-author.md#1::DomainClassification",
+    "skills/studio/agents/cf-migrate-migrator.md#3::SpecialCaseAItems",
+    "skills/studio/agents/cf-migrate-planner.md#0::FindingClassification",
+    "skills/studio/agents/cf-prompt-bug-finder.md#3::TerminalStates",
+    "skills/studio/agents/cf-ralphex.md#2::DelegationOutcomeMenu",
+    "skills/studio/agents/cf-ralphex.md#4::BootstrapApprovalMenu",
+    "skills/studio/agents/cf-ralphex.md#4::RetryOrAbortMenu",
+    "skills/studio/agents/cf-semantic-reviewer-code.md#2::OutputShape",
+    "skills/studio/agents/cf-semantic-reviewer-consistency.md#3::FindingClassificationRules",
+    "skills/studio/agents/storytelling-gate.md#4::GenerateRoutingMenu",
+    "skills/studio/agents/storytelling-gate.md#6::PlanApprovalMenu",
+    "skills/studio/migrate-from-cypilot.md#4::E1_ScannerMenu",
+    "skills/studio/migrate-from-cypilot.md#5::E2_PlannerMenu",
+    "skills/studio/migrate-from-cypilot.md#6::E3_MigratorMenu",
+    "skills/studio/migrate-from-cypilot.md#7::E4_VerifierMenu",
+    "skills/studio/migrate-from-cypilot.md#8::E5_MigratorMenu",
+    "skills/studio/modules/analyze-routing-menus.md#1::AnalyzeIntentOffer",
+    "skills/studio/modules/analyze-routing-menus.md#2::AnalyzeLoadOffer",
+    "skills/studio/modules/analyze-skill-fallbacks.md#0::AnalyzeOtherSkillsMenu",
+    "skills/studio/modules/analyze-skill-fallbacks.md#1::AnalyzeNoMatchMenu",
+    "skills/studio/modules/auto-config-detect.md#0::DetectConfirmMenu",
+    "skills/studio/modules/auto-config-docs.md#0::DocsConfirmMenu",
+    "skills/studio/modules/auto-config-generate.md#0::GenerateConfirmMenu",
+    "skills/studio/modules/auto-config-integrate-validate.md#0::IntegrateConfirmMenu",
+    "skills/studio/modules/auto-config-precheck.md#0::ExistingRulesRefreshMenu",
+    "skills/studio/modules/auto-config-scan-docs.md#0::ScanConfirmMenu",
+    "skills/studio/modules/brainstorm-panel-render.md#0::PanelEditMenu",
+    "skills/studio/modules/brainstorm-rounds.md#0::PostRoundMenu",
+    "skills/studio/modules/brainstorm-rounds.md#0::QuestionMenu",
+    "skills/studio/modules/brainstorm-wrap.md#0::WrapMenu",
+    "skills/studio/modules/ci-discovery-run.md#0::CiDiscoveryFailureMenu",
+    "skills/studio/modules/ci-discovery-run.md#0::CiDiscoverySkipMenu",
+    "skills/studio/modules/coding-prep-gates.md#0::CodingExploreMenu",
+    "skills/studio/modules/coding-prep-gates.md#1::CodingBrainstormMenu",
+    "skills/studio/modules/debug-prompts-command-menu-nav.md#0::DebuggerMenu",
+    "skills/studio/modules/debug-prompts-failures.md#0::DebugRunFailureMenu",
+    "skills/studio/modules/debug-prompts-failures.md#0::DebugStepFailureMenu",
+    "skills/studio/modules/explain-intent-explore.md#2::ExplainExploreMenu",
+    "skills/studio/modules/explore-clarify.md#0::ExploreClarifyMenu",
+    "skills/studio/modules/explore-save.md#0::ExploreSaveMenu",
+    "skills/studio/modules/gates/migrate-from-cypilot-offer.md#0::MigrateFromCypilotConfirm",
+    "skills/studio/modules/gates/plan-first.md#0::PlanFirstConfirm",
+    "skills/studio/modules/gates/plan-first.md#1::PlanStorageChoice",
+    "skills/studio/modules/gates/simple-mode-simple.md#2::SimpleModeBraveNewWorldChoice",
+    "skills/studio/modules/gates/simple-mode.md#0::SimpleModeChoice",
+    "skills/studio/modules/gates/workflow-prep.md#1::WorkflowPrepExploreRepeatMenu",
+    "skills/studio/modules/generate-routing-menus.md#1::GenerateIntentOffer",
+    "skills/studio/modules/generate-routing-menus.md#2::GenerateLoadOffer",
+    "skills/studio/modules/generate-skill-fallbacks.md#0::GenerateOtherSkillsMenu",
+    "skills/studio/modules/generate-skill-fallbacks.md#1::GenerateNoMatchMenu",
+    "skills/studio/modules/kit-discovery-proposal.md#0::KitInitDiscoveryApprovalMenu",
+    "skills/studio/modules/kit-discovery-run.md#0::KitInitDiscoveryFailureMenu",
+    "skills/studio/modules/kit-edit-render.md#0::KitInitEditRetryMenu",
+    "skills/studio/modules/kit-existing-manifest.md#0::KitInitExistingManifestMenu",
+    "skills/studio/modules/kit-legacy-preview-menus.md#0::KitInitLegacyApprovalMenu",
+    "skills/studio/modules/kit-legacy-preview-menus.md#0::KitInitPreviewFailureMenu",
+    "skills/studio/modules/kit-manual-guidance-preview.md#0::KitInitManualGuidanceRetryMenu",
+    "skills/studio/modules/kit-target-entry.md#0::KitInitTargetMenu",
+    "skills/studio/modules/kit-target-preflight-route.md#0::KitInitTargetRetryMenu",
+    "skills/studio/modules/kit-target-validation.md#0::KitInitValidationFailureMenu",
+    "skills/studio/modules/map-config-palette.md#0::ConfigAssistActionMenu",
+    "skills/studio/modules/map-config-palette.md#0::PaletteMenu",
+    "skills/studio/modules/map-config-palette.md#0::UncategorizedMenu",
+    "skills/studio/modules/map-execute.md#0::ConfigAssistOfferMenu",
+    "skills/studio/modules/map-execute.md#0::MapConfigMenu",
+    "skills/studio/modules/map-intent.md#0::MapIntentMenu",
+    "skills/studio/modules/map-next.md#0::MapNextStepsMenu",
+    "skills/studio/modules/map-preflight.md#2::MapScopeMenu",
+    "skills/studio/modules/plan-compile.md#0::PlanProduceChoice",
+    "skills/studio/modules/plan-compiler-dispatch.md#2::PlanCompilerFailureMenu",
+    "skills/studio/modules/plan-discovery.md#1::PlanGateMenu",
+    "skills/studio/modules/plan-validate-finalize.md#0::OversizedPhaseRecoveryMenu",
+    "skills/studio/modules/plan-validate-finalize.md#1::Phase4NextStepsMenu",
+    "skills/studio/modules/planning-runtime.md#8::PlanSaveGateMenu",
+    "skills/studio/modules/review/fix-approval.md#0::ReviewFindingsNavigation",
+    "skills/studio/modules/review/fix-approval.md#12::ReviewFixPartialIdsRetryMenu",
+    "skills/studio/modules/review/fix-approval.md#3::ReviewFixScope",
+    "skills/studio/modules/review/semantic-loop-skeleton.md#0::ReviewGranularityMenu",
+    "skills/studio/modules/routing/companion-skills.md#1::CompanionSkillOfferMenu",
+    "skills/studio/modules/routing/companion-skills.md#2::CompanionRoutingMenuOptions",
+    "skills/studio/modules/routing/root-intent-routing.md#1::IntentSkillMenu",
+    "skills/studio/modules/routing/root-intent-routing.md#1::MatchedIntentSkillMenu",
+    "skills/studio/modules/routing/root-intent-routing.md#9::AllCfSkillsMenu",
+    "skills/studio/modules/runtime/blocked-next-actions.md#2::BlockedNextActionsMenu",
+    "skills/studio/modules/session/shutdown.md#0::StudioShutdownConfirm",
+    "skills/studio/modules/subagents/dispatch.md#1::SubAgentApprovalRequest",
+    "skills/studio/modules/subagents/dispatch.md#1::SubAgentFallbackLimitRequest",
+    "skills/studio/modules/subagents/dispatch.md#1::SubAgentFallbackRequest",
+    "skills/studio/modules/subagents/git-commit-mode.md#5::GitCommitModeMenu",
+    "skills/studio/modules/ui/next-actions.md#0::NextActionsMenu",
+    "skills/studio/modules/workspace-configure.md#0::SourceConfirmMenu",
+    "skills/studio/modules/workspace-discover.md#0::RepoSelectionMenu",
+    "skills/studio/modules/workspace-discover.md#0::StorageModeMenu",
+    "skills/studio/modules/workspace-discover.md#0::ZeroResultsMenu",
+    "skills/studio/modules/workspace-generate.md#2::GenerateFailureMenu",
+    "skills/studio/modules/workspace-next-dispatch.md#0::WorkspaceNextStepsMenu",
+    "skills/studio/modules/workspace-router-quick.md#0::WorkspaceIntentMenu",
+    "skills/studio/modules/workspace-router-quick.md#3::WorkspaceForceSyncConfirm",
+    "skills/studio/modules/workspace-validate.md#1::ValidationFailureMenu",
+    "skills/studio/modules/write-docs-author-dispatch.md#2::WriteDocsAuthorTargetMissingMenu",
+    "skills/studio/modules/write-docs-prep-gates.md#0::WriteDocsExploreMenu",
+    "skills/studio/modules/write-docs-prep-gates.md#1::WriteDocsBrainstormMenu",
+    "skills/studio/modules/write-skills-author-dispatch.md#2::WriteSkillsNoOutputMenu",
+    "skills/studio/modules/write-skills-prep-gates.md#0::WriteSkillsExploreMenu",
+    "skills/studio/modules/write-skills-prep-gates.md#1::WriteSkillsBrainstormMenu",
+})
+
+# The unshaped surface may only shrink. Raising this is a deliberate, reviewable
+# act; a rename does not need it, because a rename leaves the count unchanged.
+UNSHAPED_MENU_BASELINE_CEILING = 113
+
+
+def test_the_unshaped_menu_surface_does_not_grow() -> None:
+    """A newly introduced MENU must declare a SHAPE (issue #186).
+
+    Mirrors `test_the_untyped_menu_surface_does_not_grow` exactly. The tail
+    recorded in UNSHAPED_MENU_BASELINE is grandfathered so the surface can
+    migrate one menu at a time; it is not grandfathered because an undeclared
+    shape is harmless -- an undeclared menu falls back to the existing
+    prose-based shape-compatibility heuristic, which is exactly the ambiguity
+    #186 was filed about. This test freezes the existing unshaped inventory:
+    what must not happen is that inventory growing, so a MENU neither shaped
+    nor in the baseline fails here.
+    """
+    declarations = _menu_shape_declarations()
+    unshaped_now = {key for key, value in declarations.items() if value is None}
+
+    new_unshaped = sorted(unshaped_now - UNSHAPED_MENU_BASELINE)
+    assert not new_unshaped, (
+        "New MENU(s) without a declared SHAPE:\n  "
+        + "\n  ".join(new_unshaped)
+        + "\n\nDeclare `SHAPE: fixed-choice | free-form` on each, or, if the "
+        "menu was renamed or moved, update UNSHAPED_MENU_BASELINE."
+    )
+
+    assert len(UNSHAPED_MENU_BASELINE) <= UNSHAPED_MENU_BASELINE_CEILING, (
+        f"UNSHAPED_MENU_BASELINE holds {len(UNSHAPED_MENU_BASELINE)} entries, above the "
+        f"recorded ceiling of {UNSHAPED_MENU_BASELINE_CEILING}. The unshaped surface may "
+        "only shrink: declare a SHAPE on the new menu rather than grandfathering it. A "
+        "rename swaps one key for another and leaves the count unchanged."
+    )
+
+    stale = sorted(UNSHAPED_MENU_BASELINE - set(declarations))
+    assert not stale, (
+        "UNSHAPED_MENU_BASELINE lists MENU(s) that no longer exist:\n  "
         + "\n  ".join(stale)
         + "\n\nRemove them from the baseline."
     )

@@ -2645,7 +2645,8 @@ def test_required_bootstrap_activates_content_and_resource_context_memory() -> N
 def test_pdsl_execution_card_routes_emit_menu_through_native_ask_tool() -> None:
     """Issue #142: blocking EMIT_MENU gates route through a harness's native
     question dialog when the generated shim's ask_tool_name binding and the
-    menu's shape (<=4 fixed-choice options) allow it, else fall back to text."""
+    menu's shape (a declared SHAPE, or the <=4 fixed-choice-option heuristic
+    when undeclared, per issue #186) allow it, else fall back to text."""
     repo_root = Path(__file__).resolve().parents[1]
     execution_card = (
         repo_root / "skills" / "studio" / "modules" / "runtime" / "pdsl-execution-card.md"
@@ -2653,8 +2654,11 @@ def test_pdsl_execution_card_routes_emit_menu_through_native_ask_tool() -> None:
     normalized = " ".join(execution_card.split())
 
     assert "native-dialog shape-compatible" in normalized
+    assert "declares exactly `SHAPE: fixed-choice` or" in normalized
+    assert "`fixed-choice` is shape-compatible, `free-form` never is" in normalized
     assert "at most 4 top-level `OPTIONS` entries" in normalized
-    assert "no entry documented as accepting free-text" in normalized
+    assert "no entry or `TITLE` documented as" in normalized
+    assert "an open-ended list, or more than one selection" in normalized
     assert "`ask_tool_name` context is a real tool name (not `unset` or never established)" in normalized
     assert "invoke that tool instead of rendering the menu as prose" in normalized
     assert "`ask_tool_description` can match it" in normalized
