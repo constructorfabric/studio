@@ -1220,6 +1220,74 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertTrue(_pure_generated_stub_matches(pre_142_body))
         self.assertFalse(_pure_generated_stub_matches(pre_142_body + "\nCUSTOM USER LINE"))
 
+    def test_pure_generated_stub_matches_rejects_ask_question_bearing_content(self):
+        """Issue #206 follow-up: _ASK_TOOL_BINDING_BY_OUTPUT's values must
+        NOT validate as a pure generated stub via this function -- that
+        pool is tool-agnostic (tried against content from any tool's legacy
+        path), so accepting "AskQuestion" here would let it falsely match
+        an unrelated tool's legacy file, the exact cross-tool collision
+        constructorfabric/studio#185 tracks. If candidate_bindings is ever
+        widened to include _ASK_TOOL_BINDING_BY_OUTPUT's values, this test
+        must fail."""
+        from studio.commands.agents import (
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/cf.md"
+        lines = _follow_protocol_lines(
+            target,
+            required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+            ask_tool_name="AskQuestion",
+        )
+        body = "\n".join(line for line in lines if line.strip())
+        self.assertFalse(_pure_generated_stub_matches(body))
+
+    def test_cursor_launcher_ownership_check_short_circuits_before_purity_check(self):
+        """Locks the safety argument documented above candidate_bindings:
+        `.cursor/commands/cf.md`'s own content is classified via
+        `_extract_studio_owned_target`'s match, before
+        `_classify_generated_output_owner`'s `or` ever reaches
+        `_is_pure_studio_generated` -- which is why AskQuestion not being in
+        candidate_bindings doesn't stop this file from being recognized as
+        Studio-owned. If a future refactor reorders or removes that
+        short-circuit, this test must fail."""
+        from studio.commands.agents import (
+            _CURSOR_CF_LAUNCHER_PATH,
+            _GENERATED_MARKER,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _classify_generated_output_owner,
+            _extract_studio_owned_target,
+            _follow_protocol_lines,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/cf.md"
+        lines = [
+            "---",
+            "name: cf",
+            "description: cf",
+            "---",
+            _GENERATED_MARKER,
+            "",
+            *_follow_protocol_lines(
+                target,
+                required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+                ask_tool_name="AskQuestion",
+            ),
+        ]
+        content = "\n".join(lines) + "\n"
+
+        self.assertIsNotNone(
+            _extract_studio_owned_target(content),
+            "expected the follow-link target to be extractable, proving the "
+            "short-circuit condition is met before any purity check runs",
+        )
+        self.assertEqual(
+            _classify_generated_output_owner(_CURSOR_CF_LAUNCHER_PATH, content),
+            "workflow",
+        )
+
     def test_ask_tool_binding_defaults_to_unset_with_description_fallback(self):
         """Issue #142: every generated shim carries an ask-tool context, even
         when no target passes an explicit binding — the description-based
@@ -1285,11 +1353,15 @@ class TestLegacyStubClassification(unittest.TestCase):
         the binding's presence in the rendered template is the whole
         contract for this file.
         """
-        from studio.commands.agents import _default_agents_config
+        from studio.commands.agents import _CURSOR_CF_LAUNCHER_PATH, _default_agents_config
 
         config = _default_agents_config()
         outputs = config["agents"]["cursor"]["skills"]["outputs"]
-        cf_md = next(o for o in outputs if o["path"] == ".cursor/commands/cf.md")
+        cf_md = next((o for o in outputs if o["path"] == _CURSOR_CF_LAUNCHER_PATH), None)
+        self.assertIsNotNone(
+            cf_md,
+            f"Expected {_CURSOR_CF_LAUNCHER_PATH!r} output entry not found in cursor config",
+        )
         template = "\n".join(cf_md["template"])
         self.assertIn('- ask_tool_name = "AskQuestion"', template)
 
@@ -1303,11 +1375,11 @@ class TestLegacyStubClassification(unittest.TestCase):
         for every non-Claude tool by test_shared_skill_outputs_have_no_exact_
         ask_tool_binding and test_kit_workflow_skill_templates_have_no_exact_
         binding_for_non_claude below; no need to re-assert it here.)"""
-        from studio.commands.agents import _default_agents_config
+        from studio.commands.agents import _CURSOR_CF_LAUNCHER_PATH, _default_agents_config
 
         outputs = _default_agents_config()["agents"]["cursor"]["skills"]["outputs"]
         for entry in outputs:
-            if entry["path"] == ".cursor/commands/cf.md":
+            if entry["path"] == _CURSOR_CF_LAUNCHER_PATH:
                 continue
             template = "\n".join(entry["template"])
             self.assertNotIn(
@@ -1409,7 +1481,13 @@ class TestLegacyStubClassification(unittest.TestCase):
         the same no-exact-binding / no-{custom_content} contract as
         _agents_skill_outputs for every non-Claude tool -- previously only
         the latter was covered, so a regression in
-        _build_agents_kit_workflow_template would have gone uncaught."""
+        _build_agents_kit_workflow_template would have gone uncaught.
+
+        Also asserts no `AskQuestion` leak specifically: this is a distinct
+        production call site from Cursor's dedicated cf.md launcher, and
+        neither this test's own `AskUserQuestion` check nor the separate
+        dedicated-launcher regression test would catch AskQuestion leaking
+        in here."""
         from studio.commands.agents import _kit_workflow_skill_template, _default_agents_config
 
         non_claude_tools = [
@@ -1420,6 +1498,7 @@ class TestLegacyStubClassification(unittest.TestCase):
             template = "\n".join(_kit_workflow_skill_template(tool))
             self.assertIn("- ask_tool_name = unset", template, msg=f"tool={tool!r}")
             self.assertNotIn("AskUserQuestion", template, msg=f"tool={tool!r}")
+            self.assertNotIn("AskQuestion", template, msg=f"tool={tool!r}")
             self.assertNotIn("{custom_content}", template, msg=f"tool={tool!r}")
 
     def test_agents_skill_outputs_are_content_identical_across_unbound_tools(self):

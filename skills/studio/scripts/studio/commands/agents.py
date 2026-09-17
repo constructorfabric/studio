@@ -933,9 +933,11 @@ _CLAUDE_ASK_TOOL_NAME = _ASK_TOOL_BINDING.get("claude")
 # tool (constructorfabric/studio#206, Option A) -- for a tool's outputs that
 # are NOT all part of a shared bucket, only some of them. Keyed by output
 # path so a second such case is a one-line addition here, not a new
-# module-level constant plus a new hand-verified exclusion elsewhere; its
-# values are folded into `_pure_generated_stub_matches`'s candidate set
-# below for the same reason.
+# module-level constant. Its values are deliberately NOT folded into
+# `_pure_generated_stub_matches`'s candidate set below -- see the comment
+# above that assignment for why (folding them in would validate this
+# binding against unrelated tools' content too, the exact cross-tool
+# collision constructorfabric/studio#185 tracks).
 #
 # `.cursor/commands/cf.md` -> `AskQuestion`: Cursor's root `cf` skill has its
 # own dedicated, non-shared launcher file, unlike its other five kit-workflow
@@ -946,8 +948,14 @@ _CLAUDE_ASK_TOOL_NAME = _ASK_TOOL_BINDING.get("claude")
 # Claude's/Codex's tools. Corroborated by Cursor staff across multiple forum
 # threads, not from an official schema dump — treat the exact casing as
 # highly likely correct, not certified.
+#
+# Named as a constant, not repeated as a literal, at both this dict's key and
+# the `.get()` call site in `_default_agents_config()` -- a path rename that
+# updates only one of the two would otherwise silently drop the binding to
+# `unset` with no error.
+_CURSOR_CF_LAUNCHER_PATH = ".cursor/commands/cf.md"
 _ASK_TOOL_BINDING_BY_OUTPUT: Dict[str, str] = {
-    ".cursor/commands/cf.md": "AskQuestion",
+    _CURSOR_CF_LAUNCHER_PATH: "AskQuestion",
 }
 
 _ASK_TOOL_FALLBACK_DESCRIPTION = (
@@ -1937,7 +1945,7 @@ def _default_agents_config() -> dict:
                     "custom_content": "",
                     "outputs": _agents_skill_outputs("cursor") + [
                         {
-                            "path": ".cursor/commands/cf.md",
+                            "path": _CURSOR_CF_LAUNCHER_PATH,
                             "template": [
                                 _GENERATED_MARKER,
                                 "# /cf",
@@ -1945,7 +1953,7 @@ def _default_agents_config() -> dict:
                                 "{custom_content}",
                                 *_follow_protocol_lines(
                                     "{target_skill_path}",
-                                    ask_tool_name=_ASK_TOOL_BINDING_BY_OUTPUT.get(".cursor/commands/cf.md"),
+                                    ask_tool_name=_ASK_TOOL_BINDING_BY_OUTPUT.get(_CURSOR_CF_LAUNCHER_PATH),
                                 ),
                             ],
                         },
