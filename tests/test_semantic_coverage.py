@@ -440,3 +440,60 @@ def test_flagged_lines_prioritises_wrong_over_partial_when_capped():
     first_partial = next(i for i, ln in enumerate(lines) if "p:" in ln)
     last_wrong = max(i for i, ln in enumerate(lines) if "w:" in ln)
     assert last_wrong < first_partial
+
+
+class TestNoAbsolutePathReachesALogRecord:
+    """`_relative_posix` promises "never absolute — so no local path leaks into the
+    report or the out-of-tree judge prompt". #200 made the *return value* keep that
+    promise; the log records beside it did not, and still carried the username and
+    directory layout. A debug record is a narrower audience than a judge prompt, not a
+    different rule.
+    """
+
+    def test_the_outside_root_notice_names_the_file_not_the_path(
+            self, tmp_path: Path, caplog) -> None:
+        import logging
+
+        outside = tmp_path.parent / "elsewhere" / "mod.py"
+        with caplog.at_level(logging.DEBUG, logger="studio.utils.semantic_coverage"):
+            sc._relative_posix(outside, tmp_path)
+
+        logged = " ".join(r.getMessage() for r in caplog.records)
+        assert "outside project_root" in logged
+        assert str(outside) not in logged
+        assert str(tmp_path.parent) not in logged
+
+    def test_a_duplicate_definition_warning_is_project_relative(
+            self, tmp_path: Path, monkeypatch, caplog) -> None:
+        import logging
+
+        first, second = tmp_path / "a.md", tmp_path / "b.md"
+        for path in (first, second):
+            path.write_text(f"- [x] `p1` - **ID**: `{_ALGO}`\n", encoding="utf-8")
+        monkeypatch.setattr(sc, "collect_artifacts_to_scan",
+                            lambda ctx: ([(first, "feature"), (second, "feature")], {}))
+        ctx = _ctx(tmp_path, first)
+
+        with caplog.at_level(logging.WARNING, logger="studio.utils.semantic_coverage"):
+            sc._definition_map(ctx)
+
+        logged = " ".join(r.getMessage() for r in caplog.records)
+        assert "defined in both" in logged
+        assert str(tmp_path) not in logged, "the absolute project path must not be logged"
+        assert "a.md" in logged and "b.md" in logged
+
+    def test_an_unparseable_file_warning_is_project_relative(
+            self, tmp_path: Path, caplog) -> None:
+        import logging
+
+        bad = tmp_path / "bad.py"
+        bad.write_text(f"# @cpt-begin:{_ALGO}:p1:inst-orphan\ndef f():\n    pass\n",
+                       encoding="utf-8")   # no @cpt-end
+
+        with caplog.at_level(logging.WARNING, logger="studio.utils.semantic_coverage"):
+            sc._pairings_for_files([bad], {}, tmp_path)
+
+        logged = " ".join(r.getMessage() for r in caplog.records)
+        assert "unparseable" in logged
+        assert str(tmp_path) not in logged
+        assert "bad.py" in logged

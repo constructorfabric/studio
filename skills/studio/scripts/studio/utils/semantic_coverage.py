@@ -43,13 +43,20 @@ def _definition_map(ctx: object) -> Dict[str, Path]:
     """
     out: Dict[str, Path] = {}
     artifacts, _sources = collect_artifacts_to_scan(ctx)
+    # Only for the warning below: the map itself keeps absolute paths, which is what
+    # callers resolve against. Log records are the thing that travels.
+    root = getattr(ctx, "project_root", None)
     for artifact_path, _kind in artifacts:
         for hit in scan_cpt_ids(artifact_path):
             if hit.get("type") == "definition" and isinstance(hit.get("id"), str):
                 existing = out.get(hit["id"])
                 if existing is not None and existing != artifact_path:
+                    # Project-relative, like every other path this module emits: an
+                    # absolute one here discloses the username and directory layout for
+                    # no benefit, and is harder to read besides.
                     logger.warning("semantic: cpt id %s defined in both %s and %s; keeping the first",
-                                   hit["id"], existing, artifact_path)
+                                   hit["id"], _relative_posix(existing, root),
+                                   _relative_posix(artifact_path, root))
                 out.setdefault(hit["id"], artifact_path)
     return out
 # @cpt-end:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-defmap
@@ -74,7 +81,12 @@ def _relative_posix(path: Path, project_root: Optional[Path]) -> str:
     try:
         return resolved.relative_to(root).as_posix()
     except ValueError:
-        logger.debug("semantic: %s is outside project_root; using a relative path", path)
+        # The *name*, not the path. The function's first sentence promises no local path
+        # leaks, and #200 made the return value keep that promise -- this line still
+        # interpolated the raw absolute path, so the username and directory layout went
+        # into the log instead of the report. A debug record is a narrower audience than
+        # a judge prompt, not a different rule.
+        logger.debug("semantic: %s is outside project_root; using a relative path", path.name)
     try:
         return Path(os.path.relpath(resolved, root)).as_posix()
     except ValueError:
@@ -95,7 +107,12 @@ def _pairings_for_files(files: Sequence[Path], definitions: Dict[str, Path],
     for code_path in dict.fromkeys(files):        # dedup duplicate registrations, keep order
         code_file, errs = CodeFile.from_path(code_path)
         if code_file is None:
-            logger.warning("semantic: skipping unparseable file %s: %s", code_path, errs)
+            # The error *codes*, not the raw finding dicts: each one carries its own
+            # absolute `path` and `location`, so interpolating them put back the path
+            # this line had just been made to drop. The file is already named.
+            codes = sorted({str(err.get("code")) for err in errs if isinstance(err, dict)})
+            logger.warning("semantic: skipping unparseable file %s: %s",
+                           _relative_posix(code_path, project_root), ", ".join(codes) or errs)
             continue
         path_posix = _relative_posix(code_file.path, project_root)
         for block in code_file.block_markers:
