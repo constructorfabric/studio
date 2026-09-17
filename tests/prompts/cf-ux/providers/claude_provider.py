@@ -42,6 +42,23 @@ DEFAULT_EFFORT = os.environ.get("CF_UX_CLAUDE_EFFORT", "low")
 # there the agent writes where it is told to.
 PERMISSION_MODE = "bypassPermissions"
 
+#: What the Claude subprocess is allowed to see of this process's environment, by
+#: exact name and by prefix. An allowlist rather than a denylist, because the parent
+#: here is a CI runner: it holds GITHUB_TOKEN, cloud credentials, and whatever else
+#: the pipeline needs, and `subprocess.run` without `env=` hands every one of them to
+#: a child started with `bypassPermissions` -- the mode whose whole point is that it
+#: may act without asking first. `cwd=` sandboxes the filesystem and does nothing at
+#: all for environment variables.
+#:
+#: A denylist would need an edit every time CI gains a secret, and would be wrong
+#: silently in between. This fails closed instead: a variable the CLI turns out to
+#: need is a visible, one-line addition, not an invisible leak.
+_ENV_NAMES = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "SHELL")
+
+#: The CLI's own configuration and credential namespace -- the one secret it is
+#: entitled to, and the knobs that select the model and endpoint.
+_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_", "CF_UX_")
+
 #: Cost ceiling for one scenario. Named because the error text for a transcript
 #: that stops early has to be able to point at it as a cause.
 MAX_BUDGET_USD = "0.30"
@@ -223,7 +240,14 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
                 # collision can only take evidence away, never invent it.
                 calls[block.get("id")] = block.get("input") or {}
             elif kind == "tool_result":
-                results[block.get("tool_use_id")] = bool(block.get("is_error"))
+                # `is_error` kept as it arrived, not coerced. `bool(None)` is `False`,
+                # which made an *absent* field indistinguishable from an explicit
+                # `is_error: false` -- and the verdict below reads `False` as "the
+                # skill ran". A truncated stream, or a schema that stops emitting the
+                # field, was therefore graded as a confirmed successful run on
+                # evidence that never arrived. Three states, not two: True, False, and
+                # nothing was said.
+                results[block.get("tool_use_id")] = block.get("is_error")
 
     named = {call_id: _invoked_names(payload) for call_id, payload in calls.items()}
     names = sorted({name for found in named.values() for name in found})
@@ -256,10 +280,14 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
         if others:
             logger.warning(_LOG_AMBIGUOUS_MATCH, _SKILL_NAME, list(others))
         return _SkillTrace("ran", names, inputs, "", others)
-    if any(call_id not in results for call_id in targeted):
+    # `results.get` is None for both "no tool_result at all" and "a tool_result that
+    # said nothing about failure". Neither is evidence of success, and the difference
+    # between them does not change the verdict, so they share it.
+    if any(results.get(call_id) is None for call_id in targeted):
         return _SkillTrace(
             "failed", names, inputs,
-            f"the {_SKILL_NAME!r} call has no result in the transcript",
+            f"the {_SKILL_NAME!r} call has no result in the transcript, "
+            f"or one that carries no 'is_error' to judge it by",
         )
     return _SkillTrace(
         "failed", names, inputs, f"every {_SKILL_NAME!r} call came back as an error",
@@ -291,6 +319,16 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         return {"error": f"unexpected: {type(exc).__name__}: {exc}"}
 
 
+def _child_env() -> dict[str, str]:
+    """The environment handed to the CLI: what it needs to run and authenticate, and
+    nothing the rest of the runner happens to be carrying. See :data:`_ENV_NAMES`."""
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if name in _ENV_NAMES or name.startswith(_ENV_PREFIXES)
+    }
+
+
 def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # Explicit skill invocation: Claude Code uses `/cf <prompt>`.
     invoked = f"/cf {prompt}"
@@ -311,7 +349,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     try:
         proc = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, env=_child_env(),
         )
     except subprocess.TimeoutExpired:
         # Handled here rather than in `call_api` so it carries the same baseline

@@ -1,0 +1,17 @@
+# Keeps the SHA-pinned actions in .github/workflows current.
+#
+# Pinning without this is how a workflow quietly rots: a pin freezes the code that
+# runs, including its bugs and its unpatched dependencies. Dependabot rewrites the
+# SHA *and* the version comment beside it in one PR, so the readable version never
+# drifts from what is actually pinned, and every bump arrives as a diff someone
+# approves rather than as a tag that moved underneath us.
+#
+# See constructorfabric/studio#201.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci

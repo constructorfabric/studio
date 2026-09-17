@@ -44,6 +44,14 @@ def _skill_result(call_id: str = "t1", *, is_error: bool = False) -> dict:
     ]}}
 
 
+def _skill_result_without_flag(call_id: str = "t1") -> dict:
+    """A `tool_result` that never mentions `is_error` -- a truncated stream, or a
+    schema that stopped emitting it."""
+    return {"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": call_id, "content": "..."},
+    ]}}
+
+
 def _result(text: str = "the answer", cost: float = 0.01, **overrides) -> dict:
     return {"type": "result", "subtype": "success", "result": text,
             "session_id": "s1", "num_turns": 3, "total_cost_usd": cost, **overrides}
@@ -63,8 +71,9 @@ def run_provider(tmp_path, monkeypatch):
         yield tmp_path
 
     def _make(stdout: str, returncode: int = 0, stderr: str = "", raises: Exception | None = None):
-        def _fake_run(cmd, **_kwargs):
+        def _fake_run(cmd, **kwargs):
             seen["cmd"] = list(cmd)
+            seen["kwargs"] = kwargs
             if raises is not None:
                 raise raises
             return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
@@ -702,3 +711,76 @@ class TestTheSandboxIsWipedEvenWhenTheRunDies:
         assert "unexpected: RuntimeError" in out["error"]
         assert not seen["cwd"].exists(), "and the directory does not outlive the run"
         assert seen["cwd"] not in sandbox_module._LIVE_SANDBOXES
+
+
+# ------------------------------------------------- what the subprocess inherits
+
+class TestTheSubprocessDoesNotInheritTheRunnersSecrets:
+    """The CLI is started with `--permission-mode bypassPermissions`. Whatever the
+    parent is carrying, it should not be carrying it *there*.
+
+    `cwd=` sandboxes the filesystem; it does nothing for environment variables, and
+    `subprocess.run` without `env=` passes the lot. On CI the lot includes
+    GITHUB_TOKEN and cloud credentials.
+    """
+
+    def test_an_unrelated_secret_is_not_passed_through(self, run_provider, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_should_not_travel")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "should_not_travel_either")
+
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        env = seen["kwargs"]["env"]
+        assert "GITHUB_TOKEN" not in env
+        assert "AWS_SECRET_ACCESS_KEY" not in env
+        assert "ghp_should_not_travel" not in env.values()
+
+    def test_what_the_cli_needs_does_come_through(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/tmp/cfg")
+
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        env = seen["kwargs"]["env"]
+        assert env["ANTHROPIC_API_KEY"] == "sk-test"      # its own credential, not a stray one
+        assert env["CLAUDE_CONFIG_DIR"] == "/tmp/cfg"
+        assert "PATH" in env                              # or `claude` is not findable
+        assert "HOME" in env                              # its config and credential store
+
+    def test_an_env_is_passed_at_all(self, run_provider):
+        """The defect was the absence of the argument, so pin the argument."""
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert seen["kwargs"].get("env") is not None
+
+
+# --------------------------------------- a result that proves nothing is not a pass
+
+class TestAToolResultWithoutIsErrorIsNotASuccess:
+    """`bool(None)` is `False`, and `False` meant "the skill ran". So a `tool_result`
+    block that simply omitted `is_error` was graded identically to one that explicitly
+    reported success -- the harness confirming a run on evidence it never received.
+    """
+
+    def test_a_missing_is_error_is_not_graded_as_a_run(self, run_provider):
+        out, _seen = run_provider(
+            _stream(_skill_call(), _skill_result_without_flag(), _result("answered anyway")))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
+        assert "is_error" in out["error"]
+
+    def test_an_explicit_false_is_still_a_run(self, run_provider):
+        """The fix must not turn a real success into a failure."""
+        out, _seen = run_provider(
+            _stream(_skill_call(), _skill_result(is_error=False), _result("the answer")))
+
+        assert out["output"] == "the answer"
+        assert out["metadata"]["skill_state"] == "ran"
+
+    def test_an_explicit_true_is_still_a_failure(self, run_provider):
+        out, _seen = run_provider(
+            _stream(_skill_call(), _skill_result(is_error=True), _result("answered anyway")))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
