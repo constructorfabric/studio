@@ -225,3 +225,28 @@ ReversalCheck.refused  # noqa: B018
 # advisory-finding vocabulary (info / warn).
 from studio.utils.severity import VALIDATION_SEVERITIES  # noqa: E402
 VALIDATION_SEVERITIES  # noqa: B018
+
+# gate_surface — the static walk that counts how many gates a workflow can reach, and the
+# fields of its result. No *code* consumes them: the walk exists to record a baseline
+# before the autonomy default is flipped, and the comparison that will read these fields
+# is a later task. A person has read the numbers — the concentration figure is what sized
+# "type the ten dominant menus, grandfather the tail" — which is why they are worth
+# keeping, and is not a consumer for the purpose of this whitelist. An earlier version of
+# this comment said "nothing consumes them yet" and "already in use" two sentences apart,
+# which review read as the contradiction it was.
+# REMOVAL TRIGGER — delete these once a command or report reads the fields (grep
+# `WorkflowSurface` or `GateSurface` outside its own module and tests). The algorithm is
+# declared in architecture/features/developer-experience.md (### Count the Reachable Gate
+# Surface).
+from studio.utils.gate_surface import EmitSite, GateSurface, WorkflowSurface  # noqa: E402
+WorkflowSurface.files_reached  # noqa: B018
+WorkflowSurface.stop_sites  # noqa: B018
+WorkflowSurface.halt_sites  # noqa: B018
+WorkflowSurface.non_stop_sites  # noqa: B018
+WorkflowSurface.distinct_menus  # noqa: B018
+GateSurface.tree  # noqa: B018
+GateSurface.distinct_menu_definitions  # noqa: B018
+GateSurface.concentration  # noqa: B018
+GateSurface.duplicate_menu_definitions  # noqa: B018
+GateSurface.missing_loads  # noqa: B018
+EmitSite.conditional  # noqa: B018
