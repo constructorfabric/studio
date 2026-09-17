@@ -923,14 +923,17 @@ UNTYPED_MENU_BASELINE_CEILING = 111
 
 
 
-def _menu_type_declarations() -> dict[str, str | None]:
-    """Map every `<path>::<MenuName>` in the prompt roots to its declared TYPE.
+def _menu_declaration_scan(header: str, valid_tokens: tuple[str, ...]) -> dict[str, str | None]:
+    """Map every `<path>::<MenuName>` in the prompt roots to its declared *header* value.
 
-    Built from the validator's own block scanner and regexes rather than a
-    second parser, so this guard cannot disagree with the checker it guards
+    Shared by `_menu_type_declarations()` (TYPE) and `_menu_shape_declarations()`
+    (SHAPE, issue #186): both read the same MENU declaration region and differ
+    only in which header's value they extract, so the scan itself is written
+    once. Built from the validator's own block scanner and regexes rather than
+    a second parser, so this guard cannot disagree with the checker it guards
     about what a MENU is or where a declaration is read. A private
     reimplementation previously missed indented MENU headers and headers with
-    trailing text, and read `TYPE:` out of prose outside the fence.
+    trailing text, and read a declaration out of prose outside the fence.
     """
     declarations: dict[str, str | None] = {}
     seen_declaration: set[str] = set()
@@ -968,92 +971,46 @@ def _menu_type_declarations() -> dict[str, str | None]:
                 section = head.group("section")
                 # Mirrors the validator's continuation rule: a line indented
                 # deeper than this menu's first sub-header is that header's own
-                # text. Without it an over-indented `TYPE:` counted here while
-                # the validator ignored it, so a newly added menu could leave
-                # the untyped set with no declaration the validator can see.
+                # text. Without it an over-indented declaration counted here
+                # while the validator ignored it, so a newly added menu could
+                # leave the baseline with no declaration the validator can see.
                 if sub_header_indent is None:
                     sub_header_indent = indent
                 elif section not in pdsl.MENU_SUB_HEADERS and indent > sub_header_indent:
                     continue
-                if section == pdsl.GATE_HEADER:
+                if section == header:
                     # Latch on the FIRST declaration, mirroring the validator's
-                    # `state.menu_type_line`: it flags every later TYPE line as a
-                    # duplicate whatever its value, so a menu whose first
-                    # declaration is invalid stays untyped no matter what follows.
+                    # own per-header state: it flags every later line of this
+                    # header as a duplicate whatever its value, so a menu whose
+                    # first declaration is invalid stays undeclared no matter
+                    # what follows.
                     if current in seen_declaration:
                         continue
                     seen_declaration.add(current)
-                    value = stripped[len(pdsl.GATE_HEADER) + 1:].strip()
+                    value = stripped[len(header) + 1:].strip()
                     # A value the validator would reject is not a declaration.
-                    if value in pdsl.GATE_TYPES:
+                    if value in valid_tokens:
                         declarations[current] = value
                     continue
-                # Mirrors the validator: only a recognized section other than
-                # TITLE or TYPE ends the region. Prose does not.
-                if section in pdsl.SECTION_HEADERS and section != "TITLE":
+                # Mirrors the validator's own DECLARED_HEADER_NON_TERMINATORS
+                # (imported, not re-derived as a separate literal): only a
+                # recognized section outside that set ends the region, so the
+                # *other* declared header can never end this one's region --
+                # a TYPE/SHAPE pair declared in either order would otherwise
+                # leave the second one unread. Prose does not end it either.
+                if section in pdsl.SECTION_HEADERS and section not in pdsl.DECLARED_HEADER_NON_TERMINATORS:
                     in_region = False
     return declarations
+
+
+def _menu_type_declarations() -> dict[str, str | None]:
+    """Map every `<path>::<MenuName>` in the prompt roots to its declared TYPE."""
+    return _menu_declaration_scan(pdsl.GATE_HEADER, pdsl.GATE_TYPES)
 
 
 def _menu_shape_declarations() -> dict[str, str | None]:
-    """Map every `<path>::<MenuName>` in the prompt roots to its declared SHAPE.
-
-    Mirrors `_menu_type_declarations()` exactly (issue #186): built from the
-    validator's own block scanner and regexes rather than a second parser, for
-    the same reason -- this guard cannot disagree with the checker it guards
-    about what a MENU is or where a declaration is read.
-    """
-    declarations: dict[str, str | None] = {}
-    seen_declaration: set[str] = set()
-    for path in _prompt_files():
-        text, error = pdsl.read_source_file(path)
-        if error or text is None:
-            continue
-        rel = path.relative_to(REPO_ROOT).as_posix()
-        blocks, _ = pdsl.scan_blocks(str(path), text)
-        for block in blocks:
-            current: str | None = None
-            in_region = False
-            sub_header_indent: int | None = None
-            for raw_line in block.text.splitlines():
-                stripped = raw_line.strip()
-                if not stripped or stripped.startswith("//"):
-                    continue
-                unit_or_menu = pdsl.UNIT_OR_MENU_RE.match(stripped)
-                if unit_or_menu:
-                    kind, name = unit_or_menu.group(1), unit_or_menu.group("name")
-                    current = (
-                        f"{rel}#{block.block_index}::{name}" if kind == "MENU" else None
-                    )
-                    in_region = kind == "MENU"
-                    sub_header_indent = None
-                    if current is not None:
-                        declarations.setdefault(current, None)
-                    continue
-                head = pdsl.SECTION_HEAD_RE.match(stripped)
-                if not head or current is None or not in_region:
-                    continue
-                indent = len(raw_line) - len(raw_line.lstrip(" "))
-                section = head.group("section")
-                if sub_header_indent is None:
-                    sub_header_indent = indent
-                elif section not in pdsl.MENU_SUB_HEADERS and indent > sub_header_indent:
-                    continue
-                if section == pdsl.MENU_SHAPE_HEADER:
-                    # Latch on the FIRST declaration, mirroring the validator's
-                    # `state.menu_shape_line`.
-                    if current in seen_declaration:
-                        continue
-                    seen_declaration.add(current)
-                    value = stripped[len(pdsl.MENU_SHAPE_HEADER) + 1:].strip()
-                    if value in pdsl.MENU_SHAPE_TYPES:
-                        declarations[current] = value
-                    continue
-                # Mirrors the validator: only a recognized section other than
-                # TITLE, TYPE, or SHAPE ends the region. Prose does not.
-                if section in pdsl.SECTION_HEADERS and section not in ("TITLE", pdsl.GATE_HEADER):
-                    in_region = False
-    return declarations
+    """Map every `<path>::<MenuName>` in the prompt roots to its declared SHAPE (issue #186)."""
+    return _menu_declaration_scan(pdsl.MENU_SHAPE_HEADER, pdsl.MENU_SHAPE_TYPES)
 
 
 #: The paths that auto-resolve a gate by runtime judgement rather than by reading
@@ -1765,13 +1722,15 @@ def test_the_runtime_judgement_guard_reports_an_unreadable_path(kind: str, messa
     assert message in report, f"the reader's reason is not reported:\n{report}"
 
 
-def _declarations_for(tmp_path: Path, name: str, body: str) -> dict[str, str | None]:
+def _declarations_for(
+    tmp_path: Path, name: str, body: str, scanner=_menu_type_declarations,
+) -> dict[str, str | None]:
     """Run the guard's scanner over a single fixture file."""
     fixture = tmp_path / name
     fixture.write_text(body, encoding="utf-8")
     with mock.patch(f"{__name__}._prompt_files", return_value=[fixture]), \
             mock.patch(f"{__name__}.REPO_ROOT", tmp_path):
-        return _menu_type_declarations()
+        return scanner()
 
 
 def test_the_guard_classifies_declared_and_undeclared_menus(tmp_path: Path) -> None:
@@ -1851,6 +1810,39 @@ def test_the_guard_does_not_accept_a_declaration_the_validator_rejects(tmp_path:
         "  OPTIONS:\n    1 a -> RUN Y\n```\n"
     )
     assert list(_declarations_for(tmp_path, "c.md", valid_then_valid).values()) == ["decision"]
+
+
+def test_the_guard_does_not_let_one_declared_header_truncate_the_others_scan(tmp_path: Path) -> None:
+    """A `SHAPE` before `TYPE` (or vice versa) must not end the other's region.
+
+    `_menu_declaration_scan` is shared by both scanners (issue #186); each
+    must treat the *other* declared header as staying inside the declaration
+    region, not as a section that ends it -- mirroring the validator's own
+    `gate_scope` check, which keeps TITLE/TYPE/SHAPE all non-terminating. An
+    earlier, non-shared version of the TYPE scanner predated SHAPE and had no
+    reason to exempt it, which would have silently truncated this exact case.
+    """
+    shape_then_type = (
+        "```pdsl\nMENU X:\n  TITLE: t\n  SHAPE: fixed-choice\n  TYPE: blocking\n"
+        "  OPTIONS:\n    1 a -> RUN Y\n```\n"
+    )
+    assert list(_declarations_for(tmp_path, "a.md", shape_then_type, _menu_type_declarations).values()) == [
+        "blocking"
+    ]
+    assert list(_declarations_for(tmp_path, "a.md", shape_then_type, _menu_shape_declarations).values()) == [
+        "fixed-choice"
+    ]
+
+    type_then_shape = (
+        "```pdsl\nMENU X:\n  TITLE: t\n  TYPE: decision\n  SHAPE: free-form\n"
+        "  OPTIONS:\n    1 a -> RUN Y\n```\n"
+    )
+    assert list(_declarations_for(tmp_path, "b.md", type_then_shape, _menu_type_declarations).values()) == [
+        "decision"
+    ]
+    assert list(_declarations_for(tmp_path, "b.md", type_then_shape, _menu_shape_declarations).values()) == [
+        "free-form"
+    ]
 
 
 def test_the_guard_ignores_an_over_indented_declaration_like_the_validator(tmp_path: Path) -> None:

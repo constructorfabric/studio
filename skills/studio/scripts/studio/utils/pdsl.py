@@ -148,6 +148,13 @@ GATE_HEADER = "TYPE"
 # an absent declaration is handled: see MENU_SHAPE_HEADER's own docstring.
 MENU_SHAPE_TYPES = ("fixed-choice", "free-form")
 MENU_SHAPE_HEADER = "SHAPE"
+# The headers that keep a MENU's declaration region open rather than ending it
+# (`_handle_section_header_line`'s `gate_scope` check). Exported as one tuple,
+# not re-derived, so a test-side guard that needs to walk the same region
+# (e.g. `_menu_declaration_scan` in tests/test_pdsl_keywords.py) cannot drift
+# out of sync with the validator's own list the way an earlier, TITLE-only
+# copy of this check did before `SHAPE` existed.
+DECLARED_HEADER_NON_TERMINATORS = ("TITLE", GATE_HEADER, MENU_SHAPE_HEADER)
 # Sub-headers permitted at an indent inside a MENU. `TYPE`/`SHAPE` are absent on
 # purpose: both are dispatched before the indent guard, so listing them here
 # would be dead.
@@ -630,7 +637,7 @@ def _handle_section_header_line(  # pylint: disable=too-many-return-statements
         _report_unrecognized_sub_header(block, line_no, raw_line, section_name, findings, state)
         return True
     # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-gate-declaration-region
-    if section_name not in ("TITLE", GATE_HEADER, MENU_SHAPE_HEADER):
+    if section_name not in DECLARED_HEADER_NON_TERMINATORS:
         state.gate_scope = False
     # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-gate-declaration-region
     # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-gate-declaration-literal
@@ -648,7 +655,75 @@ def _handle_section_header_line(  # pylint: disable=too-many-return-statements
     return True
 
 
+# The only `_BlockValidationState` fields `_handle_declared_menu_header` may
+# target via `state_line_attr`. See that function's own comment on why this
+# exists.
+_DECLARED_MENU_HEADER_STATE_LINE_ATTRS = frozenset({"menu_type_line", "menu_shape_line"})
+
+
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-gate-declaration-literal
+def _handle_declared_menu_header(  # pylint: disable=too-many-arguments,too-many-locals
+    block: PdslBlock,
+    line_no: int,
+    raw_line: str,
+    stripped: str,
+    findings: List[PdslFinding],
+    state: _BlockValidationState,
+    *,
+    header: str,
+    valid_tokens: Tuple[str, ...],
+    state_line_attr: str,
+    outside_scope_noun: str,
+    rule_outside_scope: str,
+    rule_duplicate: str,
+    rule_bad_value: str,
+    bad_value_hint: str,
+) -> None:
+    """Validate one declaration of *header* and record that this MENU carries one.
+
+    Shared by `_handle_gate_type_header` (`TYPE`) and `_handle_menu_shape_header`
+    (`SHAPE`, issue #186): both validate a single-token MENU declaration
+    against the same declaration-region/one-per-menu rules, differing only in
+    the header keyword, its valid tokens, which `_BlockValidationState` field
+    latches the first declaration's line, and each one's own rule IDs/wording.
+    An absent declaration is always valid -- an undeclared MENU falls back to
+    today's default behavior, so the existing surface migrates one
+    declaration at a time. Only a declaration the block cannot support is
+    reported here.
+    """
+    # A typo'd *state_line_attr* landing on an unrelated-but-real field (e.g.
+    # "do_count") would otherwise have `getattr`/`setattr` silently succeed
+    # and corrupt that field instead of raising -- this closed allow-list
+    # turns that into an immediate, loud failure.
+    assert state_line_attr in _DECLARED_MENU_HEADER_STATE_LINE_ATTRS, state_line_attr
+    if not state.gate_scope:
+        # Outside a MENU, or past its declaration region. `gate_scope` is only
+        # ever set from `in_menu`, so it implies it.
+        findings.append(_finding(
+            block, rule_outside_scope, line_no, raw_line,
+            f"`{header}:` declares {outside_scope_noun} where nothing reads it",
+            hint=f"Put {header} directly under its MENU header, before OPTIONS.",
+        ))
+        return
+    earlier_line = getattr(state, state_line_attr)
+    if earlier_line:
+        findings.append(_finding(
+            block, rule_duplicate, line_no, raw_line,
+            f"MENU `{_elide(state.menu_name or '')}` declares {header} more than once",
+            hint=f"Keep one {header}; the earlier declaration is at line {earlier_line}.",
+        ))
+        return
+    setattr(state, state_line_attr, line_no)
+    value = stripped[len(header) + 1:].strip()
+    if value not in valid_tokens:
+        findings.append(_finding(
+            block, rule_bad_value, line_no, raw_line,
+            f"MENU {header} must be one literal token of {', '.join(valid_tokens)} "
+            f"(found `{_elide(value)}`)",
+            hint=bad_value_hint,
+        ))
+
+
 def _handle_gate_type_header(
     block: PdslBlock,
     line_no: int,
@@ -660,35 +735,15 @@ def _handle_gate_type_header(
     """Validate one `TYPE:` declaration and record that this MENU carries one.
 
     An absent declaration is valid: an undeclared gate is treated as `blocking`
-    at runtime, so the existing surface migrates gate by gate. Only a
-    declaration the block cannot support is reported here.
+    at runtime, so the existing surface migrates gate by gate.
     """
-    if not state.gate_scope:
-        # Outside a MENU, or past its declaration region. `gate_scope` is only
-        # ever set from `in_menu`, so it implies it.
-        findings.append(_finding(
-            block, "PDSL702", line_no, raw_line,
-            f"`{GATE_HEADER}:` declares gate risk where nothing reads it",
-            hint=f"Put {GATE_HEADER} directly under its MENU header, before OPTIONS.",
-        ))
-        return
-    if state.menu_type_line:
-        findings.append(_finding(
-            block, "PDSL701", line_no, raw_line,
-            f"MENU `{_elide(state.menu_name or '')}` declares {GATE_HEADER} more than once",
-            hint=(f"Keep one {GATE_HEADER}; the earlier declaration is at "
-                  f"line {state.menu_type_line}."),
-        ))
-        return
-    state.menu_type_line = line_no
-    value = stripped[len(GATE_HEADER) + 1:].strip()
-    if value not in GATE_TYPES:
-        findings.append(_finding(
-            block, "PDSL700", line_no, raw_line,
-            f"MENU {GATE_HEADER} must be one literal token of {', '.join(GATE_TYPES)} "
-            f"(found `{_elide(value)}`)",
-            hint="Declare risk statically; where it varies, emit two differently-typed gates.",
-        ))
+    _handle_declared_menu_header(
+        block, line_no, raw_line, stripped, findings, state,
+        header=GATE_HEADER, valid_tokens=GATE_TYPES, state_line_attr="menu_type_line",
+        outside_scope_noun="gate risk", rule_outside_scope="PDSL702",
+        rule_duplicate="PDSL701", rule_bad_value="PDSL700",
+        bad_value_hint="Declare risk statically; where it varies, emit two differently-typed gates.",
+    )
 
 
 def _handle_menu_shape_header(
@@ -699,38 +754,18 @@ def _handle_menu_shape_header(
     findings: List[PdslFinding],
     state: _BlockValidationState,
 ) -> None:
-    """Validate one `SHAPE:` declaration and record that this MENU carries one.
+    """Validate one `SHAPE:` declaration and record that this MENU carries one (issue #186).
 
-    Mirrors `_handle_gate_type_header` exactly (issue #186): an absent
-    declaration is valid -- an undeclared menu falls back to the existing
-    prose-based shape-compatibility heuristic, so the existing surface
-    migrates menu by menu. Only a declaration the block cannot support is
-    reported here.
+    An absent declaration is valid: an undeclared menu falls back to the
+    existing prose-based shape-compatibility heuristic.
     """
-    if not state.gate_scope:
-        findings.append(_finding(
-            block, "PDSL712", line_no, raw_line,
-            f"`{MENU_SHAPE_HEADER}:` declares menu shape where nothing reads it",
-            hint=f"Put {MENU_SHAPE_HEADER} directly under its MENU header, before OPTIONS.",
-        ))
-        return
-    if state.menu_shape_line:
-        findings.append(_finding(
-            block, "PDSL711", line_no, raw_line,
-            f"MENU `{_elide(state.menu_name or '')}` declares {MENU_SHAPE_HEADER} more than once",
-            hint=(f"Keep one {MENU_SHAPE_HEADER}; the earlier declaration is at "
-                  f"line {state.menu_shape_line}."),
-        ))
-        return
-    state.menu_shape_line = line_no
-    value = stripped[len(MENU_SHAPE_HEADER) + 1:].strip()
-    if value not in MENU_SHAPE_TYPES:
-        findings.append(_finding(
-            block, "PDSL710", line_no, raw_line,
-            f"MENU {MENU_SHAPE_HEADER} must be one literal token of {', '.join(MENU_SHAPE_TYPES)} "
-            f"(found `{_elide(value)}`)",
-            hint="Declare shape statically; a free-form/multi-select reply is never native-dialog-routed.",
-        ))
+    _handle_declared_menu_header(
+        block, line_no, raw_line, stripped, findings, state,
+        header=MENU_SHAPE_HEADER, valid_tokens=MENU_SHAPE_TYPES, state_line_attr="menu_shape_line",
+        outside_scope_noun="menu shape", rule_outside_scope="PDSL712",
+        rule_duplicate="PDSL711", rule_bad_value="PDSL710",
+        bad_value_hint="Declare shape statically; a free-form/multi-select reply is never native-dialog-routed.",
+    )
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-gate-declaration-literal
 
 

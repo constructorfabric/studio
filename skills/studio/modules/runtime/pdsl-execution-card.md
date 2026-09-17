@@ -56,14 +56,19 @@ RULES:
     applies to that pairing, not to text output that merely lists choices
     without waiting on a reply.
   ALWAYS, when executing `EMIT_MENU`, first check the menu is native-dialog
-    shape-compatible. When the owning `MENU` declares exactly `SHAPE:
-    fixed-choice` or `SHAPE: free-form`, read that fact instead of inferring
-    one: `fixed-choice` is shape-compatible, `free-form` never is, regardless
-    of option count or wording (issue #186). When `SHAPE` is undeclared, OR
-    declared with any other value (unvalidated PDSL is still executable;
-    PDSL validation flags this at authoring time but a runtime reader must
-    not depend on it having run), fall back to: at most 4 top-level `OPTIONS`
-    entries, and no entry or `TITLE` documented as accepting free-text/
+    shape-compatible, which always requires at most 4 top-level `OPTIONS`
+    entries — every native tool bound today hard-caps at 4 choices, and
+    `SHAPE` never overrides a tool's own mechanical limit. Within that cap:
+    a `MENU` declaring `SHAPE: free-form` is never shape-compatible,
+    regardless of option count or wording; one declaring exactly `SHAPE:
+    fixed-choice` is shape-compatible on that fact alone (issue #186) —
+    read only the first `SHAPE` line in the MENU's own declaration region (up
+    to `OPTIONS`); a later or out-of-scope `SHAPE` line is not a second
+    declaration and is not read. When `SHAPE` is undeclared, or its first
+    in-scope line holds any other value (unvalidated PDSL is still
+    executable; PDSL validation flags this at authoring time but a runtime
+    reader must not depend on it having run), fall back to the wording
+    heuristic: no entry or `TITLE` documented as accepting free-text/
     arbitrary input, an open-ended list, or more than one selection (a path,
     a name, "or describe your own", "reply with numbers or `all`", etc.)
     rather than a single choice among the listed entries.
@@ -97,9 +102,11 @@ RULES:
     it: state the question, list the numbered options, and mark it explicitly
     as a blocking question the assistant is waiting on — placed as the last
     content in the turn.
-  ALWAYS, for a shape-incompatible `EMIT_MENU` (more than 4 options, or any
-    free-text-accepting entry), render as today's text menu regardless of
-    `ask_tool_name` — a native dialog's fixed-choice shape cannot represent it
+  ALWAYS, for a shape-incompatible `EMIT_MENU` (more than 4 options, a
+    declared `SHAPE: free-form`, or — when `SHAPE` is undeclared/invalid —
+    any free-text-accepting entry per the wording heuristic), render as
+    today's text menu regardless of `ask_tool_name` — a native dialog's
+    fixed-choice shape cannot represent it
     faithfully — but still place it last in the turn and mark it blocking.
   NEVER treat a harness with no matching native affordance as an error;
     fall back to the same explicitly-marked, end-of-turn text rendering used
