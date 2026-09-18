@@ -129,6 +129,11 @@ or no trace to trust:
 | `absent` | No `Skill` call at all. | no |
 | `failed` | A `Skill` call that is neither of the above: it named nothing recognizable, came back an error, or came back not at all. | no |
 
+Order matters: `<error>Execute skill: cf</error>` anywhere in the transcript is
+`failed` before any of this is considered, and no `Skill` call at all is
+`absent` before the rest. `skill_match_other_candidates` is populated for `ran`
+and for `bypassed`, and is empty whenever the verdict rested on a single name.
+
 A bypass needs the *whole* call to name `cf-` identifiers and nothing else. `_invoked_names` reports every identifier-shaped string at any depth, so a rival skill carrying a `cf-` name in an unrelated field would otherwise read as one — the loose match the name matcher exists to avoid, widened across a whole prefix.
 
 Metadata: `skill_state` (above), `skills_invoked` (the

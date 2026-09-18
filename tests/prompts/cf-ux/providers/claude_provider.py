@@ -92,11 +92,16 @@ _LOG_UNPARSED_LINE = "cf-ux claude provider: stream line %d would not parse; ski
 #: A `cf-*` workflow invoked without the router in front of it. Prefixed, not
 #: namespaced, so `_NAME_SEPARATORS` deliberately does not split it and it never
 #: counts as `cf` -- see `_invoked_names`.
-_SKILL_WORKFLOW_PREFIX = "cf-"
+_SKILL_WORKFLOW_PREFIX = f"{_SKILL_NAME}-"
 
 _LOG_ROUTER_BYPASSED = (
     "cf-ux: %r was not invoked; the model went straight to %s. The work may well "
     "have been done, but not through the router, so none of its gates were reached"
+)
+
+_LOG_AMBIGUOUS_BYPASS = (
+    "cf-ux: the bypass verdict for %r rests on more than one candidate name (%s); "
+    "%r is the one reported, the rest may be fields that are not names at all"
 )
 
 _LOG_AMBIGUOUS_MATCH = (
@@ -252,44 +257,6 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
         return _SkillTrace("absent", names, inputs, f"no {_SKILL_TOOL} tool call in the transcript")
 
     targeted = [call_id for call_id, found in named.items() if _SKILL_NAME in found]
-    if not targeted:
-        # The router was skipped, but a workflow it fronts ran on its own. Third
-        # state, because neither pole tells the truth about it: it is not `ran`
-        # (no gate, no menu, no routing decision -- the very thing this suite
-        # measures never happened), and calling it `failed` buries a distinct
-        # finding among the runs where nothing of Studio was reached at all.
-        #
-        # The prefix check does not loosen the name matcher: `cf-documenting-
-        # review` still does not equal `cf`, and nothing here can make it.
-        #
-        # Same evidence bar as `ran` -- a workflow whose call came back an error,
-        # or came back not at all, leaves only the model's own prose, and grading
-        # that reports on Studio for a run Studio did not produce.
-        # *Every* candidate in the call must be a `cf-` name, not merely one of
-        # them. `_invoked_names` reports every identifier-shaped string at any
-        # depth, so a rival skill carrying `cf-generate` in some unrelated field
-        # offers one -- and the loose match that is an accepted trade for the
-        # exact token `cf` is a much wider net across a whole prefix. Requiring
-        # the call to name nothing else keeps the bypass to calls that are
-        # unambiguously a Studio workflow.
-        bypassing = sorted({
-            name
-            for call_id, found in named.items()
-            if found and results.get(call_id) is False
-            and all(name.startswith(_SKILL_WORKFLOW_PREFIX) for name in found)
-            for name in found
-        })
-        if bypassing:
-            logger.warning(_LOG_ROUTER_BYPASSED, _SKILL_NAME, ", ".join(bypassing))
-            return _SkillTrace(
-                "bypassed", names, inputs,
-                f"{_SKILL_NAME!r} was never invoked; "
-                f"{', '.join(repr(name) for name in bypassing)} ran directly",
-            )
-        return _SkillTrace(
-            "failed", names, inputs,
-            f"a {_SKILL_TOOL} ran but none of them named {_SKILL_NAME!r}",
-        )
     for call_id in targeted:
         if results.get(call_id) is not False:
             continue
@@ -303,6 +270,39 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
         if others:
             logger.warning(_LOG_AMBIGUOUS_MATCH, _SKILL_NAME, list(others))
         return _SkillTrace("ran", names, inputs, "", others)
+    # Reached only when no call named `cf` came back clean. A workflow the router
+    # fronts may still have run on its own, and that is a third state: not `ran`
+    # (no gate, no menu, no routing decision -- the thing this suite measures
+    # never happened), and not `failed`, which would bury a distinct finding
+    # among the runs where nothing of Studio was reached at all.
+    #
+    # Checked here rather than under `not targeted`, which is where it first
+    # went: `targeted` accepts the documented false positive -- any field, any
+    # depth -- so a single unrelated call carrying `cf` somewhere, and erroring,
+    # was enough to skip the check entirely and lose a real bypass along with a
+    # gradeable answer.
+    bypassing = _bypassing_names(named, results)
+    if bypassing:
+        logger.warning(_LOG_ROUTER_BYPASSED, _SKILL_NAME, ", ".join(bypassing))
+        # Reported the way an ambiguous `ran` is: when the verdict rests on more
+        # than one name, that is said out loud rather than left for whoever
+        # thinks to diff the metadata afterwards. Its own message, not the `ran`
+        # one -- that says "matched 'cf'", which is the one thing that did not
+        # happen here.
+        others = tuple(bypassing[1:])
+        if others:
+            logger.warning(_LOG_AMBIGUOUS_BYPASS, _SKILL_NAME, list(others), bypassing[0])
+        return _SkillTrace(
+            "bypassed", names, inputs,
+            f"{_SKILL_NAME!r} was never invoked; "
+            f"{', '.join(repr(name) for name in bypassing)} ran directly",
+            others,
+        )
+    if not targeted:
+        return _SkillTrace(
+            "failed", names, inputs,
+            f"a {_SKILL_TOOL} ran but none of them named {_SKILL_NAME!r}",
+        )
     if any(call_id not in results for call_id in targeted):
         return _SkillTrace(
             "failed", names, inputs,
@@ -311,6 +311,35 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
     return _SkillTrace(
         "failed", names, inputs, f"every {_SKILL_NAME!r} call came back as an error",
     )
+
+
+def _bypassing_names(named: dict[Any, list[str]], results: dict[Any, bool]) -> list[str]:
+    """The `cf-*` workflows that ran cleanly without the router in front of them.
+
+    A call qualifies only when *every* candidate it names is a `cf-` workflow.
+    `_invoked_names` reports every identifier-shaped string at any depth, so a
+    rival skill carrying a `cf-` name in an unrelated field offers one -- and the
+    loose match that is an accepted trade for the exact token `cf` is a far wider
+    net across a whole prefix.
+
+    The prefix alone is not a name: a bare `cf-` is shaped like an identifier and
+    says nothing, and "'cf-' ran directly" helps nobody triaging a run. A suffix
+    is required.
+
+    Same evidence bar as `ran`: the call must have come back, and come back
+    clean. A workflow that errored leaves only the model's own prose, and grading
+    that reports on Studio for a run Studio did not produce.
+    """
+    def is_workflow(name: str) -> bool:
+        return (name.startswith(_SKILL_WORKFLOW_PREFIX)
+                and len(name) > len(_SKILL_WORKFLOW_PREFIX))
+
+    return sorted({
+        name
+        for call_id, found in named.items()
+        if found and results.get(call_id) is False and all(is_workflow(n) for n in found)
+        for name in found
+    })
 
 
 #: States whose answer is Studio's own and can be handed to the grader. Every
