@@ -757,6 +757,7 @@ def resolve_entry_code_files(
     extensions: List[str],
     *,
     project_root: Path,
+    seen: Optional[Set[Path]] = None,
 ) -> Tuple[List[Path], int]:
     """Code files one registry codebase entry covers, and how many were excluded.
 
@@ -771,6 +772,17 @@ def resolve_entry_code_files(
       outside the project under a name that looks local;
     * resolved containment, because a symlinked *directory* escapes the project
       by a different route than a symlinked file.
+
+    ``seen`` makes the count honest across *several* entries. Deduplication was
+    within one entry's walk only, so a caller iterating overlapping entries -- one
+    registered directory inside another -- counted every file in the overlap once per
+    covering entry, in the file list *and* in the excluded total. Pass a set shared
+    across the loop and each path is decided once, wherever it is first reached; the
+    set is updated in place. Omit it and behaviour is exactly as before.
+
+    Here rather than in the caller because this function is the single shared exclusion
+    policy, and the first fix for this put the dedupe in one caller and left the
+    excluded tally double-counting (constructorfabric/studio#236 review).
 
     The excluded count is returned rather than logged so the caller can report
     its own denominator: "scanned N, excluded M" is checkable where a bare file
@@ -803,6 +815,11 @@ def resolve_entry_code_files(
     files: Set[Path] = set()
     excluded = 0
     for candidate in candidates:
+        if seen is not None:
+            identity = candidate.resolve()
+            if identity in seen:
+                continue          # decided under an earlier entry; neither file nor skip
+            seen.add(identity)
         if _is_in_default_ignored_dir(candidate, code_path):
             excluded += 1
             continue
@@ -905,6 +922,25 @@ class _SourceScanContext:
     meta: object
 
 
+def _note_entry_overlap(code_path: Path, name: str,
+                        seen_entries: List[Tuple[Path, str]]) -> None:
+    """Warn when a registered entry covers ground an earlier one already covers.
+
+    Named, because the registry is what wants correcting: deduplicating quietly would
+    leave the overlap in place for the next reader to rediscover. Both halves are named
+    -- "b overlaps a" is actionable where "b" alone is not (#236 review).
+
+    Appends to *seen_entries* so the next entry is compared against this one.
+    """
+    for earlier_path, earlier_name in seen_entries:
+        if (code_path == earlier_path or earlier_path in code_path.parents
+                or code_path in earlier_path.parents):
+            _warn_codebase(
+                f"codebase entries overlap: {name} overlaps {earlier_name}; files covered "
+                "by both are scanned once")
+    seen_entries.append((code_path, name))
+
+
 def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]:
     """Scan all codebase entries reachable from *scan_ctx* (primary or a workspace source).
 
@@ -917,6 +953,16 @@ def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]
     scanned = 0
     skipped = 0
     root = scan_ctx.project_root.resolve()
+    # One identity set across every entry, handed to the shared resolver so a file in
+    # an overlap is decided once -- in the file list and in the excluded tally alike.
+    # Deduplicating in this caller instead left `skipped` double-counting, which is
+    # exactly what the first version of this fix did (#236 review).
+    seen_files: Set[Path] = set()
+    # Overlap is reported between *entries*, not between files: with the resolver
+    # deduplicating, a repeated file never reaches this loop twice, and the containment
+    # of one registered path in another is the thing worth reporting anyway -- it names
+    # both halves, and the registry is what wants correcting.
+    seen_entries: List[Tuple[Path, str]] = []
     for cb_entry, _system_node in scan_ctx.meta.iter_all_codebase():
         code_path = (root / cb_entry.path).resolve()
         try:
@@ -924,8 +970,10 @@ def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]
         except ValueError:
             _warn_codebase(f"codebase entry {cb_entry.path!r} resolves outside {root}; skipping")
             continue
+        _note_entry_overlap(code_path, str(cb_entry.path), seen_entries)
         entry_files, entry_excluded = resolve_entry_code_files(
-            code_path, cb_entry.extensions or [".py"], project_root=root
+            code_path, cb_entry.extensions or [".py"], project_root=root,
+            seen=seen_files,
         )
         # Counted as skipped: that total already means "ignored, oversized, or
         # unparsable", and a policy exclusion is the first of those.

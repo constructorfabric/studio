@@ -568,3 +568,76 @@ def test_schema_encodes_the_consistency_rules():
                == VERDICT_UNJUDGEABLE)
     assert {"not": {"required": ["confidence"]}} in unj["then"]["allOf"]
     assert {"properties": {"evidence_ok": {"const": False}}} in unj["then"]["allOf"]
+
+
+class TestALocusPathIsBounded:
+    """Findings can arrive from out-of-tree producers, so the locus shape is a wire
+    contract and not only an internal invariant. Without a ceiling, an arbitrarily long
+    path — or one nested thousands of segments deep — passed both the constructor and
+    the JSON schema and went straight into a serialized report.
+    """
+
+    def test_an_overlong_path_is_refused(self):
+        from studio.utils.artifact_quality import _MAX_PATH_LENGTH
+
+        too_long = "a" * (_MAX_PATH_LENGTH + 1)
+        with pytest.raises(ValueError, match="at most"):
+            Locus(too_long)
+
+    def test_an_overdeep_path_is_refused(self):
+        from studio.utils.artifact_quality import _MAX_PATH_SEGMENTS
+
+        too_deep = "/".join(["seg"] * (_MAX_PATH_SEGMENTS + 1))
+        with pytest.raises(ValueError, match="segments deep"):
+            Locus(too_deep)
+
+    def test_the_wire_schema_carries_the_same_length_bound(self):
+        """The schema's own comment says the wire pattern must reject the same set the
+        constructor does. A ceiling is part of that set."""
+        from studio.utils.artifact_quality import _FINDING_JSON_SCHEMA, _MAX_PATH_LENGTH
+
+        locus = _FINDING_JSON_SCHEMA["definitions"]["locus"]
+        assert locus["properties"]["artifact_path"]["maxLength"] == _MAX_PATH_LENGTH
+
+    def test_a_path_at_exactly_the_length_cap_is_accepted(self):
+        """The check is `> _MAX_PATH_LENGTH`, so the cap itself is legal. Testing only
+        `cap + 1` leaves an off-by-one free to appear in either direction."""
+        from studio.utils.artifact_quality import _MAX_PATH_LENGTH
+
+        at_cap = "a" * _MAX_PATH_LENGTH
+        assert len(Locus(at_cap).artifact_path) == _MAX_PATH_LENGTH
+
+    def test_a_path_at_exactly_the_segment_cap_is_accepted(self):
+        from studio.utils.artifact_quality import _MAX_PATH_SEGMENTS
+
+        at_cap = "/".join(["seg"] * _MAX_PATH_SEGMENTS)
+        assert Locus(at_cap).artifact_path.count("/") == _MAX_PATH_SEGMENTS - 1
+
+    def test_an_anchor_is_bounded_like_the_path(self):
+        """Same locus, same producers, same report — bounding one field and leaving its
+        neighbour unbounded is a half-answer (#236 review)."""
+        from studio.utils.artifact_quality import _MAX_ANCHOR_LENGTH
+
+        assert Locus("a.md", anchor="x" * _MAX_ANCHOR_LENGTH).anchor
+        with pytest.raises(ValueError, match="at most"):
+            Locus("a.md", anchor="x" * (_MAX_ANCHOR_LENGTH + 1))
+
+    def test_the_wire_schema_bounds_depth_too(self):
+        """A validator holding only the schema must reject what the constructor rejects."""
+        import re
+
+        from studio.utils.artifact_quality import _FINDING_JSON_SCHEMA, _MAX_PATH_SEGMENTS
+
+        pattern = _FINDING_JSON_SCHEMA["definitions"]["locus"]["properties"]["artifact_path"]["pattern"]
+        assert re.match(pattern, "/".join(["seg"] * _MAX_PATH_SEGMENTS))
+        assert not re.match(pattern, "/".join(["seg"] * (_MAX_PATH_SEGMENTS + 1)))
+
+    @pytest.mark.parametrize("path", [
+        "a.md",
+        "docs/architecture/decisions/0001-record.md",
+        "/".join(["seg"] * 20) + "/file.md",
+    ], ids=["flat", "ordinary", "deep-but-reasonable"])
+    def test_real_paths_are_untouched(self, path: str):
+        """The bounds are generous on purpose: the point is that one exists, not where
+        it sits. No path a repository actually contains should come near them."""
+        assert Locus(path).artifact_path == path

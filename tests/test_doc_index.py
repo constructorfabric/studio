@@ -1643,3 +1643,42 @@ class TestCmdDocIndex:
             set_json_mode(orig)
         assert rc == 0
         assert "Covers A." in capsys.readouterr().out
+
+
+class TestACacheThatCannotBeDecodedIsACacheMiss:
+    """The sibling reader, `_read_escalation_counts`, already documents why
+    `UnicodeDecodeError` needs naming: it is a ValueError subclass, so neither
+    `OSError` nor `json.JSONDecodeError` catches it. That reasoning was applied there
+    and missed in `_read_cache_file`, so a doc-index cache holding invalid UTF-8 — a
+    truncated write, a killed process — propagated out of every caller instead of
+    being discarded and rebuilt.
+    """
+
+    def test_invalid_utf8_returns_none_instead_of_raising(
+            self, tmp_path: Path, caplog) -> None:
+        from studio.utils import doc_index as di
+
+        cache = tmp_path / "index.json"
+        cache.write_bytes(b'{"total_lines": \xff\xfe}')
+
+        with caplog.at_level(logging.WARNING):
+            assert di._read_cache_file(cache) is None
+
+        assert any("unreadable" in r.getMessage() for r in caplog.records)
+
+    def test_malformed_json_still_returns_none(self, tmp_path: Path) -> None:
+        """The pre-existing behaviour must survive the added exception type."""
+        from studio.utils import doc_index as di
+
+        cache = tmp_path / "index.json"
+        cache.write_text("{not json at all", encoding="utf-8")
+
+        assert di._read_cache_file(cache) is None
+
+    def test_a_readable_cache_is_still_returned(self, tmp_path: Path) -> None:
+        from studio.utils import doc_index as di
+
+        cache = tmp_path / "index.json"
+        cache.write_text('{"total_lines": 12}', encoding="utf-8")
+
+        assert di._read_cache_file(cache) == {"total_lines": 12}

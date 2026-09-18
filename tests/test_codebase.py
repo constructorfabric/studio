@@ -938,3 +938,72 @@ class TestErrorFunction:
         err = error("test", "Message", path=tmp_path, line=1, skip_none=None)
 
         assert "skip_none" not in err
+
+
+class TestOverlappingEntriesAreScannedOnce:
+    """`resolve_entry_code_files` deduplicates within one entry's own walk, and nothing
+    spanned entries. So when one registered entry is a parent of another, every file
+    under the overlap was parsed and counted once per covering entry — inflating
+    `files_scanned` and duplicating each CPT hit, which feeds the coverage numbers. A
+    registry mistake read as *more* coverage rather than as a mistake.
+    """
+
+    def _project(self, tmp_path: Path):
+        nested = tmp_path / "src" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "auth.py").write_text(
+            dedent("""
+                # @cpt-begin:cpt-myapp-feature-auth-flow-login:p1:inst-check-creds
+                def login():
+                    pass
+                # @cpt-end:cpt-myapp-feature-auth-flow-login:p1:inst-check-creds
+            """)
+        )
+        return tmp_path / "src", nested
+
+    def test_a_file_covered_by_two_entries_is_counted_once(self, tmp_path: Path):
+        parent, child = self._project(tmp_path)
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(parent, [".py"]),
+                                  _FakeCodebaseEntry(child, [".py"])])
+
+        hits, scanned, skipped = scan_registered_codebase_references(ctx)
+
+        assert scanned == 1, "the same file must not be parsed once per covering entry"
+        assert len(hits) == 1, "a duplicated hit inflates coverage"
+        assert skipped == 0, "'skipped' means ignored/oversized/unparsable — this was none of those"
+
+    def test_the_overlap_is_reported_rather_than_silently_absorbed(
+            self, tmp_path: Path, caplog):
+        """The registry is the thing that wants correcting. Deduplicating quietly would
+        leave the overlap in place for the next reader to rediscover."""
+        import logging
+
+        parent, child = self._project(tmp_path)
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(parent, [".py"]),
+                                  _FakeCodebaseEntry(child, [".py"])])
+
+        with caplog.at_level(logging.WARNING):
+            scan_registered_codebase_references(ctx)
+
+        assert any("overlap" in r.getMessage() for r in caplog.records)
+
+    def test_entries_that_do_not_overlap_are_unaffected(self, tmp_path: Path):
+        """The dedupe must not start dropping distinct files."""
+        for name in ("a", "b"):
+            d = tmp_path / name
+            d.mkdir()
+            (d / f"{name}.py").write_text(
+                dedent(f"""
+                    # @cpt-begin:cpt-myapp-feature-auth-flow-{name}:p1:inst-x
+                    def f():
+                        pass
+                    # @cpt-end:cpt-myapp-feature-auth-flow-{name}:p1:inst-x
+                """)
+            )
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(tmp_path / "a", [".py"]),
+                                  _FakeCodebaseEntry(tmp_path / "b", [".py"])])
+
+        hits, scanned, _skipped = scan_registered_codebase_references(ctx)
+
+        assert scanned == 2
+        assert len(hits) == 2

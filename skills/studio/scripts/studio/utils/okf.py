@@ -164,11 +164,18 @@ def load_okf_manifest(path: Path) -> Optional[Dict[str, Any]]:
         return None
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         # Reached only once the caller has already confirmed the manifest
         # file exists, so a failure here is real corruption or a
         # permissions problem, not a routine miss -- warning, not debug,
         # mirroring doc_index._read_cache_file's identical check.
+        #
+        # `UnicodeDecodeError` included because that is what the mirrored check
+        # now catches: it is a ValueError subclass, so neither OSError nor
+        # json.JSONDecodeError covers it, and a manifest holding invalid UTF-8
+        # propagated out instead of being treated as a miss. Fixing the sibling
+        # and not the function that says it mirrors it is how the two drift
+        # (#236 review).
         logger.warning("okf manifest unreadable for %s: %s", path, exc)
         return None
     if not _is_valid_manifest_shape(manifest):
