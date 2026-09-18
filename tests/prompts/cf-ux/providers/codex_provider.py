@@ -13,7 +13,22 @@ from _sandbox import SandboxError, sandbox
 CODEX_BIN = "codex"
 CALL_TIMEOUT_S = 850  # under promptfoo worker timeout (900s)
 
-DEFAULT_MODEL = os.environ.get("CF_UX_CODEX_MODEL", "gpt-5.4-mini")
+#: A slug, not a promise: the set a `codex` account is entitled to changes, and
+#: this one is only the cheapest of that set as of 2026-09-18 (`codex` reports
+#: gpt-5.6-sol, -terra, -luna, gpt-6-astra, gpt-5.5). Its predecessor here,
+#: `gpt-5.4-mini`, had been withdrawn, and every codex case in the pilot errored
+#: with `The 'gpt-5.4-mini' model is not supported when using Codex with a
+#: ChatGPT account.` -- half the suite red for a reason that had nothing to do
+#: with the skill under test. When that happens again, re-pick from `codex` and
+#: move the date; `CF_UX_CODEX_MODEL` is the escape hatch meanwhile.
+#:
+#: Not shared with `studio.commands.agents._MODEL_MATRIX`, which names OpenAI
+#: slugs for generated agent configs, and deliberately so: that matrix maps a
+#: *tier* a user chose onto a model, while this picks the cheapest thing that
+#: can run a test. One constant serving both would make a pilot cost decision
+#: change what users' agents run. They do go stale together, though, so a
+#: withdrawal found here is worth checking there.
+DEFAULT_MODEL = os.environ.get("CF_UX_CODEX_MODEL", "gpt-5.6-sol")
 # "minimal" is incompatible with image_gen / web_search tools — use "low".
 DEFAULT_EFFORT = os.environ.get("CF_UX_CODEX_EFFORT", "low")
 # Shrink context window from default 400k to keep cold-start fast and cheap.
