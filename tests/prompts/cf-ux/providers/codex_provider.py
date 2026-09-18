@@ -8,9 +8,14 @@ import time
 from pathlib import Path
 from typing import Any
 
-from _sandbox import SandboxError, sandbox
+from _sandbox import child_env, SandboxError, sandbox
 
 CODEX_BIN = "codex"
+
+#: Namespaces the `codex` CLI is entitled to. It runs with `approval_policy="never"`,
+#: so it acts without asking -- and inherited the whole runner environment until
+#: constructorfabric/studio#229's review pointed out that only its sibling was fixed.
+_CHILD_ENV_PREFIXES = ("OPENAI_", "CODEX_")
 CALL_TIMEOUT_S = 850  # under promptfoo worker timeout (900s)
 
 DEFAULT_MODEL = os.environ.get("CF_UX_CODEX_MODEL", "gpt-5.4-mini")
@@ -60,7 +65,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     cmd.append(invoked)
     proc = subprocess.run(
         cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL, env=child_env(*_CHILD_ENV_PREFIXES),
     )
     duration = time.monotonic() - started
 

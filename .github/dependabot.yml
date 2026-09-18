@@ -13,5 +13,9 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # Above GitHub's default of 5. Six distinct action references are pinned here, so
+    # the default cap could hold one bump back indefinitely -- and a pin nobody may
+    # update is the failure mode this file exists to prevent (#229 review).
+    open-pull-requests-limit: 10
     commit-message:
       prefix: ci

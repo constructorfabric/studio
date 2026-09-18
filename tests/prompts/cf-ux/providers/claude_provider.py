@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from _sandbox import SandboxError, sandbox
+from _sandbox import SandboxError, child_env, redact_secrets, sandbox
 
 logger = logging.getLogger(__name__)
 
@@ -42,22 +42,11 @@ DEFAULT_EFFORT = os.environ.get("CF_UX_CLAUDE_EFFORT", "low")
 # there the agent writes where it is told to.
 PERMISSION_MODE = "bypassPermissions"
 
-#: What the Claude subprocess is allowed to see of this process's environment, by
-#: exact name and by prefix. An allowlist rather than a denylist, because the parent
-#: here is a CI runner: it holds GITHUB_TOKEN, cloud credentials, and whatever else
-#: the pipeline needs, and `subprocess.run` without `env=` hands every one of them to
-#: a child started with `bypassPermissions` -- the mode whose whole point is that it
-#: may act without asking first. `cwd=` sandboxes the filesystem and does nothing at
-#: all for environment variables.
-#:
-#: A denylist would need an edit every time CI gains a secret, and would be wrong
-#: silently in between. This fails closed instead: a variable the CLI turns out to
-#: need is a visible, one-line addition, not an invisible leak.
-_ENV_NAMES = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "SHELL")
+#: Namespaces the `claude` CLI is entitled to: its own credential and configuration.
+#: `CF_UX_` is deliberately absent -- every CF_UX_* variable is read by this Python
+#: parent (model, effort, sandbox reuse), never by the binary (#229 review).
+_CHILD_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")
 
-#: The CLI's own configuration and credential namespace -- the one secret it is
-#: entitled to, and the knobs that select the model and endpoint.
-_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_", "CF_UX_")
 
 #: Cost ceiling for one scenario. Named because the error text for a transcript
 #: that stops early has to be able to point at it as a cause.
@@ -109,6 +98,11 @@ _LOG_UNPARSED_LINE = "cf-ux claude provider: stream line %d would not parse; ski
 _LOG_AMBIGUOUS_MATCH = (
     "cf-ux claude provider: matched %r in a Skill input that also names %s; "
     "the verdict may rest on a field that is not the skill name"
+)
+
+_LOG_MISSING_EVIDENCE = (
+    "cf-ux: a %r tool_result carried no 'is_error' field; the run is graded unproven "
+    "rather than successful, since absence of a failure is not evidence of one"
 )
 
 
@@ -230,7 +224,9 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
     whole module exists to refuse to score.
     """
     calls: dict[Any, Any] = {}
-    results: dict[Any, bool] = {}
+    # `bool | None`, not `bool`: an absent `is_error` is a third state -- see the
+    # comment at the assignment below. The annotation said otherwise (#229 review).
+    results: dict[Any, bool | None] = {}
     for event in events:
         for block in _content_blocks(event):
             kind = block.get("type")
@@ -284,6 +280,11 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
     # said nothing about failure". Neither is evidence of success, and the difference
     # between them does not change the verdict, so they share it.
     if any(results.get(call_id) is None for call_id in targeted):
+        # Warned, like every other degraded-evidence case here: a run graded "failed"
+        # because the transcript said nothing is a different thing from one graded
+        # failed because the skill reported an error, and only the log distinguishes
+        # them afterwards.
+        logger.warning(_LOG_MISSING_EVIDENCE, _SKILL_NAME)
         return _SkillTrace(
             "failed", names, inputs,
             f"the {_SKILL_NAME!r} call has no result in the transcript, "
@@ -319,16 +320,6 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         return {"error": f"unexpected: {type(exc).__name__}: {exc}"}
 
 
-def _child_env() -> dict[str, str]:
-    """The environment handed to the CLI: what it needs to run and authenticate, and
-    nothing the rest of the runner happens to be carrying. See :data:`_ENV_NAMES`."""
-    return {
-        name: value
-        for name, value in os.environ.items()
-        if name in _ENV_NAMES or name.startswith(_ENV_PREFIXES)
-    }
-
-
 def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # Explicit skill invocation: Claude Code uses `/cf <prompt>`.
     invoked = f"/cf {prompt}"
@@ -346,10 +337,14 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "--max-budget-usd", MAX_BUDGET_USD,
         invoked,
     ]
+    # Built once: the same mapping spawns the child and defines what must not come back
+    # out of it. A CLI that echoes its own key in an error -- an ordinary shape for one
+    # -- would otherwise put it in a stored promptfoo report (#229 review).
+    env = child_env(*_CHILD_ENV_PREFIXES)
     try:
         proc = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
-            stdin=subprocess.DEVNULL, env=_child_env(),
+            stdin=subprocess.DEVNULL, env=env,
         )
     except subprocess.TimeoutExpired:
         # Handled here rather than in `call_api` so it carries the same baseline
@@ -363,7 +358,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
 
     if proc.returncode != 0:
         return {
-            "error": f"claude exited {proc.returncode}: {proc.stderr.strip()[:500]}",
+            "error": f"claude exited {proc.returncode}: "
+                     f"{redact_secrets(proc.stderr.strip()[:500], env)}",
             "metadata": base,
         }
 
@@ -393,7 +389,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
                 **base,
                 "events_seen": len(events),
                 "last_event_type": events[-1].get("type") if events else None,
-                "stdout_tail": proc.stdout.strip()[-500:],
+                "stdout_tail": redact_secrets(proc.stdout.strip()[-500:], env),
             },
         }
 
@@ -403,7 +399,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # What to show when the answer is withheld from the grader: the text itself,
     # or a repr of whatever non-text thing arrived instead of one. Kept as a
     # string so no branch below can slice a dict.
-    withheld = (output_text if is_text else "" if answer is None else repr(answer))[:500]
+    withheld = redact_secrets(
+        (output_text if is_text else "" if answer is None else repr(answer))[:500], env)
     trace = _skill_trace(events, proc.stdout)
     state, detail = trace.state, trace.detail
     metadata = {
@@ -413,7 +410,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "total_cost_usd": payload.get("total_cost_usd"),
         "skill_state": state,
         "skills_invoked": trace.names,
-        "skill_call_inputs": trace.inputs,
+        "skill_call_inputs": [redact_secrets(item, env) for item in trace.inputs],
         "skill_match_other_candidates": list(trace.other_candidates),
     }
     cost = payload.get("total_cost_usd")

@@ -11,10 +11,16 @@ from __future__ import annotations
 
 import os
 import subprocess
+
+from _sandbox import child_env
 import time
 from typing import Any
 
 CLAUDE_BIN = "claude"
+
+#: Namespaces the grader's `claude` CLI is entitled to -- the same as the provider it
+#: grades for. It inherited the whole runner environment until #229's review.
+_CHILD_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")
 CALL_TIMEOUT_S = 180
 
 # The grader must reason carefully about which of the five cf-skill
@@ -44,6 +50,7 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
             capture_output=True, text=True,
             timeout=CALL_TIMEOUT_S, check=False,
             stdin=subprocess.DEVNULL,
+                env=child_env(*_CHILD_ENV_PREFIXES),
         )
     except subprocess.TimeoutExpired:
         return {"error": f"grader timed out after {CALL_TIMEOUT_S}s"}

@@ -724,16 +724,47 @@ class TestTheSubprocessDoesNotInheritTheRunnersSecrets:
     GITHUB_TOKEN and cloud credentials.
     """
 
-    def test_an_unrelated_secret_is_not_passed_through(self, run_provider, monkeypatch):
-        monkeypatch.setenv("GITHUB_TOKEN", "ghp_should_not_travel")
-        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "should_not_travel_either")
+    @pytest.mark.parametrize("name", [
+        "GITHUB_TOKEN",
+        "AWS_SECRET_ACCESS_KEY",
+        # A runner carries GitHub's own ephemeral credentials too, and they are exactly
+        # the kind a denylist written today would not have heard of.
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+        "ACTIONS_RUNTIME_TOKEN",
+        # The invariant, not a list: an allowlist excludes what nobody thought of. A
+        # denylist that happened to name the four above would pass the cases above and
+        # fail this one (#229 review).
+        "CF_SOME_VARIABLE_NOBODY_ANTICIPATED",
+    ])
+    def test_an_unrelated_variable_is_not_passed_through(self, run_provider, monkeypatch, name):
+        monkeypatch.setenv(name, "should_not_travel")
 
         _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
 
         env = seen["kwargs"]["env"]
-        assert "GITHUB_TOKEN" not in env
-        assert "AWS_SECRET_ACCESS_KEY" not in env
-        assert "ghp_should_not_travel" not in env.values()
+        assert name not in env
+        assert "should_not_travel" not in env.values()
+
+    def test_every_allowlisted_name_survives_when_set(self, run_provider, monkeypatch):
+        """The positive half of the invariant, over the whole list rather than a sample."""
+        from _sandbox import ENV_NAMES
+
+        for index, name in enumerate(ENV_NAMES):
+            monkeypatch.setenv(name, f"value-{index}")
+
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        env = seen["kwargs"]["env"]
+        missing = [name for name in ENV_NAMES if env.get(name) is None]
+        assert not missing, f"allowlisted names dropped by the filter: {missing}"
+
+    def test_the_harness_namespace_is_not_forwarded(self, run_provider, monkeypatch):
+        """`CF_UX_*` is read by this Python parent, never by the `claude` binary."""
+        monkeypatch.setenv("CF_UX_CLAUDE_MODEL", "some-model")
+
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert "CF_UX_CLAUDE_MODEL" not in seen["kwargs"]["env"]
 
     def test_what_the_cli_needs_does_come_through(self, run_provider, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
@@ -784,3 +815,46 @@ class TestAToolResultWithoutIsErrorIsNotASuccess:
 
         assert "output" not in out
         assert out["metadata"]["skill_state"] == "failed"
+
+
+class TestTheChildsOwnCredentialDoesNotComeBackOut:
+    """The provider hands its CLI a real API key and then returns that CLI's stderr,
+    stdout tail and result text as promptfoo metadata — stored, and read by people. A
+    CLI that echoes its key in an error ("invalid x-api-key: sk-ant-…") would put it in
+    the report. Raised on #229's review.
+    """
+
+    _KEY = "sk-ant-secret-value-not-for-reports"
+
+    def test_a_key_echoed_on_stderr_is_redacted(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._KEY)
+
+        out, _seen = run_provider("", returncode=2, stderr=f"invalid x-api-key: {self._KEY}")
+
+        assert self._KEY not in out["error"]
+        assert "[redacted]" in out["error"]
+
+    def test_a_key_echoed_in_the_stdout_tail_is_redacted(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._KEY)
+
+        out, _seen = run_provider(f"no result event here, but a key: {self._KEY}\n")
+
+        assert self._KEY not in json.dumps(out)
+
+    def test_a_key_in_withheld_output_is_redacted(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._KEY)
+
+        # A skill call with no result: the answer is withheld, and carried in metadata.
+        out, _seen = run_provider(
+            _stream(_skill_call(), _result(f"leaked {self._KEY} in the answer")))
+
+        assert self._KEY not in json.dumps(out)
+
+    def test_ordinary_diagnostics_are_left_readable(self, run_provider, monkeypatch):
+        """Only credential-ish names are redacted. PATH and HOME appear in real
+        diagnostics constantly, and blanking them destroys what a reader needs."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._KEY)
+
+        out, _seen = run_provider("", returncode=2, stderr="command not found: claude")
+
+        assert "command not found: claude" in out["error"]
