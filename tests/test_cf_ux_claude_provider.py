@@ -45,8 +45,8 @@ def _skill_result(call_id: str = "t1", *, is_error: bool = False) -> dict:
 
 
 def _skill_result_without_flag(call_id: str = "t1") -> dict:
-    """A `tool_result` that never mentions `is_error` -- a truncated stream, or a
-    schema that stopped emitting it."""
+    """The shape a *successful* skill result actually has: claude-code omits
+    `is_error` entirely when a `Skill` call succeeds."""
     return {"type": "user", "message": {"content": [
         {"type": "tool_result", "tool_use_id": call_id, "content": "..."},
     ]}}
@@ -785,24 +785,35 @@ class TestTheSubprocessDoesNotInheritTheRunnersSecrets:
         assert seen["kwargs"].get("env") is not None
 
 
-# --------------------------------------- a result that proves nothing is not a pass
+# ------------------------------------ an omitted `is_error` is this CLI's success
 
-class TestAToolResultWithoutIsErrorIsNotASuccess:
-    """`bool(None)` is `False`, and `False` meant "the skill ran". So a `tool_result`
-    block that simply omitted `is_error` was graded identically to one that explicitly
-    reported success -- the harness confirming a run on evidence it never received.
+class TestAToolResultWithoutIsErrorIsTheSuccessShape:
+    """Measured against claude-code 2.1.276: a successful `Skill` result carries
+    exactly `{"type", "tool_use_id", "content"}`, content "Launching skill: cf", and
+    no `is_error` at all -- while `Bash` and `Read` results in the same transcript
+    carry it explicitly. Reading the omission as missing evidence (#229's first
+    attempt) graded every real successful run as a failure.
+
+    What genuinely proves nothing is a call with no `tool_result` whatsoever, and
+    that is still refused.
     """
 
-    def test_a_missing_is_error_is_not_graded_as_a_run(self, run_provider):
+    def test_a_missing_is_error_is_graded_as_a_run(self, run_provider):
         out, _seen = run_provider(
-            _stream(_skill_call(), _skill_result_without_flag(), _result("answered anyway")))
+            _stream(_skill_call(), _skill_result_without_flag(), _result("the answer")))
+
+        assert out["output"] == "the answer"
+        assert out["metadata"]["skill_state"] == "ran"
+
+    def test_no_tool_result_at_all_is_not_a_run(self, run_provider):
+        """A stream cut short after the call -- nothing ever reported what it did."""
+        out, _seen = run_provider(_stream(_skill_call(), _result("answered anyway")))
 
         assert "output" not in out
         assert out["metadata"]["skill_state"] == "failed"
-        assert "is_error" in out["error"]
+        assert "no result in the transcript" in out["error"]
 
     def test_an_explicit_false_is_still_a_run(self, run_provider):
-        """The fix must not turn a real success into a failure."""
         out, _seen = run_provider(
             _stream(_skill_call(), _skill_result(is_error=False), _result("the answer")))
 

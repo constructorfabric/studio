@@ -101,8 +101,8 @@ _LOG_AMBIGUOUS_MATCH = (
 )
 
 _LOG_MISSING_EVIDENCE = (
-    "cf-ux: a %r tool_result carried no 'is_error' field; the run is graded unproven "
-    "rather than successful, since absence of a failure is not evidence of one"
+    "cf-ux: the %r call has no tool_result in the transcript at all; the run is "
+    "graded failed, since nothing reported what it did"
 )
 
 
@@ -224,9 +224,7 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
     whole module exists to refuse to score.
     """
     calls: dict[Any, Any] = {}
-    # `bool | None`, not `bool`: an absent `is_error` is a third state -- see the
-    # comment at the assignment below. The annotation said otherwise (#229 review).
-    results: dict[Any, bool | None] = {}
+    results: dict[Any, bool] = {}
     for event in events:
         for block in _content_blocks(event):
             kind = block.get("type")
@@ -236,14 +234,23 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
                 # collision can only take evidence away, never invent it.
                 calls[block.get("id")] = block.get("input") or {}
             elif kind == "tool_result":
-                # `is_error` kept as it arrived, not coerced. `bool(None)` is `False`,
-                # which made an *absent* field indistinguishable from an explicit
-                # `is_error: false` -- and the verdict below reads `False` as "the
-                # skill ran". A truncated stream, or a schema that stops emitting the
-                # field, was therefore graded as a confirmed successful run on
-                # evidence that never arrived. Three states, not two: True, False, and
-                # nothing was said.
-                results[block.get("tool_use_id")] = block.get("is_error")
+                # `bool()`, deliberately. For this CLI an **absent** `is_error` is
+                # what a successful skill result looks like: measured against
+                # claude-code 2.1.276, a successful `Skill` result carries exactly
+                # `{"type", "tool_use_id", "content"}` with content "Launching skill:
+                # cf" and no `is_error` at all, while `Bash` and `Read` results in the
+                # same transcript carry it explicitly as false or true.
+                #
+                # #229's review read the missing field as missing evidence and this
+                # was briefly a three-state read. Running the suite showed the cost:
+                # every successful skill invocation graded unproven, the harness red
+                # across the board. Here the absence of the field is the tool's
+                # success signal, not an absence of evidence.
+                #
+                # A call with no `tool_result` at all is a different thing, and is
+                # still refused below -- that is the case "the transcript said
+                # nothing" actually describes.
+                results[block.get("tool_use_id")] = bool(block.get("is_error"))
 
     named = {call_id: _invoked_names(payload) for call_id, payload in calls.items()}
     names = sorted({name for found in named.values() for name in found})
@@ -276,19 +283,15 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
         if others:
             logger.warning(_LOG_AMBIGUOUS_MATCH, _SKILL_NAME, list(others))
         return _SkillTrace("ran", names, inputs, "", others)
-    # `results.get` is None for both "no tool_result at all" and "a tool_result that
-    # said nothing about failure". Neither is evidence of success, and the difference
-    # between them does not change the verdict, so they share it.
-    if any(results.get(call_id) is None for call_id in targeted):
-        # Warned, like every other degraded-evidence case here: a run graded "failed"
-        # because the transcript said nothing is a different thing from one graded
-        # failed because the skill reported an error, and only the log distinguishes
-        # them afterwards.
+    if any(call_id not in results for call_id in targeted):
+        # No `tool_result` for the call at all: a stream cut short after the call, a
+        # killed CLI. Warned as well as graded, because "failed because the
+        # transcript stops" is a different thing from "failed because the skill said
+        # so", and only the log tells them apart afterwards.
         logger.warning(_LOG_MISSING_EVIDENCE, _SKILL_NAME)
         return _SkillTrace(
             "failed", names, inputs,
-            f"the {_SKILL_NAME!r} call has no result in the transcript, "
-            f"or one that carries no 'is_error' to judge it by",
+            f"the {_SKILL_NAME!r} call has no result in the transcript",
         )
     return _SkillTrace(
         "failed", names, inputs, f"every {_SKILL_NAME!r} call came back as an error",
