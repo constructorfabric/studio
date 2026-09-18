@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from _sandbox import child_env
+from _sandbox import child_env, redact_secrets
 import time
 from typing import Any
 
@@ -36,6 +36,8 @@ GRADER_EFFORT = os.environ.get("CF_UX_GRADER_EFFORT", "medium")
 
 def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
     started = time.monotonic()
+    # One mapping for spawning and for redacting, as in the other two providers.
+    env = child_env(*_CHILD_ENV_PREFIXES)
     try:
         proc = subprocess.run(
             [
@@ -50,7 +52,7 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
             capture_output=True, text=True,
             timeout=CALL_TIMEOUT_S, check=False,
             stdin=subprocess.DEVNULL,
-                env=child_env(*_CHILD_ENV_PREFIXES),
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return {"error": f"grader timed out after {CALL_TIMEOUT_S}s"}
@@ -60,7 +62,8 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
     duration = time.monotonic() - started
     if proc.returncode != 0:
         return {
-            "error": f"grader exited {proc.returncode}: {proc.stderr.strip()[:400]}",
+            "error": f"grader exited {proc.returncode}: "
+                     f"{redact_secrets(proc.stderr.strip()[:400], env)}",
             "metadata": {"duration_s": round(duration, 2)},
         }
     return {
