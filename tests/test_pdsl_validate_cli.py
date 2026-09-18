@@ -467,11 +467,32 @@ def _rule_ids(text: str, source: str = "gate.md") -> list[str]:
     return [f.rule_id for f in validate_source(PdslSource(source, text)).findings]
 
 
-def test_gate_type_accepts_each_declared_risk_in_both_menu_shapes() -> None:
-    """All three risk types are recognized, indented or at column 0."""
+def test_gate_type_accepts_each_declared_risk_in_both_menu_shapes(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """All three risk types are recognized, indented or at column 0.
+
+    This is about the *vocabulary* — that each literal token is understood in both menu
+    shapes — so `GateMenu` is registered for the duration. Registration is a separate rule
+    with its own tests: `confirmation` is the one type that answers for the user, so an
+    unregistered one is refused, and leaving it unregistered here would make this test
+    fail for a reason it is not about.
+    """
+    import studio.utils.pdsl as pdsl_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(pdsl_mod, "AUTO_PROCEEDING_GATES", frozenset({"GateMenu"}))
     for indent in ("  ", ""):
         for declared in ("confirmation", "decision", "blocking"):
             assert _rule_ids(_gate_menu(declared=declared, indent=indent)) == [], (indent, declared)
+
+
+def test_an_unregistered_auto_proceeding_gate_is_refused_in_both_menu_shapes() -> None:
+    """The new rule, in the same two shapes the vocabulary test covers.
+
+    Placed beside its sibling deliberately: the pair says that the token is understood and
+    that understanding it is not the same as permitting it.
+    """
+    for indent in ("  ", ""):
+        assert _rule_ids(_gate_menu(declared="confirmation", indent=indent)) == ["PDSL704"], indent
 
 
 def test_gate_type_absent_is_valid() -> None:
@@ -634,6 +655,38 @@ def test_gate_findings_point_at_the_declaring_line() -> None:
     near_miss = validate_source(PdslSource("n.md", _gate_menu(extra="TYP: blocking"))).findings
     assert [(f.rule_id, f.line) for f in near_miss] == [("PDSL703", 3)]
 
+    # PDSL704 beside its siblings rather than only in the keyword suite: a rule whose
+    # tests check the id alone can point at the wrong line and stay green, and every other
+    # rule in this band is held to the line, the severity and the hint. Raised in review.
+    unregistered = validate_source(
+        PdslSource("u.md", _gate_menu(declared="confirmation"))).findings
+    assert [(f.rule_id, f.line) for f in unregistered] == [("PDSL704", 3)]
+    assert unregistered[0].severity == "error", unregistered[0].severity
+    assert "GateMenu" in unregistered[0].message, unregistered[0].message
+    assert "AUTO_PROCEEDING_GATES" in unregistered[0].hint, unregistered[0].hint
+
+
+def test_pdsl_validate_cli_reports_an_unregistered_gate_end_to_end() -> None:
+    """The registry rule must survive the real command too.
+
+    Its siblings have this and it did not: every PDSL704 assertion called
+    `validate_source` in process, so a regression in argument handling, exit status or
+    result formatting would have left them all green. Raised in review.
+    """
+    set_json_mode(False)
+    rc, stdout, stderr = _run(
+        ["pdsl", "validate", "--text", _gate_menu(declared="confirmation"), "--json"])
+
+    assert rc != 0
+    assert stderr == ""
+    payload = json.loads(stdout)
+    assert payload["ok"] is False
+    assert payload["summary"]["finding_count"] == 1
+    finding = payload["results"][0]["findings"][0]
+    assert finding["rule_id"] == "PDSL704"
+    assert finding["severity"] == "error"
+    assert "without being registered" in finding["message"], finding["message"]
+
 
 def test_duplicate_finding_message_is_bounded() -> None:
     """PDSL701 interpolates the menu name, so it must be elided like the value is."""
@@ -771,7 +824,28 @@ GENERATED_DIRECTORIES = frozenset({
 # GENERATED_DIRECTORIES fails here with an explanation rather than as an
 # unexplained tally change.
 AUTHORED_CORPUS_CEILING = 600
-_GATE_FINDINGS = ("PDSL700", "PDSL701", "PDSL702", "PDSL703")
+#: Every gate-risk rule, so a filter built from it cannot quietly stop covering one.
+#: `PDSL704` was added to the band and not to this tuple, which left the read-slot
+#: property test below generating `confirmation` declarations and dropping the very
+#: finding they now produce -- a test passing because it could not see the answer.
+#: Raised in review. The assertion beneath keeps the two in step.
+_GATE_FINDINGS = ("PDSL700", "PDSL701", "PDSL702", "PDSL703", "PDSL704")
+
+
+def test_the_gate_finding_filter_covers_every_rule_in_the_band() -> None:
+    """The filter is derived from the source, not from memory.
+
+    A property test filtered by a hand-written tuple stops covering any rule added to the
+    band afterwards, silently and in the safe-looking direction. This reads the rules the
+    module actually emits in the `PDSL700` band and requires the tuple to hold all of them.
+    """
+    import re  # noqa: PLC0415
+
+    source = Path("skills/studio/scripts/studio/utils/pdsl.py").read_text(encoding="utf-8")
+    emitted = set(re.findall(r'"(PDSL7\d\d)"', source))
+    assert emitted, "no PDSL700-band rule ids found; this guard has lost its subject"
+    missing = sorted(emitted - set(_GATE_FINDINGS))
+    assert not missing, f"gate rules emitted but not filtered on: {missing}"
 
 
 def _gate_rule_ids(text: str) -> list[str]:
@@ -892,8 +966,24 @@ def test_property_an_undeclared_menu_never_yields_a_gate_finding() -> None:
         assert _gate_rule_ids(text) == [], text
 
 
-def test_property_a_declaration_in_a_read_slot_is_accepted() -> None:
-    """A valid declaration at the menu's own sub-header level must validate clean."""
+def test_property_a_declaration_in_a_read_slot_is_accepted(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A valid declaration at the menu's own sub-header level must validate clean.
+
+    Registration is a different axis and is deliberately taken out of the way: this test
+    is about *placement*, and the generated menus carry random names that cannot be
+    registered ahead of time. The stand-in accepts every name, so an auto-proceeding
+    declaration is judged here only on where it sits.
+    """
+    import studio.utils.pdsl as pdsl_mod  # noqa: PLC0415
+
+    class _AnyGateRegistered:
+        """Stands in for the registry: says yes to every name, and nothing else."""
+
+        def __contains__(self, _name: object) -> bool:
+            return True
+
+    monkeypatch.setattr(pdsl_mod, "AUTO_PROCEEDING_GATES", _AnyGateRegistered())
     rng = random.Random(20260910)
     for _ in range(PROPERTY_ITERATIONS):
         text = _generated_menu(

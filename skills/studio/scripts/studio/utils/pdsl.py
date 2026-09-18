@@ -137,6 +137,43 @@ MENU_OPTION_RE = re.compile(r"^(?:-\s+)?(?P<number>\d+)\b.*->")
 # interpolation, a variable or a trailing WHEN is a runtime decision in
 # disguise and fails membership here.
 GATE_TYPES = ("confirmation", "decision", "blocking")
+
+#: Every gate permitted to resolve itself without asking. **Empty on purpose.**
+#:
+#: `confirmation` is the only type that auto-proceeds, so it is the only one whose
+#: mislabelling can answer a question the user never saw. The blocked-action invariants at
+#: `skills/studio/modules/brave-new-world-eligibility.md` say which gates must never
+#: auto-answer, and they say it in categories -- destructive operations, credentials, git
+#: mutation, unknown blast radius -- because deciding whether a given gate is one of those
+#: is a judgement. It was measured rather than assumed: matching those categories by their
+#: own vocabulary refuses **every one of the 106 menu declarations** in this repository's
+#: own `workflows/` and `skills/` (105 distinct names -- `TerminalStates` is declared
+#: twice), which would disable the type
+#: rather than guard it.
+#:
+#: So the check is inverted. Rather than detecting danger, this names the gates a person
+#: has reviewed and accepted as safe to auto-proceed, and a `confirmation` declaration on
+#: anything else is an error. That is a claim the lint can keep: it asks *"is this
+#: registered"*, never *"is this dangerous"*. Forgetting to register fails closed -- the
+#: gate keeps asking -- and adding an entry is a deliberate, diffable act that shows a
+#: reviewer every gate that can answer for the user, in one place.
+#:
+#: **None of this changes runtime behaviour today.** `architecture/specs/PDSL.md` states
+#: that nothing resolves a gate from a declared type, and the three shipped paths that do
+#: auto-resolve read no declaration. So "fails closed, the gate keeps asking" describes
+#: the *declaration* rather than a live effect: registered or not, today's runtime is
+#: identical. This is a guard put in place before the consumer that will read it, which
+#: is the only order in which it is cheap -- said plainly because the wording above could
+#: otherwise be read as describing behaviour a user would notice. Raised in review.
+#:
+#: **It keys on the bare MENU name**, which the validator sees one source at a time and
+#: cannot scope to a file: it has no project root, and the path differs between this
+#: repository and an installed kit. So a name defined in two files would be authorised in
+#: both, one of which nobody reviewed -- and that is not hypothetical, `TerminalStates` is
+#: defined twice in this tree today. A test refuses to let any such name be registered,
+#: which is the guard available without inventing path context the validator does not have.
+#: Raised in review.
+AUTO_PROCEEDING_GATES: frozenset = frozenset()
 GATE_HEADER = "TYPE"
 # Sub-headers permitted at an indent inside a MENU. `TYPE` is absent on purpose:
 # it is dispatched before the indent guard, so listing it here would be dead.
@@ -663,6 +700,24 @@ def _handle_gate_type_header(
             f"MENU {GATE_HEADER} must be one literal token of {', '.join(GATE_TYPES)} "
             f"(found `{_elide(value)}`)",
             hint="Declare risk statically; where it varies, emit two differently-typed gates.",
+        ))
+    if value == "confirmation" and (state.menu_name or "") not in AUTO_PROCEEDING_GATES:
+        # The only type that answers for the user, so the only one worth registering.
+        # Unregistered fails closed: the gate keeps asking, which is today's behaviour.
+        #
+        # No early return above it, deliberately. The two rules are mutually exclusive as
+        # written -- PDSL700 fires only for a token outside the set, this only for one
+        # inside it -- so a guard between them would be unreachable, and a `return` there
+        # would *absorb* the day someone makes this check case-insensitive rather than
+        # surface it. A test asserts a malformed token reports PDSL700 alone, so that
+        # change fails loudly and whoever makes it decides on purpose.
+        findings.append(_finding(
+            block, "PDSL704", line_no, raw_line,
+            f"MENU `{_elide(state.menu_name or '')}` is declared `confirmation` without "
+            "being registered as safe to auto-proceed",
+            hint=("A `confirmation` gate answers for the user, so it is listed once, "
+                  "reviewably, in `AUTO_PROCEEDING_GATES`. Add it there in the same change "
+                  "that declares the type, or declare `decision` and keep asking."),
         ))
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-gate-declaration-literal
 

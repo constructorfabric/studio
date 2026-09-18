@@ -1082,6 +1082,216 @@ def test_the_runtime_judgement_paths_named_in_the_baseline_comment_still_exist()
     )
 
 
+def _validated(text: str):
+    """Validate one inline PDSL source and return ``(status, rule ids)``."""
+    from studio.utils import pdsl  # noqa: PLC0415
+
+    result = pdsl.validate_source(pdsl.PdslSource(source="inline.md", text=text))
+    return result.status, sorted({f.rule_id for f in result.findings})
+
+
+_GATE = ("```pdsl\nUNIT U\nPURPOSE: x\nDO:\n  EMIT_MENU {name}\n"
+         "MENU {name}\nTYPE: {kind}\nOPTIONS:\n  1 go -> CONTINUE Next\n```\n")
+
+
+class TestOnlyARegisteredGateMayAnswerForTheUser:
+    """`confirmation` is the one type that auto-proceeds, so it is the one that is listed.
+
+    The guard is inverted on purpose, and the reason was measured rather than assumed. The
+    blocked-action invariants say which gates must never auto-answer, in categories --
+    destructive operations, credentials, git mutation, unknown blast radius. Matching those
+    categories by their own vocabulary refuses **every one of the 106 menu declarations**
+    in this repository's own tree, so a lint
+    built that way would disable the type rather than guard it.
+
+    So the lint asks "is this registered", which it can answer, rather than "is this
+    dangerous", which it cannot.
+    """
+
+    def test_an_unregistered_confirmation_is_refused(self) -> None:
+        status, rules = _validated(_GATE.format(name="SomeMenu", kind="confirmation"))
+        assert status == "FAIL", rules
+        assert rules == ["PDSL704"], rules
+
+    @pytest.mark.parametrize("kind", ["decision", "blocking"])
+    def test_the_types_that_keep_asking_need_no_registration(self, kind: str) -> None:
+        """Only auto-proceeding is registered; the other two already stop for the user."""
+        status, rules = _validated(_GATE.format(name="SomeMenu", kind=kind))
+        assert (status, rules) == ("PASS", []), (status, rules)
+
+    @pytest.mark.parametrize("token", ["Confirmation", "confirm", "nonsense"])
+    def test_an_unreadable_token_is_reported_as_the_token_not_the_registry(
+            self, token: str) -> None:
+        """Which rule wins when two could fire, asserted rather than left to ordering.
+
+        A misspelt `Confirmation` is not a `confirmation` that forgot to register — it is
+        a token this does not understand, and reporting both would send the author to add
+        a registry entry for a type they have not successfully declared. `PDSL700` alone,
+        and the registry check is not reached.
+        """
+        status, rules = _validated(_GATE.format(name="SomeMenu", kind=token))
+        assert status == "FAIL", rules
+        assert rules == ["PDSL700"], rules
+
+    def test_a_registered_confirmation_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from studio.utils import pdsl  # noqa: PLC0415
+
+        monkeypatch.setattr(pdsl, "AUTO_PROCEEDING_GATES", frozenset({"SomeMenu"}))
+        status, rules = _validated(_GATE.format(name="SomeMenu", kind="confirmation"))
+        assert (status, rules) == ("PASS", []), (status, rules)
+
+    def test_the_registry_starts_empty_so_nothing_auto_proceeds_yet(self) -> None:
+        """Pinned as a literal: the typing work has not happened, and this says so.
+
+        When the first gate is registered this test changes in the same commit, which is
+        the point -- the set of gates that may answer for a user should not move without a
+        reviewer noticing.
+        """
+        from studio.utils import pdsl  # noqa: PLC0415
+
+        assert pdsl.AUTO_PROCEEDING_GATES == frozenset(), pdsl.AUTO_PROCEEDING_GATES
+
+    def test_the_measurement_that_justified_the_inversion_still_holds(self) -> None:
+        """The whole design rests on one number, so the number is pinned.
+
+        The guard is inverted because matching the blocked-action categories by their own
+        vocabulary refuses **every** menu in the tree — which makes a blocklist useless.
+        That claim justified the design and nothing reproduced it, so a corpus that drifted
+        would leave the rationale quietly false. Raised in review.
+
+        Asserted as the relationship rather than the exact count: what matters is that
+        vocabulary-matching is indiscriminate, not that the tree has a particular number
+        of menus. Counted as *declarations* rather than names: two files declare
+        `TerminalStates`, and keying by name measured the survivor twice.
+        """
+        stop = {"prompts", "prompt", "confirmations", "or", "any", "that", "authorize",
+                "auto-answer", "never", "the", "a", "an", "and", "of", "in", "to", "which",
+                "may", "be", "fixed", "selects", "changes", "operations", "controls",
+                "approvals", "choices", "state", "rules", "needs", "human", "judgment",
+                "judgement", "result", "acceptance", "final", "review", "other"}
+        invariants = [line.strip()[2:] for line in Path(
+            "skills/studio/modules/brave-new-world-eligibility.md"
+        ).read_text(encoding="utf-8").splitlines() if line.strip().startswith("- NEVER")]
+        terms = {word for line in invariants for fragment in re.split(r",| or ", line)
+                 for word in re.findall(r"[a-z][a-z-]{3,}", fragment.lower())
+                 if word not in stop}
+        assert len(terms) > 50, f"the invariant vocabulary has collapsed to {len(terms)} terms"
+
+        # A list, not a dict keyed by name: `TerminalStates` is declared in two files, so
+        # keying by name silently dropped one of them and measured the survivor twice
+        # over. Raised in review — and it is precisely what the duplicate-name tripwire
+        # beside this test exists to catch, written into the measurement itself.
+        declarations = []
+        for folder in ("workflows", "skills"):
+            for path in Path(folder).rglob("*.md"):
+                body = path.read_text(encoding="utf-8-sig", errors="replace")
+                for match in re.finditer(
+                        r"^MENU[ \t]+([A-Za-z][\w-]*)(.*?)(?=^MENU |^UNIT |\Z)",
+                        body, re.M | re.S):
+                    declarations.append((str(path), match.group(1), match.group(0)))
+        assert len(declarations) > 50, (
+            f"only {len(declarations)} menu declarations found; the corpus scan is wrong")
+        refused = [(path, name) for path, name, body in declarations
+                   if any(term in (name + " " + body).lower() for term in terms)]
+        assert len(refused) == len(declarations), (
+            "vocabulary-matching no longer refuses every menu declaration, so a blocklist "
+            "may now be viable and the inversion is worth revisiting: "
+            f"{len(refused)} of {len(declarations)}"
+        )
+
+    def test_a_registered_name_that_no_longer_exists_is_caught(self) -> None:
+        """A registry entry outliving its menu is an authorisation nobody can see.
+
+        `UNTYPED_MENU_BASELINE` in this file already has exactly this guard; the new
+        registry did not. A stale entry is not merely untidy — it silently pre-authorises
+        whatever menu is next given that name. Raised in review.
+        """
+        from studio.utils import pdsl  # noqa: PLC0415
+
+        declared = set()
+        for folder in ("workflows", "skills"):
+            for path in Path(folder).rglob("*.md"):
+                body = path.read_text(encoding="utf-8-sig", errors="replace")
+                declared.update(re.findall(r"^MENU[ \t]+([A-Za-z][\w-]*)", body, re.M))
+        assert declared, "no MENU declarations found; this guard has lost its subject"
+        stale = sorted(set(pdsl.AUTO_PROCEEDING_GATES) - declared)
+        assert not stale, (
+            "AUTO_PROCEEDING_GATES names menus that no longer exist, so the entry now "
+            f"pre-authorises whatever is next called that: {stale}"
+        )
+
+    def test_registering_one_name_authorises_every_menu_that_shares_it(
+            self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The limitation, asserted as behaviour rather than described in a comment.
+
+        The registry keys on a bare name and the validator cannot scope it to a file, so
+        two menus sharing a name are both authorised by one entry. This proves it rather
+        than claiming it — which is what makes the corpus tripwire above load-bearing
+        instead of decorative. Raised in review.
+        """
+        from studio.utils import pdsl  # noqa: PLC0415
+
+        monkeypatch.setattr(pdsl, "AUTO_PROCEEDING_GATES", frozenset({"Shared"}))
+        shared = _GATE.format(name="Shared", kind="confirmation")
+        # Two separate sources, same bare name: one entry clears both.
+        for source in ("reviewed.md", "never-looked-at.md"):
+            result = pdsl.validate_source(pdsl.PdslSource(source=source, text=shared))
+            assert result.status == "PASS", (source, result.findings)
+
+    def test_no_name_defined_in_two_files_is_ever_registered(self) -> None:
+        """The registry keys on a bare name, so a duplicated one authorises both copies.
+
+        The validator sees one source at a time and has no project root, and the path
+        differs between this repository and an installed kit, so the key cannot be scoped
+        to a file without inventing context that does not exist. This is the guard that is
+        available instead — and it is not hypothetical: `TerminalStates` is defined in two
+        files in this tree today. Raised in review.
+        """
+        import collections  # noqa: PLC0415
+
+        from studio.utils import pdsl  # noqa: PLC0415
+
+        where = collections.defaultdict(set)
+        for folder in ("workflows", "skills"):
+            for path in Path(folder).rglob("*.md"):
+                body = path.read_text(encoding="utf-8-sig", errors="replace")
+                for match in re.finditer(r"^MENU[ \t]+([A-Za-z][\w-]*)", body, re.M):
+                    where[match.group(1)].add(str(path))
+        duplicated = {name for name, files in where.items() if len(files) > 1}
+        assert duplicated, (
+            "no menu name is defined twice any more; if that is real this guard can go, "
+            "but check before deleting it"
+        )
+        overlap = duplicated & set(pdsl.AUTO_PROCEEDING_GATES)
+        assert not overlap, (
+            "these names are defined in more than one file, so registering them would "
+            f"authorise a definition nobody reviewed: {sorted(overlap)}"
+        )
+
+    def test_no_gate_the_invariants_name_is_ever_registered(self) -> None:
+        """The mechanical link back to the blocked-action list, such as it can be.
+
+        Only two menus are named outright there -- the rest are categories a lint cannot
+        decide. Those two can at least never be registered, and this reads the shipped file
+        rather than a copy of it, so extending or renaming the list moves the check with it.
+        """
+        from studio.utils import pdsl  # noqa: PLC0415
+
+        text = Path("skills/studio/modules/brave-new-world-eligibility.md").read_text(
+            encoding="utf-8")
+        invariants = [line for line in text.splitlines()
+                      if line.strip().startswith("- NEVER")]
+        assert len(invariants) >= 10, (
+            "the blocked-action invariants have shrunk or moved; re-check this guard")
+        named = {m for line in invariants
+                 for m in re.findall(r"\b([A-Z][a-z]+(?:[A-Z][a-z0-9]+){1,})\b", line)}
+        assert named, "no menu is named outright in the invariants any more"
+        overlap = named & set(pdsl.AUTO_PROCEEDING_GATES)
+        assert not overlap, (
+            "these are named in the never-auto-answer invariants and must not be "
+            f"registered as auto-proceeding: {sorted(overlap)}")
+
+
 def test_the_untyped_menu_surface_does_not_grow() -> None:
     """A newly introduced MENU must declare a gate risk TYPE.
 
