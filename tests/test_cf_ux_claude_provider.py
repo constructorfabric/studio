@@ -343,13 +343,17 @@ class TestARunThatNeverLoadedTheSkillIsNotScored:
         assert out["metadata"]["skills_invoked"] == ["superpowers"], "and it says which did run"
 
     def test_a_skill_whose_name_merely_begins_with_cf_is_not_the_cf_skill(self, run_provider):
+        """Still not the router: the name matcher is untouched, and `cf-generate`
+        does not equal `cf`. What it is now is `bypassed` rather than `failed` --
+        see `TestAWorkflowRunWithoutTheRouter` for why that distinction was
+        introduced, and what it costs."""
         out, _seen = run_provider(
             _stream(_skill_call(skill="cf-generate"), _skill_result(), _result()),
         )
 
-        assert "output" not in out
-        assert "none of them named 'cf'" in out["error"]
-        assert out["metadata"]["skill_state"] == "failed"
+        assert out["metadata"]["skill_state"] != "ran"
+        assert out["metadata"]["skill_state"] == "bypassed"
+        assert out["metadata"]["skills_invoked"] == ["cf-generate"]
 
     def test_a_single_token_that_is_not_cf_does_not_count_either(self, run_provider):
         """The trade pinned above is not "any short token wins". The comparison
@@ -369,6 +373,22 @@ class TestARunThatNeverLoadedTheSkillIsNotScored:
         assert out["metadata"]["skills_invoked"] == ["brainstorming", "cf-generate"], (
             "both candidates were parsed and neither matched — not one silently dropped"
         )
+
+    def test_a_rival_carrying_a_cf_workflow_name_is_not_a_bypass(self, run_provider):
+        """The bypass state must not become the loose match the whole matcher was
+        written to avoid, one prefix wider. A rival skill mentioning a `cf-` name
+        in some unrelated field names something else too, so the call is not
+        unambiguously a Studio workflow and is not graded as one."""
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "command": "superpowers:brainstorming", "mode": "cf-documenting-review",
+            }},
+        ]}}
+
+        out, _seen = run_provider(_stream(rival, _skill_result(), _result()))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
 
     def test_a_false_positive_match_whose_call_errored_is_still_a_failure(self, run_provider):
         """The accepted false positive buys a *name* match, not a verdict. The
@@ -702,3 +722,140 @@ class TestTheSandboxIsWipedEvenWhenTheRunDies:
         assert "unexpected: RuntimeError" in out["error"]
         assert not seen["cwd"].exists(), "and the directory does not outlive the run"
         assert seen["cwd"] not in sandbox_module._LIVE_SANDBOXES
+
+
+# --------------------------------------- a workflow reached without the router
+
+class TestAWorkflowRunWithoutTheRouter:
+    """Measured in a real pilot run: asked to validate an artifact, the model
+    invoked `cf-documenting-review` directly and never called `cf`. Studio did the
+    work, so the answer is Studio's and worth grading -- but no gate, menu or
+    routing decision happened, which is the thing this suite exists to measure.
+
+    Neither pole states that. `failed` files it with the runs where nothing of
+    Studio was reached; a pass hides the routing finding in every report
+    downstream. Hence a third state, reported in the metadata rather than folded
+    into the tally.
+    """
+
+    def test_a_cf_workflow_without_the_router_is_bypassed_not_failed(self, run_provider):
+        out, _seen = run_provider(_stream(
+            _skill_call(skill="cf-documenting-review"),
+            _skill_result(),
+            _result("findings for 0001-postgres.md"),
+        ))
+
+        assert out["output"] == "findings for 0001-postgres.md"
+        assert out["metadata"]["skill_state"] == "bypassed"
+        assert out["metadata"]["skills_invoked"] == ["cf-documenting-review"]
+
+    def test_the_router_itself_is_still_a_plain_run(self, run_provider):
+        """The prefix must not read `cf` as a bypass of itself."""
+        out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["skill_state"] == "ran"
+
+    def test_a_workflow_that_errored_is_not_graded(self, run_provider):
+        """Same evidence bar as a plain run: a call that came back an error leaves
+        only the model's own prose, and grading that reports on Studio for a run
+        Studio did not produce."""
+        out, _seen = run_provider(_stream(
+            _skill_call(skill="cf-documenting-review"),
+            _skill_result(is_error=True),
+            _result("answered anyway"),
+        ))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
+
+    def test_a_workflow_with_no_result_is_not_graded(self, run_provider):
+        out, _seen = run_provider(_stream(
+            _skill_call(skill="cf-documenting-review"), _result("answered anyway")))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
+
+    def test_an_unrelated_skill_is_still_a_failure_not_a_bypass(self, run_provider):
+        """Only the `cf-` family is a bypass. Anything else running instead is the
+        router losing skill selection outright."""
+        out, _seen = run_provider(_stream(
+            _skill_call(skill="superpowers:brainstorming"),
+            _skill_result(),
+            _result("answered directly"),
+        ))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
+        assert "none of them named" in out["error"]
+
+    def test_the_bypass_is_logged_by_name(self, run_provider, caplog):
+        """A bypass is graded like a pass, so the log is where a person finds out
+        it happened without diffing metadata."""
+        with caplog.at_level("WARNING", logger=claude_provider.logger.name):
+            run_provider(_stream(
+                _skill_call(skill="cf-documenting-review"),
+                _skill_result(),
+                _result(),
+            ))
+
+        assert "cf-documenting-review" in caplog.text
+
+    def test_a_bypass_survives_an_unrelated_erroring_false_cf_match(self, run_provider):
+        """`targeted` accepts the documented false positive — any field, any depth
+        — so one unrelated call carrying `cf` somewhere, and erroring, used to
+        skip the bypass check entirely and lose both the finding and a gradeable
+        answer."""
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "A", "name": "Skill", "input": {
+                "command": "superpowers:brainstorming", "mode": "cf",
+            }},
+        ]}}
+
+        out, _seen = run_provider(_stream(
+            rival, _skill_result("A", is_error=True),
+            _skill_call("B", skill="cf-documenting-review"), _skill_result("B"),
+            _result("findings"),
+        ))
+
+        assert out["output"] == "findings"
+        assert out["metadata"]["skill_state"] == "bypassed"
+
+    def test_a_bare_prefix_is_not_a_workflow_name(self, run_provider):
+        """`cf-` is shaped like an identifier and says nothing. "'cf-' ran
+        directly" helps nobody triaging a run."""
+        out, _seen = run_provider(
+            _stream(_skill_call(skill="cf-"), _skill_result(), _result()))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
+
+    def test_several_workflow_names_in_one_call_are_reported_as_ambiguous(self, run_provider):
+        """The same transparency the `ran` path has: a verdict resting on one of
+        several candidates is said out loud."""
+        call = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "a": "cf-generate", "b": "cf-review",
+            }},
+        ]}}
+
+        out, _seen = run_provider(_stream(call, _skill_result(), _result()))
+
+        assert out["metadata"]["skill_state"] == "bypassed"
+        assert out["metadata"]["skill_match_other_candidates"] == ["cf-review"]
+
+    def test_one_workflow_failing_does_not_hide_another_succeeding(self, run_provider):
+        """Mixed outcomes across distinct `cf-*` calls: the clean one is the
+        evidence, and the failed one does not erase it."""
+        out, _seen = run_provider(_stream(
+            _skill_call("A", skill="cf-generate"), _skill_result("A", is_error=True),
+            _skill_call("B", skill="cf-documenting-review"), _skill_result("B"),
+            _result("findings"),
+        ))
+
+        assert out["metadata"]["skill_state"] == "bypassed"
+        assert out["metadata"]["skills_invoked"] == ["cf-documenting-review", "cf-generate"]
+
+    def test_the_prefix_is_derived_from_the_router_name(self):
+        """Two hand-maintained literals kept in sync by a comment is a rename
+        away from silently breaking bypass detection."""
+        assert claude_provider._SKILL_WORKFLOW_PREFIX == f"{claude_provider._SKILL_NAME}-"

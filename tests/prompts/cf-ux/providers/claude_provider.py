@@ -89,6 +89,21 @@ _LOG_UNPARSED_LINE = "cf-ux claude provider: stream line %d would not parse; ski
 #: identifier: every false positive of this class is reported, and so are some
 #: perfectly good runs. Narrowing it would need the very knowledge whose absence
 #: created the trade.
+#: A `cf-*` workflow invoked without the router in front of it. Prefixed, not
+#: namespaced, so `_NAME_SEPARATORS` deliberately does not split it and it never
+#: counts as `cf` -- see `_invoked_names`.
+_SKILL_WORKFLOW_PREFIX = f"{_SKILL_NAME}-"
+
+_LOG_ROUTER_BYPASSED = (
+    "cf-ux: %r was not invoked; the model went straight to %s. The work may well "
+    "have been done, but not through the router, so none of its gates were reached"
+)
+
+_LOG_AMBIGUOUS_BYPASS = (
+    "cf-ux: the bypass verdict for %r rests on more than one candidate name (%s); "
+    "%r is the one reported, the rest may be fields that are not names at all"
+)
+
 _LOG_AMBIGUOUS_MATCH = (
     "cf-ux claude provider: matched %r in a Skill input that also names %s; "
     "the verdict may rest on a field that is not the skill name"
@@ -190,7 +205,11 @@ def _invoked_names(payload: Any) -> list[str]:
 class _SkillTrace(NamedTuple):
     """What the transcript says about the skill this suite measures."""
 
-    state: str          # "ran" | "failed" | "absent"
+    #: "ran"      -- the router was invoked and reported no error.
+    #: "bypassed"  -- a `cf-*` workflow ran directly, the router never did.
+    #: "absent"    -- no `Skill` call at all.
+    #: "failed"    -- a `Skill` call that cannot be read as either of those.
+    state: str
     names: list[str]    # skill identifiers the transcript names
     inputs: list[str]   # the tool inputs verbatim, serialized, for diagnosis
     detail: str
@@ -238,11 +257,6 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
         return _SkillTrace("absent", names, inputs, f"no {_SKILL_TOOL} tool call in the transcript")
 
     targeted = [call_id for call_id, found in named.items() if _SKILL_NAME in found]
-    if not targeted:
-        return _SkillTrace(
-            "failed", names, inputs,
-            f"a {_SKILL_TOOL} ran but none of them named {_SKILL_NAME!r}",
-        )
     for call_id in targeted:
         if results.get(call_id) is not False:
             continue
@@ -256,6 +270,39 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
         if others:
             logger.warning(_LOG_AMBIGUOUS_MATCH, _SKILL_NAME, list(others))
         return _SkillTrace("ran", names, inputs, "", others)
+    # Reached only when no call named `cf` came back clean. A workflow the router
+    # fronts may still have run on its own, and that is a third state: not `ran`
+    # (no gate, no menu, no routing decision -- the thing this suite measures
+    # never happened), and not `failed`, which would bury a distinct finding
+    # among the runs where nothing of Studio was reached at all.
+    #
+    # Checked here rather than under `not targeted`, which is where it first
+    # went: `targeted` accepts the documented false positive -- any field, any
+    # depth -- so a single unrelated call carrying `cf` somewhere, and erroring,
+    # was enough to skip the check entirely and lose a real bypass along with a
+    # gradeable answer.
+    bypassing = _bypassing_names(named, results)
+    if bypassing:
+        logger.warning(_LOG_ROUTER_BYPASSED, _SKILL_NAME, ", ".join(bypassing))
+        # Reported the way an ambiguous `ran` is: when the verdict rests on more
+        # than one name, that is said out loud rather than left for whoever
+        # thinks to diff the metadata afterwards. Its own message, not the `ran`
+        # one -- that says "matched 'cf'", which is the one thing that did not
+        # happen here.
+        others = tuple(bypassing[1:])
+        if others:
+            logger.warning(_LOG_AMBIGUOUS_BYPASS, _SKILL_NAME, list(others), bypassing[0])
+        return _SkillTrace(
+            "bypassed", names, inputs,
+            f"{_SKILL_NAME!r} was never invoked; "
+            f"{', '.join(repr(name) for name in bypassing)} ran directly",
+            others,
+        )
+    if not targeted:
+        return _SkillTrace(
+            "failed", names, inputs,
+            f"a {_SKILL_TOOL} ran but none of them named {_SKILL_NAME!r}",
+        )
     if any(call_id not in results for call_id in targeted):
         return _SkillTrace(
             "failed", names, inputs,
@@ -264,6 +311,41 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
     return _SkillTrace(
         "failed", names, inputs, f"every {_SKILL_NAME!r} call came back as an error",
     )
+
+
+def _bypassing_names(named: dict[Any, list[str]], results: dict[Any, bool]) -> list[str]:
+    """The `cf-*` workflows that ran cleanly without the router in front of them.
+
+    A call qualifies only when *every* candidate it names is a `cf-` workflow.
+    `_invoked_names` reports every identifier-shaped string at any depth, so a
+    rival skill carrying a `cf-` name in an unrelated field offers one -- and the
+    loose match that is an accepted trade for the exact token `cf` is a far wider
+    net across a whole prefix.
+
+    The prefix alone is not a name: a bare `cf-` is shaped like an identifier and
+    says nothing, and "'cf-' ran directly" helps nobody triaging a run. A suffix
+    is required.
+
+    Same evidence bar as `ran`: the call must have come back, and come back
+    clean. A workflow that errored leaves only the model's own prose, and grading
+    that reports on Studio for a run Studio did not produce.
+    """
+    def is_workflow(name: str) -> bool:
+        return (name.startswith(_SKILL_WORKFLOW_PREFIX)
+                and len(name) > len(_SKILL_WORKFLOW_PREFIX))
+
+    return sorted({
+        name
+        for call_id, found in named.items()
+        if found and results.get(call_id) is False and all(is_workflow(n) for n in found)
+        for name in found
+    })
+
+
+#: States whose answer is Studio's own and can be handed to the grader. Every
+#: other state means the text came from somewhere else, and scoring it would
+#: report on Studio for a run that never reached it.
+_GRADED_STATES = frozenset({"ran", "bypassed"})
 
 
 def _baseline(cwd: Path, started: float) -> dict[str, Any]:
@@ -400,7 +482,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
             "error": f"claude returned a non-text result ({type(answer).__name__})",
             "metadata": {**metadata, "unscored_output": withheld},
         }
-    elif state != "ran":
+    elif state not in _GRADED_STATES:
         # A hard error, not a metadata flag. The fallback answer is plausible and
         # well-formed, so left to the grader it scores as a pass and the suite
         # reports on an agent that never loaded Studio. A run that did not engage
@@ -412,6 +494,11 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
             "metadata": {**metadata, "unscored_output": withheld},
         }
     else:
+        # `bypassed` is graded like `ran`: Studio did the work, and the answer is
+        # a real one to score. What it is *not* is a clean pass for the router,
+        # and that is what `skill_state` in the metadata is for -- a bypass
+        # counted as an ordinary pass would make the routing finding invisible
+        # in every report downstream.
         result = {"output": output_text, "metadata": metadata}
     if isinstance(cost, (int, float)):
         result["cost"] = float(cost)

@@ -120,7 +120,23 @@ or no trace to trust:
 | `result` with a non-success `subtype` | The turn stopped short (`error_max_turns`, `error_during_execution`), so `result` holds a fragment, not an answer — even when the skill did load. An *absent* subtype is not treated this way: an unfamiliar shape should not manufacture failures. |
 | A line that will not parse | Counted in `unparsed_lines` rather than dropped silently, because a lost line can be a lost `tool_result` and the verdict above is read off exactly those. |
 
-Metadata: `skill_state` (`ran` / `failed` / `absent`), `skills_invoked` (the
+`skill_state` has four values:
+
+| State | Meaning | Graded? |
+|---|---|---|
+| `ran` | The `cf` router was invoked and its call came back clean. | yes |
+| `bypassed` | A `cf-*` workflow ran **directly**, the router never did. Studio produced the answer, so it is worth grading — but no gate, menu or routing decision happened, which is what this suite measures. Counted as a pass by promptfoo's own tally, so the metadata and the `WARNING` in the log are where a bypass is actually visible. | yes |
+| `absent` | No `Skill` call at all. | no |
+| `failed` | A `Skill` call that is neither of the above: it named nothing recognizable, came back an error, or came back not at all. | no |
+
+Order matters: `<error>Execute skill: cf</error>` anywhere in the transcript is
+`failed` before any of this is considered, and no `Skill` call at all is
+`absent` before the rest. `skill_match_other_candidates` is populated for `ran`
+and for `bypassed`, and is empty whenever the verdict rested on a single name.
+
+A bypass needs the *whole* call to name `cf-` identifiers and nothing else. `_invoked_names` reports every identifier-shaped string at any depth, so a rival skill carrying a `cf-` name in an unrelated field would otherwise read as one — the loose match the name matcher exists to avoid, widened across a whole prefix.
+
+Metadata: `skill_state` (above), `skills_invoked` (the
 names), `skill_call_inputs` (those inputs verbatim, for when a name did not
 resolve), `skill_match_other_candidates` (above), `unparsed_lines`, and
 `unscored_output` — the answer that was withheld
