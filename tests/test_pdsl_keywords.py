@@ -802,7 +802,7 @@ def test_prompt_runtime_references_use_cf_studio_path() -> None:
 # this set has to declare a TYPE.
 # Shrink this set as menus are typed; never add to it.
 UNTYPED_MENU_BASELINE: frozenset[str] = frozenset({
-    "architecture/specs/PDSL.md#13::SubAgentApprovalMenu",
+    "architecture/specs/PDSL.md#14::SubAgentApprovalMenu",
     "architecture/specs/PDSL.md#7::ApprovalMenu",
     "requirements/auto-config.md#2::ExistingRulesRefreshMenu",
     "requirements/storytelling-modes.md#0::ModeSelectionMenu",
@@ -1142,12 +1142,12 @@ def test_the_untyped_menu_surface_does_not_grow() -> None:
 
 
 # Every MENU that does not yet declare a shape, frozen 2026-09-17 (issue #186).
-# `SHAPE` is new: no MENU declares it yet, so this baseline currently covers the
-# entire corpus. The surface migrates menu by menu and must not grow -- anything
-# not in this set has to declare a SHAPE. Shrink this set as menus are shaped;
-# never add to it.
+# `SHAPE` is new: only the PDSL.md spec's own illustrative example (issue #186)
+# declares it, so this baseline currently covers nearly the entire corpus. The
+# surface migrates menu by menu and must not grow -- anything not in this set
+# has to declare a SHAPE. Shrink this set as menus are shaped; never add to it.
 UNSHAPED_MENU_BASELINE: frozenset[str] = frozenset({
-    "architecture/specs/PDSL.md#13::SubAgentApprovalMenu",
+    "architecture/specs/PDSL.md#14::SubAgentApprovalMenu",
     "architecture/specs/PDSL.md#7::ApprovalMenu",
     "architecture/specs/PDSL.md#8::PlanApprovalGate",
     "requirements/auto-config.md#2::ExistingRulesRefreshMenu",
