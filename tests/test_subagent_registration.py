@@ -451,7 +451,9 @@ class TestRenderTomlAgent(unittest.TestCase):
 
         result = _render_toml_agent(agent, "@/agents/cypilot-codegen.md")
 
-        self.assertIn('model = "gpt-5.4"', result)
+        self.assertIn('model = "gpt-5.6-terra"', result)
+        # The Codex-specialized slug this cell once named; gone, and the
+        # assertion stays as the pin that it is not coming back by accident.
         self.assertNotIn("gpt-5.3-codex", result)
 
 
