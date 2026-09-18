@@ -13,6 +13,7 @@
   - [ID kinds (in `constraints.toml`)](#id-kinds-in-constraintstoml)
   - [What `cfs validate` checks](#what-cfs-validate-checks)
   - [Severity — decide which rules gate the run](#severity--decide-which-rules-gate-the-run)
+  - [Table of contents rules](#table-of-contents-rules)
   - [What `cfs validate` does not check](#what-cfs-validate-does-not-check)
   - [Nested identifiers](#nested-identifiers)
   - [CDSL and instruction-level traceability](#cdsl-and-instruction-level-traceability)
@@ -238,6 +239,45 @@ For a **kit**, the kind check needs to see every kit your project installs, sinc
 
 - 🖥 `cfs validate --explain-severity --kind PRD --rule heading-missing` — the effective severity and which layer set it
 - 🖥 `cfs validate --fail-on-warnings` — make a warning-only run fail
+
+### Table of contents rules
+
+A document with a table of contents is checked on four things: that the TOC exists at all (`toc-missing`), that every TOC link points at a real heading (`toc-anchor-broken`), that every heading within the configured depth is listed (`toc-heading-not-in-toc`), and that the TOC still matches the document (`toc-stale`, a warning). Four further warnings describe how easy the document is to retrieve from rather than whether its TOC is right: duplicate heading titles, heading depth jumps, oversized sections, and a missing description block at the top.
+
+These run in two places. `cfs validate` runs them on every registered artifact whose kind has not set `toc = false`. `cfs validate-toc <file>...` runs them on the files you name, and is the one to reach for on a document the registry does not know about.
+
+**How deep, and how large**, is per artifact kind, in the kit's `constraints.toml`:
+
+```toml
+[artifacts.PRD]
+toc = true                  # false switches the whole TOC phase off for this kind
+
+[artifacts.PRD.validation.toc]
+max_level = 2               # the TOC must list headings down to level 2 (default 3)
+max_section_lines = 150     # warn above this section length (default 300)
+```
+
+Leave an option out and the kind has no opinion about it. That matters because `cfs validate-toc` takes both as flags too, and the order is: an explicit `--max-level` / `--max-section-lines` on the command line, else the artifact kind's configured value, else the default. If "unset" were stored as 3, a kit could never be overridden and an explicit `--max-level 3` could never be told from silence.
+
+`cfs toc` regenerates to the same depth, so the fix-it workflow and the check agree: regenerating at a fixed 3 in a project whose kind asks for 2 would produce a table listing headings the check then reports as anchors to nothing.
+
+`toc = false` means the kind has no table-of-contents contract at all. `cfs validate` skips the phase, and `cfs validate-toc` reports the file as passing but **not applicable** rather than checking it anyway — and says so, so a file nobody examined does not read like a file that came back clean.
+
+`cfs toc` still writes a table for such a file if you ask it to: the switch says a table is not *required*, and there is no setting that forbids one. It reports its post-generation check as skipped, so the one command that writes tables is not also the only one that grades them.
+
+Severity works here like everywhere else. Run inside a Studio project, `cfs validate-toc` reads the same `[validation.severity]` tables `cfs validate` does and maps each registered file to its kind, so this is enough to make a missing TOC visible without blocking the build:
+
+```toml
+# config/core.toml
+[validation.severity]
+"toc-missing" = "warning"
+```
+
+Run outside a project there is nothing to read, and the command behaves as it always has: engine defaults, every finding at its built-in severity.
+
+- 🖥 `cfs validate-toc docs/*.md` — check a set of files directly
+- 🖥 `cfs validate-toc --max-level 4 docs/guide.md` — override the depth for one run
+- 🖥 `cfs toc <file>` — regenerate a stale TOC rather than hand-editing it
 
 ### What `cfs validate` does not check
 

@@ -66,6 +66,25 @@
           "description": "Rule code to severity, for this artifact kind only.",
           "propertyNames": { "type": "string", "minLength": 1 },
           "additionalProperties": { "$ref": "#/$defs/severity" }
+        },
+        "toc": { "$ref": "#/$defs/toc_options" }
+      }
+    },
+    "toc_options": {
+      "type": "object",
+      "description": "How deep and how large TOC checking looks for this artifact kind. Per kind only: there is no kit-wide equivalent, because outline depth is a property of the kind the way the `toc` switch it configures is. An option left out means this kind has no opinion, so an explicit --max-level / --max-section-lines flag and a configured value stay distinguishable.",
+      "additionalProperties": true,
+      "properties": {
+        "max_level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "description": "Deepest heading level the TOC must cover (engine default 3)."
+        },
+        "max_section_lines": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Warn when a section exceeds this many lines (engine default 300)."
         }
       }
     },

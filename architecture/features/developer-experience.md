@@ -136,10 +136,11 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs toc <files> [--max-level N] [--indent N] [--dry-run] [--skip-validate]` - `inst-toc-gen-parse-args`
-2. [x] - `p1` - **FOR EACH** file - `inst-toc-gen-foreach-file`
+2. [x] - `p1` - Index the surrounding project's registered artifacts, when there is one, so each file is regenerated to the depth its own artifact kind configures. Generating at this command's own default where a kind asks for a shallower one would emit a table of contents listing headings the checks then report as anchors to nothing, so the documented way to repair a stale table would hand back a file that fails validation - `inst-toc-gen-kind-depth`
+3. [x] - `p1` - **FOR EACH** file - `inst-toc-gen-foreach-file`
    1. [x] - `p1` - Process file: extract headings, generate TOC, insert/update between `<!-- toc -->` markers - `inst-toc-gen-process`
-   2. [x] - `p1` - **IF** not dry-run and not skip-validate, validate generated TOC - `inst-toc-gen-validate`
-3. [x] - `p1` - **RETURN** JSON: `{status, files_processed, results}` - `inst-toc-gen-return`
+   2. [x] - `p1` - **IF** not dry-run and not skip-validate, validate generated TOC — unless the file's artifact kind declares it has no table-of-contents contract, in which case the check is reported as skipped with its reason. The table is still written, because that switch says a table is not required and has no way to say one is forbidden, but this command must not be the only one in the toolchain that judges a table the validators decline to judge - `inst-toc-gen-validate`
+4. [x] - `p1` - **RETURN** JSON: `{status, files_processed, results}` - `inst-toc-gen-return`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for toc command - `inst-toc-gen-imports`

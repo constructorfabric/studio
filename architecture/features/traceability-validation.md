@@ -471,18 +471,24 @@ site.
 
 **Steps**:
 1. [x] - `p1` - Parse arguments: positional files or `--all` - `inst-toc-parse-args`
-2. [x] - `p1` - Resolve file list (explicit paths or all registered artifacts) - `inst-toc-resolve-files`
-3. [x] - `p1` - **FOR EACH** file - `inst-toc-foreach-file`
-   1. [x] - `p1` - Parse existing TOC block between `<!-- toc -->` markers - `inst-toc-parse-existing`
-   2. [x] - `p1` - Generate expected TOC from headings - `inst-toc-generate-expected`
-   3. [x] - `p1` - Compare existing vs expected: check anchor validity, heading coverage, staleness - `inst-toc-compare`
-   4. [x] - `p1` - **IF** mismatch, record error with diff details - `inst-toc-if-mismatch`
-4. [x] - `p1` - **RETURN** JSON: `{status, files_validated, error_count, warning_count, results}`, each `results[]` entry `{file, status, error_count, warning_count}` plus `errors`/`warnings` arrays when `--verbose` or non-empty - `inst-toc-return`
+2. [x] - `p1` - **IF** the command runs inside a Studio project, load its context: build the same severity policy the validate command builds, from every loaded kit plus the project configuration, and index each registered artifact by absolute path with its kind and that kind's TOC options. A policy that cannot be read stops the run instead of being skipped. Outside a project nothing is loaded and the remaining steps behave exactly as they always have - `inst-toc-load-project`
+3. [x] - `p1` - Resolve file list (explicit paths or all registered artifacts) - `inst-toc-resolve-files`
+4. [x] - `p1` - **FOR EACH** file - `inst-toc-foreach-file`
+   1. [x] - `p1` - **IF** the file is a registered artifact whose kind declares it has no table of contents, report it as passing but not applicable and check nothing, matching the phase the structure validator skips for the same declaration. Said out loud rather than passed in silence: a file reported clean and a file never examined are different answers - `inst-toc-not-applicable`
+   2. [x] - `p1` - Settle this file's heading-depth and section-size bounds: an explicit command-line flag first, else the value configured for its artifact kind, else the engine default - `inst-toc-resolve-options`
+   3. [x] - `p1` - Parse existing TOC block between `<!-- toc -->` markers - `inst-toc-parse-existing`
+   4. [x] - `p1` - Generate expected TOC from headings - `inst-toc-generate-expected`
+   5. [x] - `p1` - Compare existing vs expected: check anchor validity, heading coverage, staleness - `inst-toc-compare`
+   6. [x] - `p1` - **IF** mismatch, record error with diff details - `inst-toc-if-mismatch`
+   7. [x] - `p1` - Restamp this file's findings at the severity the policy resolves for them, dropping the suppressed and re-partitioning the rest between errors and warnings; record the artifact kind on each finding and collect any lowering the kit refused. The project's policy governs a registered artifact wherever on disk it resolves, since a workspace source lives outside the project root by design, but not an unregistered file outside the tree — judging another repository's document by whichever project the shell was in is an answer about the wrong configuration - `inst-toc-apply-policy`
+5. [x] - `p1` - **RETURN** JSON: `{status, files_validated, error_count, warning_count, results}`, each `results[]` entry `{file, status, error_count, warning_count}` plus its artifact kind and suppressed count when either applies, plus `errors`/`warnings` arrays when `--verbose` or non-empty; the run adds its own suppressed count and the list of severity overrides whenever either is non-empty - `inst-toc-return`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for validate-toc command - `inst-toc-imports`
 - [x] - `p1` - Validate a single file, never raising: a missing file or a read failure (permission denied, binary/non-UTF-8 content, a TOCTOU race) is reported as its own ERROR result rather than aborting the whole batch and discarding results already collected for earlier files - `inst-toc-validate-one`
-- [x] - `p1` - Human-friendly formatter for validate-toc output: a WARN-only file prints its warnings the same way a FAIL file prints its errors, not just the bare status - `inst-toc-format`
+- [x] - `p1` - Decide whether warnings alone fail this run, asking the loaded policy when there is one so the command-line flag and the project setting cannot disagree, and the flag alone otherwise - `inst-toc-fail-on-warnings`
+- [x] - `p1` - Attach what the policy changed to the report whenever it changed anything: the count of suppressed findings, and the lowered or refused rules, emitted without being asked for - `inst-toc-policy-report`
+- [x] - `p1` - Human-friendly formatter for validate-toc output: a WARN-only file prints its warnings the same way a FAIL file prints its errors, not just the bare status, and a run that suppressed findings says so rather than reading like a run that found none - `inst-toc-format`
 
 ### TOC Utilities
 

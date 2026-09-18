@@ -98,6 +98,25 @@ def _parse_optional_bool(
     return None, f"Constraint field '{field}' must be boolean, got {type(v).__name__}"
 
 @dataclass(frozen=True)
+class TocOptions:
+    """How deep, and how large, TOC checking looks for one artifact kind.
+
+    ``None`` is "this kind has no opinion", not a value. Storing the engine
+    default here instead would make a kit that says nothing about depth
+    indistinguishable from one that deliberately asked for today's depth — and
+    a `--max-level` on the command line could no longer be told from silence,
+    which is the whole precedence question this table exists to answer.
+    """
+
+    max_level: Optional[int] = None
+    max_section_lines: Optional[int] = None
+
+
+#: Every option ``[artifacts.<KIND>.validation.toc]`` understands.
+_TOC_OPTION_KEYS = frozenset({"max_level", "max_section_lines"})
+
+
+@dataclass(frozen=True)
 class ArtifactKindConstraints:
     """Validation constraints attached to one artifact kind."""
 
@@ -108,6 +127,8 @@ class ArtifactKindConstraints:
     toc: bool = True
     #: ``[artifacts.<KIND>.validation]`` — this kind's own severity table.
     validation: SeverityTables = dataclass_field(default_factory=SeverityTables)
+    #: ``[artifacts.<KIND>.validation.toc]`` — this kind's TOC options.
+    toc_options: TocOptions = dataclass_field(default_factory=TocOptions)
 
 @dataclass(frozen=True)
 class KitConstraints:
@@ -1192,17 +1213,24 @@ def _validate_artifact_toc(
     artifact_path: Path,
     errors: List[Dict[str, object]],
     warnings: List[Dict[str, object]],
+    options: Optional[TocOptions] = None,
 ) -> None:
     from .document import read_text_safe as _read_text_safe
+    from .toc import DEFAULT_MAX_SECTION_LINES, DEFAULT_TOC_MAX_LEVEL
     from .toc import validate_toc as _validate_toc
 
     toc_lines = _read_text_safe(artifact_path)
     if toc_lines is None:
         return
+    options = options or TocOptions()
     toc_result = _validate_toc(
         "\n".join(toc_lines),
         artifact_path=artifact_path,
-        max_heading_level=3,
+        max_heading_level=(
+            options.max_level if options.max_level is not None else DEFAULT_TOC_MAX_LEVEL),
+        max_section_lines=(
+            options.max_section_lines if options.max_section_lines is not None
+            else DEFAULT_MAX_SECTION_LINES),
     )
     errors.extend(toc_result.get("errors", []))
     warnings.extend(toc_result.get("warnings", []))
@@ -1913,7 +1941,8 @@ def validate_artifact_file(
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
     # Phase 1b: TOC validation (only when toc=true in constraints)
     if getattr(constraints, "toc", True):
-        _validate_artifact_toc(artifact_path, errors, warnings)
+        _validate_artifact_toc(
+            artifact_path, errors, warnings, getattr(constraints, "toc_options", None))
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
 
     _validate_artifact_identifier_phase(
@@ -3169,15 +3198,24 @@ def _parse_artifact_kind_constraints(
         return None
     text_fields, headings, defined_id, toc_val = parsed
     kind_errors: List[str] = []
+    where = f"[artifacts.{kind.strip().upper()}.validation]"
     validation = parse_kit_validation(
         raw.get("validation"),
         kind_errors,
-        where=f"[artifacts.{kind.strip().upper()}.validation]",
+        where=where,
         allow_kinds=False,
     )
+    toc_options, toc_unknown = _parse_kind_toc_options(raw.get("validation"), where, kind_errors)
     if kind_errors:
         errors.extend(f"constraints for {kind}: {message}" for message in kind_errors)
         return None
+    if toc_unknown:
+        # Reported through the severity table's channel rather than a second
+        # one: `validate-kits` already turns `unknown_keys` into a warning, and
+        # a misspelled `max_levl` is the same failure as a misspelled rule code
+        # — a setting its author believes is in force that nothing reads.
+        validation = replace(
+            validation, unknown_keys=tuple(sorted(validation.unknown_keys + tuple(toc_unknown))))
 
     return ArtifactKindConstraints(
         name=text_fields["name"],
@@ -3186,7 +3224,59 @@ def _parse_artifact_kind_constraints(
         headings=headings,
         toc=toc_val,
         validation=validation,
+        toc_options=toc_options,
     )
+
+
+def _parse_kind_toc_options(
+    validation_raw: object,
+    where: str,
+    errors: List[str],
+) -> Tuple[TocOptions, List[str]]:
+    """Parse ``[artifacts.<KIND>.validation.toc]`` into TOC options.
+
+    An unreadable value is an error rather than an absent opinion: it leaves
+    the check running to a depth nobody can predict, which is the same reason
+    an unreadable severity fails the load instead of being skipped.
+    """
+    if not isinstance(validation_raw, dict):
+        return TocOptions(), []
+    raw = validation_raw.get("toc")
+    if raw is None:
+        return TocOptions(), []
+    if not isinstance(raw, dict):
+        errors.append(f"{where}.toc must be a table of TOC options")
+        return TocOptions(), []
+    unknown = [f"{where}.toc.{key}" for key in sorted(raw) if str(key) not in _TOC_OPTION_KEYS]
+    return TocOptions(
+        max_level=_parse_toc_option_int(raw, "max_level", where, errors, maximum=6),
+        max_section_lines=_parse_toc_option_int(raw, "max_section_lines", where, errors),
+    ), unknown
+
+
+def _parse_toc_option_int(
+    raw: Dict[str, object],
+    name: str,
+    where: str,
+    errors: List[str],
+    *,
+    maximum: Optional[int] = None,
+) -> Optional[int]:
+    """Read one positive-integer TOC option, or None when it is not set."""
+    if name not in raw:
+        return None
+    value = raw.get(name)
+    # `bool` is an `int` in Python, so `max_level = true` would otherwise be
+    # accepted as depth 1 — a document checked one level deep because someone
+    # meant to switch something on.
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        bound = f" between 1 and {maximum}" if maximum else " of 1 or more"
+        errors.append(f"{where}.toc.{name} must be an integer{bound}")
+        return None
+    if maximum is not None and value > maximum:
+        errors.append(f"{where}.toc.{name} must be an integer between 1 and {maximum}")
+        return None
+    return value
 
 
 def _parse_artifact_kind_constraint_parts(
@@ -3628,7 +3718,36 @@ def _merge_artifact_constraints(
         headings=(base.headings or []) + (incoming.headings or []) or None,
         toc=base.toc if base.toc == incoming.toc else False,
         validation=merge_severity_tables([base.validation, incoming.validation]),
+        toc_options=_merge_toc_options(base.toc_options, incoming.toc_options),
     )
+
+
+def _merge_toc_options(base: TocOptions, incoming: TocOptions) -> TocOptions:
+    """Combine two kits' TOC options for one kind, strictest-wins.
+
+    The same rule `required` and `severity` merge by, read through what each
+    option does: a deeper `max_level` puts more headings under the
+    completeness check, and a smaller `max_section_lines` flags more sections.
+    A kit with no opinion never loosens one that has one.
+    """
+    return TocOptions(
+        max_level=_strictest_toc_option(base.max_level, incoming.max_level, max),
+        max_section_lines=_strictest_toc_option(
+            base.max_section_lines, incoming.max_section_lines, min),
+    )
+
+
+def _strictest_toc_option(
+    base: Optional[int],
+    incoming: Optional[int],
+    stricter: Callable[[int, int], int],
+) -> Optional[int]:
+    """Pick the stricter of two optional bounds, where None is "no opinion"."""
+    if base is None:
+        return incoming
+    if incoming is None:
+        return base
+    return stricter(base, incoming)
 
 
 def merge_kit_constraints_all_of(constraints: Sequence[KitConstraints]) -> Optional[KitConstraints]:
@@ -3821,6 +3940,7 @@ __all__ = [
     "IdConstraint",
     "ArtifactKindConstraints",
     "KitConstraints",
+    "TocOptions",
     "ArtifactRecord",
     "ParsedStudioId",
     "build_severity_policy",

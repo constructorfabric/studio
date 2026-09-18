@@ -25,6 +25,7 @@ drivers:
   - [Reference Rules](#reference-rules)
 - [Validation Semantics](#validation-semantics)
   - [Severity](#severity)
+  - [TOC Options](#toc-options)
   - [Heading Validation](#heading-validation)
   - [ID Validation](#id-validation)
   - [Cross-Artifact Validation](#cross-artifact-validation)
@@ -198,6 +199,28 @@ Reading it as six layers of plain specificity cannot be right: the constraint en
 *Between kits* bound into one project, strictness decides — including across the whole-kit/per-kind boundary. One kit's whole-kit `error` is not relaxed by another kit's PRD-scoped `off`, because neither kit has agreed to be overruled by the other. Each kit contributes its own effective value for the kind (its kind-scoped entry if it has one, else its whole-kit entry), and the strictest of those wins. `locked` merges as a plain OR, for the same reason.
 
 See `cpt-studio-adr-validation-severity-policy` for the decision record.
+
+### TOC Options
+
+`toc = false` on an artifact kind switches the TOC phase off. A kind that keeps it on can also say how deep and how large that check looks:
+
+```toml
+[artifacts.PRD.validation.toc]
+max_level = 2            # deepest heading level the TOC must cover (default 3)
+max_section_lines = 150  # warn above this section length (default 300)
+```
+
+Both options are optional, and both apply wherever TOC checking runs — the TOC phase inside `cfs validate`, which enforced a fixed depth of 3 for every kind before, and `cfs validate-toc`, which now maps each registered file to its kind and reads that kind's options.
+
+An option left out means the kind has no opinion, not that it asked for the default. That is the distinction `cfs validate-toc` needs: an explicit `--max-level` on the command line wins over a configured value, a configured value wins over the engine default, and none of the three can be told apart if "unset" and "3" are stored the same way.
+
+There is no kit-wide `[validation.toc]`. How deep a document's outline goes is a property of the artifact kind, the same way the `toc` switch it configures is, and a whole-kit default would be a second answer to that question with no rule for which one wins. A `[validation.toc]` written at the root is reported as a `constraints-unknown-key` warning like any other key this engine does not read there.
+
+**Merging** applies when one kit binds more than one constraints file and both configure the same kind. It follows the same strictest-wins rule severity does, read through what each option does: the deeper `max_level` wins, because it puts more headings under the completeness check, and the smaller `max_section_lines` wins, because it flags more sections. A file with no opinion never loosens one that has an opinion.
+
+Note the scope. These options are *structural* constraints, so — like `headings`, `identifiers` and the `toc` switch itself — they come from the kit that owns the artifact's system, and a second kit bound to the same project does not reach them. Severity is different, and merges across every loaded kit, because it is a project-wide policy question rather than a contract about one kind's shape.
+
+An unreadable value — a `max_level` outside 1–6, a non-positive `max_section_lines`, a boolean where an integer belongs — fails the load, for the same reason an unreadable severity does: it leaves a check running to a depth nobody can predict. A misspelled option name is a `constraints-unknown-key` warning, not a silent no-op.
 
 ### Heading Validation
 

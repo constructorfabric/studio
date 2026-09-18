@@ -724,6 +724,13 @@ def run_verdict(
 # @cpt-begin:cpt-studio-algo-traceability-validation-severity-policy:p1:inst-severity-parse-tables
 #: Keys understood under a ``[validation]`` table. Anything else is reported.
 _KIT_VALIDATION_KEYS = frozenset({"severity"})
+#: What a kit's `[artifacts.<KIND>.validation]` may carry. `toc` is read by the
+#: constraints loader rather than here — TOC depth is not a severity — but it
+#: is named in this set so it is not reported as a key this engine does not
+#: understand. Per-kind only: how deep a document's outline goes is a property
+#: of the kind, like the `toc` switch it configures, and a whole-kit default
+#: would be a second answer to that question with no rule for which one wins.
+_KIT_KIND_VALIDATION_KEYS = frozenset({"severity", "toc"})
 _PROJECT_VALIDATION_KEYS = frozenset({"severity", "fail_on_warnings"})
 
 
@@ -847,10 +854,13 @@ def parse_kit_validation(
 ) -> SeverityTables:
     """Parse a kit's ``[validation]`` table from ``constraints.toml``.
 
-    ``allow_kinds`` is false for a table already scoped to one artifact kind.
+    ``allow_kinds`` is false for a table already scoped to one artifact kind —
+    the same condition under which `toc` is a key, so it selects the key set
+    too rather than being asked twice in two ways.
     """
+    known = _KIT_VALIDATION_KEYS if allow_kinds else _KIT_KIND_VALIDATION_KEYS
     return _parse_validation_table(
-        raw, where, set(_KIT_VALIDATION_KEYS), errors, allow_kinds=allow_kinds)
+        raw, where, set(known), errors, allow_kinds=allow_kinds)
 
 
 def parse_project_validation(raw: object, errors: List[str]) -> SeverityTables:
