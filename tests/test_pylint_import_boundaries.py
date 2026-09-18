@@ -9,7 +9,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from tests.pylint_plugin_fakes import Import, ImportFrom, Name, load_plugin_module, set_root
+from tests.pylint_plugin_fakes import (Import, ImportFrom, Name, load_plugin_module,
+                                       set_root, subprocess_env)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYTHONPATH = os.pathsep.join([
@@ -23,8 +24,7 @@ def _run_pylint(code: str, *, relative_path: str) -> subprocess.CompletedProcess
         target = Path(td) / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(textwrap.dedent(code), encoding="utf-8")
-        env = dict(os.environ)
-        env["PYTHONPATH"] = PYTHONPATH
+        env = subprocess_env(PYTHONPATH=PYTHONPATH)
         return subprocess.run(
             [
                 "pipx",

@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from tests.pylint_plugin_fakes import (
+    subprocess_env,
     AnnAssign,
     Assign,
     AssignName,
@@ -38,8 +39,7 @@ def _run_pylint(code: str) -> subprocess.CompletedProcess[str]:
     with TemporaryDirectory() as td:
         target = Path(td) / "sample.py"
         target.write_text(textwrap.dedent(code), encoding="utf-8")
-        env = dict(os.environ)
-        env["PYTHONPATH"] = PYTHONPATH
+        env = subprocess_env(PYTHONPATH=PYTHONPATH)
         return subprocess.run(
             [
                 "pipx",

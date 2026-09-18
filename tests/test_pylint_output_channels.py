@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from tests.pylint_plugin_fakes import (
+    subprocess_env,
     Attribute,
     Call,
     Const,
@@ -32,8 +33,7 @@ def _run_pylint(code: str, *, relative_path: str = "sample.py") -> subprocess.Co
         target = Path(td) / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(textwrap.dedent(code), encoding="utf-8")
-        env = dict(os.environ)
-        env["PYTHONPATH"] = PYTHONPATH
+        env = subprocess_env(PYTHONPATH=PYTHONPATH)
         return subprocess.run(
             [
                 "pipx",

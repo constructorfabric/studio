@@ -1,11 +1,38 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import types
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+
+#: The real ``$HOME``, read at import time -- which is collection, before the autouse
+#: fixture in ``conftest.py`` moves ``$HOME`` to a temp directory for each test.
+#:
+#: That fixture is right to move it: the brand directory hangs off ``Path.home()``, and
+#: tests that make ``Path.home()`` itself raise need the real seam intact. But Python also
+#: derives the *user* site-packages directory from ``$HOME``, so a subprocess started under
+#: the moved one cannot import anything installed with ``pip install --user`` -- including
+#: ``pipx``, which every test in this family shells out through. The failure has no
+#: fingerprints: ``pipx`` dies on ``ModuleNotFoundError``, the subprocess yields empty
+#: output, and 21 assertions fail claiming a checker never emitted its message.
+_REAL_HOME = os.environ.get("HOME")
+
+
+def subprocess_env(**extra: str) -> dict:
+    """The environment for a subprocess that resolves its own imports.
+
+    Restores the real ``$HOME`` so user-installed tooling stays importable, and applies
+    ``extra`` on top. Use this rather than ``dict(os.environ)`` for any child process that
+    has to find an installed program.
+    """
+    env = dict(os.environ)
+    if _REAL_HOME is not None:
+        env["HOME"] = _REAL_HOME
+    env.update(extra)
+    return env
 
 
 class NodeNG:

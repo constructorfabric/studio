@@ -563,6 +563,21 @@ class TestInvariants:
 
 class TestPrivacy:
 
+    #: Account names that are not personal identifiers, and that a substring test cannot
+    #: tell apart from ordinary English. `root` is the one that bites: `make ci` runs the
+    #: workflows through `act`, whose default runner image sets the variable this check
+    #: reads --
+    #:
+    #:     $ docker run --rm catthehacker/ubuntu:act-latest sh -c 'echo $USER'
+    #:     root
+    #:
+    #: -- and the word appears legitimately in `REASON_NO_PROJECT_ROOT`, so the check below
+    #: failed and `make ci` could not pass locally for anyone. (A bare `ubuntu:22.04`
+    #: leaves `USER` empty, which is why this reproduces under `act` and not under every
+    #: container.) Leaking a shared service account discloses nothing about a person, which
+    #: is what this test exists to protect.
+    _GENERIC_ACCOUNTS = frozenset({"root", "user", "admin", "runner", "build", "nobody"})
+
     def test_no_reason_string_leaks_a_path_home_or_username(self):
         import os
         home = os.path.expanduser("~")
@@ -573,8 +588,24 @@ class TestPrivacy:
             value = getattr(cs, name)
             assert os.sep not in value, f"{name} contains a path separator"
             assert home not in value
-            if user:
-                assert user not in value
+            if user and user.lower() not in self._GENERIC_ACCOUNTS:
+                assert user not in value, f"{name} contains the username"
+
+    def test_the_username_check_still_catches_a_real_leak(self, monkeypatch):
+        """The skip above is only safe if the check still fires for a real name.
+
+        Otherwise widening it to keep `make ci` green would quietly retire the guard --
+        which is the failure mode of every exemption list. So the check is re-run here
+        against a constant that does leak, under a username no exemption covers.
+        """
+        import os
+        monkeypatch.setenv("USER", "mpastukhova")
+        monkeypatch.setattr(cs, "REASON_FAKE_LEAK", "window belongs to mpastukhova",
+                            raising=False)
+        # `monkeypatch` removes the attribute again on teardown, so the constant does not
+        # outlive this test and the guard above sees the real set of reasons.
+        with pytest.raises(AssertionError):
+            self.test_no_reason_string_leaks_a_path_home_or_username()
 
     def test_this_process_opens_no_socket(self, tmp_path, monkeypatch):
         """Scope stated honestly: patching `socket` covers **this** process only. It
