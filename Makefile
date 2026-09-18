@@ -18,8 +18,21 @@ PIPX_BIN_DIR ?= $(HOME)/.local/bin
 CFS ?= cfs
 BOOTSTRAP_STUDIO ?= .bootstrap/.core/skills/studio/scripts/studio.py
 SOURCE_STUDIO ?= skills/studio/scripts/studio.py
-PYTEST_PIPX ?= $(PIPX_BIN_DIR)/pytest
+# pipx first, because `make install` puts it there and CI runs that. But a
+# pytest is a pytest: a virtualenv or a distro package runs this suite just as
+# well, and refusing one because it came from somewhere else cost a clean
+# worktree an `ERROR: pytest binary not found` with `make install` as the only
+# advice -- for a tool already on PATH. Whatever answers is checked for the
+# plugins the targets actually use, which is the part that matters.
+PYTEST ?= $(shell test -x "$(PIPX_BIN_DIR)/pytest" && echo "$(PIPX_BIN_DIR)/pytest" \
+                  || command -v pytest 2>/dev/null \
+                  || echo "$(PYTHON) -m pytest")
+PYTEST_PIPX ?= $(PYTEST)
 PYTEST_PIPX_COV ?= $(PYTEST_PIPX)
+# Parallelism is an optimisation, so a missing pytest-xdist slows the suite down
+# rather than refusing to run it. It used to be a hard gate, which meant a
+# pytest that could have run these tests failed the target instead.
+PYTEST_PARALLEL ?= $(shell $(PYTEST) --help 2>/dev/null | grep -q -- '--numprocesses' && echo "-n 6")
 VULTURE_PIPX ?= $(PIPX) run --spec vulture vulture
 PYLINT_PIPX ?= $(PIPX) run --spec pylint pylint
 DIFF_COVER_PIPX ?= $(PIPX) run --spec diff-cover diff-cover
@@ -39,7 +52,7 @@ help:
 	@echo "Constructor Studio Makefile"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make test                          - Run all tests in parallel (-n 6)"
+	@echo "  make test                          - Run all tests (-n 6 when pytest-xdist is present)"
 	@echo "  make test-gates                    - Run the enforcement gate corpus (seeded violations must fail)"
 	@echo "  make test-verbose                  - Run tests with verbose output"
 	@echo "  make test-quick                    - Run fast tests only (skip slow integration tests)"
@@ -82,33 +95,26 @@ check-pipx:
 		exit 1; \
 	}
 
-check-pytest: check-pipx
-	@test -x "$(PYTEST_PIPX)" || { \
+# No `check-pipx` prerequisite: pipx is how `make install` provides pytest, not
+# a requirement of running it. Demanding pipx from someone whose pytest came
+# from a virtualenv failed a suite that would have run.
+check-pytest:
+	@$(PYTEST) --version >/dev/null 2>&1 || { \
 		echo ""; \
-		echo "ERROR: pytest binary not found at $(PYTEST_PIPX)"; \
+		echo "ERROR: no runnable pytest found (tried $(PYTEST))"; \
 		echo ""; \
 		echo "Install it with:"; \
-		echo "  make install"; \
+		echo "  make install                 # via pipx, what CI does"; \
+		echo "  pip install pytest pytest-xdist pytest-cov"; \
+		echo ""; \
+		echo "Or point at one:"; \
+		echo "  make test PYTEST=/path/to/pytest"; \
 		echo ""; \
 		exit 1; \
 	}
-	@$(PYTEST_PIPX) --version >/dev/null 2>&1 || { \
-		echo ""; \
-		echo "ERROR: pytest is not runnable via pipx"; \
-		echo ""; \
-		echo "Install it with:"; \
-		echo "  make install"; \
-		echo ""; \
-		exit 1; \
-	}
-	@$(PYTEST_PIPX) --help 2>/dev/null | grep -q -- '--numprocesses' || { \
-		echo ""; \
-		echo "ERROR: pytest-xdist not available (missing -n support)"; \
-		echo ""; \
-		echo "Install it with:"; \
-		echo "  make install"; \
-		echo ""; \
-		exit 1; \
+	@test -n "$(PYTEST_PARALLEL)" || { \
+		echo "NOTE: $(PYTEST) has no pytest-xdist; running serially (minutes, not"; \
+		echo "      seconds). Install it with \`make install\` or \`pip install pytest-xdist\`."; \
 	}
 
 check-pytest-cov: check-pytest
@@ -147,8 +153,8 @@ check-pylint: check-pipx
 	}
 
 test: check-pytest
-	@echo "Running Constructor Studio tests with pipx..."
-	$(PYTEST_PIPX) tests/ -n 6 -v --tb=short
+	@echo "Running Constructor Studio tests ($(PYTEST))..."
+	$(PYTEST_PIPX) tests/ $(PYTEST_PARALLEL) -v --tb=short
 
 # Runs the enforcement corpus on its own so the pipeline shows, as a named
 # check, that these gates fail on a seeded violation. The assertions already
@@ -160,7 +166,7 @@ test-gates: check-pytest
 
 # Run tests with verbose output
 test-verbose: check-pytest
-	@echo "Running Constructor Studio tests (verbose) with pipx..."
+	@echo "Running Constructor Studio tests (verbose, $(PYTEST))..."
 	$(PYTEST_PIPX) tests/ -vv
 
 # Run quick tests only
@@ -172,7 +178,7 @@ test-quick: check-pytest
 test-coverage: check-pytest-cov
 	@echo "Running tests with coverage..."
 	$(PYTEST_PIPX_COV) tests/ \
-		-n 6 \
+		$(PYTEST_PARALLEL) \
 		--cov=skills/studio/scripts/studio \
 		--cov-report=term-missing \
 		--cov-report=json:coverage.json \
@@ -333,13 +339,6 @@ install-proxy: check-pipx
 # at low effort, 128k context); override via CF_UX_* env vars — see
 # tests/prompts/cf-ux/README.md.
 check-prompt-tests:
-	@command -v node >/dev/null 2>&1 || { \
-		echo ""; \
-		echo "ERROR: node not found (needed for npx promptfoo)"; \
-		echo "  Install via nvm:  https://github.com/nvm-sh/nvm"; \
-		echo ""; \
-		exit 1; \
-	}
 	@command -v claude >/dev/null 2>&1 || { \
 		echo ""; \
 		echo "ERROR: claude CLI not found"; \
@@ -360,6 +359,7 @@ check-prompt-tests:
 		echo ""; \
 		exit 1; \
 	}
+	@$(PYTHON) $(PROMPT_TESTS_DIR)/preflight.py
 
 install-prompt-tests: check-prompt-tests
 	@echo "Pre-caching promptfoo@$(PROMPTFOO_VERSION) via npx..."

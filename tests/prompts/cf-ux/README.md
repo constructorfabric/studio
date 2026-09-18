@@ -4,7 +4,33 @@ End-to-end UX tests for the `cf` skill, running real `claude` and `codex` CLIs
 inside isolated, freshly-`cfs init`-ed `tempfile.mkdtemp()` sandboxes built
 from the **local repo source** (not `.bootstrap/`, not GitHub).
 
+## Prerequisites
+
+| Needs | Why, and the part that bites |
+|---|---|
+| **Node >= 22.22** | promptfoo's own `engines.node`. An older one fails inside npx talking about the package, not about node. |
+| A node `make` can **spawn** | Under nvm's lazy loader `node` is a *shell function*: an interactive shell answers `node --version` while `make`, which runs recipes in `sh`, finds no program at all. Put a real one on PATH for the command: `PATH="$NVM_DIR/versions/node/v22.22.2/bin:$PATH" make test-prompts`. |
+| `claude`, `codex`, `cfs` on PATH | The pilot drives the real CLIs. `cfs` comes from `make install-proxy`. |
+| Both CLIs **logged in** | Providers inherit only `ANTHROPIC_*`/`CLAUDE_*` and `OPENAI_*`/`CODEX_*`; there is no key to pass in. |
+| A codex model the account **has** | Slugs are withdrawn over time. A stale default costs all 8 codex cases with a 400 in a table cell. |
+
+`make test-prompts` checks what is checkable locally first — the binaries are
+present, node can run promptfoo, the codex model is one the account has. See
+`preflight.py`, which reads `codex`'s own model cache and never touches the
+network. Run it on its own with `make check-prompt-tests`.
+
+It does **not** verify that either CLI is logged in: that costs a call to find
+out, and a preflight that spends money to say the run may proceed is not a
+preflight. A logged-out CLI passes here and fails once the run starts.
+
 ## Run
+
+```bash
+make test-prompts              # preflight, then the full pilot
+make test-prompts-view         # HTML report
+```
+
+Or directly, skipping the preflight:
 
 ```bash
 cd tests/prompts/cf-ux
@@ -30,6 +56,13 @@ the `llm-rubric` asserts; sub-100ms text guards catch skill-load failures.
 | `REQUEST_TIMEOUT_MS=900000` | promptfoo python-worker timeout (default 300s is too short for sandbox init + cold codex). |
 | `CF_UX_SHARED_SANDBOX=/path` | Reuse a pre-initialized sandbox; skip setup/teardown. **Point this only at a throwaway directory** — the Claude provider runs with `--permission-mode bypassPermissions`, which is safe against the per-run temp sandbox it normally builds, but writes wherever this says. |
 | `CF_UX_KEEP_SANDBOX=1` | Keep the sandbox after the run; print its path. |
+| `CF_UX_CLAUDE_MODEL` / `CF_UX_CLAUDE_EFFORT` | Override the claude model and reasoning effort. |
+| `CF_UX_CODEX_MODEL` / `CF_UX_CODEX_EFFORT` / `CF_UX_CODEX_CONTEXT` | Override the codex model, reasoning effort and context window. Set the model when the default slug is withdrawn — `codex` lists what the account may use. |
+| `CF_UX_GRADER_MODEL` / `CF_UX_GRADER_EFFORT` | Override the LLM-rubric judge. |
+| `CF_UX_CODEX_DISABLE_PLUGINS` | Comma-separated `name@marketplace` to disable, for isolation debugging only — by default the skill is expected to win against competing plugins. |
+
+Defaults live beside the code they configure: `providers/*.py`. This table says
+they exist and what they are for, not what today's value is.
 
 ## Layout
 
