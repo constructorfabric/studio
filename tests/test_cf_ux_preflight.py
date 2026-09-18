@@ -136,3 +136,18 @@ class TestTheExitCode:
 
         assert preflight.main() == 1
         assert "node is wrong" in capsys.readouterr().err
+
+
+class TestAMisconfiguredEnvVar:
+    """Importing the provider *runs* it: its module body reads the CF_UX_* knobs,
+    and `int(CF_UX_CODEX_CONTEXT)` raises on anything non-numeric. A preflight
+    whose whole job is to replace a traceback with a sentence must not end in one
+    of its own."""
+
+    def test_a_non_numeric_context_is_a_sentence_not_a_traceback(self, monkeypatch, capsys):
+        monkeypatch.setenv("CF_UX_CODEX_CONTEXT", "abc")
+        for module in [name for name in sys.modules if name == "codex_provider"]:
+            monkeypatch.delitem(sys.modules, module)
+
+        assert preflight.main() == 1
+        assert "CF_UX_CODEX_CONTEXT" in capsys.readouterr().err

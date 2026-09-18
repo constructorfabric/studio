@@ -14,9 +14,14 @@ from the **local repo source** (not `.bootstrap/`, not GitHub).
 | Both CLIs **logged in** | Providers inherit only `ANTHROPIC_*`/`CLAUDE_*` and `OPENAI_*`/`CODEX_*`; there is no key to pass in. |
 | A codex model the account **has** | Slugs are withdrawn over time. A stale default costs all 8 codex cases with a 400 in a table cell. |
 
-`make test-prompts` checks all of this first — see `preflight.py`, which reads
-`codex`'s own model cache and never touches the network. Run it on its own with
-`make check-prompt-tests`.
+`make test-prompts` checks what is checkable locally first — the binaries are
+present, node can run promptfoo, the codex model is one the account has. See
+`preflight.py`, which reads `codex`'s own model cache and never touches the
+network. Run it on its own with `make check-prompt-tests`.
+
+It does **not** verify that either CLI is logged in: that costs a call to find
+out, and a preflight that spends money to say the run may proceed is not a
+preflight. A logged-out CLI passes here and fails once the run starts.
 
 ## Run
 

@@ -155,8 +155,21 @@ def main() -> int:
         from codex_provider import DEFAULT_MODEL  # noqa: PLC0415 -- optional import
     except ImportError:
         DEFAULT_MODEL = os.environ.get("CF_UX_CODEX_MODEL", "")
+    except ValueError as exc:
+        # Importing the provider *runs* it: its module body reads the CF_UX_*
+        # knobs, and `int(CF_UX_CODEX_CONTEXT)` raises on anything non-numeric.
+        # Catching only ImportError meant a typo in an env var reached the
+        # person as a traceback out of a preflight whose entire job is to
+        # replace exactly that with a sentence.
+        return _report([f"a CF_UX_* setting is not valid: {exc}",
+                        "  (read while importing the codex provider; check "
+                        "CF_UX_CODEX_CONTEXT)"])
 
-    problems = check_node() + (check_codex_model(DEFAULT_MODEL) if DEFAULT_MODEL else [])
+    return _report(check_node()
+                   + (check_codex_model(DEFAULT_MODEL) if DEFAULT_MODEL else []))
+
+
+def _report(problems: list[str]) -> int:
     if not problems:
         return 0
     print("", file=sys.stderr)
