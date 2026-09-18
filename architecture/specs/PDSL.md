@@ -487,9 +487,9 @@ MENU OpenEndedReplyMenu:
   TYPE: decision
   SHAPE: free-form
   OPTIONS:
-    1 repo-a -> parse the selection into the selected-repos list, then CONTINUE CurrentWorkflow
-    2 repo-b -> parse the selection into the selected-repos list, then CONTINUE CurrentWorkflow
-    3 all -> SET SELECTED_REPOS = all, then CONTINUE CurrentWorkflow
+    1 repo-a -> CONTINUE CurrentWorkflow
+    2 repo-b -> CONTINUE CurrentWorkflow
+    3 all -> CONTINUE CurrentWorkflow
   INVALID:
     EMIT "Reply with one or more numbers/names, or `all`."
     WAIT user.reply
