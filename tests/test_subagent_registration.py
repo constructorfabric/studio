@@ -1288,6 +1288,87 @@ class TestLegacyStubClassification(unittest.TestCase):
             "workflow",
         )
 
+    def test_classify_generated_output_owner_ignores_tool_for_the_common_shape(self):
+        """ainetx (PR #230, Minor): flagged that the shared `.agents/skills/`
+        scan root's `tool=None` fallback would reopen #185's cross-tool
+        collision once a second sharer of that root gains a real binding.
+
+        Verified more broadly than asked, for the common control/follow-target
+        shape only (a second, different shape is covered separately below --
+        see `test_classify_generated_output_owner_needs_the_purity_disjunct_
+        for_legacy_endpoint_only_stubs`, which the claim here does NOT cover):
+        `_classify_generated_output_owner`'s `tool` argument does not change
+        its outcome for *any* provider, because `_extract_studio_owned_target`
+        (the first, tool-agnostic disjunct) is already true whenever the
+        tool-scoped `_is_pure_studio_generated` disjunct could be -- see that
+        function's own docstring. This test constructs exactly the scenario
+        ainetx's own verification steps describe -- a second tool
+        (hypothetically) gaining a binding -- and confirms classification is
+        unaffected by which tool value is passed, positive or negative,
+        because the first disjunct alone already decides it either way.
+        """
+        from unittest.mock import patch as mock_patch
+
+        from studio.commands.agents import (
+            _ASK_TOOL_BINDING,
+            _GENERATED_MARKER,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _classify_generated_output_owner,
+            _follow_protocol_lines,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/some-skill.md"
+        intact_content = "\n".join([
+            "---", "name: some-skill", "description: some-skill", "---",
+            _GENERATED_MARKER, "",
+            *_follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH),
+        ]) + "\n"
+
+        with mock_patch.dict(_ASK_TOOL_BINDING, {"cursor": "SomeFutureCursorTool"}):
+            for tool in (None, "cursor", "copilot", "claude"):
+                self.assertEqual(
+                    _classify_generated_output_owner(".agents/skills/some-skill/SKILL.md", intact_content, tool=tool),
+                    "skill",
+                    tool,
+                )
+
+    def test_classify_generated_output_owner_needs_the_purity_disjunct_for_legacy_endpoint_only_stubs(self):
+        """A deep review caught that the "tool is inert everywhere" claim in
+        `_classify_generated_output_owner`'s docstring (and the test above)
+        was overclaimed: it holds for the common control/follow-target
+        shape, but NOT for a legacy single-line "endpoint-only" proxy stub
+        whose Prompt-source path uses a pre-canonical variable like
+        `{cypilot_path}/`. `_extract_studio_endpoint_target` only accepts
+        the canonical `{cf-studio-path}/` prefix (unlike
+        `_extract_studio_follow_target`'s legacy-prefix allowlist), so
+        `_extract_studio_owned_target` returns None for this shape --
+        `_is_pure_studio_generated`'s own single-line branch is what
+        classifies it as owned. Pins both halves of the corrected claim:
+        the purity disjunct must not be dropped for this shape (it is the
+        *only* thing that classifies it), and `tool`'s specific value still
+        doesn't matter for it (that single-line branch never reads `tool`).
+        """
+        from studio.commands.agents import _GENERATED_MARKER, _classify_generated_output_owner, _extract_studio_owned_target
+
+        content = (
+            _GENERATED_MARKER + "\n\n"
+            "Constructor Studio endpoint only. Prompt source: {cypilot_path}/.core/subagents/foo.md. "
+            "Final prompt is supplied by the cf controller at dispatch time.\n"
+        )
+
+        self.assertIsNone(
+            _extract_studio_owned_target(content),
+            "expected the legacy {cypilot_path}/ prefix to be unrecognized by "
+            "the owned-target extractor, which is what makes this shape "
+            "depend on the purity disjunct at all",
+        )
+        for tool in (None, "claude", "cursor"):
+            self.assertEqual(
+                _classify_generated_output_owner(".claude/agents/foo.md", content, tool=tool),
+                "agent",
+                tool,
+            )
+
     def test_pure_generated_stub_matches_rejects_a_foreign_tools_binding(self):
         """Issue #185: a file bearing one tool's ask_tool_name binding must
         not be misclassified as pure-generated for a *different* tool, once
@@ -1369,6 +1450,38 @@ class TestLegacyStubClassification(unittest.TestCase):
 
         with mock_patch.dict(_ASK_TOOL_BINDING, {"windsurf": "SomeFutureWindsurfTool"}):
             self.assertTrue(_pure_generated_stub_matches(pre_binding_windsurf_body, tool="windsurf"))
+
+    def test_pure_generated_stub_matches_recognizes_a_pre_142_stub_for_any_known_tool(self):
+        """ainetx (PR #230, Minor): a genuine pre-#142 stub body -- context
+        lines fully absent, not the later 'unset' shape -- was only ever
+        exercised with `tool=None` (the default). The `legacy_protocol`
+        branch (checked before the tool-scoped candidate loop) never reads
+        `tool` at all, so it must recognize such a body identically
+        regardless of which concrete tool the caller supplies, including a
+        tool that already has a real, non-null binding -- proving this
+        branch's tool-independence is an intentional, protected contract
+        rather than an accident of `tool=None` being the only value tried."""
+        from studio.commands.agents import (
+            _ASK_TOOL_BINDING,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/analyze.md"
+        pre_142_body = "\n".join(
+            line
+            for line in _follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH)
+            if line.strip()
+            and not line.startswith("- ask_tool_name")
+            and not line.startswith("- ask_tool_description")
+        )
+
+        for tool in ("claude", "windsurf", "cursor", None):
+            self.assertTrue(_pure_generated_stub_matches(pre_142_body, tool=tool), tool)
+        # Claude already has a real binding today; this is not a hypothetical
+        # future tool, unlike the windsurf/cursor cases above.
+        self.assertIsNotNone(_ASK_TOOL_BINDING.get("claude"))
 
     def test_ask_tool_binding_defaults_to_unset_with_description_fallback(self):
         """Issue #142: every generated shim carries an ask-tool context, even

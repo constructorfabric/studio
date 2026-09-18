@@ -5180,7 +5180,9 @@ def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
                 # #185) -- a file found there could legitimately belong to
                 # any of several tools, so tool identity genuinely isn't
                 # resolvable here; every other provider key names exactly
-                # one tool.
+                # one tool. See _classify_generated_output_owner's own
+                # docstring for why this distinction doesn't currently
+                # change its outcome either way.
                 owner_kind = _classify_generated_output_owner(
                     rel, content, tool=None if provider == "studio" else provider,
                 )
@@ -5209,6 +5211,40 @@ def _read_generated_output_text(path: Path) -> Optional[str]:
 def _classify_generated_output_owner(
     rel: str, content: str, *, tool: Optional[str] = None,
 ) -> Optional[str]:
+    """Return this output's owner_kind, or None if nothing here owns it.
+
+    *tool* scopes `_is_pure_studio_generated`'s candidate bindings (issue
+    #185), but its exact *value* never currently changes this function's
+    outcome, for two different reasons depending on shape:
+
+    - The common control/follow-target shape: `_extract_studio_owned_target`
+      (a looser, tool-agnostic match on the same follow-link line, with no
+      purity requirement) is already true whenever `_is_pure_studio_generated`
+      could be, so the `or` below resolves on the first disjunct before the
+      second is ever consulted. `test_cursor_launcher_ownership_check_short_
+      circuits_before_purity_check` (tests/test_subagent_registration.py)
+      locks this in deliberately: ownership/gitignore classification is meant
+      to stay tool-agnostic even for a customized (non-pure) file -- relying
+      on the tool-scoped purity match alone would stop reporting a
+      Studio-originated file as managed the moment a user edits it, a real
+      regression, not a safety win.
+    - The legacy single-line "endpoint-only" proxy shape (`Constructor
+      Studio endpoint only. Prompt source: ...`): here the first disjunct
+      can be the one that's false instead. `_extract_studio_endpoint_target`
+      only accepts the canonical `{cf-studio-path}/` prefix, unlike
+      `_extract_studio_follow_target`'s legacy-prefix allowlist, so a
+      pre-rebrand stub using e.g. `{cypilot_path}/` makes
+      `_extract_studio_owned_target` return None -- it's
+      `_is_pure_studio_generated`'s own single-line branch that classifies
+      the file as owned here. Do NOT drop this disjunct, even when `tool` is
+      known: doing so would stop classifying every such legacy stub as
+      Studio-owned. `tool`'s value still doesn't matter for this shape
+      either, though, since that single-line branch never consults it.
+
+    Given both shapes are tool-blind by construction, `tool` is threaded
+    through for interface consistency with the other #185 call sites and in
+    case a future shape needs it, not because either shape reads it today.
+    """
     if rel.endswith(".toml"):
         return "agent" if _is_studio_managed_toml_output(content) else None
     if not (

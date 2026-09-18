@@ -5450,6 +5450,71 @@ class TestProcessWorkflowsRelativeContainment(unittest.TestCase):
             self.assertIn("errors", result)
 
 
+class TestScanOwnedGeneratedOutputs(unittest.TestCase):
+    """ainetx (PR #230, Major): _scan_owned_generated_outputs,
+    _classify_generated_output_owner, and ManagedOutput had zero direct test
+    coverage anywhere in the suite. Covers both the resolvable-tool branch
+    (a dedicated single-tool provider root) and the unresolvable-tool branch
+    (the shared studio/.agents/skills root), plus the negative case of a
+    file with no owned-target/purity signal at all."""
+
+    @staticmethod
+    def _intact_generated_content(name: str) -> str:
+        from studio.commands.agents import _GENERATED_MARKER, _REQUIRED_BOOTSTRAP_PATH, _follow_protocol_lines
+
+        target = f"{{cf-studio-path}}/.core/workflows/{name}.md"
+        return "\n".join([
+            "---", f"name: {name}", f"description: {name}", "---",
+            _GENERATED_MARKER, "",
+            *_follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH),
+        ]) + "\n"
+
+    def test_scan_finds_a_dedicated_single_tool_roots_output(self):
+        from studio.commands.agents import _scan_owned_generated_outputs
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            target = root / ".claude" / "agents" / "some-agent.md"
+            target.parent.mkdir(parents=True)
+            target.write_text(self._intact_generated_content("some-agent"), encoding="utf-8")
+
+            outputs = {o.path: o for o in _scan_owned_generated_outputs(root)}
+
+            self.assertIn(".claude/agents/some-agent.md", outputs)
+            output = outputs[".claude/agents/some-agent.md"]
+            self.assertEqual(output.provider, "claude")
+            self.assertEqual(output.owner_kind, "agent")
+
+    def test_scan_finds_the_shared_studio_roots_output(self):
+        from studio.commands.agents import _scan_owned_generated_outputs
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            target = root / ".agents" / "skills" / "some-skill" / "SKILL.md"
+            target.parent.mkdir(parents=True)
+            target.write_text(self._intact_generated_content("some-skill"), encoding="utf-8")
+
+            outputs = {o.path: o for o in _scan_owned_generated_outputs(root)}
+
+            self.assertIn(".agents/skills/some-skill/SKILL.md", outputs)
+            output = outputs[".agents/skills/some-skill/SKILL.md"]
+            self.assertEqual(output.provider, "studio")
+            self.assertEqual(output.owner_kind, "skill")
+
+    def test_scan_ignores_a_file_with_no_owned_or_pure_signal(self):
+        from studio.commands.agents import _scan_owned_generated_outputs
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            target = root / ".claude" / "agents" / "hand-written.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("# Just a hand-written note\nNo generated markers here.\n", encoding="utf-8")
+
+            outputs = {o.path: o for o in _scan_owned_generated_outputs(root)}
+
+            self.assertNotIn(".claude/agents/hand-written.md", outputs)
+
+
 class TestManagedGitignoreRefresh(unittest.TestCase):
     """Managed .gitignore refresh should pick up newly managed agent outputs."""
 
