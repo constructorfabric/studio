@@ -290,6 +290,9 @@ class TestTheFailurePathDoesNotBecomeTheFailure:
             atomic_io.atomic_write_text(tmp_path / "out.txt", "content")
 
         assert closed, "the descriptor fdopen never took ownership of must still be closed"
+        # The branch does two things, and the test only watched one of them: the temp
+        # file `mkstemp` created must not survive the failure either (#236 review).
+        assert not list(tmp_path.glob("**/*.tmp")), "the temp file was left behind"
 
     def test_a_successful_write_is_untouched(self, tmp_path: Path) -> None:
         """The restructured path must still do the ordinary thing."""

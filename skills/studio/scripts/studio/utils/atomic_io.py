@@ -36,6 +36,21 @@ _LOCK_POLL_INTERVAL_SECONDS = 0.05
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-discard
+def _close_quietly(fd: int) -> None:
+    """Close a descriptor on the failure path, without becoming the failure.
+
+    `_discard` below is wrapped for exactly this reason and this call was not, one line
+    apart in the same `except` block: `os.close` can raise too (EBADF on a descriptor
+    already invalidated by whatever went wrong), and would then propagate in place of
+    the `fdopen` error that explains it -- the janitor's error replacing the fire, which
+    is the bug this block exists to prevent (#236 review).
+    """
+    try:
+        os.close(fd)
+    except OSError as exc:
+        logger.debug("atomic write: temp descriptor could not be closed: %s", exc)
+
+
 def _discard(tmp_path: Path) -> None:
     """Remove a temp file on the failure path, without becoming the failure.
 
@@ -72,7 +87,7 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
         # `os.fdopen` takes ownership of the descriptor only once it succeeds. When it
         # raises -- an unknown encoding, memory pressure -- the descriptor was neither
         # wrapped nor closed by anyone, and leaked for the life of the process.
-        os.close(fd)
+        _close_quietly(fd)
         _discard(tmp_path)
         raise
     try:

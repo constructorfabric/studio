@@ -402,11 +402,12 @@ def _read_cache_file(cache_path: Path) -> Optional[Dict[str, Any]]:
         return json.loads(cache_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         # `UnicodeDecodeError` is listed explicitly for the reason
-        # `_read_escalation_counts` already documents twenty lines below: it is a
+        # `_load_escalation_file` already documents further down this file: it is a
         # ValueError subclass, so neither OSError nor json.JSONDecodeError catches
         # it, and a cache holding invalid UTF-8 -- a truncated write, a killed
         # process -- propagated out of every caller instead of being discarded.
-        # That reasoning was applied to the sibling reader and missed here.
+        # That reasoning was applied to that reader and missed here -- the two sit
+        # ~345 lines apart, which is most of why.
         # An unreadable cache is the one failure a cache may absorb: rebuild it.
         # Reached only once the caller has already confirmed the cache file
         # exists, so a failure here is real corruption or a permissions

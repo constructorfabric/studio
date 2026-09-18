@@ -1448,15 +1448,21 @@ def test_the_name_capture_spans_a_non_ascii_letter() -> None:
 
 # --- PDSL601 counts a block, not a unit ------------------------------------
 
-def _block_rule_ids(text: str) -> list[str]:
-    """Every finding a source produces, scan-level and block-level."""
-    from studio.utils import pdsl
+def _cli_rule_ids(text: str) -> tuple[int, list[str]]:
+    """Exit code and rule ids for ``text``, driven through ``main()``.
 
-    blocks, findings = pdsl.scan_blocks("sample.md", text)
-    ids = [finding.rule_id for finding in findings]
-    for block in blocks:
-        ids += [finding.rule_id for finding in pdsl._validate_block(block)]
-    return ids
+    Through the CLI rather than `scan_blocks`/`_validate_block` directly: a review of
+    #153 raised that gap on this module, the file's own
+    `test_the_indentation_rule_is_reported_through_the_real_cli` closed it for one rule,
+    and the first version of these tests reopened it (#236 review). The exit code is the
+    part an in-process call cannot see, and it is the part CI acts on.
+    """
+    set_json_mode(False)
+    rc, stdout, stderr = _run(["pdsl", "validate", "--text", text, "--json"])
+    assert stderr == "", stderr
+    payload = json.loads(stdout)
+    ids = [f["rule_id"] for result in payload["results"] for f in result["findings"]]
+    return rc, ids
 
 
 _TWO_COMPACT_BLOCKS = """UNIT Demo
@@ -1488,7 +1494,10 @@ def test_two_compact_rules_blocks_in_one_unit_do_not_trip_the_cap() -> None:
     positive is expensive in a particular way: it teaches people to work around the rule
     rather than follow it.
     """
-    assert "PDSL601" not in _block_rule_ids(_TWO_COMPACT_BLOCKS)
+    rc, ids = _cli_rule_ids(_TWO_COMPACT_BLOCKS)
+
+    assert "PDSL601" not in ids
+    assert rc == 0, "a false positive would also have failed the caller's build"
 
 
 def test_a_single_oversized_rules_block_still_trips_the_cap() -> None:
@@ -1499,7 +1508,10 @@ def test_a_single_oversized_rules_block_still_trips_the_cap() -> None:
     text = (f"UNIT Demo\n\nPURPOSE:\n  One oversized block.\n\n"
             f"DO:\n  - RUN Do something deterministic\n\nRULES:\n{rules}\n")
 
-    assert "PDSL601" in _block_rule_ids(text)
+    rc, ids = _cli_rule_ids(text)
+
+    assert "PDSL601" in ids
+    assert rc == 2, "a finding must map to 2, not 1"
 
 
 def test_the_do_cap_stays_per_unit() -> None:
@@ -1511,4 +1523,6 @@ def test_the_do_cap_stays_per_unit() -> None:
     text = (f"UNIT Demo\n\nPURPOSE:\n  Too many actions.\n\nDO:\n{actions}\n\n"
             f"RULES:\n  - ALWAYS keep output stable\n")
 
-    assert "PDSL600" in _block_rule_ids(text)
+    _rc, ids = _cli_rule_ids(text)
+
+    assert "PDSL600" in ids

@@ -599,6 +599,39 @@ class TestALocusPathIsBounded:
         locus = _FINDING_JSON_SCHEMA["definitions"]["locus"]
         assert locus["properties"]["artifact_path"]["maxLength"] == _MAX_PATH_LENGTH
 
+    def test_a_path_at_exactly_the_length_cap_is_accepted(self):
+        """The check is `> _MAX_PATH_LENGTH`, so the cap itself is legal. Testing only
+        `cap + 1` leaves an off-by-one free to appear in either direction."""
+        from studio.utils.artifact_quality import _MAX_PATH_LENGTH
+
+        at_cap = "a" * _MAX_PATH_LENGTH
+        assert len(Locus(at_cap).artifact_path) == _MAX_PATH_LENGTH
+
+    def test_a_path_at_exactly_the_segment_cap_is_accepted(self):
+        from studio.utils.artifact_quality import _MAX_PATH_SEGMENTS
+
+        at_cap = "/".join(["seg"] * _MAX_PATH_SEGMENTS)
+        assert Locus(at_cap).artifact_path.count("/") == _MAX_PATH_SEGMENTS - 1
+
+    def test_an_anchor_is_bounded_like_the_path(self):
+        """Same locus, same producers, same report — bounding one field and leaving its
+        neighbour unbounded is a half-answer (#236 review)."""
+        from studio.utils.artifact_quality import _MAX_ANCHOR_LENGTH
+
+        assert Locus("a.md", anchor="x" * _MAX_ANCHOR_LENGTH).anchor
+        with pytest.raises(ValueError, match="at most"):
+            Locus("a.md", anchor="x" * (_MAX_ANCHOR_LENGTH + 1))
+
+    def test_the_wire_schema_bounds_depth_too(self):
+        """A validator holding only the schema must reject what the constructor rejects."""
+        import re
+
+        from studio.utils.artifact_quality import _FINDING_JSON_SCHEMA, _MAX_PATH_SEGMENTS
+
+        pattern = _FINDING_JSON_SCHEMA["definitions"]["locus"]["properties"]["artifact_path"]["pattern"]
+        assert re.match(pattern, "/".join(["seg"] * _MAX_PATH_SEGMENTS))
+        assert not re.match(pattern, "/".join(["seg"] * (_MAX_PATH_SEGMENTS + 1)))
+
     @pytest.mark.parametrize("path", [
         "a.md",
         "docs/architecture/decisions/0001-record.md",
