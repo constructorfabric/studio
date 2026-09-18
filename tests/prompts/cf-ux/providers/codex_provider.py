@@ -8,9 +8,14 @@ import time
 from pathlib import Path
 from typing import Any
 
-from _sandbox import SandboxError, sandbox
+from _sandbox import SandboxError, child_env, redact_secrets, sandbox
 
 CODEX_BIN = "codex"
+
+#: Namespaces the `codex` CLI is entitled to. It runs with `approval_policy="never"`,
+#: so it acts without asking -- and inherited the whole runner environment until
+#: constructorfabric/studio#229's review pointed out that only its sibling was fixed.
+_CHILD_ENV_PREFIXES = ("OPENAI_", "CODEX_")
 CALL_TIMEOUT_S = 850  # under promptfoo worker timeout (900s)
 
 DEFAULT_MODEL = os.environ.get("CF_UX_CODEX_MODEL", "gpt-5.4-mini")
@@ -58,15 +63,20 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     for plugin in DISABLED_PLUGINS:
         cmd += ["-c", f'plugins."{plugin}".enabled=false']
     cmd.append(invoked)
+    # Built once: the same mapping spawns the child and defines what must not come back
+    # out of it, exactly as in `claude_provider`. Applying the allowlist to all three
+    # providers and the redaction to one of them was the same half-fix twice (#229).
+    env = child_env(*_CHILD_ENV_PREFIXES)
     proc = subprocess.run(
         cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL, env=env,
     )
     duration = time.monotonic() - started
 
     if proc.returncode != 0:
         return {
-            "error": f"codex exited {proc.returncode}: {proc.stderr.strip()[:500]}",
+            "error": f"codex exited {proc.returncode}: "
+                     f"{redact_secrets(proc.stderr.strip()[:500], env)}",
             "metadata": {"duration_s": round(duration, 2)},
         }
 
@@ -75,6 +85,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     metadata: dict[str, Any] = {
         "duration_s": round(duration, 2),
         "sandbox": str(cwd),
-        "stderr_tail": proc.stderr.strip()[-500:] if proc.stderr else None,
+        "stderr_tail": (redact_secrets(proc.stderr.strip()[-500:], env)
+                        if proc.stderr else None),
     }
     return {"output": output_text, "metadata": metadata}

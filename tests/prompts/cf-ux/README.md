@@ -31,6 +31,25 @@ the `llm-rubric` asserts; sub-100ms text guards catch skill-load failures.
 | `CF_UX_SHARED_SANDBOX=/path` | Reuse a pre-initialized sandbox; skip setup/teardown. **Point this only at a throwaway directory** — the Claude provider runs with `--permission-mode bypassPermissions`, which is safe against the per-run temp sandbox it normally builds, but writes wherever this says. |
 | `CF_UX_KEEP_SANDBOX=1` | Keep the sandbox after the run; print its path. |
 
+**What the CLI children actually receive.** These providers spawn their CLIs unattended
+— `claude -p --permission-mode bypassPermissions`, `codex exec` with
+`approval_policy="never"` — so they do **not** inherit this process's environment. Each
+gets an allowlist built by `_sandbox.child_env()`: the process basics (`PATH`, `HOME`,
+locale, `TMPDIR`, …) plus one credential namespace — `ANTHROPIC_`/`CLAUDE_` for the
+Claude provider and the grader, `OPENAI_`/`CODEX_` for Codex.
+
+Two consequences worth knowing:
+
+- `CF_UX_*` variables in this table are read by the **Python parent**, not forwarded to
+  the CLI. Setting one affects how the provider is invoked, not what the CLI sees.
+- A variable a CLI genuinely needs must be added to `ENV_NAMES` or covered by that
+  provider's prefix tuple. The symptom of a missing one is the CLI failing to start or
+  to authenticate, not a silent fallback.
+
+Anything the CLI prints back — stderr, the stdout tail, the withheld result — is passed
+through `_sandbox.redact_secrets()` before it reaches promptfoo metadata, so a CLI that
+echoes its own key in an error does not put it in a stored report.
+
 ## Layout
 
 ```

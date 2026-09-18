@@ -1,0 +1,21 @@
+# Keeps the SHA-pinned actions in .github/workflows current.
+#
+# Pinning without this is how a workflow quietly rots: a pin freezes the code that
+# runs, including its bugs and its unpatched dependencies. Dependabot rewrites the
+# SHA *and* the version comment beside it in one PR, so the readable version never
+# drifts from what is actually pinned, and every bump arrives as a diff someone
+# approves rather than as a tag that moved underneath us.
+#
+# See constructorfabric/studio#201.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    # Above GitHub's default of 5. Six distinct action references are pinned here, so
+    # the default cap could hold one bump back indefinitely -- and a pin nobody may
+    # update is the failure mode this file exists to prevent (#229 review).
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: ci

@@ -109,6 +109,70 @@ def _sweep_stale_sandboxes() -> None:
             _wipe(child); continue
 
 
+#: Environment every provider in this directory hands its CLI child, by exact name.
+#: An allowlist, not a denylist: these providers run CLIs unattended -- `claude -p
+#: --permission-mode bypassPermissions`, `codex exec --sandbox workspace-write` with
+#: `approval_policy="never"` -- and `subprocess.run` without `env=` hands the whole
+#: parent environment to them. On CI that includes GITHUB_TOKEN, cloud credentials, and
+#: whatever else the pipeline holds. `cwd=` sandboxes the filesystem and does nothing at
+#: all for environment variables.
+#:
+#: A denylist would need an edit every time CI gains a secret and would be silently
+#: wrong in between. This fails closed: a variable a CLI turns out to need is a visible
+#: one-line addition here, while a leak is not visible anywhere.
+ENV_NAMES = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "SHELL")
+
+
+def child_env(*prefixes: str) -> dict:
+    """The environment for a CLI child: :data:`ENV_NAMES` plus the namespaces named in
+    ``prefixes`` -- the credential and configuration that particular CLI is entitled to,
+    and nothing else the runner happens to be carrying.
+
+    Shared rather than per-provider so the three CLI-spawning providers here cannot
+    drift: the first version of this lived in `claude_provider` alone, and its siblings
+    kept inheriting everything (constructorfabric/studio#229 review).
+    """
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if name in ENV_NAMES or (prefixes and name.startswith(prefixes))
+    }
+
+
+#: Minimum length a forwarded value must have before it is worth redacting. Short
+#: values -- a one-letter LANG, an empty key -- would otherwise match everywhere and
+#: turn a readable diagnostic into a wall of markers.
+_REDACT_MIN_LENGTH = 8
+
+REDACTED = "[redacted]"
+
+
+def redact_secrets(text: str, env: dict) -> str:
+    """Replace any credential value in ``env`` that appears in ``text``.
+
+    These providers hand their CLI a real API key and then return that CLI's stderr,
+    stdout tail and result text as promptfoo metadata, where it is stored and read by
+    people. A CLI that echoes its key in an error message -- "invalid x-api-key:
+    sk-ant-..." is an ordinary shape for one -- would put it in the report.
+
+    Only the values of credential-ish names are redacted, not every forwarded variable:
+    PATH and HOME appear in legitimate diagnostics constantly, and blanking them would
+    destroy the thing a reader needs. Longest first, so a value containing another is
+    not left half-substituted.
+    """
+    if not text:
+        return text
+    secrets = sorted(
+        (value for name, value in env.items()
+         if len(value) >= _REDACT_MIN_LENGTH
+         and any(mark in name.upper() for mark in ("KEY", "TOKEN", "SECRET", "PASSWORD"))),
+        key=len, reverse=True,
+    )
+    for secret in secrets:
+        text = text.replace(secret, REDACTED)
+    return text
+
+
 def _new_sandbox_path() -> Path:
     _SANDBOX_PARENT.mkdir(parents=True, exist_ok=True)
     return _SANDBOX_PARENT / f"{os.getpid()}-{uuid.uuid4().hex[:8]}"

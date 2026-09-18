@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from _sandbox import SandboxError, sandbox
+from _sandbox import SandboxError, child_env, redact_secrets, sandbox
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,12 @@ DEFAULT_EFFORT = os.environ.get("CF_UX_CLAUDE_EFFORT", "low")
 # points a run at a directory the caller chose — noted in the README, because
 # there the agent writes where it is told to.
 PERMISSION_MODE = "bypassPermissions"
+
+#: Namespaces the `claude` CLI is entitled to: its own credential and configuration.
+#: `CF_UX_` is deliberately absent -- every CF_UX_* variable is read by this Python
+#: parent (model, effort, sandbox reuse), never by the binary (#229 review).
+_CHILD_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")
+
 
 #: Cost ceiling for one scenario. Named because the error text for a transcript
 #: that stops early has to be able to point at it as a cause.
@@ -92,6 +98,11 @@ _LOG_UNPARSED_LINE = "cf-ux claude provider: stream line %d would not parse; ski
 _LOG_AMBIGUOUS_MATCH = (
     "cf-ux claude provider: matched %r in a Skill input that also names %s; "
     "the verdict may rest on a field that is not the skill name"
+)
+
+_LOG_MISSING_EVIDENCE = (
+    "cf-ux: the %r call has no tool_result in the transcript at all; the run is "
+    "graded failed, since nothing reported what it did"
 )
 
 
@@ -223,6 +234,22 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
                 # collision can only take evidence away, never invent it.
                 calls[block.get("id")] = block.get("input") or {}
             elif kind == "tool_result":
+                # `bool()`, deliberately. For this CLI an **absent** `is_error` is
+                # what a successful skill result looks like: measured against
+                # claude-code 2.1.276, a successful `Skill` result carries exactly
+                # `{"type", "tool_use_id", "content"}` with content "Launching skill:
+                # cf" and no `is_error` at all, while `Bash` and `Read` results in the
+                # same transcript carry it explicitly as false or true.
+                #
+                # #229's review read the missing field as missing evidence and this
+                # was briefly a three-state read. Running the suite showed the cost:
+                # every successful skill invocation graded unproven, the harness red
+                # across the board. Here the absence of the field is the tool's
+                # success signal, not an absence of evidence.
+                #
+                # A call with no `tool_result` at all is a different thing, and is
+                # still refused below -- that is the case "the transcript said
+                # nothing" actually describes.
                 results[block.get("tool_use_id")] = bool(block.get("is_error"))
 
     named = {call_id: _invoked_names(payload) for call_id, payload in calls.items()}
@@ -257,6 +284,11 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
             logger.warning(_LOG_AMBIGUOUS_MATCH, _SKILL_NAME, list(others))
         return _SkillTrace("ran", names, inputs, "", others)
     if any(call_id not in results for call_id in targeted):
+        # No `tool_result` for the call at all: a stream cut short after the call, a
+        # killed CLI. Warned as well as graded, because "failed because the
+        # transcript stops" is a different thing from "failed because the skill said
+        # so", and only the log tells them apart afterwards.
+        logger.warning(_LOG_MISSING_EVIDENCE, _SKILL_NAME)
         return _SkillTrace(
             "failed", names, inputs,
             f"the {_SKILL_NAME!r} call has no result in the transcript",
@@ -308,10 +340,14 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "--max-budget-usd", MAX_BUDGET_USD,
         invoked,
     ]
+    # Built once: the same mapping spawns the child and defines what must not come back
+    # out of it. A CLI that echoes its own key in an error -- an ordinary shape for one
+    # -- would otherwise put it in a stored promptfoo report (#229 review).
+    env = child_env(*_CHILD_ENV_PREFIXES)
     try:
         proc = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, env=env,
         )
     except subprocess.TimeoutExpired:
         # Handled here rather than in `call_api` so it carries the same baseline
@@ -325,7 +361,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
 
     if proc.returncode != 0:
         return {
-            "error": f"claude exited {proc.returncode}: {proc.stderr.strip()[:500]}",
+            "error": f"claude exited {proc.returncode}: "
+                     f"{redact_secrets(proc.stderr.strip()[:500], env)}",
             "metadata": base,
         }
 
@@ -355,7 +392,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
                 **base,
                 "events_seen": len(events),
                 "last_event_type": events[-1].get("type") if events else None,
-                "stdout_tail": proc.stdout.strip()[-500:],
+                "stdout_tail": redact_secrets(proc.stdout.strip()[-500:], env),
             },
         }
 
@@ -365,7 +402,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # What to show when the answer is withheld from the grader: the text itself,
     # or a repr of whatever non-text thing arrived instead of one. Kept as a
     # string so no branch below can slice a dict.
-    withheld = (output_text if is_text else "" if answer is None else repr(answer))[:500]
+    withheld = redact_secrets(
+        (output_text if is_text else "" if answer is None else repr(answer))[:500], env)
     trace = _skill_trace(events, proc.stdout)
     state, detail = trace.state, trace.detail
     metadata = {
@@ -375,7 +413,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "total_cost_usd": payload.get("total_cost_usd"),
         "skill_state": state,
         "skills_invoked": trace.names,
-        "skill_call_inputs": trace.inputs,
+        "skill_call_inputs": [redact_secrets(item, env) for item in trace.inputs],
         "skill_match_other_candidates": list(trace.other_candidates),
     }
     cost = payload.get("total_cost_usd")
