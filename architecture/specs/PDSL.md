@@ -407,9 +407,10 @@ Rules:
   grandfathered set rests on those three paths being narrow and reviewed — not on
   a default that has been demonstrated.
 - **`TYPE` is read only in the menu's declaration region:** from the menu
-  header up to the first section that is not `TITLE` or `TYPE`. A declaration
-  outside a menu, nested in its body, or trailing it is inert, and is reported
-  rather than ignored.
+  header up to the first section that is not `TITLE`, `TYPE`, or `SHAPE` (the
+  two declarations share one region -- see "Declared menu shape" below). A
+  declaration outside a menu, nested in its body, or trailing it is inert,
+  and is reported rather than ignored.
 - **A line indented deeper than the menu's other sub-headers is continuation
   text of the header above it**, not a header of its own — so a title running
   onto a second line is read as title text. A `TYPE:` written there is not read
@@ -426,10 +427,11 @@ Rules:
   itself sits at the level**, since a `TYPE:` indented deeper is continuation
   text by this same rule. Resolve the two rules in that order — the exemption
   first, then the region-ending rule below.
-- **Any recognized section other than `TITLE` or `TYPE` ends the region** — `OPTIONS:`,
-  `INVALID:`, and also `NOTES:`, `RULES:`, `ON_ERROR:`, `PURPOSE:` and the
-  rest. Unrecognized prose headers such as `NOTE:` and `ELSE:` do not. So put
-  `TYPE` before `NOTES:`, not after it.
+- **Any recognized section other than `TITLE`, `TYPE`, or `SHAPE` ends the
+  region** — `OPTIONS:`, `INVALID:`, and also `NOTES:`, `RULES:`,
+  `ON_ERROR:`, `PURPOSE:` and the rest. Unrecognized prose headers such as
+  `NOTE:` and `ELSE:` do not. So put `TYPE` (and `SHAPE`, if declared)
+  before `NOTES:`, not after it.
 - A sub-header **in that region** that is a near-miss of `TYPE` is an error, so
   a typo cannot silently leave a gate undeclared. Reported: a misspelling
   (`TYP:`, `TPYE:`), a miscasing (`Type:`) when its value is a gate type,
@@ -485,9 +487,9 @@ MENU OpenEndedReplyMenu:
   TYPE: decision
   SHAPE: free-form
   OPTIONS:
-    1 repo-a -> SET SELECTED_REPOS += repo-a
-    2 repo-b -> SET SELECTED_REPOS += repo-b
-    3 all -> SET SELECTED_REPOS = all
+    1 repo-a -> parse the selection into the selected-repos list, then CONTINUE CurrentWorkflow
+    2 repo-b -> parse the selection into the selected-repos list, then CONTINUE CurrentWorkflow
+    3 all -> SET SELECTED_REPOS = all, then CONTINUE CurrentWorkflow
   INVALID:
     EMIT "Reply with one or more numbers/names, or `all`."
     WAIT user.reply
