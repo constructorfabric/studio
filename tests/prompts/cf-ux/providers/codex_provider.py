@@ -21,6 +21,13 @@ CALL_TIMEOUT_S = 850  # under promptfoo worker timeout (900s)
 #: ChatGPT account.` -- half the suite red for a reason that had nothing to do
 #: with the skill under test. When that happens again, re-pick from `codex` and
 #: move the date; `CF_UX_CODEX_MODEL` is the escape hatch meanwhile.
+#:
+#: Not shared with `studio.commands.agents._MODEL_MATRIX`, which names OpenAI
+#: slugs for generated agent configs, and deliberately so: that matrix maps a
+#: *tier* a user chose onto a model, while this picks the cheapest thing that
+#: can run a test. One constant serving both would make a pilot cost decision
+#: change what users' agents run. They do go stale together, though, so a
+#: withdrawal found here is worth checking there.
 DEFAULT_MODEL = os.environ.get("CF_UX_CODEX_MODEL", "gpt-5.6-sol")
 # "minimal" is incompatible with image_gen / web_search tools — use "low".
 DEFAULT_EFFORT = os.environ.get("CF_UX_CODEX_EFFORT", "low")

@@ -329,9 +329,13 @@ install-proxy: check-pipx
 #                        installed by `make install-proxy`)
 #
 # Test runs spin up fresh `cfs init`-ed tmpdir sandboxes and consume real
-# Claude / Codex API tokens. Defaults to cheap models (Haiku 4.5, gpt-5.4-mini
-# at low effort, 128k context); override via CF_UX_* env vars — see
-# tests/prompts/cf-ux/README.md.
+# Claude / Codex API tokens. Defaults to cheap models at low effort and 128k
+# context; override via CF_UX_* env vars — see tests/prompts/cf-ux/README.md.
+#
+# The slugs themselves are deliberately not repeated here. They are withdrawn
+# over time, and this comment is the copy that went stale last time: it still
+# named gpt-5.4-mini after the default had moved on. The values live next to
+# the code that uses them, in tests/prompts/cf-ux/providers/.
 check-prompt-tests:
 	@command -v node >/dev/null 2>&1 || { \
 		echo ""; \
