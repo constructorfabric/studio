@@ -776,6 +776,22 @@ def test_a_malformed_menu_shape_header_is_reported() -> None:
         assert _rule_ids(_gate_menu(extra=variant)) == ["PDSL713"], variant
 
 
+def test_an_abandoned_shape_declaration_is_reported_whatever_its_casing() -> None:
+    """Mirrors `test_an_abandoned_declaration_is_reported_whatever_its_casing`
+    for SHAPE: an empty value is an abandoned declaration in any casing, not
+    prose -- `SHAPE:` (correct casing) is PDSL710 (a literal with no value),
+    while `Shape:`/`shape:` are PDSL713 (a near-miss unrecognized header),
+    since the miscasing guard's suppression of a lower-case candidate whose
+    value is some other token must not apply when the value is empty.
+    """
+    assert _rule_ids(_gate_menu(extra="SHAPE:")) == ["PDSL710"]
+    for variant in ("shape:", "Shape:"):
+        assert _rule_ids(_gate_menu(extra=variant)) == ["PDSL713"], variant
+    # ...while a value that is merely some other token stays prose.
+    for benign in ("shape: skill", "Shape: CLI", "shape: workflow"):
+        assert _rule_ids(_gate_menu(extra=benign)) == [], benign
+
+
 def test_menu_shape_near_miss_does_not_cross_fire_with_gate_type() -> None:
     """A near-miss of SHAPE is reported as PDSL713, never mistaken for a TYPE near-miss."""
     assert _rule_ids(_gate_menu(extra="SHAP: fixed-choice")) == ["PDSL713"]
