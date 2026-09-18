@@ -275,16 +275,14 @@ class TestTranslateCodexSchema(unittest.TestCase):
         result = _translate_codex_schema(agent)
         self.assertEqual(result["model"], "gpt-4o")
 
-    def test_codex_model_fast_maps_to_balanced_gpt54(self):
-        """`fast` is an alias for `cf:tier:balanced`; under the new matrix that
-        resolves to gpt-5.4 (not gpt-5.4-mini). This is a deliberate change
-        captured in spec §7: `fast` agents upgrade from mini to the standard
-        balanced tier on Codex. Agents that prefer the mini tier should use
-        `model = "cheap"` explicitly.
+    def test_codex_model_fast_maps_to_the_balanced_tier(self):
+        """`fast` is an alias for `cf:tier:balanced`, so it resolves to the
+        balanced model and not the cheap one -- the deliberate change captured in
+        spec §7. Agents that want the cheap tier say `model = "cheap"`.
         """
         agent = _make_agent(model="fast")
         result = _translate_codex_schema(agent)
-        self.assertEqual(result["model"], "gpt-5.4")
+        self.assertEqual(result["model"], "gpt-5.6-terra")
 
     def test_codex_model_inherit_omits_model_key(self):
         """`inherit` causes the selector to return None; no `model` key is

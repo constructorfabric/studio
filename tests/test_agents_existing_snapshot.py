@@ -3,7 +3,7 @@ the new pipeline and assert per-tool output for each existing agent.
 
 This test pins the deliberate behaviour changes documented in spec §7 and §11:
   (a) Codex .toml now emits `model = "..."` for non-inherit agents.
-  (b) `fast` agents resolve to gpt-5.4 (not gpt-5.4-mini) on Codex — balanced tier.
+  (b) `fast` agents resolve to the balanced tier (not the cheap one) on Codex.
   (c) Post-§11 tuning: scanner/migrator/verifier are now cf:tier:cheap (haiku);
       pr-review and migrate-planner remain cf:tier:balanced (sonnet).
 All other per-tool output stays byte-identical to today.
@@ -114,8 +114,8 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
     # Balanced agents (pr-review, migrate-planner) — sonnet-tier
     # ------------------------------------------------------------------
 
-    def test_balanced_agents_resolve_to_gpt_5_4_on_codex(self):
-        """spec §7 delta (b): balanced tier → gpt-5.4 on Codex."""
+    def test_balanced_agents_resolve_to_the_balanced_model_on_codex(self):
+        """spec §7 delta (b): the balanced tier resolves on Codex."""
         from studio.commands.agents import _resolve_model_id
         agents = self._load_agents()
         for name in _BALANCED_AGENTS:
@@ -127,10 +127,15 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             got = _resolve_model_id(
                 "codex", "openai", entry["model"], entry["role"], entry["target"]
             )
-            self.assertEqual(got, "gpt-5.4", f"{name}: codex balanced → gpt-5.4")
+            self.assertEqual(got, "gpt-5.6-terra", f"{name}: codex balanced → gpt-5.6-terra")
 
-    def test_balanced_codegen_agents_resolve_to_gpt_5_3_codex(self):
-        """spec §11: balanced generate/codebase agents use Codex-specialized model."""
+    def test_balanced_codegen_agents_resolve_to_the_balanced_model(self):
+        """spec §11: balanced generate/codebase agents resolve to the balanced tier.
+
+        There is no (balanced, generate, codebase) override, so the base tier is
+        what answers. The Codex-specialized model this once named no longer
+        exists.
+        """
         from studio.commands.agents import _resolve_model_id
         agents = self._load_agents()
         for name in _BALANCED_CODEGEN_AGENTS:
@@ -143,8 +148,8 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
                 "codex", "openai", entry["model"], entry["role"], entry["target"]
             )
             self.assertEqual(
-                got, "gpt-5.4",
-                f"{name}: codex balanced generate/codebase → gpt-5.4",
+                got, "gpt-5.6-terra",
+                f"{name}: codex balanced generate/codebase → gpt-5.6-terra",
             )
 
     def test_balanced_agents_emit_sonnet_on_claude(self):
@@ -184,8 +189,8 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
     # Cheap agents (scanner, migrator, verifier) — haiku-tier
     # ------------------------------------------------------------------
 
-    def test_cheap_agents_resolve_to_gpt_5_4_mini_on_codex(self):
-        """spec §11: cheap tier → gpt-5.4-mini on Codex."""
+    def test_cheap_agents_resolve_to_the_cheap_model_on_codex(self):
+        """spec §11: cheap tier → gpt-5.6-luna on Codex."""
         from studio.commands.agents import _resolve_model_id
         agents = self._load_agents()
         for name in _CHEAP_AGENTS:
@@ -197,7 +202,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             got = _resolve_model_id(
                 "codex", "openai", entry["model"], entry["role"], entry["target"]
             )
-            self.assertEqual(got, "gpt-5.4-mini", f"{name}: codex cheap → gpt-5.4-mini")
+            self.assertEqual(got, "gpt-5.6-luna", f"{name}: codex cheap → gpt-5.6-luna")
 
     def test_cheap_agents_emit_haiku_on_claude(self):
         """spec §11: Claude proxy for cheap agents emits model: haiku."""
@@ -271,7 +276,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
                 f"{name}: copilot (cheap, analyze, codebase) → Claude Sonnet 4.6",
             )
 
-    def test_cheap_override_agents_resolve_to_gpt_5_4_on_codex(self):
+    def test_cheap_override_agents_bump_a_tier_on_codex(self):
         from studio.commands.agents import _resolve_model_id
         agents = self._load_agents()
         for name in _CHEAP_OVERRIDE_AGENTS:
@@ -280,8 +285,8 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
                 "codex", "openai", entry["model"], entry["role"], entry["target"],
             )
             self.assertEqual(
-                got, "gpt-5.4",
-                f"{name}: codex (cheap, analyze, codebase) → gpt-5.4",
+                got, "gpt-5.6-terra",
+                f"{name}: codex (cheap, analyze, codebase) → gpt-5.6-terra",
             )
 
     # ------------------------------------------------------------------
@@ -313,7 +318,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
         )
         translated = {
             "sandbox_mode": "workspace-write",
-            "model": "gpt-5.4",
+            "model": "gpt-5.6-terra",
             "model_reasoning_effort": "medium",
             "model_context_window": 128000,
         }
@@ -333,7 +338,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
         self.assertEqual(data["name"], "cf-constructor-brainstorm-expert")
         self.assertEqual(data["description"], "Brainstorm expert.")
         self.assertEqual(data["sandbox_mode"], "workspace-write")
-        self.assertEqual(data["model"], "gpt-5.4")
+        self.assertEqual(data["model"], "gpt-5.6-terra")
         self.assertEqual(data["model_reasoning_effort"], "medium")
         self.assertEqual(data["model_context_window"], 128000)
         self.assertEqual(data["developer_instructions"], "Follow the expert prompt.\n")
@@ -350,7 +355,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
         )
         translated = {
             "sandbox_mode": "workspace-write",
-            "model": "gpt-5.4",
+            "model": "gpt-5.6-terra",
             "model_reasoning_effort": "low",
             "model_context_window": _CODEX_CONTEXT_TOKENS["low"],
         }
@@ -379,7 +384,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
         )
         translated = {
             "sandbox_mode": "workspace-write",
-            "model": "gpt-5.4",
+            "model": "gpt-5.6-terra",
             "model_reasoning_effort": "medium",
             "model_context_window": _CODEX_CONTEXT_TOKENS["high"],
         }
@@ -652,7 +657,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
                 {"name": "cf-constructor-stale", "description": "Stale"},
                 "{cf-studio-path}/agents/cf-constructor-stale.md",
             )
-            stale_toml_content = base_toml.rstrip("\n") + "\n" + 'model = "gpt-5.4"\n'
+            stale_toml_content = base_toml.rstrip("\n") + "\n" + 'model = "gpt-5.6-terra"\n'
 
             stale = output_dir / "cf-constructor-stale.toml"
             stale.write_text(stale_toml_content, encoding="utf-8")
