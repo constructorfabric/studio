@@ -859,3 +859,75 @@ class TestAWorkflowRunWithoutTheRouter:
         """Two hand-maintained literals kept in sync by a comment is a rename
         away from silently breaking bypass detection."""
         assert claude_provider._SKILL_WORKFLOW_PREFIX == f"{claude_provider._SKILL_NAME}-"
+
+    def test_a_router_error_outranks_a_successful_direct_workflow(self, run_provider):
+        """Precedence, pinned rather than left to the order of the branches.
+
+        `<error>Execute skill: cf</error>` is direct evidence the router itself
+        failed. A workflow succeeding afterwards does not soften that: the thing
+        this suite measures is the router, and grading the run `bypassed` would
+        file a cf failure as a routing observation. The workflow is still named
+        in `skills_invoked`, so nothing is lost — only ranked.
+        """
+        errored = {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "A", "is_error": True,
+             "content": "<error>Execute skill: cf</error>"},
+        ]}}
+
+        out, _seen = run_provider(_stream(
+            _skill_call("A"), errored,
+            _skill_call("B", skill="cf-documenting-review"), _skill_result("B"),
+            _result("findings"),
+        ))
+
+        assert out["metadata"]["skill_state"] == "failed"
+        assert "cf-documenting-review" in out["metadata"]["skills_invoked"]
+
+    def test_the_ambiguous_bypass_warning_names_the_reported_one(self, run_provider, caplog):
+        """Its own message, not the `ran` one — that says "matched 'cf'", which is
+        the one thing that did not happen here."""
+        call = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill", "input": {
+                "a": "cf-generate", "b": "cf-review",
+            }},
+        ]}}
+
+        with caplog.at_level("WARNING", logger=claude_provider.logger.name):
+            run_provider(_stream(call, _skill_result(), _result()))
+
+        assert "rests on more than one candidate" in caplog.text
+        assert "matched 'cf'" not in caplog.text
+
+
+class TestBypassingNamesDirectly:
+    """The helper on its own, away from the provider's plumbing."""
+
+    @staticmethod
+    def _names(named, results):
+        return claude_provider._bypassing_names(named, results)
+
+    def test_a_clean_workflow_call_qualifies(self):
+        assert self._names({"a": ["cf-generate"]}, {"a": False}) == ["cf-generate"]
+
+    def test_two_clean_calls_are_unioned(self):
+        got = self._names({"a": ["cf-generate"], "b": ["cf-review"]}, {"a": False, "b": False})
+
+        assert got == ["cf-generate", "cf-review"]
+
+    def test_an_errored_call_contributes_nothing(self):
+        assert self._names({"a": ["cf-generate"]}, {"a": True}) == []
+
+    def test_a_call_with_no_result_contributes_nothing(self):
+        assert self._names({"a": ["cf-generate"]}, {}) == []
+
+    def test_a_call_naming_anything_else_contributes_nothing(self):
+        assert self._names({"a": ["cf-generate", "brainstorming"]}, {"a": False}) == []
+
+    def test_the_router_itself_is_not_a_workflow(self):
+        assert self._names({"a": ["cf"]}, {"a": False}) == []
+
+    def test_a_bare_prefix_is_not_a_name(self):
+        assert self._names({"a": ["cf-"]}, {"a": False}) == []
+
+    def test_a_call_naming_nothing_contributes_nothing(self):
+        assert self._names({"a": []}, {"a": False}) == []
