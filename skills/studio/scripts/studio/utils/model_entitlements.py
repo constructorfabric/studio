@@ -99,4 +99,3 @@ def codex_model_is_withdrawn(model_id: str) -> bool:
 
 
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-verdict
-
