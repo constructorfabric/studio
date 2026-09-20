@@ -13,6 +13,7 @@ import builtins
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -225,18 +226,95 @@ class TestTheNvmScan:
 
         assert preflight._nvm_candidates() == []
 
+    @staticmethod
+    def _install(root: Path, names: list[str]) -> None:
+        for name in names:
+            (root / name / "bin").mkdir(parents=True)
+            (root / name / "bin" / "node").touch()
+
+    def _probe_order(self, tmp_path, monkeypatch, names: list[str]) -> list[str]:
+        self._install(tmp_path / "versions" / "node", names)
+        monkeypatch.setenv("NVM_DIR", str(tmp_path))
+        seen: list[str] = []
+        monkeypatch.setattr(
+            preflight, "_node_version",
+            lambda binary="node": seen.append(Path(binary).parent.parent.name) or None)
+        preflight._nvm_candidates()
+        return seen
+
     def test_the_number_of_probes_is_capped(self, tmp_path, monkeypatch):
         """Each probe is a process with a timeout, and a long-lived nvm directory
         accumulates dozens of versions."""
-        root = tmp_path / "versions" / "node"
-        for i in range(40):
-            (root / f"v{i}.0.0" / "bin").mkdir(parents=True)
-            (root / f"v{i}.0.0" / "bin" / "node").touch()
-        monkeypatch.setenv("NVM_DIR", str(tmp_path))
-        probed = []
-        monkeypatch.setattr(preflight, "_node_version",
-                            lambda binary="node": probed.append(binary) or None)
+        seen = self._probe_order(tmp_path, monkeypatch,
+                                 [f"v{i}.0.0" for i in range(40)])
 
-        preflight._nvm_candidates()
+        assert len(seen) == preflight.NVM_PROBE_LIMIT
 
-        assert len(probed) == preflight.NVM_PROBE_LIMIT
+    def test_the_newest_is_probed_first_not_the_alphabetically_last(self, tmp_path, monkeypatch):
+        """Sorting paths as text puts `v9.0.0` above `v24.21.0`, so a cap could
+        discard every node new enough to qualify and report that none was
+        installed."""
+        monkeypatch.setattr(preflight, "NVM_PROBE_LIMIT", 2)
+
+        seen = self._probe_order(tmp_path, monkeypatch,
+                                 ["v8.0.0", "v9.0.0", "v20.20.0", "v22.22.2", "v24.21.0"])
+
+        assert seen == ["v24.21.0", "v22.22.2"]
+
+    def test_a_directory_with_no_version_in_its_name_sorts_last(self, tmp_path, monkeypatch):
+        """nvm aliases (`system`, a named install) carry no version. Still worth a
+        probe if there is room, but never ahead of a real one."""
+        monkeypatch.setattr(preflight, "NVM_PROBE_LIMIT", 2)
+
+        seen = self._probe_order(tmp_path, monkeypatch, ["system", "v18.0.0", "v22.22.2"])
+
+        assert seen == ["v22.22.2", "v18.0.0"]
+
+
+class TestTheReportContract:
+    """`_report` is what every path returns through, so its two guarantees —
+    exit code and the problems reaching stderr — are pinned directly rather than
+    inferred from whichever caller happened to be under test."""
+
+    def test_no_problems_is_a_clean_exit_and_silence(self, capsys):
+        assert preflight._report([]) == 0
+
+        captured = capsys.readouterr()
+        assert captured.out == "" and captured.err == ""
+
+    def test_problems_exit_non_zero_and_all_reach_stderr(self, capsys):
+        assert preflight._report(["first thing", "second thing"]) == 1
+
+        captured = capsys.readouterr()
+        assert "first thing" in captured.err and "second thing" in captured.err
+        assert captured.out == "", "diagnostics belong on stderr, not in a pipeline's output"
+
+
+class TestTheVersionParsingItself:
+    """`_node_version` is monkeypatched everywhere else, so its own parsing —
+    the part that decides whether a node qualifies — is exercised here."""
+
+    def test_a_real_node_style_version_string_parses(self, monkeypatch):
+        monkeypatch.setattr(preflight.subprocess, "run",
+                            lambda *a, **k: SimpleNamespace(returncode=0, stdout="v22.22.2\n"))
+
+        assert preflight._node_version() == (22, 22, 2)
+
+    def test_a_non_zero_exit_is_no_version(self, monkeypatch):
+        monkeypatch.setattr(preflight.subprocess, "run",
+                            lambda *a, **k: SimpleNamespace(returncode=1, stdout="v22.22.2"))
+
+        assert preflight._node_version() is None
+
+    def test_output_with_no_version_in_it_is_no_version(self, monkeypatch):
+        monkeypatch.setattr(preflight.subprocess, "run",
+                            lambda *a, **k: SimpleNamespace(returncode=0, stdout="not a version"))
+
+        assert preflight._node_version() is None
+
+    def test_a_binary_that_will_not_run_is_no_version(self, monkeypatch):
+        def refuse(*a, **k):
+            raise OSError("denied")
+        monkeypatch.setattr(preflight.subprocess, "run", refuse)
+
+        assert preflight._node_version() is None

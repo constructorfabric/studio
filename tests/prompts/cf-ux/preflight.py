@@ -79,10 +79,21 @@ def _nvm_candidates() -> list[tuple[tuple[int, int, int], Path]]:
         # A traversal, so it can fail the way traversals do: a permission-denied
         # directory, a broken symlink, a path that is not one. None of that is
         # worth a traceback out of a preflight -- it means "no candidate here".
-        candidates = sorted(root.glob("*/bin/node"), reverse=True) if root.is_dir() else []
+        entries = list(root.glob("*/bin/node")) if root.is_dir() else []
     except OSError as exc:
         logger.debug("cf-ux preflight: could not scan %s: %s", root, exc)
         return []
+
+    # Ordered by the version in the directory name, not by the name itself:
+    # sorting paths as text puts `v9.0.0` above `v24.21.0`, so the cap below
+    # could discard every node new enough to qualify and report that none was
+    # installed. Names that carry no version sort last rather than being
+    # dropped -- they are still worth a probe if there is room.
+    def newest_first(path: Path) -> tuple[int, tuple[int, int, int]]:
+        parsed = _version(path.parent.parent.name)
+        return (1, parsed) if parsed else (0, (0, 0, 0))
+
+    candidates = sorted(entries, key=newest_first, reverse=True)
 
     found = []
     for candidate in candidates[:NVM_PROBE_LIMIT]:
