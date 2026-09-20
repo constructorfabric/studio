@@ -50,6 +50,18 @@ class TestWhatTheCacheSays:
 
         assert model_entitlements.codex_model_is_withdrawn("gpt-5.4-mini") is True
 
+    def test_the_message_list_is_bounded(self, tmp_path, monkeypatch):
+        """It goes into a line a person reads; a vendor listing fifty models
+        should not turn that into a page."""
+        many = [{"slug": f"m-{i:02d}", "visibility": "list"} for i in range(40)]
+        _cache(tmp_path, monkeypatch, many)
+
+        message = model_entitlements.listed_for_message(
+            model_entitlements.entitled_codex_models())
+
+        assert message.count(",") < 40
+        assert "more" in message
+
     def test_an_internal_entry_does_not_count_as_entitled(self, tmp_path, monkeypatch):
         """The cache carries entries the CLI hides from people. Treating one as
         entitled would make a withdrawn slug look fine."""
@@ -81,15 +93,39 @@ class TestEveryUncertaintyIsSilence:
         assert model_entitlements.entitled_codex_models() is None
         assert model_entitlements.codex_model_is_withdrawn("anything") is False
 
-    def test_a_cache_listing_nothing_is_not_taken_as_entitled_to_nothing(
+    def test_entries_that_are_all_unlisted_read_as_unknown_not_as_empty(
             self, tmp_path, monkeypatch):
-        """Far more likely a CLI that has not populated it than an account with
-        no models at all — and warning about every model would be the loudest
-        possible way to be wrong."""
+        """Models are described but none match what this reads as "offered to a
+        person". Far likelier that the shape moved than that an account is
+        entitled to nothing, and the two are indistinguishable from here — so
+        the answer is that nothing is known, not that nothing is allowed."""
         _cache(tmp_path, monkeypatch, [{"slug": "gpt-reserve", "visibility": "hide"}])
+
+        assert model_entitlements.entitled_codex_models() is None
+        assert model_entitlements.codex_model_is_withdrawn("anything") is False
+
+    def test_a_cache_with_no_entries_at_all_is_unknown(self, tmp_path, monkeypatch):
+        _cache(tmp_path, monkeypatch, [])
 
         assert model_entitlements.entitled_codex_models() == frozenset()
         assert model_entitlements.codex_model_is_withdrawn("anything") is False
+
+    def test_no_home_is_an_answer_not_an_exception(self, monkeypatch):
+        """`Path.home()` raises where no home can be determined. This function
+        promises an answer to a caller that must not fail."""
+        monkeypatch.delenv("CODEX_HOME", raising=False)
+        monkeypatch.setattr(model_entitlements.Path, "home",
+                            staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))))
+
+        assert model_entitlements.entitled_codex_models() is None
+
+    def test_the_default_path_is_under_the_home_directory(self, monkeypatch, tmp_path):
+        """The branch taken when `CODEX_HOME` is unset — every other test sets
+        it, so nothing was exercising the default."""
+        monkeypatch.delenv("CODEX_HOME", raising=False)
+        monkeypatch.setattr(model_entitlements.Path, "home", staticmethod(lambda: tmp_path))
+
+        assert model_entitlements.codex_cache_path() == tmp_path / ".codex" / "models_cache.json"
 
     def test_codex_home_is_honoured(self, tmp_path, monkeypatch):
         """A non-default home must not be mistaken for a missing cache."""
@@ -103,8 +139,10 @@ class TestTheWarningInGenerate:
     def _forget_what_was_warned(self):
         from studio.commands import agents
         agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
         yield
         agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
 
     @staticmethod
     def _resolve(*args):
@@ -185,7 +223,9 @@ class TestTheWarningInGenerate:
 
     def test_a_check_that_raises_does_not_break_a_generate(self, monkeypatch, caplog):
         """Advisory means advisory: nothing it does may stop a config being
-        written."""
+        written. But it says so — a check that fails silently is
+        indistinguishable from one that found nothing, and the CLI never raises
+        its level above WARNING, so a debug line would be unreadable by anyone."""
         from studio.commands import agents
         monkeypatch.setattr(agents.model_entitlements, "codex_model_is_withdrawn",
                             lambda _m: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -193,8 +233,95 @@ class TestTheWarningInGenerate:
         with caplog.at_level(logging.WARNING):
             got = self._resolve("codex", "openai", "cf:tier:balanced", "generate", "codebase")
 
-        assert got is not None
-        assert "boom" not in caplog.text
+        assert got is not None, "generation must survive the check failing"
+        assert "could not run" in caplog.text
+        assert "boom" in caplog.text
+
+    def test_a_failing_check_says_so_once_not_per_agent(self, monkeypatch, caplog):
+        from studio.commands import agents
+        monkeypatch.setattr(agents.model_entitlements, "codex_model_is_withdrawn",
+                            lambda _m: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        with caplog.at_level(logging.WARNING):
+            for _ in range(10):
+                self._resolve("codex", "openai", "cf:tier:balanced", "generate", "codebase")
+
+        assert caplog.text.count("could not run") == 1
+
+    def test_the_check_can_be_turned_off(self, tmp_path, monkeypatch, caplog):
+        """Anything advisory needs a way off: an account on an API key has a
+        different entitlement set from the ChatGPT-plan cache this reads."""
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
+        from studio.commands import agents
+        monkeypatch.setitem(agents._MODEL_MATRIX[("codex", "openai")]["base"],
+                            "cf:tier:balanced", "gone-model")
+        monkeypatch.setenv(agents._ENTITLEMENT_OPT_OUT, "1")
+
+        with caplog.at_level(logging.WARNING):
+            got = self._resolve("codex", "openai", "cf:tier:balanced", "generate", "codebase")
+
+        assert got == "gone-model"
+        assert caplog.text == ""
+        assert agents.drain_entitlement_warnings() == []
+
+    def test_the_warning_names_the_cache_it_consulted(self, tmp_path, monkeypatch, caplog):
+        """Which file was read is the first thing anyone disputing the warning
+        needs to know."""
+        path = _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
+        from studio.commands import agents
+        monkeypatch.setitem(agents._MODEL_MATRIX[("codex", "openai")]["base"],
+                            "cf:tier:balanced", "gone-model")
+
+        with caplog.at_level(logging.WARNING):
+            self._resolve("codex", "openai", "cf:tier:balanced", "generate", "codebase")
+
+        assert str(path) in caplog.text
+        assert agents._ENTITLEMENT_OPT_OUT in caplog.text
+
+    def test_the_finding_is_collected_for_json_consumers(self, tmp_path, monkeypatch, caplog):
+        """A `--json` caller reads the result dict and never sees stderr."""
+        path = _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
+        from studio.commands import agents
+        monkeypatch.setitem(agents._MODEL_MATRIX[("codex", "openai")]["base"],
+                            "cf:tier:balanced", "gone-model")
+
+        with caplog.at_level(logging.WARNING):
+            self._resolve("codex", "openai", "cf:tier:balanced", "generate", "codebase")
+        notices = agents.drain_entitlement_warnings()
+
+        assert notices == [{
+            "kind": "model-not-entitled", "tool": "codex", "provider": "openai",
+            "model": "gone-model", "entitled": ["gpt-5.6-terra"], "source": str(path),
+        }]
+
+    def test_draining_clears_so_a_second_run_does_not_repeat_the_first(
+            self, tmp_path, monkeypatch, caplog):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
+        from studio.commands import agents
+        monkeypatch.setitem(agents._MODEL_MATRIX[("codex", "openai")]["base"],
+                            "cf:tier:balanced", "gone-model")
+
+        with caplog.at_level(logging.WARNING):
+            self._resolve("codex", "openai", "cf:tier:balanced", "generate", "codebase")
+
+        assert len(agents.drain_entitlement_warnings()) == 1
+        assert agents.drain_entitlement_warnings() == []
+
+    def test_the_shipped_matrix_is_checked_against_the_real_cache_shape(
+            self, tmp_path, monkeypatch, caplog):
+        """The slugs actually shipped, through the actual checker — the pairing
+        this exists to protect, rather than a synthetic model id."""
+        from studio.commands import agents
+        shipped = agents._MODEL_MATRIX[("codex", "openai")]["base"]
+        _cache(tmp_path, monkeypatch,
+               [{"slug": slug, "visibility": "list"} for slug in shipped.values()])
+
+        with caplog.at_level(logging.WARNING):
+            for tier in shipped:
+                self._resolve("codex", "openai", tier, "generate", "codebase")
+
+        assert caplog.text == "", "every shipped slug must pass against a cache that lists it"
+        assert agents.drain_entitlement_warnings() == []
 
     def test_inherit_resolves_to_nothing_and_is_not_checked(self, tmp_path, monkeypatch, caplog):
         _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
@@ -203,3 +330,38 @@ class TestTheWarningInGenerate:
             assert self._resolve("codex", "openai", "cf:inherit", "generate", "codebase") is None
 
         assert caplog.text == ""
+
+
+class TestTheResultDictGetsTheFinding:
+    """`_attach_entitlement_warnings` is what puts a finding where `--json`
+    consumers look. Tested directly, because the command that calls it needs a
+    whole generate to run."""
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from studio.commands import agents
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+        yield
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+
+    def test_a_clean_run_keeps_the_output_shape_it_had(self):
+        from studio.commands import agents
+        result = {"status": "OK"}
+
+        agents._attach_entitlement_warnings(result)
+
+        assert result == {"status": "OK"}, "no findings must not invent a warnings key"
+
+    def test_a_finding_is_appended_beside_any_existing_warning(self, tmp_path, monkeypatch):
+        from studio.commands import agents
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
+        monkeypatch.setitem(agents._MODEL_MATRIX[("codex", "openai")]["base"],
+                            "cf:tier:balanced", "gone-model")
+        agents._resolve_model_id("codex", "openai", "cf:tier:balanced", "generate", "codebase")
+        result = {"warnings": [{"kind": "something-else"}]}
+
+        agents._attach_entitlement_warnings(result)
+
+        assert [w["kind"] for w in result["warnings"]] == ["something-else", "model-not-entitled"]

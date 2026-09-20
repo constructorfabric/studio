@@ -6,7 +6,11 @@ looks correct and fails only when an agent is used. That is how gpt-5.4 and
 gpt-5.4-mini reached 43 of the 44 shipped agents.
 
 The `codex` CLI caches the set its account is entitled to, so the check costs a
-file read and no network call. It is advisory on purpose -- a run is never
+file read and no network call. The shape read here was taken from a real cache
+written by codex-cli 0.154.0 on 2026-09-18 -- `{"models": [{"slug": ...,
+"visibility": "list"|"hide", ...}], ...}` -- and is not a published contract.
+Every field is therefore treated as optional and every departure from the
+expected shape as "unknown" rather than as a verdict. It is advisory on purpose -- a run is never
 refused over it. The cache belongs to another program: it can be absent, stale,
 written by a different account type, or change shape without notice, and none of
 those mean the model is gone. Only a cache that is present, readable, and names
@@ -28,6 +32,9 @@ logger = logging.getLogger(__name__)
 #: Honoured the way the CLI honours it, so a non-default home is not mistaken
 #: for a missing cache.
 _CODEX_HOME_ENV = "CODEX_HOME"
+#: Kept small on purpose: this list goes into a warning a person reads, and a
+#: vendor that starts listing fifty models should not turn one line into a page.
+_MAX_LISTED_IN_MESSAGE = 12
 _CODEX_CACHE_NAME = "models_cache.json"
 
 #: The CLI's own word for a model it offers a person. The cache also carries
@@ -61,10 +68,14 @@ def entitled_codex_models() -> Optional[FrozenSet[str]]:
     changed underneath -- there is no wrapper for it, because nothing in
     production has a reason to.
     """
-    path = codex_cache_path()
     try:
+        path = codex_cache_path()
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    # `Path.home()` raises RuntimeError where no home can be determined, and
+    # that is inside the try for the same reason the read is: this function
+    # promises an answer, never an exception, to a caller that must not fail.
+    except (OSError, RuntimeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        path = "<unresolved>"
         logger.debug("model entitlements: no usable codex cache at %s: %s", path, exc)
         return None
 
@@ -73,17 +84,34 @@ def entitled_codex_models() -> Optional[FrozenSet[str]]:
         logger.debug("model entitlements: unfamiliar cache shape at %s", path)
         return None
 
-    return frozenset(
+    listed = frozenset(
         entry["slug"] for entry in entries
         if isinstance(entry, dict) and isinstance(entry.get("slug"), str)
         and entry.get("visibility") == _LISTED
     )
+    if entries and not listed:
+        # Models are described but none of them match what this reads as
+        # "offered to a person". Far likelier that the shape moved than that an
+        # account is entitled to nothing, and the two are indistinguishable from
+        # here -- so the honest answer is that nothing is known.
+        logger.debug("model entitlements: %d entries at %s, none listed; "
+                     "treating the shape as unfamiliar", len(entries), path)
+        return None
+    return listed
 
 
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-read-cache
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-verdict
+def listed_for_message(entitled: FrozenSet[str]) -> str:
+    """The entitled set as one bounded line for a person to read."""
+    ordered = sorted(entitled)
+    shown = ordered[:_MAX_LISTED_IN_MESSAGE]
+    suffix = "" if len(ordered) <= _MAX_LISTED_IN_MESSAGE else f", and {len(ordered) - _MAX_LISTED_IN_MESSAGE} more"
+    return ", ".join(shown) + suffix
+
+
 def codex_model_is_withdrawn(model_id: str) -> bool:
     """Whether the cache positively contradicts `model_id`.
 

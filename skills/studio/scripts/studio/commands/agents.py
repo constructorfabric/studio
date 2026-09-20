@@ -130,12 +130,59 @@ def _warn_agents(message: str) -> None:
 #: line that matters under forty repetitions of itself.
 _ENTITLEMENT_WARNED: set = set()
 
+#: Collected alongside the log line, because `--json` consumers see this dict
+#: and not stderr. Same dual-reporting as every other warning-worthy event in
+#: this file; drained into the command result by `drain_entitlement_warnings`.
+_ENTITLEMENT_NOTICES: List[Dict[str, Any]] = []
+
+#: The check is advisory, and anything advisory needs a way off. An account on
+#: an API key has a different entitlement set from the ChatGPT-plan cache this
+#: reads, and someone who knows that should be able to say so once.
+_ENTITLEMENT_OPT_OUT = "CF_SKIP_MODEL_ENTITLEMENT_CHECK"
+
+#: The one cell there is evidence for. Derived from the provider tables rather
+#: than written twice, so a tool gaining or losing OpenAI support cannot leave
+#: this behind.
+_ENTITLEMENT_SCOPE = ("codex", "openai")
+
 _LOG_WITHDRAWN_MODEL = (
     "%s config asks for model %r, which `codex` does not list for this account "
-    "(it lists: %s). Generation continues -- the agent will fail when it runs. "
-    "If this account is entitled to it, ignore this: the check reads codex's "
-    "own cache and can be out of date."
+    "(read from %s, which lists: %s). Generation continues -- the agent will "
+    "fail when it runs. If this account is entitled to it, ignore this, or set "
+    "%s=1: the check reads codex's own cache and can be out of date."
 )
+
+_LOG_ENTITLEMENT_BROKE = (
+    "the codex model-entitlement check could not run (%s); generation is "
+    "unaffected, but a withdrawn model would not have been caught"
+)
+
+
+def drain_entitlement_warnings() -> List[Dict[str, Any]]:
+    """Take the notices collected during this generate, clearing them.
+
+    Drained rather than read, so a second generate in the same process does not
+    re-report the first one's findings.
+    """
+    taken = list(_ENTITLEMENT_NOTICES)
+    _ENTITLEMENT_NOTICES.clear()
+    return taken
+
+
+def _attach_entitlement_warnings(result: Dict[str, Any]) -> None:
+    """Dual-report the entitlement findings into a command result.
+
+    Every other warning-worthy event in this file lands in both the log and the
+    result; a `--json` consumer reads the dict and never sees stderr, and "the
+    account cannot use this model" is exactly what an automated caller should be
+    able to act on.
+
+    The key is created only when there is something to put in it, so a clean run
+    keeps the output shape it has always had.
+    """
+    notices = drain_entitlement_warnings()
+    if notices:
+        result.setdefault("warnings", []).extend(notices)
 
 
 def _checked(tool: str, provider: str, model_id: Optional[str]) -> Optional[str]:
@@ -144,26 +191,56 @@ def _checked(tool: str, provider: str, model_id: Optional[str]) -> Optional[str]
     Advisory only, and deliberately so. The value is returned unchanged whatever
     the answer: generation is a function of the repository, and making its
     *output* depend on which machine it runs on would be a worse bargain than
-    the outage this warns about. Only the warning is new.
+    the outage this warns about. Only the report is new.
 
-    Scoped to (codex, openai), the one cell there is evidence for. Cursor and
-    Copilot resolve OpenAI names from their own catalogues, which this cache
-    says nothing about, and the Anthropic cells were verified against live CLIs.
+    Scoped to (codex, openai) because that is what the evidence covers, not
+    because the other cells hold different slugs -- (cursor, openai) holds the
+    *same* literals. The cache answers "what may this account use **through
+    codex**": the failure it was built from reads `not supported when using
+    Codex with a ChatGPT account`, which is a statement about one surface and
+    one account type, not about a model ceasing to exist. Cursor bills through
+    its own subscription, so a slug codex will not serve may still be served
+    there, and warning about it would be a confident guess. Copilot names models
+    from its own catalogue outright, and the Anthropic cells were each probed
+    against a live CLI.
     """
-    if model_id is None or (tool, provider) != ("codex", "openai"):
+    if model_id is None or (tool, provider) != _ENTITLEMENT_SCOPE:
+        return model_id
+    if os.environ.get(_ENTITLEMENT_OPT_OUT):
         return model_id
     try:
         if not model_entitlements.codex_model_is_withdrawn(model_id):
             return model_id
         seen = (tool, provider, model_id)
-        if seen not in _ENTITLEMENT_WARNED:
-            _ENTITLEMENT_WARNED.add(seen)
-            entitled = sorted(model_entitlements.entitled_codex_models() or ())
-            _warn_agents(_LOG_WITHDRAWN_MODEL % (tool, model_id, ", ".join(entitled)))
+        if seen in _ENTITLEMENT_WARNED:
+            return model_id
+        entitled = model_entitlements.entitled_codex_models() or frozenset()
+        cache_path = model_entitlements.codex_cache_path()
+        _warn_agents(_LOG_WITHDRAWN_MODEL % (
+            tool, model_id, cache_path,
+            model_entitlements.listed_for_message(entitled),
+            _ENTITLEMENT_OPT_OUT,
+        ))
+        # Recorded *after* the warning is out, so a raising logger leaves the
+        # finding unreported rather than silently marked as reported.
+        _ENTITLEMENT_WARNED.add(seen)
+        _ENTITLEMENT_NOTICES.append({
+            "kind": "model-not-entitled",
+            "tool": tool,
+            "provider": provider,
+            "model": model_id,
+            "entitled": sorted(entitled),
+            "source": str(cache_path),
+        })
     except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-        # Deliberately broad: an advisory check must not be the thing that
-        # stops a config being written. Whatever it was, it is a debug line.
-        logger.debug("agents: model entitlement check skipped: %s", exc)
+        # Deliberately broad: an advisory check must not be the thing that stops
+        # a config being written. Said once and visibly, though -- a check that
+        # fails silently is indistinguishable from one that found nothing, and
+        # the CLI never raises its level above WARNING, so a debug line here
+        # would be a line nobody can ever read.
+        if "check-failed" not in _ENTITLEMENT_WARNED:
+            _ENTITLEMENT_WARNED.add("check-failed")
+            _warn_agents(_LOG_ENTITLEMENT_BROKE % exc)
     return model_id
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-model-entitlement-warning
 
@@ -7741,6 +7818,7 @@ def _run_legacy_generate_path(
         dry_run=False,
         gitignore_action=gitignore_action,
     )
+    _attach_entitlement_warnings(agents_result)
     ui.result(
         agents_result,
         human_fn=lambda d: _human_generate_agents_ok(
