@@ -45,6 +45,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
+from ..utils import model_entitlements
 from ..utils._tomllib_compat import tomllib
 from ..utils.files import (
     core_subpath,
@@ -120,6 +121,51 @@ GITIGNORE_FILENAME = ".gitignore"
 
 def _warn_agents(message: str) -> None:
     logger.warning("agents: %s", message)
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-model-entitlement-warning
+#: Said once per (tool, provider, model) per process. `_resolve_model_id` runs
+#: for every agent -- 44 of them in the shipped manifest -- and the same
+#: withdrawn slug answers most of them, so warning per call would bury the one
+#: line that matters under forty repetitions of itself.
+_ENTITLEMENT_WARNED: set = set()
+
+_LOG_WITHDRAWN_MODEL = (
+    "%s config asks for model %r, which `codex` does not list for this account "
+    "(it lists: %s). Generation continues -- the agent will fail when it runs. "
+    "If this account is entitled to it, ignore this: the check reads codex's "
+    "own cache and can be out of date."
+)
+
+
+def _checked(tool: str, provider: str, model_id: Optional[str]) -> Optional[str]:
+    """Pass `model_id` through, warning if the local `codex` contradicts it.
+
+    Advisory only, and deliberately so. The value is returned unchanged whatever
+    the answer: generation is a function of the repository, and making its
+    *output* depend on which machine it runs on would be a worse bargain than
+    the outage this warns about. Only the warning is new.
+
+    Scoped to (codex, openai), the one cell there is evidence for. Cursor and
+    Copilot resolve OpenAI names from their own catalogues, which this cache
+    says nothing about, and the Anthropic cells were verified against live CLIs.
+    """
+    if model_id is None or (tool, provider) != ("codex", "openai"):
+        return model_id
+    try:
+        if not model_entitlements.codex_model_is_withdrawn(model_id):
+            return model_id
+        seen = (tool, provider, model_id)
+        if seen not in _ENTITLEMENT_WARNED:
+            _ENTITLEMENT_WARNED.add(seen)
+            entitled = sorted(model_entitlements.entitled_codex_models() or ())
+            _warn_agents(_LOG_WITHDRAWN_MODEL % (tool, model_id, ", ".join(entitled)))
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        # Deliberately broad: an advisory check must not be the thing that
+        # stops a config being written. Whatever it was, it is a debug line.
+        logger.debug("agents: model entitlement check skipped: %s", exc)
+    return model_id
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-model-entitlement-warning
 
 
 def _info_agents(message: str) -> None:
@@ -997,8 +1043,11 @@ def _resolve_model_id(
         # (and not registered in the matrix), treat it as a raw vendor model
         # id and emit verbatim. Intentional — see the "Supported `model`
         # forms" header in skills/studio/agents.toml.
-        return tier  # passthrough raw id
-    return cell["overrides"].get((tier, role, target), cell["base"][tier])
+        return _checked(tool, provider, tier)  # passthrough raw id
+    return _checked(
+        tool, provider,
+        cell["overrides"].get((tier, role, target), cell["base"][tier]),
+    )
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-resolve-model-id
 
 
