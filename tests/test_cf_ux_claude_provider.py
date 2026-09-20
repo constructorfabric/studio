@@ -913,3 +913,49 @@ class TestTheCliVersionIsRecorded:
         out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
 
         assert out["metadata"]["claude_code_version"] is None
+
+
+class TestACutNeverLandsInsideASecret:
+    """`redact_secrets` matches whole values. Cutting first can land inside a
+    credential, and the surviving prefix is one the redactor no longer
+    recognises — so a size cap, added for safety, leaked the start of a key."""
+
+    _SECRET = "sk-ant-api03-SUPERSECRETVALUE0123456789"
+
+    def test_a_secret_straddling_the_head_cut_does_not_survive(self):
+        limit = claude_provider._MAX_DIAGNOSTIC_CHARS
+        text = "A" * (limit - 10) + self._SECRET
+
+        got = claude_provider._safe_head(text, {"ANTHROPIC_API_KEY": self._SECRET})
+
+        assert self._SECRET[:10] not in got
+        assert "[redacted]" in got
+        assert len(got) <= limit
+
+    def test_a_secret_straddling_the_tail_cut_does_not_survive(self):
+        limit = claude_provider._MAX_DIAGNOSTIC_CHARS
+        text = self._SECRET + "B" * (limit - 10)
+
+        got = claude_provider._safe_tail(text, {"ANTHROPIC_API_KEY": self._SECRET})
+
+        assert self._SECRET[-10:] not in got
+        assert len(got) <= limit
+
+    def test_the_cap_still_caps(self):
+        got = claude_provider._safe_head("A" * 10_000, {})
+
+        assert len(got) == claude_provider._MAX_DIAGNOSTIC_CHARS
+
+    def test_a_straddling_secret_does_not_reach_skill_call_inputs(self, run_provider, monkeypatch):
+        """End to end, through the field the cap was added to."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._SECRET)
+        padding = "A" * (claude_provider._MAX_DIAGNOSTIC_CHARS - 10)
+        call = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill",
+             "input": {"command": "cf", "args": padding + self._SECRET}},
+        ]}}
+
+        out, _seen = run_provider(_stream(call, _skill_result(), _result()))
+
+        for item in out["metadata"]["skill_call_inputs"]:
+            assert self._SECRET[:12] not in item

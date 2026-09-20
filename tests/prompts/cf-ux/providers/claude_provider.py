@@ -105,6 +105,23 @@ _LOG_AMBIGUOUS_MATCH = (
 #: model -- and so, transitively, a crafted prompt -- decides the length of.
 _MAX_DIAGNOSTIC_CHARS = 500
 
+
+def _safe_head(text: str, env: dict[str, str], limit: int = _MAX_DIAGNOSTIC_CHARS) -> str:
+    """Redact, *then* cut -- never the other way round.
+
+    Cutting first can land inside a credential, and what survives is a prefix
+    `redact_secrets` no longer recognises: it matches whole values. A 32-char
+    key straddling the boundary left its first characters in the metadata,
+    already redacted nowhere. Redacting first replaces the whole value, and the
+    cut then falls in text that carries no secret at all.
+    """
+    return redact_secrets(text, env)[:limit]
+
+
+def _safe_tail(text: str, env: dict[str, str], limit: int = _MAX_DIAGNOSTIC_CHARS) -> str:
+    """`_safe_head` from the other end, and for the same reason."""
+    return redact_secrets(text, env)[-limit:]
+
 #: The CLI's own version, as its `init` event reports it. Recorded because the
 #: verdict in `_skill_trace` rests on an output shape that was measured rather
 #: than promised: absent `is_error` means a successful skill result. Nothing
@@ -388,7 +405,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     if proc.returncode != 0:
         return {
             "error": f"claude exited {proc.returncode}: "
-                     f"{redact_secrets(proc.stderr.strip()[:500], env)}",
+                     f"{_safe_head(proc.stderr.strip(), env)}",
             "metadata": base,
         }
 
@@ -418,7 +435,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
                 **base,
                 "events_seen": len(events),
                 "last_event_type": events[-1].get("type") if events else None,
-                "stdout_tail": redact_secrets(proc.stdout.strip()[-500:], env),
+                "stdout_tail": _safe_tail(proc.stdout.strip(), env),
             },
         }
 
@@ -428,8 +445,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # What to show when the answer is withheld from the grader: the text itself,
     # or a repr of whatever non-text thing arrived instead of one. Kept as a
     # string so no branch below can slice a dict.
-    withheld = redact_secrets(
-        (output_text if is_text else "" if answer is None else repr(answer))[:500], env)
+    withheld = _safe_head(
+        output_text if is_text else "" if answer is None else repr(answer), env)
     trace = _skill_trace(events, proc.stdout)
     state, detail = trace.state, trace.detail
     metadata = {
@@ -440,9 +457,13 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "skill_state": state,
         "skills_invoked": trace.names,
         "skill_call_inputs": [
-            redact_secrets(item[:_MAX_DIAGNOSTIC_CHARS], env) for item in trace.inputs
+            _safe_head(item, env) for item in trace.inputs
         ],
-        "claude_code_version": _cli_version(events),
+        # Held to the same ceiling as its neighbours. It comes from the CLI's own
+        # init event rather than from a model, but a diagnostic field that is
+        # bounded only because of where it happens to come from is one source
+        # change away from not being bounded.
+        "claude_code_version": _safe_head(_cli_version(events) or "", env) or None,
         "skill_match_other_candidates": list(trace.other_candidates),
     }
     cost = payload.get("total_cost_usd")
