@@ -869,3 +869,47 @@ class TestTheChildsOwnCredentialDoesNotComeBackOut:
         out, _seen = run_provider("", returncode=2, stderr="command not found: claude")
 
         assert "command not found: claude" in out["error"]
+
+
+class TestDiagnosticsStayBounded:
+    """`stderr`, `stdout_tail` and `unscored_output` are each sliced before they
+    are returned. `skill_call_inputs` was not — and it is the one field whose
+    length a model, and so a crafted prompt, decides."""
+
+    def test_a_huge_skill_input_is_capped_like_its_siblings(self, run_provider):
+        huge = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill",
+             "input": {"command": "cf", "args": "A" * 50_000}},
+        ]}}
+
+        out, _seen = run_provider(_stream(huge, _skill_result(), _result()))
+
+        for item in out["metadata"]["skill_call_inputs"]:
+            assert len(item) <= claude_provider._MAX_DIAGNOSTIC_CHARS
+
+
+class TestTheCliVersionIsRecorded:
+    """The verdict rests on an output shape that was measured, not promised:
+    an absent `is_error` means success. Nothing pins the installed CLI, so the
+    run records which version it was graded against."""
+
+    def test_the_version_from_the_init_event_reaches_metadata(self, run_provider):
+        init = {"type": "system", "subtype": "init", "claude_code_version": "2.1.276"}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["claude_code_version"] == "2.1.276"
+
+    def test_a_stream_without_one_is_not_an_error(self, run_provider):
+        """An older or newer CLI is the case this records; not finding it is an
+        answer, not a failure."""
+        out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["claude_code_version"] is None
+
+    def test_a_non_string_version_is_not_passed_through(self, run_provider):
+        init = {"type": "system", "subtype": "init", "claude_code_version": {"major": 2}}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["claude_code_version"] is None

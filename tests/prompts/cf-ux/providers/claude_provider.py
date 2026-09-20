@@ -100,6 +100,18 @@ _LOG_AMBIGUOUS_MATCH = (
     "the verdict may rest on a field that is not the skill name"
 )
 
+#: The ceiling every other diagnostic string in this module is already held to.
+#: `skill_call_inputs` was the exception, and the one field carrying content a
+#: model -- and so, transitively, a crafted prompt -- decides the length of.
+_MAX_DIAGNOSTIC_CHARS = 500
+
+#: The CLI's own version, as its `init` event reports it. Recorded because the
+#: verdict in `_skill_trace` rests on an output shape that was measured rather
+#: than promised: absent `is_error` means a successful skill result. Nothing
+#: pins the installed CLI, so when that shape changes this is what says which
+#: version the run was graded against, instead of leaving it to be rediscovered.
+_VERSION_KEY = "claude_code_version"
+
 _LOG_MISSING_EVIDENCE = (
     "cf-ux: the %r call has no tool_result in the transcript at all; the run is "
     "graded failed, since nothing reported what it did"
@@ -298,6 +310,20 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
     )
 
 
+def _cli_version(events: list[dict[str, Any]]) -> str | None:
+    """What the CLI said it was, from its `init` event.
+
+    `None` when the stream carried no such event or no such field: an older or
+    newer CLI is exactly the case this records, so not finding it is an answer
+    and not a reason to fail.
+    """
+    for event in events:
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            version = event.get(_VERSION_KEY)
+            return version if isinstance(version, str) else None
+    return None
+
+
 def _baseline(cwd: Path, started: float) -> dict[str, Any]:
     """What every return carries, answer or error: how long it took, and where."""
     return {"duration_s": round(time.monotonic() - started, 2), "sandbox": str(cwd)}
@@ -413,7 +439,10 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "total_cost_usd": payload.get("total_cost_usd"),
         "skill_state": state,
         "skills_invoked": trace.names,
-        "skill_call_inputs": [redact_secrets(item, env) for item in trace.inputs],
+        "skill_call_inputs": [
+            redact_secrets(item[:_MAX_DIAGNOSTIC_CHARS], env) for item in trace.inputs
+        ],
+        "claude_code_version": _cli_version(events),
         "skill_match_other_candidates": list(trace.other_candidates),
     }
     cost = payload.get("total_cost_usd")

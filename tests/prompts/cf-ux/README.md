@@ -125,7 +125,9 @@ Two things keep the accepted case from being silent:
   `{"command": "cf", "mode": "auto"}` is listed too. Narrowing it would need the
   very knowledge whose absence created the trade. It is a flag, not a verdict —
   the run is still scored.
-- **`skill_call_inputs`**, the raw inputs verbatim, so the verdict can be checked.
+- **`skill_call_inputs`**, the raw inputs, so the verdict can be checked — capped
+  at 500 chars like every other diagnostic here, since a model decides how long
+  they are.
 
 `test_a_bare_cf_in_an_unrelated_field_still_counts` pins the trade. If the real
 key is ever established, that test is where it gets renegotiated.
@@ -140,8 +142,11 @@ or no trace to trust:
 | A line that will not parse | Counted in `unparsed_lines` rather than dropped silently, because a lost line can be a lost `tool_result` and the verdict above is read off exactly those. |
 
 Metadata: `skill_state` (`ran` / `failed` / `absent`), `skills_invoked` (the
-names), `skill_call_inputs` (those inputs verbatim, for when a name did not
-resolve), `skill_match_other_candidates` (above), `unparsed_lines`, and
+names), `skill_call_inputs` (those inputs, for when a name did not
+resolve — capped at 500 chars like every other diagnostic here, since a model
+decides their length), `claude_code_version` (what the CLI called itself; the
+verdict rests on an output shape that was measured rather than promised, and
+nothing pins the installed CLI), `skill_match_other_candidates` (above), `unparsed_lines`, and
 `unscored_output` — the answer that was withheld
 from the grader, kept for diagnosis. Every return *that reached the CLI*, answer
 or error, carries `duration_s` and `sandbox`; a failure before the sandbox
