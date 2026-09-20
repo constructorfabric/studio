@@ -74,6 +74,7 @@ tests/prompts/cf-ux/
 │   ├── claude_provider.py   — claude -p, bypassPermissions, stream-json
 │   ├── codex_provider.py    — codex exec, approval=never, workspace-write
 │   └── grader_claude.py     — claude -p --disable-slash-commands (judge)
+├── preflight.py             — node version + codex model entitlement, pre-run
 └── README.md
 ```
 
@@ -171,7 +172,8 @@ previously indistinguishable.
 
 ## Current baseline (pilot)
 
-3 scenarios × 2 providers = 6 cases, ~3-4 min total wall-clock.
+8 scenarios × 2 providers = 16 cases, ~1.5 min wall-clock at the configured
+concurrency (measured 2026-09-18; the table below predates several scenarios).
 
 | Scenario | claude-code | codex |
 |---|---|---|

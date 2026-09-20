@@ -24,7 +24,9 @@ SOURCE_STUDIO ?= skills/studio/scripts/studio.py
 # worktree an `ERROR: pytest binary not found` with `make install` as the only
 # advice -- for a tool already on PATH. Whatever answers is checked for the
 # plugins the targets actually use, which is the part that matters.
-PYTEST ?= $(shell test -x "$(PIPX_BIN_DIR)/pytest" && echo "$(PIPX_BIN_DIR)/pytest" \
+# `:=`, not `?=`: a recursively-expanded variable re-runs its $(shell) at every
+# reference, and this one is referenced by most targets in the file.
+PYTEST := $(shell test -x "$(PIPX_BIN_DIR)/pytest" && echo "$(PIPX_BIN_DIR)/pytest" \
                   || command -v pytest 2>/dev/null \
                   || echo "$(PYTHON) -m pytest")
 PYTEST_PIPX ?= $(PYTEST)
@@ -32,7 +34,7 @@ PYTEST_PIPX_COV ?= $(PYTEST_PIPX)
 # Parallelism is an optimisation, so a missing pytest-xdist slows the suite down
 # rather than refusing to run it. It used to be a hard gate, which meant a
 # pytest that could have run these tests failed the target instead.
-PYTEST_PARALLEL ?= $(shell $(PYTEST) --help 2>/dev/null | grep -q -- '--numprocesses' && echo "-n 6")
+PYTEST_PARALLEL := $(shell $(PYTEST_PIPX) --help 2>/dev/null | grep -q -- '--numprocesses' && echo "-n 6")
 VULTURE_PIPX ?= $(PIPX) run --spec vulture vulture
 PYLINT_PIPX ?= $(PIPX) run --spec pylint pylint
 DIFF_COVER_PIPX ?= $(PIPX) run --spec diff-cover diff-cover
@@ -99,9 +101,9 @@ check-pipx:
 # a requirement of running it. Demanding pipx from someone whose pytest came
 # from a virtualenv failed a suite that would have run.
 check-pytest:
-	@$(PYTEST) --version >/dev/null 2>&1 || { \
+	@$(PYTEST_PIPX) --version >/dev/null 2>&1 || { \
 		echo ""; \
-		echo "ERROR: no runnable pytest found (tried $(PYTEST))"; \
+		echo "ERROR: no runnable pytest found (tried $(PYTEST_PIPX))"; \
 		echo ""; \
 		echo "Install it with:"; \
 		echo "  make install                 # via pipx, what CI does"; \
@@ -113,7 +115,7 @@ check-pytest:
 		exit 1; \
 	}
 	@test -n "$(PYTEST_PARALLEL)" || { \
-		echo "NOTE: $(PYTEST) has no pytest-xdist; running serially (minutes, not"; \
+		echo "NOTE: $(PYTEST_PIPX) has no pytest-xdist; running serially (minutes, not"; \
 		echo "      seconds). Install it with \`make install\` or \`pip install pytest-xdist\`."; \
 	}
 
@@ -153,7 +155,7 @@ check-pylint: check-pipx
 	}
 
 test: check-pytest
-	@echo "Running Constructor Studio tests ($(PYTEST))..."
+	@echo "Running Constructor Studio tests ($(PYTEST_PIPX))..."
 	$(PYTEST_PIPX) tests/ $(PYTEST_PARALLEL) -v --tb=short
 
 # Runs the enforcement corpus on its own so the pipeline shows, as a named
@@ -166,7 +168,7 @@ test-gates: check-pytest
 
 # Run tests with verbose output
 test-verbose: check-pytest
-	@echo "Running Constructor Studio tests (verbose, $(PYTEST))..."
+	@echo "Running Constructor Studio tests (verbose, $(PYTEST_PIPX))..."
 	$(PYTEST_PIPX) tests/ -vv
 
 # Run quick tests only
@@ -361,7 +363,11 @@ check-prompt-tests:
 	}
 	@$(PYTHON) $(PROMPT_TESTS_DIR)/preflight.py
 
-install-prompt-tests: check-prompt-tests
+# Deliberately not `check-prompt-tests`: this caches an npm package, and making
+# that wait on a live codex model entitlement meant a download could not be
+# prepared offline, or before an account was sorted out. Node it does need.
+install-prompt-tests:
+	@$(PYTHON) $(PROMPT_TESTS_DIR)/preflight.py --node-only
 	@echo "Pre-caching promptfoo@$(PROMPTFOO_VERSION) via npx..."
 	@$(PROMPTFOO) --version >/dev/null
 	@echo "Done. Run prompt tests with:  make test-prompts"

@@ -9,6 +9,7 @@ neither invents a problem out of not knowing.
 
 from __future__ import annotations
 
+import builtins
 import json
 import sys
 from pathlib import Path
@@ -151,3 +152,91 @@ class TestAMisconfiguredEnvVar:
 
         assert preflight.main() == 1
         assert "CF_UX_CODEX_CONTEXT" in capsys.readouterr().err
+
+
+class TestWhatTheCheckCannotDoItSays:
+    """A preflight that stays silent on its own inability is worse than no
+    preflight: it reports success it never established."""
+
+    def test_an_unimportable_provider_is_reported(self, monkeypatch, capsys):
+        monkeypatch.delenv("CF_UX_CODEX_MODEL", raising=False)
+        monkeypatch.setattr(preflight, "check_node", list)
+        real_import = builtins.__import__
+
+        def refuse(name, *args, **kwargs):
+            if name == "codex_provider":
+                raise ImportError("boom")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.delitem(sys.modules, "codex_provider", raising=False)
+        monkeypatch.setattr(builtins, "__import__", refuse)
+
+        assert preflight.main() == 1
+        assert "will not import" in capsys.readouterr().err
+
+    def test_an_override_still_lets_the_run_proceed(self, monkeypatch, capsys):
+        """The env var is the escape hatch; it must keep working."""
+        monkeypatch.setenv("CF_UX_CODEX_MODEL", "gpt-5.6-sol")
+        monkeypatch.setattr(preflight, "check_node", list)
+        monkeypatch.setattr(preflight, "check_codex_model", lambda _m: [])
+        real_import = builtins.__import__
+
+        def refuse(name, *args, **kwargs):
+            if name == "codex_provider":
+                raise ImportError("boom")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.delitem(sys.modules, "codex_provider", raising=False)
+        monkeypatch.setattr(builtins, "__import__", refuse)
+
+        assert preflight.main() == 0
+
+    def test_node_only_skips_the_account_check(self, monkeypatch):
+        """`install-prompt-tests` caches an npm package. It needs a node, and has
+        no business requiring a live account."""
+        monkeypatch.setattr(preflight, "check_node", list)
+        monkeypatch.setattr(preflight, "check_codex_model",
+                            lambda _m: pytest.fail("the account must not be consulted"))
+
+        assert preflight.main(["--node-only"]) == 0
+
+
+class TestTheSuggestedModel:
+    def test_the_cli_s_own_priority_decides_not_the_alphabet(self, tmp_path, monkeypatch):
+        """Alphabetically `gpt-5.5` — the previous generation — led the list, which
+        is a worse default than the one the CLI itself would offer."""
+        path = tmp_path / "models_cache.json"
+        path.write_text(json.dumps({"models": [
+            {"slug": "gpt-5.5", "visibility": "list", "priority": 12},
+            {"slug": "gpt-5.6-sol", "visibility": "list", "priority": 0},
+        ]}), encoding="utf-8")
+        monkeypatch.setattr(preflight, "MODELS_CACHE", path)
+
+        problem = "\n".join(preflight.check_codex_model("gone"))
+
+        assert "CF_UX_CODEX_MODEL=gpt-5.6-sol" in problem
+
+
+class TestTheNvmScan:
+    def test_an_unreadable_nvm_directory_is_not_a_traceback(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NVM_DIR", str(tmp_path))
+        (tmp_path / "versions" / "node").mkdir(parents=True)
+        monkeypatch.setattr(Path, "glob", lambda *a, **k: (_ for _ in ()).throw(OSError("denied")))
+
+        assert preflight._nvm_candidates() == []
+
+    def test_the_number_of_probes_is_capped(self, tmp_path, monkeypatch):
+        """Each probe is a process with a timeout, and a long-lived nvm directory
+        accumulates dozens of versions."""
+        root = tmp_path / "versions" / "node"
+        for i in range(40):
+            (root / f"v{i}.0.0" / "bin").mkdir(parents=True)
+            (root / f"v{i}.0.0" / "bin" / "node").touch()
+        monkeypatch.setenv("NVM_DIR", str(tmp_path))
+        probed = []
+        monkeypatch.setattr(preflight, "_node_version",
+                            lambda binary="node": probed.append(binary) or None)
+
+        preflight._nvm_candidates()
+
+        assert len(probed) == preflight.NVM_PROBE_LIMIT
