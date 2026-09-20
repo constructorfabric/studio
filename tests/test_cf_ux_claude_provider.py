@@ -907,6 +907,38 @@ class TestTheCliVersionIsRecorded:
 
         assert out["metadata"]["claude_code_version"] is None
 
+    def test_an_over_long_version_is_capped(self, run_provider):
+        """It comes from the CLI rather than from a model, so the risk is small —
+        but a field bounded only by where it happens to come from is one source
+        change away from not being bounded."""
+        init = {"type": "system", "subtype": "init", "claude_code_version": "9" * 10_000}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        assert len(out["metadata"]["claude_code_version"]) == (
+            claude_provider._MAX_DIAGNOSTIC_CHARS)
+
+    def test_a_version_string_carrying_a_secret_is_redacted(self, run_provider, monkeypatch):
+        secret = "sk-ant-api03-SUPERSECRETVALUE0123456789"
+        monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+        init = {"type": "system", "subtype": "init",
+                "claude_code_version": f"2.1.276 ({secret})"}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        version = out["metadata"]["claude_code_version"]
+        assert secret not in version
+        assert "[redacted]" in version and version.startswith("2.1.276")
+
+    def test_an_empty_version_string_is_none_not_an_empty_string(self, run_provider):
+        """`_safe_head("")` is `""`, and an empty string in metadata reads as a
+        version that was reported as blank rather than one never reported."""
+        init = {"type": "system", "subtype": "init", "claude_code_version": ""}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["claude_code_version"] is None
+
     def test_a_non_string_version_is_not_passed_through(self, run_provider):
         init = {"type": "system", "subtype": "init", "claude_code_version": {"major": 2}}
 
@@ -941,10 +973,23 @@ class TestACutNeverLandsInsideASecret:
         assert self._SECRET[-10:] not in got
         assert len(got) <= limit
 
-    def test_the_cap_still_caps(self):
+    def test_the_head_cap_still_caps(self):
         got = claude_provider._safe_head("A" * 10_000, {})
 
         assert len(got) == claude_provider._MAX_DIAGNOSTIC_CHARS
+
+    def test_the_tail_cap_still_caps(self):
+        """The same ceiling from the other end — asserted, not assumed from its
+        sibling: they are separate functions and only one was pinned."""
+        got = claude_provider._safe_tail("A" * 10_000, {})
+
+        assert len(got) == claude_provider._MAX_DIAGNOSTIC_CHARS
+
+    def test_the_tail_keeps_the_end_and_the_head_keeps_the_start(self):
+        text = "START" + "A" * 10_000 + "END"
+
+        assert claude_provider._safe_head(text, {}).startswith("START")
+        assert claude_provider._safe_tail(text, {}).endswith("END")
 
     def test_a_straddling_secret_does_not_reach_skill_call_inputs(self, run_provider, monkeypatch):
         """End to end, through the field the cap was added to."""
