@@ -541,3 +541,49 @@ class TestCodexTomlRender(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOpenAITierValuesArePinned(unittest.TestCase):
+    """Exact-value anchors for the tiers a vendor rotation invalidates.
+
+    The cheap and balanced tiers already had them; expensive did not, and the
+    cursor cell's overrides were pinned only for codex. A withdrawal there would
+    have gone out with a green suite.
+    """
+
+    def test_expensive_resolves_to_its_pinned_model(self):
+        from studio.commands.agents import _resolve_model_id
+        for tool in ("codex", "cursor"):
+            with self.subTest(tool=tool):
+                self.assertEqual(
+                    _resolve_model_id(tool, "openai", "cf:tier:expensive", "generate", "codebase"),
+                    "gpt-6-astra",
+                )
+
+    def test_cursor_openai_cheap_overrides_bump_a_tier(self):
+        from studio.commands.agents import _resolve_model_id
+        for role, target in (("analyze", "codebase"), ("planning", "codebase"),
+                             ("planning", "artifacts")):
+            with self.subTest(role=role, target=target):
+                self.assertEqual(
+                    _resolve_model_id("cursor", "openai", "cf:tier:cheap", role, target),
+                    "gpt-5.6-terra",
+                )
+
+    def test_cursor_openai_cheap_without_an_override_stays_cheap(self):
+        from studio.commands.agents import _resolve_model_id
+        self.assertEqual(
+            _resolve_model_id("cursor", "openai", "cf:tier:cheap", "generate", "codebase"),
+            "gpt-5.6-luna",
+        )
+
+    def test_no_openai_cell_names_a_withdrawn_slug(self):
+        """The two that caused the outage, kept out by name rather than by memory."""
+        from studio.commands.agents import _MODEL_MATRIX
+        withdrawn = {"gpt-5.4", "gpt-5.4-mini"}
+        for (tool, provider), cell in _MODEL_MATRIX.items():
+            if provider != "openai" or tool == "copilot":
+                continue  # copilot names Copilot's own catalogue, not codex slugs
+            used = set(cell["base"].values()) | set(cell["overrides"].values())
+            with self.subTest(tool=tool):
+                self.assertEqual(used & withdrawn, set())
