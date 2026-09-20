@@ -855,10 +855,20 @@ class TestAWorkflowRunWithoutTheRouter:
         assert out["metadata"]["skill_state"] == "bypassed"
         assert out["metadata"]["skills_invoked"] == ["cf-documenting-review", "cf-generate"]
 
-    def test_the_prefix_is_derived_from_the_router_name(self):
-        """Two hand-maintained literals kept in sync by a comment is a rename
-        away from silently breaking bypass detection."""
-        assert claude_provider._SKILL_WORKFLOW_PREFIX == f"{claude_provider._SKILL_NAME}-"
+    def test_a_rename_of_the_router_moves_the_workflow_family_with_it(self, run_provider,
+                                                                      monkeypatch):
+        """Behaviour, not a restatement of the assignment: with the router named
+        `zz`, `zz-*` becomes the bypass family and `cf-*` stops being one."""
+        monkeypatch.setattr(claude_provider, "_SKILL_NAME", "zz")
+        monkeypatch.setattr(claude_provider, "_SKILL_WORKFLOW_PREFIX", "zz-")
+
+        renamed, _seen = run_provider(
+            _stream(_skill_call(skill="zz-documenting-review"), _skill_result(), _result()))
+        stale, _seen = run_provider(
+            _stream(_skill_call(skill="cf-documenting-review"), _skill_result(), _result()))
+
+        assert renamed["metadata"]["skill_state"] == "bypassed"
+        assert stale["metadata"]["skill_state"] == "failed"
 
     def test_a_router_error_outranks_a_successful_direct_workflow(self, run_provider):
         """Precedence, pinned rather than left to the order of the branches.
@@ -931,3 +941,80 @@ class TestBypassingNamesDirectly:
 
     def test_a_call_naming_nothing_contributes_nothing(self):
         assert self._names({"a": []}, {"a": False}) == []
+
+    def test_a_router_call_that_errored_outranks_a_bypass(self, run_provider):
+        """Without the CLI's literal marker text, an errored `cf` call plus a
+        successful workflow read as `bypassed` — and the detail said "'cf' was
+        never invoked", which is the opposite of what happened. A router that
+        failed is a finding about the router."""
+        out, _seen = run_provider(_stream(
+            _skill_call("A"), _skill_result("A", is_error=True),
+            _skill_call("B", skill="cf-documenting-review"), _skill_result("B"),
+            _result("findings"),
+        ))
+
+        assert out["metadata"]["skill_state"] == "failed"
+        assert "came back as an error" in out["error"]
+
+    def test_a_router_call_with_no_result_outranks_a_bypass(self, run_provider):
+        out, _seen = run_provider(_stream(
+            _skill_call("A"),
+            _skill_call("B", skill="cf-documenting-review"), _skill_result("B"),
+            _result("findings"),
+        ))
+
+        assert out["metadata"]["skill_state"] == "failed"
+
+    def test_only_an_unambiguous_router_call_outranks_a_bypass(self, run_provider):
+        """The documented false positive must not suppress a real bypass — that
+        was the earlier defect. A call naming `cf` *among others* is that case."""
+        rival = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "A", "name": "Skill", "input": {
+                "command": "superpowers:brainstorming", "mode": "cf",
+            }},
+        ]}}
+
+        out, _seen = run_provider(_stream(
+            rival, _skill_result("A", is_error=True),
+            _skill_call("B", skill="cf-documenting-review"), _skill_result("B"),
+            _result("findings"),
+        ))
+
+        assert out["metadata"]["skill_state"] == "bypassed"
+        assert out["output"] == "findings"
+
+    def test_the_detail_claims_only_what_the_evidence_carries(self):
+        """With `cf` named only by the loose match, "never invoked" would claim
+        more than is known — the call may well have been the router."""
+        events = [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "A", "name": "Skill", "input": {
+                    "command": "superpowers:brainstorming", "mode": "cf"}}]}},
+            {"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "A", "is_error": True, "content": "x"}]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "B", "name": "Skill",
+                 "input": {"skill": "cf-documenting-review"}}]}},
+            {"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "B", "content": "ok"}]}},
+        ]
+
+        trace = claude_provider._skill_trace(events, json.dumps(events))
+
+        assert trace.state == "bypassed"
+        assert "never invoked" not in trace.detail
+        assert "no unambiguous" in trace.detail
+
+    def test_the_detail_does_say_never_invoked_when_that_is_true(self):
+        events = [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "B", "name": "Skill",
+                 "input": {"skill": "cf-documenting-review"}}]}},
+            {"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "B", "content": "ok"}]}},
+        ]
+
+        trace = claude_provider._skill_trace(events, json.dumps(events))
+
+        assert trace.state == "bypassed"
+        assert "never invoked" in trace.detail

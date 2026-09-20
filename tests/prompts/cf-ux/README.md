@@ -129,11 +129,23 @@ or no trace to trust:
 | `absent` | No `Skill` call at all. | no |
 | `failed` | A `Skill` call that is neither of the above: it named nothing recognizable, came back an error, or came back not at all. | no |
 
-Order matters, and deliberately so: `<error>Execute skill: cf</error>` anywhere
-in the transcript is `failed` before any of this is considered — including
-before `bypassed`, so a router that errored and a workflow that then succeeded
-is a cf failure, not a routing observation. The workflow is still named in
-`skills_invoked`. No `Skill` call at all is `absent` before the rest. `skill_match_other_candidates` is populated for `ran`
+Order matters, and deliberately so. A router that was **tried and failed**
+outranks a bypass, because "the router failed" is a finding about the router and
+"the router was never invoked" is not a softer version of it — it is a different
+and false statement. That holds two ways: `<error>Execute skill: cf</error>`
+anywhere in the transcript is `failed` before anything else is considered, and
+so is an unambiguous `cf` call that came back an error or did not come back.
+The workflow is still named in `skills_invoked`, so the bypass is ranked rather
+than lost.
+
+"Unambiguous" carries weight there: a call naming `cf` *among other candidates*
+is the documented false positive, and letting that outrank a bypass would hide a
+real one behind an unrelated error. Only a call that names `cf` and nothing else
+suppresses the bypass — and when the bypass is reported despite some `cf` match
+existing, the detail says "no unambiguous `cf` call" rather than "never
+invoked".
+
+No `Skill` call at all is `absent` before the rest. `skill_match_other_candidates` is populated for `ran`
 and for `bypassed`, and is empty whenever the verdict rested on a single name.
 
 A bypass needs the *whole* call to name `cf-` identifiers and nothing else. `_invoked_names` reports every identifier-shaped string at any depth, so a rival skill carrying a `cf-` name in an unrelated field would otherwise read as one — the loose match the name matcher exists to avoid, widened across a whole prefix.

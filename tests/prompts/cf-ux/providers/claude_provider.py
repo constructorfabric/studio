@@ -281,7 +281,20 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
     # depth -- so a single unrelated call carrying `cf` somewhere, and erroring,
     # was enough to skip the check entirely and lose a real bypass along with a
     # gradeable answer.
-    bypassing = _bypassing_names(named, results)
+    # A `cf` call that was made and did not come back clean outranks a bypass,
+    # for the reason the error mark does: the router failing is a finding about
+    # the router, and reporting it as "the router was never invoked" is not a
+    # softer version of that -- it is a different and false statement.
+    #
+    # Only an *unambiguous* `cf` call counts here. A call naming `cf` among
+    # other candidates is the documented false positive -- any field, any depth
+    # -- and letting that suppress a bypass was the earlier defect: one
+    # unrelated erroring call carrying `cf` somewhere hid a real one.
+    attempted = [
+        call_id for call_id in targeted
+        if named[call_id] == [_SKILL_NAME] and results.get(call_id) is not False
+    ]
+    bypassing = [] if attempted else _bypassing_names(named, results)
     if bypassing:
         logger.warning(_LOG_ROUTER_BYPASSED, _SKILL_NAME, ", ".join(bypassing))
         # Reported the way an ambiguous `ran` is: when the verdict rests on more
@@ -292,10 +305,15 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
         others = tuple(bypassing[1:])
         if others:
             logger.warning(_LOG_AMBIGUOUS_BYPASS, _SKILL_NAME, list(others), bypassing[0])
+        ran_directly = ", ".join(repr(name) for name in bypassing)
         return _SkillTrace(
             "bypassed", names, inputs,
-            f"{_SKILL_NAME!r} was never invoked; "
-            f"{', '.join(repr(name) for name in bypassing)} ran directly",
+            # Said precisely: with no unambiguous `cf` call anywhere, the router
+            # may have been named by the loose match and nothing more. "Never
+            # invoked" would claim more than the evidence carries.
+            (f"{_SKILL_NAME!r} was never invoked; {ran_directly} ran directly"
+             if not targeted else
+             f"no unambiguous {_SKILL_NAME!r} call; {ran_directly} ran directly"),
             others,
         )
     if not targeted:
