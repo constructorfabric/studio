@@ -7,11 +7,18 @@ name: CI
 # pipeline never ran on -- the v1.7.0 release PR showed only the checks that come from
 # apps (DCO, SonarCloud, code-ranker), and no tests, lint, coverage or artifact
 # validation.
+#
+# Two patterns because the repository has two naming habits. CONTRIBUTING.md
+# documents `git checkout -b vX.Y.Z-beta`, which `v[0-9]*` covers; what was
+# actually cut for the last release was `release/v1.7.0` and
+# `release/v1.7.0-integration`, which `release/**` covers. Matching only one of
+# them would leave the other untested, which is the state this change exists to
+# end -- so both are matched until the convention is settled one way.
 on:
   push:
-    branches: [main, 'release/**']
+    branches: [main, 'release/**', 'v[0-9]*']
   pull_request:
-    branches: [main, 'release/**']
+    branches: [main, 'release/**', 'v[0-9]*']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
