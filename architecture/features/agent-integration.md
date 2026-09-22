@@ -405,12 +405,12 @@ Recovery from `Partial` to `Generated` occurs only after the user resolves or re
   installed-kit shortcut examples
 - [x] `--dry-run` mode shows planned output without writing files
 - [x] Re-running `cfs generate-agents` after kit install produces updated entry points
-- [x] OpenCode is an implemented sixth first-class host available
+- [x] OpenCode is an implemented sixth first-class host available only through `--agent opencode` or `--opencode`; it is not included in default generation
 - [x] A resolved `(codex, openai)` model that the local `codex` cache does not
   list produces one advisory warning per model -- on stderr and in the
   `warnings` of `--json` output -- naming what the account does have and how to
   silence the check. Generation is never altered or blocked by it, and it stays
-  silent whenever the cache is absent, unreadable or of an unfamiliar shape only through `--agent opencode` or `--opencode`; it is not included in default generation
+  silent whenever the cache is absent, unreadable or of an unfamiliar shape
 - [x] `cfs agents --agent opencode` read-only reports selected, generated, partial, and collision state
 - [x] OpenCode generation reuses `.agents/skills`, writes only marker-owned `.opencode/agents/cf-*.md` and `.opencode/.cf-studio-installed`, and preserves all other `.opencode/` content as user-owned
 - [x] An ownership-unproven `cf-*` collision returns an explicit partial result without overwrite or deletion and records only its path for rerun-safe exclusion
