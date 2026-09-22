@@ -119,3 +119,56 @@ class TestRedactionHandlesOverlappingValues:
         env = {"PATH": "/usr/local/bin:/usr/bin", "HOME": "/home/someone"}
 
         assert _sandbox.redact_secrets("looked in /usr/local/bin", env) == "looked in /usr/local/bin"
+
+
+class TestNoProviderCutsInsideASecret:
+    """`redact_secrets` matches whole values, so a cut taken *first* can land
+    inside a credential and leave a prefix it no longer recognises.
+
+    `claude_provider.py` was fixed for this. Its two siblings were not — the
+    helper lived in one module, so the other two quietly did without it, and the
+    bug outlived its own fix in the same diff. The helper is shared now, and this
+    pins all three against the shape that hid it.
+    """
+
+    _SECRET = "sk-ant-api03-SUPERSECRETVALUE0123456789"
+
+    def test_the_shared_head_helper_redacts_before_it_cuts(self):
+        limit = _sandbox.MAX_DIAGNOSTIC_CHARS
+        text = "A" * (limit - 10) + self._SECRET
+
+        got = _sandbox.safe_head(text, {"ANTHROPIC_API_KEY": self._SECRET})
+
+        assert self._SECRET[:10] not in got
+        assert len(got) <= limit
+
+    def test_the_shared_tail_helper_does_too(self):
+        limit = _sandbox.MAX_DIAGNOSTIC_CHARS
+        text = self._SECRET + "B" * (limit - 10)
+
+        got = _sandbox.safe_tail(text, {"OPENAI_API_KEY": self._SECRET})
+
+        assert self._SECRET[-10:] not in got
+        assert len(got) <= limit
+
+    def test_a_shorter_limit_is_honoured(self):
+        """`grader_claude` passes its own, shorter ceiling."""
+        got = _sandbox.safe_head("C" * 1000, {}, 400)
+
+        assert len(got) == 400
+
+    @pytest.mark.parametrize("module_name", ["claude_provider", "codex_provider",
+                                             "grader_claude"])
+    def test_no_provider_slices_a_diagnostic_before_redacting_it(self, module_name):
+        """The textual shape that caused it: a slice applied to the argument of
+        `redact_secrets`. Read from source, because the three providers reach
+        their stderr through different call paths and only the shape is common.
+        """
+        import re
+
+        source = (_PROVIDERS / f"{module_name}.py").read_text(encoding="utf-8")
+        offenders = re.findall(r"redact_secrets\([^)]*\[[-:0-9]+\]", source)
+
+        assert offenders == [], (
+            f"{module_name} cuts before redacting: {offenders}"
+        )

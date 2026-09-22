@@ -172,6 +172,29 @@ def redact_secrets(text: str, env: dict) -> str:
         text = text.replace(secret, REDACTED)
     return text
 
+#: The ceiling every diagnostic string these providers return is held to. Named
+#: here because all three of them return one, and a cap that lives in one
+#: provider is a cap the other two quietly do without.
+MAX_DIAGNOSTIC_CHARS = 500
+
+
+def safe_head(text: str, env: dict, limit: int = MAX_DIAGNOSTIC_CHARS) -> str:
+    """Redact, *then* cut -- never the other way round.
+
+    `redact_secrets` replaces whole values. Cutting first can land inside a
+    credential, and what survives is a prefix it no longer recognises: a key
+    straddling the boundary left its opening characters in the metadata,
+    redacted nowhere. Redacting first replaces the whole value, so the cut then
+    falls in text that carries no secret at all.
+    """
+    return redact_secrets(text, env)[:limit]
+
+
+def safe_tail(text: str, env: dict, limit: int = MAX_DIAGNOSTIC_CHARS) -> str:
+    """`safe_head` from the other end, and for the same reason."""
+    return redact_secrets(text, env)[-limit:]
+
+
 
 def _new_sandbox_path() -> Path:
     _SANDBOX_PARENT.mkdir(parents=True, exist_ok=True)

@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from _sandbox import SandboxError, child_env, redact_secrets, sandbox
+from _sandbox import SandboxError, child_env, redact_secrets, safe_head, safe_tail, sandbox
 
 CODEX_BIN = "codex"
 
@@ -76,7 +76,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     if proc.returncode != 0:
         return {
             "error": f"codex exited {proc.returncode}: "
-                     f"{redact_secrets(proc.stderr.strip()[:500], env)}",
+                     f"{safe_head(proc.stderr.strip(), env)}",
             "metadata": {"duration_s": round(duration, 2)},
         }
 
@@ -85,7 +85,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     metadata: dict[str, Any] = {
         "duration_s": round(duration, 2),
         "sandbox": str(cwd),
-        "stderr_tail": (redact_secrets(proc.stderr.strip()[-500:], env)
+        "stderr_tail": (safe_tail(proc.stderr.strip(), env)
                         if proc.stderr else None),
     }
     return {"output": output_text, "metadata": metadata}

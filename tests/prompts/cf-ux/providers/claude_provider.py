@@ -11,7 +11,8 @@ import time
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from _sandbox import SandboxError, child_env, redact_secrets, sandbox
+from _sandbox import (MAX_DIAGNOSTIC_CHARS, SandboxError, child_env, redact_secrets,
+                      safe_head, safe_tail, sandbox)
 
 logger = logging.getLogger(__name__)
 
@@ -103,24 +104,14 @@ _LOG_AMBIGUOUS_MATCH = (
 #: The ceiling every other diagnostic string in this module is already held to.
 #: `skill_call_inputs` was the exception, and the one field carrying content a
 #: model -- and so, transitively, a crafted prompt -- decides the length of.
-_MAX_DIAGNOSTIC_CHARS = 500
-
-
-def _safe_head(text: str, env: dict[str, str], limit: int = _MAX_DIAGNOSTIC_CHARS) -> str:
-    """Redact, *then* cut -- never the other way round.
-
-    Cutting first can land inside a credential, and what survives is a prefix
-    `redact_secrets` no longer recognises: it matches whole values. A 32-char
-    key straddling the boundary left its first characters in the metadata,
-    already redacted nowhere. Redacting first replaces the whole value, and the
-    cut then falls in text that carries no secret at all.
-    """
-    return redact_secrets(text, env)[:limit]
-
-
-def _safe_tail(text: str, env: dict[str, str], limit: int = _MAX_DIAGNOSTIC_CHARS) -> str:
-    """`_safe_head` from the other end, and for the same reason."""
-    return redact_secrets(text, env)[-limit:]
+#: Shared with the sibling providers rather than owned here. All three return
+#: diagnostics, and a redact-then-cut helper that lives in one of them is a
+#: helper the other two quietly do without -- which is exactly how they kept the
+#: truncate-then-redact bug this module had already fixed. Aliased so the call
+#: sites below read as they did.
+_MAX_DIAGNOSTIC_CHARS = MAX_DIAGNOSTIC_CHARS
+_safe_head = safe_head
+_safe_tail = safe_tail
 
 #: The CLI's own version, as its `init` event reports it. Recorded because the
 #: verdict in `_skill_trace` rests on an output shape that was measured rather

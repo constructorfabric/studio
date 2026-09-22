@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from _sandbox import child_env, redact_secrets
+from _sandbox import child_env, redact_secrets, safe_head
 import time
 from typing import Any
 
@@ -32,6 +32,11 @@ CALL_TIMEOUT_S = 180
 # your scenario set.
 GRADER_MODEL = os.environ.get("CF_UX_GRADER_MODEL", "claude-sonnet-4-6")
 GRADER_EFFORT = os.environ.get("CF_UX_GRADER_EFFORT", "medium")
+
+
+#: This file's own ceiling, shorter than the providers': a grader's stderr is a
+#: rubric failure, not a transcript, and 400 has always been enough of it.
+_STDERR_CHARS = 400
 
 
 def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
@@ -63,7 +68,7 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
     if proc.returncode != 0:
         return {
             "error": f"grader exited {proc.returncode}: "
-                     f"{redact_secrets(proc.stderr.strip()[:400], env)}",
+                     f"{safe_head(proc.stderr.strip(), env, _STDERR_CHARS)}",
             "metadata": {"duration_s": round(duration, 2)},
         }
     return {
