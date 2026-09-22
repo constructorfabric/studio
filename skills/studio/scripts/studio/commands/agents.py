@@ -177,6 +177,13 @@ def _attach_entitlement_warnings(result: Dict[str, Any]) -> None:
     account cannot use this model" is exactly what an automated caller should be
     able to act on.
 
+    Called from every emitter, not only the one that writes files: a preview, a
+    dry run and a no-change JSON response each resolve models, so each can have
+    collected a notice -- and a dry run is the natural way to ask what a generate
+    would do, which makes it the worst place for the answer to be missing.
+    Draining is what keeps that safe: whichever emitter runs first takes the
+    notices, and a later one finds nothing to repeat.
+
     The key is created only when there is something to put in it, so a clean run
     keeps the output shape it has always had.
     """
@@ -7377,6 +7384,7 @@ def _emit_v2_generation_result(
     results: Dict[str, Any],
     dry_run: bool,
 ) -> None:
+    _attach_entitlement_warnings(agents_result)
     ui.result(
         agents_result,
         human_fn=lambda d: _human_generate_agents_ok(
@@ -7626,6 +7634,7 @@ def _emit_legacy_preview_result(
         dry_run=dry_run,
         gitignore_action=preview_gitignore_action,
     )
+    _attach_entitlement_warnings(agents_result)
     ui.result(
         agents_result,
         human_fn=lambda d: _human_generate_agents_ok(

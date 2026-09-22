@@ -262,7 +262,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - Model matrix cell for (copilot, openai): tier-to-model base + role/target overrides - `inst-matrix-copilot-openai`
 - [x] - `p1` - Per-tool `cf:auto` literal mapping (degrade to inherit where tool has no `auto`) - `inst-auto-value-map`
 - [x] - `p1` - `_resolve_model_id` translating (tool, provider, tier, role, target) to concrete model id - `inst-resolve-model-id`
-- [x] - `p1` - Advisory warning when the local `codex` cache does not list a resolved (codex, openai) model - `inst-model-entitlement-warning`
+- [x] - `p1` - Advisory warning when the local `codex` cache does not list a resolved (codex, openai) model, suppressed by `CF_SKIP_MODEL_ENTITLEMENT_CHECK` - `inst-model-entitlement-warning`
 - [x] - `p1` - Locate `codex`'s model cache, honouring `CODEX_HOME` - `inst-entitlement-cache-path`
 - [x] - `p1` - Read the cache into the set of listed slugs, or `None` when it says nothing usable - `inst-entitlement-read-cache`
 - [x] - `p1` - Decide whether the cache positively contradicts a model id, silent on every uncertainty - `inst-entitlement-verdict`
@@ -409,8 +409,11 @@ Recovery from `Partial` to `Generated` occurs only after the user resolves or re
 - [x] A resolved `(codex, openai)` model that the local `codex` cache does not
   list produces one advisory warning per model -- on stderr and in the
   `warnings` of `--json` output -- naming what the account does have and how to
-  silence the check. Generation is never altered or blocked by it, and it stays
-  silent whenever the cache is absent, unreadable or of an unfamiliar shape
+  silence the check -- `CF_SKIP_MODEL_ENTITLEMENT_CHECK=1` skips it outright, for
+  an account whose entitlements this cache does not describe. Generation is never
+  altered or blocked by it, it reaches preview, dry-run and no-change responses
+  as well as a completed write, and it stays silent whenever the cache is absent,
+  unreadable or of an unfamiliar shape
 - [x] `cfs agents --agent opencode` read-only reports selected, generated, partial, and collision state
 - [x] OpenCode generation reuses `.agents/skills`, writes only marker-owned `.opencode/agents/cf-*.md` and `.opencode/.cf-studio-installed`, and preserves all other `.opencode/` content as user-owned
 - [x] An ownership-unproven `cf-*` collision returns an explicit partial result without overwrite or deletion and records only its path for rerun-safe exclusion

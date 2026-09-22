@@ -365,3 +365,93 @@ class TestTheResultDictGetsTheFinding:
         agents._attach_entitlement_warnings(result)
 
         assert [w["kind"] for w in result["warnings"]] == ["something-else", "model-not-entitled"]
+
+
+class TestEveryEmitterCarriesTheFinding:
+    """A notice collected during model resolution must reach whichever response
+    is actually emitted. Attaching it only to the successful legacy write meant a
+    `--dry-run` — the natural way to ask what a generate would do — answered
+    without it."""
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from studio.commands import agents
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+        yield
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+
+    @staticmethod
+    def _collect_one(tmp_path, monkeypatch):
+        from studio.commands import agents
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
+        monkeypatch.setitem(agents._MODEL_MATRIX[("codex", "openai")]["base"],
+                            "cf:tier:balanced", "gone-model")
+        agents._resolve_model_id("codex", "openai", "cf:tier:balanced", "generate", "codebase")
+
+    def test_the_v2_emitter_attaches_it(self, tmp_path, monkeypatch):
+        from studio.commands import agents
+        self._collect_one(tmp_path, monkeypatch)
+        emitted = {}
+        monkeypatch.setattr(agents.ui, "result",
+                            lambda payload, **_kw: emitted.update(payload))
+
+        agents._emit_v2_generation_result(
+            agents_result={"status": "OK"}, agents_to_process=[], results={}, dry_run=True)
+
+        assert [w["kind"] for w in emitted["warnings"]] == ["model-not-entitled"]
+
+    def test_a_clean_v2_run_keeps_its_shape(self, monkeypatch):
+        from studio.commands import agents
+        emitted = {}
+        monkeypatch.setattr(agents.ui, "result",
+                            lambda payload, **_kw: emitted.update(payload))
+
+        agents._emit_v2_generation_result(
+            agents_result={"status": "OK"}, agents_to_process=[], results={}, dry_run=False)
+
+        assert "warnings" not in emitted
+
+    def test_draining_means_one_emitter_does_not_repeat_another(self, tmp_path, monkeypatch):
+        """Both emitters call the same drain, so a run passing through two of them
+        reports the finding once, not twice."""
+        from studio.commands import agents
+        self._collect_one(tmp_path, monkeypatch)
+        monkeypatch.setattr(agents.ui, "result", lambda payload, **_kw: None)
+        first = {"status": "OK"}
+        second = {"status": "OK"}
+
+        agents._attach_entitlement_warnings(first)
+        agents._attach_entitlement_warnings(second)
+
+        assert len(first["warnings"]) == 1
+        assert "warnings" not in second
+
+
+class TestTheMessageListBoundary:
+    """`_MAX_LISTED_IN_MESSAGE` decides where a readable line stops. Its two
+    interesting inputs are exactly at the cap and one past it."""
+
+    def test_at_the_cap_everything_is_named_and_nothing_is_elided(self, tmp_path, monkeypatch):
+        cap = model_entitlements._MAX_LISTED_IN_MESSAGE
+        slugs = [f"m-{i:02d}" for i in range(cap)]
+        _cache(tmp_path, monkeypatch, [{"slug": s, "visibility": "list"} for s in slugs])
+
+        message = model_entitlements.listed_for_message(
+            model_entitlements.entitled_codex_models())
+
+        assert "more" not in message
+        for slug in slugs:
+            assert slug in message
+
+    def test_one_past_the_cap_elides_exactly_one(self, tmp_path, monkeypatch):
+        cap = model_entitlements._MAX_LISTED_IN_MESSAGE
+        slugs = [f"m-{i:02d}" for i in range(cap + 1)]
+        _cache(tmp_path, monkeypatch, [{"slug": s, "visibility": "list"} for s in slugs])
+
+        message = model_entitlements.listed_for_message(
+            model_entitlements.entitled_codex_models())
+
+        assert "and 1 more" in message
+        assert slugs[-1] not in message
