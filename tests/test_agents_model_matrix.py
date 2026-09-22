@@ -560,6 +560,26 @@ class TestOpenAITierValuesArePinned(unittest.TestCase):
                     "gpt-6-astra",
                 )
 
+    def test_codex_openai_cheap_overrides_bump_a_tier(self):
+        """All three, not only (cheap, analyze, codebase). The two planning
+        overrides were the ones no test named for codex, while the parallel
+        cursor cell had all three pinned — the asymmetry a rotation exploits."""
+        from studio.commands.agents import _resolve_model_id
+        for role, target in (("analyze", "codebase"), ("planning", "codebase"),
+                             ("planning", "artifacts")):
+            with self.subTest(role=role, target=target):
+                self.assertEqual(
+                    _resolve_model_id("codex", "openai", "cf:tier:cheap", role, target),
+                    "gpt-5.6-terra",
+                )
+
+    def test_codex_openai_cheap_without_an_override_stays_cheap(self):
+        from studio.commands.agents import _resolve_model_id
+        self.assertEqual(
+            _resolve_model_id("codex", "openai", "cf:tier:cheap", "generate", "codebase"),
+            "gpt-5.6-luna",
+        )
+
     def test_cursor_openai_cheap_overrides_bump_a_tier(self):
         from studio.commands.agents import _resolve_model_id
         for role, target in (("analyze", "codebase"), ("planning", "codebase"),

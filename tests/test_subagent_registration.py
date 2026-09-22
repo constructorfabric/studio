@@ -451,10 +451,41 @@ class TestRenderTomlAgent(unittest.TestCase):
 
         result = _render_toml_agent(agent, "@/agents/cypilot-codegen.md")
 
-        self.assertIn('model = "gpt-5.6-terra"', result)
-        # The Codex-specialized slug this cell once named; gone, and the
-        # assertion stays as the pin that it is not coming back by accident.
-        self.assertNotIn("gpt-5.3-codex", result)
+        # Derived, not retyped. This test's subject is that the renderer emits
+        # the *resolved* model; which model that is belongs to the matrix, and is
+        # pinned once in test_agents_model_matrix.TestOpenAITierValuesArePinned.
+        # Retyping it here is the same unsynchronized-literal habit that left 43
+        # of 44 agents on a withdrawn slug.
+        from studio.commands.agents import _resolve_model_id
+
+        expected = _resolve_model_id(
+            "codex", agent["provider"], agent["model"], agent["role"], agent["target"])
+        self.assertIn(f'model = "{expected}"', result)
+
+    def test_no_render_path_emits_a_withdrawn_openai_slug(self):
+        """The negative check, across every shape this file renders rather than
+        the single combination it used to cover. `gpt-5.3-codex` was Codex's
+        specialized model and no longer exists; `gpt-5.4*` is the pair that broke
+        the shipped agents."""
+        withdrawn = ("gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini")
+        combinations = [
+            (tier, role, target)
+            for tier in ("cf:tier:cheap", "cf:tier:balanced", "cf:tier:expensive")
+            for role in ("generate", "analyze", "planning")
+            for target in ("codebase", "artifacts")
+        ]
+
+        for tier, role, target in combinations:
+            agent = _make_semantic_agent("cypilot-codegen", model=tier)
+            agent["provider"] = "openai"
+            agent["role"] = role
+            agent["target"] = target
+
+            result = _render_toml_agent(agent, "@/agents/cypilot-codegen.md")
+
+            for slug in withdrawn:
+                with self.subTest(tier=tier, role=role, target=target, slug=slug):
+                    self.assertNotIn(f'model = "{slug}"', result)
 
 
 # ── Integration tests ───────────────────────────────────────────────

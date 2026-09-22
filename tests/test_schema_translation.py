@@ -280,9 +280,27 @@ class TestTranslateCodexSchema(unittest.TestCase):
         balanced model and not the cheap one -- the deliberate change captured in
         spec §7. Agents that want the cheap tier say `model = "cheap"`.
         """
+        from studio.commands.agents import _resolve_model_id
+
         agent = _make_agent(model="fast")
         result = _translate_codex_schema(agent)
-        self.assertEqual(result["model"], "gpt-5.6-terra")
+
+        # Derived, not retyped: this test's subject is the *alias*, not which
+        # model the balanced tier happens to hold. Spelling the slug here would
+        # make a model rotation fail a test about `fast`, in a file that says
+        # nothing about model choice. The literals are pinned once, in
+        # test_agents_model_matrix.TestOpenAITierValuesArePinned.
+        self.assertEqual(
+            result["model"],
+            _resolve_model_id("codex", "openai", "cf:tier:balanced",
+                              agent.role, agent.target),
+        )
+        self.assertNotEqual(
+            result["model"],
+            _resolve_model_id("codex", "openai", "cf:tier:cheap",
+                              agent.role, agent.target),
+            "`fast` must not resolve to the cheap tier -- that is the change this pins",
+        )
 
     def test_codex_model_inherit_omits_model_key(self):
         """`inherit` causes the selector to return None; no `model` key is
