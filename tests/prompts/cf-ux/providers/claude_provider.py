@@ -377,7 +377,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # Built once: the same mapping spawns the child and defines what must not come back
     # out of it. A CLI that echoes its own key in an error -- an ordinary shape for one
     # -- would otherwise put it in a stored promptfoo report (#229 review).
-    env = child_env(*_CHILD_ENV_PREFIXES)
+    env = child_env(*_CHILD_ENV_PREFIXES, tmpdir=cwd)
     try:
         proc = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,

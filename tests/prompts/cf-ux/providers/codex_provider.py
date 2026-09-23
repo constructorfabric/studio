@@ -66,7 +66,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # Built once: the same mapping spawns the child and defines what must not come back
     # out of it, exactly as in `claude_provider`. Applying the allowlist to all three
     # providers and the redaction to one of them was the same half-fix twice (#229).
-    env = child_env(*_CHILD_ENV_PREFIXES)
+    env = child_env(*_CHILD_ENV_PREFIXES, tmpdir=cwd)
     proc = subprocess.run(
         cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
         stdin=subprocess.DEVNULL, env=env,

@@ -12,6 +12,7 @@ own — what the child is given, and what comes back out of it.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -166,9 +167,182 @@ class TestNoProviderCutsInsideASecret:
         """
         import re
 
-        source = (_PROVIDERS / f"{module_name}.py").read_text(encoding="utf-8")
+        path = _PROVIDERS / f"{module_name}.py"
+        # A guard here is not defensive padding: this test's whole subject is the
+        # source text, so a read that fails is the invariant going *unchecked*, and
+        # it should say that rather than surface as a raw traceback attributed to
+        # nothing (#229 review).
+        try:
+            source = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            pytest.fail(f"{module_name} is not valid UTF-8, so it could not be "
+                        f"checked for cut-before-redact: {exc}")
+        except OSError as exc:
+            pytest.fail(f"{module_name} could not be read at {path}, so it was not "
+                        f"checked for cut-before-redact: {exc}")
         offenders = re.findall(r"redact_secrets\([^)]*\[[-:0-9]+\]", source)
 
         assert offenders == [], (
             f"{module_name} cuts before redacting: {offenders}"
         )
+
+
+codex_provider = pytest.importorskip("codex_provider")
+
+
+@pytest.fixture
+def run_codex(monkeypatch, tmp_path):
+    """Drive `codex_provider._invoke` with a fake `codex`, returning what it was given.
+
+    The module had no test of any kind: the allowlist and the
+    build-one-env-for-both-spawn-and-redaction invariant were asserted for
+    `claude_provider` and `grader_claude`, and for this one only by a regex over
+    its source text (#229 review).
+    """
+    def _make(stdout: str = "answer", stderr: str = "", returncode: int = 0):
+        seen = {}
+
+        def _fake_run(cmd, **kwargs):
+            seen["cmd"] = cmd
+            seen["kwargs"] = kwargs
+            return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
+
+        monkeypatch.setattr(codex_provider.subprocess, "run", _fake_run)
+        return codex_provider._invoke("do a thing", tmp_path, 0.0), seen
+
+    return _make
+
+
+class TestTheCodexChildGetsAnAllowlistToo:
+    @pytest.mark.parametrize("name", ["GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY",
+                                      "ANTHROPIC_API_KEY", "CF_SOMETHING_UNANTICIPATED"])
+    def test_an_unrelated_variable_is_not_passed_through(self, run_codex, monkeypatch, name):
+        monkeypatch.setenv(name, "should_not_travel")
+
+        _out, seen = run_codex()
+
+        assert name not in seen["kwargs"]["env"]
+        assert "should_not_travel" not in seen["kwargs"]["env"].values()
+
+    def test_its_own_credential_does_come_through(self, run_codex, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-test")
+
+        _out, seen = run_codex()
+
+        assert seen["kwargs"]["env"]["OPENAI_API_KEY"] == "sk-openai-test"
+        assert "PATH" in seen["kwargs"]["env"]
+
+    def test_an_env_is_passed_at_all(self, run_codex):
+        _out, seen = run_codex()
+
+        assert seen["kwargs"].get("env") is not None
+
+
+class TestTheCodexDiagnosticIsRedactedBeforeItIsCut:
+    """The invariant the source regex only approximated, at the real call site.
+
+    A secret straddling the truncation boundary is the case that distinguishes
+    redact-then-cut from cut-then-redact: cutting first leaves a live prefix of
+    the key in the diagnostic, and the regex guard cannot see that happen -- it
+    only sees one textual shape (#229 review).
+    """
+
+    def test_a_key_on_stderr_of_a_failed_run_is_redacted(self, run_codex, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-SUPERSECRETVALUE")
+
+        out, _seen = run_codex(stderr="auth failed for sk-openai-SUPERSECRETVALUE",
+                               returncode=1)
+
+        assert "SUPERSECRETVALUE" not in out["error"]
+        assert "[redacted]" in out["error"]
+
+    def test_a_key_straddling_the_cut_is_not_half_left_behind(self, run_codex, monkeypatch):
+        """The specific regression: truncating first and redacting the truncation."""
+        secret = "sk-openai-" + "S" * 40
+        monkeypatch.setenv("OPENAI_API_KEY", secret)
+        noise = "E" * (_sandbox.MAX_DIAGNOSTIC_CHARS - 20)
+
+        out, _seen = run_codex(stderr=f"{noise}{secret}", returncode=1)
+
+        assert "sk-openai-S" not in out["error"], (
+            "a prefix of the key survived, so the cut happened before the redaction")
+
+    def test_a_key_on_the_stderr_tail_of_a_successful_run_is_redacted(
+            self, run_codex, monkeypatch):
+        """The tail is kept as metadata on success, and is the other way out."""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-SUPERSECRETVALUE")
+
+        out, _seen = run_codex(stdout="fine", stderr="warn: sk-openai-SUPERSECRETVALUE")
+
+        assert "SUPERSECRETVALUE" not in out["metadata"]["stderr_tail"]
+
+    def test_the_env_that_spawned_the_child_is_the_env_that_redacts(
+            self, run_codex, monkeypatch):
+        """One mapping for both, which is the refactor's stated purpose.
+
+        Proven by the same value doing both jobs: it reaches the child, and a
+        diagnostic containing it comes back redacted.
+        """
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-BOTHWAYSVALUE")
+
+        out, seen = run_codex(stderr="boom sk-openai-BOTHWAYSVALUE", returncode=1)
+
+        assert seen["kwargs"]["env"]["OPENAI_API_KEY"] == "sk-openai-BOTHWAYSVALUE"
+        assert "BOTHWAYSVALUE" not in out["error"]
+
+
+class TestTheGradedChildIsNotSilentlyRepointed:
+    """A prefix match forwarded the variables that choose which service answers.
+
+    `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK` in a maintainer's shell went
+    to the child along with the key, so the suite could grade one service and
+    report the numbers as another's, with nothing in the transcript saying so
+    (#229 review).
+    """
+
+    @pytest.mark.parametrize("name", sorted(_sandbox.BACKEND_ROUTING_NAMES))
+    def test_a_routing_variable_is_not_forwarded(self, monkeypatch, name):
+        monkeypatch.setenv(name, "https://somewhere.else")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+        env = _sandbox.child_env("ANTHROPIC_", "CLAUDE_")
+
+        assert name not in env
+        assert env["ANTHROPIC_API_KEY"] == "sk-test", "the credential still travels"
+
+    def test_dropping_one_is_said_out_loud(self, monkeypatch, capsys):
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://somewhere.else")
+
+        _sandbox.child_env("ANTHROPIC_")
+
+        assert "ANTHROPIC_BASE_URL" in capsys.readouterr().err
+
+    def test_nothing_is_said_when_there_is_nothing_to_drop(self, monkeypatch, capsys):
+        for name in _sandbox.BACKEND_ROUTING_NAMES:
+            monkeypatch.delenv(name, raising=False)
+
+        _sandbox.child_env("ANTHROPIC_")
+
+        assert capsys.readouterr().err == ""
+
+
+class TestTheChildsScratchStaysInTheSandbox:
+    def test_tmpdir_points_inside_the_sandbox_when_one_is_given(self, tmp_path):
+        env = _sandbox.child_env("ANTHROPIC_", tmpdir=tmp_path)
+
+        assert Path(env["TMPDIR"]).is_relative_to(tmp_path)
+        assert Path(env["TMPDIR"]).is_dir(), "the child cannot create it itself"
+
+    def test_the_runners_tmpdir_is_used_when_none_is_given(self, monkeypatch):
+        monkeypatch.setenv("TMPDIR", "/somewhere/of/the/runners")
+
+        env = _sandbox.child_env("ANTHROPIC_")
+
+        assert env["TMPDIR"] == "/somewhere/of/the/runners"
+
+    def test_home_is_left_alone(self, tmp_path):
+        """Remapping it does not sandbox the run, it ends it: these children
+        authenticate with credentials stored under the runner's home."""
+        env = _sandbox.child_env("ANTHROPIC_", tmpdir=tmp_path)
+
+        assert env.get("HOME") == os.environ.get("HOME")

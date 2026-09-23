@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from _sandbox import child_env, redact_secrets, safe_head
+from _sandbox import MAX_DIAGNOSTIC_CHARS, child_env, redact_secrets, safe_head
 import time
 from typing import Any
 
@@ -36,7 +36,13 @@ GRADER_EFFORT = os.environ.get("CF_UX_GRADER_EFFORT", "medium")
 
 #: This file's own ceiling, shorter than the providers': a grader's stderr is a
 #: rubric failure, not a transcript, and 400 has always been enough of it.
-_STDERR_CHARS = 400
+_STDERR_CHARS = MAX_DIAGNOSTIC_CHARS - 100
+
+# Derived rather than written, because "shorter than the providers'" was a claim in a
+# comment and nothing held it to it: lowering `MAX_DIAGNOSTIC_CHARS` for an unrelated
+# size budget would have left this one larger than the cap it documents itself as
+# staying under, with every test still green (#229 review).
+assert _STDERR_CHARS < MAX_DIAGNOSTIC_CHARS
 
 
 def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:

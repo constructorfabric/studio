@@ -123,7 +123,28 @@ def _sweep_stale_sandboxes() -> None:
 ENV_NAMES = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "SHELL")
 
 
-def child_env(*prefixes: str) -> dict:
+#: Prefixed variables that do not carry credentials or configuration but decide
+#: *which backend answers*. A prefix match forwards them along with the API key, so
+#: a runner that happens to export `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK`
+#: silently grades a different service than the one the numbers are compared
+#: against -- and nothing in the transcript would say so (#229 review).
+#:
+#: Dropped rather than allowed, and said out loud rather than dropped quietly: a
+#: suite whose whole output is a comparison cannot let the thing being compared
+#: move without telling anyone.
+BACKEND_ROUTING_NAMES = frozenset({
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_API_URL",
+    "ANTHROPIC_BEDROCK_BASE_URL",
+    "ANTHROPIC_VERTEX_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
+    "CLAUDE_CODE_SKIP_VERTEX_AUTH",
+})
+
+
+def child_env(*prefixes: str, tmpdir: Path | None = None) -> dict:
     """The environment for a CLI child: :data:`ENV_NAMES` plus the namespaces named in
     ``prefixes`` -- the credential and configuration that particular CLI is entitled to,
     and nothing else the runner happens to be carrying.
@@ -131,12 +152,38 @@ def child_env(*prefixes: str) -> dict:
     Shared rather than per-provider so the three CLI-spawning providers here cannot
     drift: the first version of this lived in `claude_provider` alone, and its siblings
     kept inheriting everything (constructorfabric/studio#229 review).
+
+    Two things the prefix match is not allowed to do. It does not forward the
+    variables in :data:`BACKEND_ROUTING_NAMES`, which would redirect the child to a
+    different service while the run still reports as a measurement of this one. And
+    when *tmpdir* is given, ``TMPDIR`` points inside it rather than at the runner's,
+    so a child that writes scratch files leaves them in the sandbox that is wiped
+    rather than in a directory that outlives the run.
+
+    ``HOME`` is deliberately **not** remapped. These children are real CLIs
+    authenticating with real credentials, and their credential store lives under the
+    runner's home; pointing it elsewhere does not sandbox the run, it ends it
+    (#229 review).
     """
-    return {
+    env = {
         name: value
         for name, value in os.environ.items()
-        if name in ENV_NAMES or (prefixes and name.startswith(prefixes))
+        if (name in ENV_NAMES or (prefixes and name.startswith(prefixes)))
+        and name not in BACKEND_ROUTING_NAMES
     }
+    dropped = sorted(BACKEND_ROUTING_NAMES & set(os.environ))
+    if dropped:
+        print(
+            f"cf-ux: not forwarding {', '.join(dropped)} to the graded CLI -- these "
+            "choose which service answers, and the run reports as a measurement of "
+            "the default one",
+            file=sys.stderr,
+        )
+    if tmpdir is not None:
+        scratch = Path(tmpdir) / ".tmp"
+        scratch.mkdir(parents=True, exist_ok=True)
+        env["TMPDIR"] = str(scratch)
+    return env
 
 
 #: Minimum length a forwarded value must have before it is worth redacting. Short
