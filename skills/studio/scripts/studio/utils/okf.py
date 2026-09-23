@@ -34,7 +34,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from .atomic_io import atomic_write_text, with_file_lock
+from .atomic_io import atomic_write_text, read_json_tolerantly, with_file_lock
 from .doc_index import get_or_build_doc_index
 
 logger = logging.getLogger(__name__)
@@ -162,21 +162,21 @@ def load_okf_manifest(path: Path) -> Optional[Dict[str, Any]]:
     manifest_path = bundle_dir / _MANIFEST_NAME
     if not manifest_path.is_file():
         return None
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
-        # Reached only once the caller has already confirmed the manifest
-        # file exists, so a failure here is real corruption or a
-        # permissions problem, not a routine miss -- warning, not debug,
-        # mirroring doc_index._read_cache_file's identical check.
-        #
-        # `UnicodeDecodeError` included because that is what the mirrored check
-        # now catches: it is a ValueError subclass, so neither OSError nor
-        # json.JSONDecodeError covers it, and a manifest holding invalid UTF-8
-        # propagated out instead of being treated as a miss. Fixing the sibling
-        # and not the function that says it mirrors it is how the two drift
-        # (#236 review).
-        logger.warning("okf manifest unreadable for %s: %s", path, exc)
+    # Reached only once the caller has already confirmed the manifest
+    # file exists, so a failure here is real corruption or a
+    # permissions problem, not a routine miss -- warning, not debug.
+    #
+    # This check and doc_index._read_cache_file no longer mirror each other by
+    # hand: both call `read_json_tolerantly`, so the set of exceptions a
+    # tolerant read absorbs is written once. Keeping them in step manually is
+    # what failed last time -- `UnicodeDecodeError` was named in the sibling and
+    # missed here (#236 review).
+    manifest = read_json_tolerantly(
+        manifest_path,
+        on_unreadable=lambda exc: logger.warning(
+            "okf manifest unreadable for %s: %s", path, exc),
+    )
+    if manifest is None:
         return None
     if not _is_valid_manifest_shape(manifest):
         logger.warning("okf manifest for %s has an invalid/incomplete shape; treating as absent", path)

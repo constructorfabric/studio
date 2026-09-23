@@ -1646,7 +1646,7 @@ class TestCmdDocIndex:
 
 
 class TestACacheThatCannotBeDecodedIsACacheMiss:
-    """The sibling reader, `_read_escalation_counts`, already documents why
+    """The sibling reader, `_load_escalation_file`, already documents why
     `UnicodeDecodeError` needs naming: it is a ValueError subclass, so neither
     `OSError` nor `json.JSONDecodeError` catches it. That reasoning was applied there
     and missed in `_read_cache_file`, so a doc-index cache holding invalid UTF-8 — a

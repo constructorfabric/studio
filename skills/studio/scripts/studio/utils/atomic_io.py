@@ -16,12 +16,13 @@ don't need.
 from __future__ import annotations
 
 import errno
+import json
 import logging
 import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import Any, Callable, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,33 @@ def _discard(tmp_path: Path) -> None:
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
+def read_json_tolerantly(
+        path: Path, *, on_unreadable: Callable[[Exception], None]) -> Any:
+    """Read *path* as JSON, or return ``None`` once *on_unreadable* has been told why.
+
+    The tolerant-read contract two caches need identically: a cache whose file
+    exists but cannot be turned back into an object is a cache miss, not an
+    error to propagate. What it deliberately does not own is the reporting --
+    each caller passes *on_unreadable* so the warning keeps its own logger and
+    its own wording, naming the thing the reader cares about (a doc-index cache
+    path, an OKF bundle's source path) rather than whatever this helper was
+    handed.
+
+    So the single-sourced part is the exception tuple, which is the part that
+    drifted. ``UnicodeDecodeError`` is a ``ValueError`` subclass, so neither
+    ``OSError`` nor ``json.JSONDecodeError`` catches it; it was named in one of
+    the two readers and missed in the other, and invalid UTF-8 in a cache
+    propagated out of every caller of the one that missed it. Adding a fourth
+    exception here now reaches both readers at once, which is the property this
+    extraction exists to buy (#236 review).
+    """
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        on_unreadable(exc)
+        return None
+
+
 def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> None:
     """Write ``content`` to ``path`` atomically: temp file + ``os.replace``,
     so a reader racing a concurrent writer sees either the old complete
@@ -83,10 +111,17 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
     tmp_path = Path(tmp_name)
     try:
         tmp_fh = os.fdopen(fd, "w", encoding=encoding)
-    except Exception:
+    except BaseException:
         # `os.fdopen` takes ownership of the descriptor only once it succeeds. When it
         # raises -- an unknown encoding, memory pressure -- the descriptor was neither
         # wrapped nor closed by anyone, and leaked for the life of the process.
+        #
+        # `BaseException`, not `Exception`: a Ctrl-C landing between `mkstemp` and
+        # `fdopen` raises `KeyboardInterrupt`, which is not an `Exception`, so an
+        # `except Exception` here leaks exactly the descriptor and temp file this
+        # block exists to reclaim -- and does so in the case a person is most likely
+        # to repeat. The bare `raise` re-raises the interrupt untouched, so nothing
+        # about how the process dies changes; only the cleanup is added (#236 review).
         _close_quietly(fd)
         _discard(tmp_path)
         raise
@@ -94,7 +129,10 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
         with tmp_fh:
             tmp_fh.write(content)
         os.replace(tmp_path, path)
-    except Exception:
+    except BaseException:
+        # Same reasoning as above. `with tmp_fh` closes the handle on any exit, but
+        # only this block removes the temp file, so an interrupt during `write` or
+        # `os.replace` would otherwise strand a `.tmp` beside the target.
         _discard(tmp_path)
         raise
 # @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write

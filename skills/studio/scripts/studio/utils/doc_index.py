@@ -39,7 +39,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .atomic_io import atomic_write_text, with_file_lock
+from .atomic_io import atomic_write_text, read_json_tolerantly, with_file_lock
 from .toc import parse_headings_with_lines
 
 logger = logging.getLogger(__name__)
@@ -398,24 +398,21 @@ def _read_cache_file(cache_path: Path) -> Optional[Dict[str, Any]]:
     whole-file etag already considers stale, to compare it section by
     section instead of discarding it outright).
     """
-    try:
-        return json.loads(cache_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
-        # `UnicodeDecodeError` is listed explicitly for the reason
-        # `_load_escalation_file` already documents further down this file: it is a
-        # ValueError subclass, so neither OSError nor json.JSONDecodeError catches
-        # it, and a cache holding invalid UTF-8 -- a truncated write, a killed
-        # process -- propagated out of every caller instead of being discarded.
-        # That reasoning was applied to that reader and missed here -- the two sit
-        # ~345 lines apart, which is most of why.
-        # An unreadable cache is the one failure a cache may absorb: rebuild it.
-        # Reached only once the caller has already confirmed the cache file
-        # exists, so a failure here is real corruption or a permissions
-        # problem, not a routine cache miss -- warning, not debug, so it's
-        # visible at the CLI's default log level instead of masquerading
-        # as an ordinary first-time build.
-        logger.warning("doc-index cache unreadable at %s: %s", cache_path, exc)
-        return None
+    # Which exceptions count as "unreadable" lives in `read_json_tolerantly`, so
+    # that the sibling reader in okf.py cannot drift from it again; the warning
+    # stays here because only this module knows what the file means.
+    #
+    # An unreadable cache is the one failure a cache may absorb: rebuild it.
+    # Reached only once the caller has already confirmed the cache file
+    # exists, so a failure here is real corruption or a permissions
+    # problem, not a routine cache miss -- warning, not debug, so it's
+    # visible at the CLI's default log level instead of masquerading
+    # as an ordinary first-time build.
+    return read_json_tolerantly(
+        cache_path,
+        on_unreadable=lambda exc: logger.warning(
+            "doc-index cache unreadable at %s: %s", cache_path, exc),
+    )
 
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-doc-index:p1:inst-doc-index-load

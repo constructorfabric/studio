@@ -738,12 +738,18 @@ _DEFAULT_IGNORED_DIR_NAMES = frozenset(
 _MAX_CODE_FILE_BYTES = 2_000_000
 
 
-def _is_in_default_ignored_dir(file_path: Path, root: Path) -> bool:
-    """Return whether *file_path* sits under a conventional non-source directory."""
+def _is_in_default_ignored_dir(resolved_file: Path, resolved_root: Path) -> bool:
+    """Return whether *resolved_file* sits under a conventional non-source directory.
+
+    Both arguments are already resolved. They used to be resolved here, which
+    made this the second of three walks of the same path in the only loop that
+    calls it -- and re-resolved the unchanging root once per candidate
+    (#236 review).
+    """
     try:
-        rel_parts = file_path.resolve().relative_to(root.resolve()).parts
-    except (OSError, ValueError) as exc:
-        _warn_codebase(f"failed to resolve {file_path} relative to {root}: {exc}")
+        rel_parts = resolved_file.relative_to(resolved_root).parts
+    except ValueError as exc:
+        _warn_codebase(f"failed to place {resolved_file} relative to {resolved_root}: {exc}")
         return False
     return any(part in _DEFAULT_IGNORED_DIR_NAMES for part in rel_parts[:-1])
 
@@ -814,16 +820,32 @@ def resolve_entry_code_files(
 
     files: Set[Path] = set()
     excluded = 0
+    # Resolved once per candidate and handed to both checks below. Each of the
+    # three -- the dedup identity, the ignored-directory test, the containment
+    # test -- used to resolve the same path independently, so every scanned file
+    # paid three walks and two of the results were thrown away.
+    #
+    # It also puts the failure in one place. The dedup's `candidate.resolve()`
+    # was the only unguarded one of the three, so an unresolvable candidate (a
+    # symlink loop raising ELOOP) propagated out of a function whose other two
+    # resolutions both treat that as an ordinary skip. Now it is a skip here
+    # too, warned once instead of twice (#236 review).
+    resolved_code_path = code_path.resolve()
     for candidate in candidates:
-        if seen is not None:
-            identity = candidate.resolve()
-            if identity in seen:
-                continue          # decided under an earlier entry; neither file nor skip
-            seen.add(identity)
-        if _is_in_default_ignored_dir(candidate, code_path):
+        try:
+            resolved = candidate.resolve()
+        except OSError as exc:
+            _warn_codebase(f"failed to resolve {candidate}: {exc}")
             excluded += 1
             continue
-        if _escapes_project(candidate, root):
+        if seen is not None:
+            if resolved in seen:
+                continue          # decided under an earlier entry; neither file nor skip
+            seen.add(resolved)
+        if _is_in_default_ignored_dir(resolved, resolved_code_path):
+            excluded += 1
+            continue
+        if _escapes_project(candidate, root, resolved=resolved):
             excluded += 1
             continue
         files.add(candidate)
@@ -834,17 +856,22 @@ def resolve_entry_code_files(
 
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-escapes-project
-def _escapes_project(candidate: Path, root: Path) -> bool:
+def _escapes_project(candidate: Path, root: Path, *, resolved: Optional[Path] = None) -> bool:
     """Whether *candidate* is a symlink or resolves outside *root*.
 
     Checked on the resolved path: refusing symlinked files alone still lets a
     symlinked directory inside a registered root carry the scan outside the
     project.
+
+    The symlink test has to run against *candidate* itself -- resolving first is
+    exactly what hides a link -- so a caller that already resolved the path
+    passes it as *resolved* rather than making this resolve it a second time.
     """
     try:
         if candidate.is_symlink():
             return True
-        resolved = candidate.resolve()
+        if resolved is None:
+            resolved = candidate.resolve()
     except OSError as exc:
         _warn_codebase(f"failed to resolve {candidate}: {exc}")
         return True

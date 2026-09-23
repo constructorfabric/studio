@@ -1007,3 +1007,65 @@ class TestOverlappingEntriesAreScannedOnce:
 
         assert scanned == 2
         assert len(hits) == 2
+
+
+class TestACandidateIsResolvedOnce:
+    """Three independent `resolve()` calls per scanned file, two of them discarded.
+
+    The dedup identity, the ignored-directory test and the containment test each
+    resolved the same path. The dedup's was also the only one of the three that
+    was unguarded, so an unresolvable candidate escaped a function whose other
+    two resolutions both treat that as an ordinary skip (#236 review).
+    """
+
+    def test_each_candidate_is_resolved_exactly_once(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from collections import Counter
+
+        from studio.utils.codebase import resolve_entry_code_files
+
+        (tmp_path / "src").mkdir()
+        target = tmp_path / "src" / "a.py"
+        target.write_text("x = 1", encoding="utf-8")
+
+        counts: Counter[str] = Counter()
+        real_resolve = Path.resolve
+
+        def _counting_resolve(self, *args, **kwargs):
+            counts[str(self)] += 1
+            return real_resolve(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", _counting_resolve)
+
+        files, _ = resolve_entry_code_files(
+            tmp_path / "src", [".py"], project_root=tmp_path, seen=set())
+
+        assert files == [target]
+        assert counts[str(target)] == 1, (
+            f"the candidate was resolved {counts[str(target)]} times, not once")
+
+    def test_an_unresolvable_candidate_is_excluded_rather_than_raised(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The dedup path used to let this propagate out of the whole scan."""
+        from studio.utils.codebase import resolve_entry_code_files
+
+        (tmp_path / "src").mkdir()
+        good = tmp_path / "src" / "good.py"
+        good.write_text("x = 1", encoding="utf-8")
+        bad = tmp_path / "src" / "bad.py"
+        bad.write_text("x = 2", encoding="utf-8")
+
+        real_resolve = Path.resolve
+
+        def _resolve_or_loop(self, *args, **kwargs):
+            if self.name == "bad.py":
+                raise OSError(40, "Too many levels of symbolic links")
+            return real_resolve(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", _resolve_or_loop)
+
+        files, excluded = resolve_entry_code_files(
+            tmp_path / "src", [".py"], project_root=tmp_path, seen=set())
+
+        assert files == [good], "one unresolvable file must not lose the rest of the scan"
+        assert excluded == 1, "the unresolvable file still has to count against the total"
