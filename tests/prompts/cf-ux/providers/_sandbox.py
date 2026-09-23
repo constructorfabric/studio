@@ -132,10 +132,33 @@ ENV_NAMES = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "US
 #: Dropped rather than allowed, and said out loud rather than dropped quietly: a
 #: suite whose whole output is a comparison cannot let the thing being compared
 #: move without telling anyone.
+#: Where `child_env(tmpdir=...)` points a child's `TMPDIR`. Named once because two
+#: places need it: the one that creates it, and the ones that have to remove it.
+SCRATCH_DIR_NAME = ".tmp"
+
+
+def wipe_scratch(path: Path) -> None:
+    """Remove the scratch directory this harness created inside *path*.
+
+    Only ours, never the directory itself. A shared sandbox belongs to whoever
+    passed `CF_UX_SHARED_SANDBOX` and is not the harness's to delete -- but the
+    `.tmp` inside it was created by `child_env`, is filled with a graded CLI's
+    scratch, and had nothing removing it: the only wipe was the non-shared,
+    non-kept teardown, so the two long-lived modes accumulated it run after run
+    (#229 review).
+    """
+    scratch = path / SCRATCH_DIR_NAME
+    if scratch.is_dir():
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 BACKEND_ROUTING_NAMES = frozenset({
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_API_URL",
     "ANTHROPIC_BEDROCK_BASE_URL",
+    # Not an endpoint, but it reaches the same place: arbitrary HTTP headers on
+    # every request, including authorization ones (#229 review).
+    "ANTHROPIC_CUSTOM_HEADERS",
     "ANTHROPIC_VERTEX_BASE_URL",
     "CLAUDE_CODE_USE_BEDROCK",
     "CLAUDE_CODE_USE_VERTEX",
@@ -180,7 +203,7 @@ def child_env(*prefixes: str, tmpdir: Path | None = None) -> dict:
             file=sys.stderr,
         )
     if tmpdir is not None:
-        scratch = Path(tmpdir) / ".tmp"
+        scratch = Path(tmpdir) / SCRATCH_DIR_NAME
         scratch.mkdir(parents=True, exist_ok=True)
         env["TMPDIR"] = str(scratch)
     return env
@@ -331,7 +354,12 @@ def sandbox() -> Iterator[Path]:
         path = Path(shared)
         if not path.exists():
             raise SandboxError(f"CF_UX_SHARED_SANDBOX does not exist: {path}")
-        yield path
+        try:
+            yield path
+        finally:
+            # The directory is the caller's and is left alone; the scratch inside it
+            # is this harness's and is not.
+            wipe_scratch(path)
         return
 
     path = _new_sandbox_path()
@@ -343,7 +371,11 @@ def sandbox() -> Iterator[Path]:
         yield path
     finally:
         if keep:
-            print(f"[cf-ux] kept sandbox: {path}", file=sys.stderr)
+            # Scratch included, deliberately: the point of keeping a sandbox is to
+            # look at what the run left behind, and what the child wrote to its
+            # `TMPDIR` is part of that.
+            print(f"[cf-ux] kept sandbox (including {SCRATCH_DIR_NAME}/): {path}",
+                  file=sys.stderr)
             _LIVE_SANDBOXES.discard(path)  # do not wipe on atexit
         else:
             _wipe(path)

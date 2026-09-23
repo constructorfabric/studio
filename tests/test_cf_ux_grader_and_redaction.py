@@ -346,3 +346,93 @@ class TestTheChildsScratchStaysInTheSandbox:
         env = _sandbox.child_env("ANTHROPIC_", tmpdir=tmp_path)
 
         assert env.get("HOME") == os.environ.get("HOME")
+
+
+class TestTheCodexPrefixesAreBothCovered:
+    """`_CHILD_ENV_PREFIXES` names two namespaces and the tests asserted one.
+
+    `OPENAI_` was covered and `CODEX_` was not, so dropping it from the tuple --
+    or the whole prefix mechanism failing for it -- would have left the suite
+    green while the child lost its configuration (#229 review).
+    """
+
+    @pytest.mark.parametrize("name", ["CODEX_HOME", "CODEX_SOMETHING_ELSE"])
+    def test_a_codex_prefixed_variable_survives(self, run_codex, monkeypatch, name):
+        monkeypatch.setenv(name, "value")
+
+        _out, seen = run_codex()
+
+        assert seen["kwargs"]["env"][name] == "value"
+
+    def test_every_allowlisted_name_survives_when_set(self, run_codex, monkeypatch):
+        """The positive half of the invariant, over the whole list rather than a sample."""
+        for index, name in enumerate(_sandbox.ENV_NAMES):
+            monkeypatch.setenv(name, f"value-{index}")
+
+        _out, seen = run_codex()
+
+        env = seen["kwargs"]["env"]
+        missing = [name for name in _sandbox.ENV_NAMES
+                   if name != "TMPDIR" and env.get(name) is None]
+        assert not missing, f"allowlisted names dropped by the filter: {missing}"
+
+    def test_the_harness_namespace_is_not_forwarded(self, run_codex, monkeypatch):
+        """`CF_UX_*` is read by this Python parent, never by the `codex` binary."""
+        monkeypatch.setenv("CF_UX_CODEX_MODEL", "some-model")
+
+        _out, seen = run_codex()
+
+        assert "CF_UX_CODEX_MODEL" not in seen["kwargs"]["env"]
+
+
+class TestTheScratchDirectoryIsCleanedUpInEveryMode:
+    """`TMPDIR` is pointed inside the sandbox so the child's scratch is wiped.
+
+    It was wiped only on the ordinary teardown path. `CF_UX_SHARED_SANDBOX` yields
+    a caller-chosen directory and returns with no cleanup at all, and that path is
+    usually outside `_SANDBOX_PARENT`, so the stale sweep never reached it either
+    -- the scratch accumulated run after run in exactly the long-lived mode it was
+    added to be scoped by (#229 review).
+    """
+
+    def test_a_shared_sandbox_keeps_its_directory_and_loses_the_scratch(
+            self, tmp_path, monkeypatch):
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "a-real-file.txt").write_text("mine", encoding="utf-8")
+        monkeypatch.setenv("CF_UX_SHARED_SANDBOX", str(shared))
+
+        with _sandbox.sandbox() as cwd:
+            assert cwd == shared
+            _sandbox.child_env("ANTHROPIC_", tmpdir=cwd)
+            assert (cwd / _sandbox.SCRATCH_DIR_NAME).is_dir()
+
+        assert not (shared / _sandbox.SCRATCH_DIR_NAME).exists(), "scratch was left behind"
+        assert (shared / "a-real-file.txt").is_file(), (
+            "the shared directory belongs to its caller and must survive")
+
+    def test_wiping_a_sandbox_with_no_scratch_is_not_an_error(self, tmp_path):
+        _sandbox.wipe_scratch(tmp_path)          # nothing to remove
+
+        assert tmp_path.is_dir()
+
+    def test_wiping_removes_the_contents_too(self, tmp_path):
+        scratch = tmp_path / _sandbox.SCRATCH_DIR_NAME
+        scratch.mkdir()
+        (scratch / "leftover").write_text("x", encoding="utf-8")
+
+        _sandbox.wipe_scratch(tmp_path)
+
+        assert not scratch.exists()
+
+
+class TestAHeaderOverrideIsTreatedAsRouting:
+    def test_custom_headers_are_not_forwarded(self, monkeypatch, capsys):
+        """Not an endpoint, but it reaches the same place: arbitrary headers,
+        including authorization ones."""
+        monkeypatch.setenv("ANTHROPIC_CUSTOM_HEADERS", "X-Whatever: 1")
+
+        env = _sandbox.child_env("ANTHROPIC_")
+
+        assert "ANTHROPIC_CUSTOM_HEADERS" not in env
+        assert "ANTHROPIC_CUSTOM_HEADERS" in capsys.readouterr().err
