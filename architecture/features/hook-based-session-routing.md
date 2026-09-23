@@ -1,6 +1,9 @@
 ---
-version: 0.3.0
+version: 0.4.0
 significant_changes:
+  - version: 0.4.0
+    date: 2026-09-23
+    summary: Second-round PR review fixes — correct the Codex hook capability claim (hooks are enabled by default via `[features].hooks`; `codex_hooks` is a deprecated alias Studio neither writes nor depends on), pick `.codex/hooks.json` as the single Codex config location Studio writes, add a per-harness native hook-entry shape table plus an open question for the exact vendor schemas, resolve the persist-vs-delete contradiction in favour of retaining the state file on disablement (recording `off`) while still removing the hook entry and receipt, add `unknown` as a report-only outcome value and an inspection rule that re-tests a persisted `errored`, mark harnesses `errored` when a shared-marker removal fails, persist final state for every affected harness rather than only the selected ones, make the hook receipt-only during the pending-first-run window to prevent duplicate delivery, and state that hook delivery is unconditional per session.
   - version: 0.3.0
     date: 2026-09-23
     summary: PR review fixes — record verified per-harness hook capability (all four in-scope harnesses now expose a session-start hook, including Cursor, which supersedes ADR-0016's "Cursor has no hook support" claim), note Codex's experimental `codex_hooks` opt-in, split the compile step into an order-independent two-pass algorithm with a dedicated shared-marker reconciliation, persist state for every mode, re-derive read-state from installed resources instead of trusting the state file, add a Studio-owned hook-entry identifier plus repeat-install replace and failed-hook cleanup, add an Errored state for write failures, name the concrete per-harness state-file path and its schema version, define payload transport and an execution-receipt gate before file fallback is dropped, and treat root AGENTS.md/CLAUDE.md as one atomic pair.
@@ -74,6 +77,8 @@ This feature moves delivery of Studio's routing precondition from unconditional 
 | `HookInstalled` | `hook` | This harness's own verified hook entry delivers the precondition and has been confirmed to run. |
 | `Errored` | `errored` | Studio could not establish either channel for this harness on the last run; delivery is not guaranteed. |
 
+`unknown` is a fifth **report-only** `routing_mode` value with no corresponding lifecycle state: inspection emits it when the persisted state and the state derived from installed resources disagree (`cpt-studio-algo-hook-based-session-routing-read-state`). It is never persisted and a harness is never *in* `unknown`; it describes the reader's confidence, not the harness. `DESIGN.md`'s `HarnessRoutingOutcome.routing_mode` enum therefore carries five values (`off`, `file`, `hook`, `errored`, `unknown`) while `HarnessRoutingState` carries four.
+
 ### 1.2 Purpose
 
 GitHub issue #143 ("Studio Routing — Use Harness Session Hooks Instead of Writing Into AGENTS.md / CLAUDE.md") reports that `cfs generate-agents` writes the routing precondition into every project's own `AGENTS.md`/`CLAUDE.md`, regardless of whether the target harness offers a native session-start hook. This feature gives every harness that supports session hooks a cleaner delivery path, while preserving today's file-injection behavior as a fallback, so the routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`, `skills/studio/scripts/studio/constants.py`) is still reliably delivered to every harness in scope.
@@ -82,12 +87,13 @@ GitHub issue #143 ("Studio Routing — Use Harness Session Hooks Instead of Writ
 
 **Requirements**: deliver the routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`, `skills/studio/scripts/studio/constants.py`) to a supported harness via that harness's native on-session-start hook whenever that hook is available and usable, falling back to today's file injection into `AGENTS.md`/`CLAUDE.md` whenever it is not; and keep switching a harness's routing delivery mode (hook, file, or off) fully reversible per harness, subject to the two named exceptions below.
 
-**Reversibility, and its two named exceptions**: turning routing off for a harness leaves no residual **hook** state for that harness and no residual **per-harness** state anywhere. It does not always empty the two shared fallback files, and it does not touch generated shim files. Specifically:
+**Reversibility, and its three named exceptions**: turning routing off for a harness leaves no residual **delivery** state for that harness — no hook entry and no execution receipt. It does not always empty the two shared fallback files, it does not remove the harness's own state file, and it does not touch generated shim files. Specifically:
 
-- The `AGENTS.md`/`CLAUDE.md` managed block is a single project-wide resource shared by all harnesses, so it is retained while **any** in-scope harness is still in `FileFallback` (for example a Codex installation whose experimental hook opt-in is off). It is removed only when no in-scope harness depends on it. This is another harness's live state, not residual state for the disabled harness.
+- The `AGENTS.md`/`CLAUDE.md` managed block is a single project-wide resource shared by all harnesses, so it is retained while **any** in-scope harness is still in `FileFallback` (for example a harness whose hook entry has been written but not yet observed to run). It is removed only when no in-scope harness depends on it. This is another harness's live state, not residual state for the disabled harness.
+- The harness's own state file (`cpt-studio-dod-hook-based-session-routing-state-file`) **persists by design** and is rewritten to record `routing_mode: off`. It is bookkeeping, not a delivery channel: keeping it is what lets a later `cfs agents` report a deliberately disabled harness as `off` instead of guessing from an absent file. Deleting it would make "intentionally off" indistinguishable from "never installed" only by luck of derivation.
 - Copies of `ROOT_AGENTS_PIPELINE_INSTRUCTION` embedded in generated per-harness workflow/skill shim files are a separate, out-of-scope delivery channel and persist regardless of switch state (see Section 1.4).
 
-Both exceptions are restated verbatim in `cpt-studio-dod-hook-based-session-routing-disablement`; this summary and that DoD are intentionally the same claim.
+All three exceptions are restated verbatim in `cpt-studio-dod-hook-based-session-routing-disablement`; this summary and that DoD are intentionally the same claim.
 
 **Principles**: routing delivery for a harness is governed by exactly one disablement switch per harness — for the `AGENTS.md`/`CLAUDE.md` and hook-entry delivery paths — which flips hook install and file-marker dependence atomically, so within those two paths there is never more than one place that determines whether a harness receives the routing precondition.
 
@@ -114,17 +120,30 @@ Both exceptions are restated verbatim in `cpt-studio-dod-hook-based-session-rout
 
 **Harness hook capability (surveyed 2026-09-23)**: hook capability is a per-harness property of the harness's own extensibility surface. It is **not** derivable from `_TOOL_PROVIDER_SUPPORT`, which maps tools to model providers for model/tier selection only. The table below is the authoritative capability input for `cpt-studio-algo-hook-based-session-routing-compile-harness`; implementation reads it as a dedicated table, not by reusing the provider matrix.
 
-| Harness | Session-start hook event | Hook configuration location | Availability |
-|---------|--------------------------|-----------------------------|--------------|
+| Harness | Session-start hook event | Hook configuration location Studio writes | Availability |
+|---------|--------------------------|-------------------------------------------|--------------|
 | `claude` | `SessionStart` | `.claude/settings.json` | Generally available. |
-| `codex` | `SessionStart` (matcher `startup`) | `.codex/hooks.json`, or a `[hooks]` table in `config.toml` | **Experimental**; shipped in v0.114 and inert unless `codex_hooks = true` is set in the user's `config.toml`. |
+| `codex` | `SessionStart` (matcher `startup`) | `.codex/hooks.json` | Generally available; hooks are **enabled by default** (see the Codex note below). |
 | `cursor` | `sessionStart` | `.cursor/hooks.json` | Generally available. |
 | `copilot` | `sessionStart` | `.github/hooks/<name>.json` | Generally available. |
 | `windsurf` | None found | Not applicable | No hook mechanism found; out of scope for this feature regardless. |
 
 Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [ChatGPT hooks reference](https://learn.chatgpt.com/docs/hooks), [Copilot CLI session lifecycle hooks](https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-hooks/session-lifecycle), [Cursor hooks](https://cursor.com/docs/hooks).
 
-**Codex experimental opt-in — decision**: Studio **does not** set `codex_hooks = true` on the user's behalf. That flag lives in the user's own `config.toml` rather than in the project working tree, and flipping a global experimental opt-in is outside the project-local blast radius this feature otherwise keeps. The compile step therefore reads the flag: when it is unset, `codex` resolves to `FileFallback` with the fixed-enum reason for a disabled experimental hook API, and the summary line tells the maintainer how to opt in; when it is set, `codex` follows the ordinary hook path. Revisiting this (for example, offering an explicit `--enable-codex-hooks` opt-in) is Section 7, item (d).
+**Codex hook availability — correction and decision**: Codex hooks are no longer experimental and are **enabled by default**. The canonical configuration key is `[features].hooks` (default `true`) in the user's `config.toml`, or in `requirements.toml` for administrators; the older `codex_hooks` key is a **deprecated but still-working alias** that Studio **MUST NOT** rely on going forward. Studio therefore neither writes nor requires this flag, and `codex` is treated exactly like the other three in-scope harnesses for capability-detection purposes: it takes the ordinary hook path. The only defensive case is a Codex client old enough to have hooks disabled by default (pre-promotion) or a project that has explicitly set `[features].hooks = false` — that installation simply produces no verified hook and no execution receipt, so it degrades to `FileFallback` by the ordinary rules, the same as any other harness with an unusable hook. How Studio detects that case is Section 7, item (d).
+
+**Codex config location — decision**: Codex accepts hook definitions in either `.codex/hooks.json` or a `[hooks]` table in `config.toml`. Studio writes to **`.codex/hooks.json` only**, for consistency with the other harnesses (each writes to a dedicated hooks file rather than sharing a general-purpose config file) and to keep Studio's writes out of a file that carries unrelated user settings. Studio **MUST NOT** write hook entries into `config.toml`.
+
+**Native hook-entry shape (what Studio writes per harness)**: each harness's native format differs, so the cross-harness `on_session_start` abstraction (`cpt-studio-dod-hook-based-session-routing-hook-abstraction`) compiles down to the following per-harness entry shapes. Every shape carries the same three elements: the **ownership identifier** required by `cpt-studio-dod-hook-based-session-routing-hook-ownership`, the **command** to run, and the **event/matcher** binding it to session start.
+
+| Harness | Entry container | Event/matcher binding | Command field | Ownership identifier |
+|---------|-----------------|-----------------------|---------------|----------------------|
+| `claude` | An entry appended under the `SessionStart` event key of the `hooks` object in `.claude/settings.json` | The `SessionStart` event key, with the harness's startup matcher | A command-type entry whose command invokes Studio's reserved hook script | The reserved Studio-owned hook-script path the command invokes — this format has no per-entry name field, so the reserved path is the identifier |
+| `codex` | An entry in the session-start array of `.codex/hooks.json` | The `SessionStart` event with matcher `startup` | A command-type entry whose command invokes Studio's reserved hook script | The entry's own name/id field, set to Studio's fixed reserved value |
+| `cursor` | An entry in the `sessionStart` array of `.cursor/hooks.json` | The `sessionStart` array it sits in | The entry's command field, invoking Studio's reserved hook script | The entry's own name/id field, set to Studio's fixed reserved value |
+| `copilot` | A dedicated file `.github/hooks/<reserved-studio-name>.json` (one file per hook) | The `sessionStart` event declared inside that file | The command declared inside that file, invoking Studio's reserved hook script | The reserved filename itself |
+
+In every shape the command invokes one Studio-owned hook script rather than an inline shell pipeline, so the ownership identifier, the payload transport (`cpt-studio-dod-hook-based-session-routing-payload-transport`), and the receipt stamp all have a single implementation per harness. The **exact native field names and nesting** of each harness's format are not pinned down by this document and must be verified against each harness's current schema at implementation time — that is Section 7, item (g).
 
 **Reconciliation with ADR-0016**: ADR-0016 deferred project-level `SessionStart` hooks for injecting Studio context into all sessions, pending three prerequisites. This document addresses that deferral and supplies the design for the routing-precondition slice of it:
 
@@ -144,13 +163,13 @@ Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [C
 
 **Success Scenarios**:
 - Every in-scope harness (claude, codex, cursor, copilot) has a session-start hook, so each one installs via its own hook entry and, once that entry is confirmed to have run, stops depending on the shared file marker. This is the expected steady state.
-- A harness whose hook cannot currently be used — most commonly `codex` before its experimental opt-in is enabled — installs via the file fallback and is flagged with its one-clause reason. This is an expected outcome, not an error.
+- A harness whose hook cannot currently be used — for example an installation old enough that its hook API is unavailable, or one where the entry cannot be written — installs via the file fallback and is flagged with its one-clause reason. This is an expected outcome, not an error.
 - A harness whose hook entry was written this run but has not yet been observed to run stays in `FileFallback` for one more cycle and is promoted on a later run.
 
 **Error Scenarios**:
 - A harness's hook entry is written but fails verification; the failed entry is cleaned up and that harness falls back to file injection with a warning.
 - The file-fallback write itself fails (permissions, read-only tree, full disk); that harness is reported as `errored` with the underlying OS error, not silently as `off` or `file`.
-- Routing is disabled for a harness (via the disablement switch); no hook entry is kept for it, and the shared marker is dropped only if no other in-scope harness still needs it.
+- Routing is disabled for a harness (via the disablement switch); no hook entry and no receipt are kept for it, its state file is rewritten to record `off`, and the shared marker is dropped only if no other in-scope harness still needs it.
 
 **Steps**:
 1. [ ] - `p1` - Project maintainer runs `cfs generate-agents` (optionally with `--json`, optionally scoped with `--agent <name>`) - `inst-run-generate-agents`
@@ -173,6 +192,7 @@ Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [C
 **Error Scenarios**:
 - The persisted state for a harness disagrees with the resources actually installed for it; that harness is reported as `unknown` with the disagreement named, not silently trusted.
 - The persisted state file for a harness is unparseable or carries an unrecognised schema version; it is treated as absent and the state is re-derived from installed resources.
+- The persisted state for a harness is `errored` from an earlier failed write; the read re-tests it against the resources installed now, reporting the freshly derived mode when they resolve cleanly and `errored` with the recorded reason when they still do not.
 
 **Steps**:
 1. [ ] - `p1` - CLI operator runs `cfs agents` (the existing "show generated agent integration status" command) - `inst-run-cfs-agents`
@@ -197,9 +217,9 @@ Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [C
 **Steps**:
 1. [ ] - `p1` - **IF** disablement switch for this harness is "routing off" - `inst-check-disabled`
    1. [ ] - `p1` - Remove this harness's Studio-owned hook entry, matched by the stable identifier from `cpt-studio-dod-hook-based-session-routing-hook-ownership`, leaving any user-authored entries in the same config untouched - `inst-remove-hook-entry`
-   2. [ ] - `p1` - Remove this harness's own state file and its execution receipt, so no per-harness residue remains - `inst-remove-state-file`
+   2. [ ] - `p1` - Remove this harness's execution receipt, so no residual delivery state remains; the harness's own state file is **retained** and is rewritten to record `routing_mode: off` by pass 2, since it is bookkeeping rather than a delivery channel - `inst-remove-receipt`
    3. [ ] - `p1` - **RETURN** target_mode = `off` (the shared marker is not touched here; pass 2 decides it) - `inst-return-off`
-2. [ ] - `p1` - **IF** the harness's capability row reports no usable session-start hook — either no hook event at all, or a hook API gated behind an opt-in that is currently disabled (e.g. `codex` without `codex_hooks = true`) - `inst-check-hook-support`
+2. [ ] - `p1` - **IF** the harness's capability row reports no usable session-start hook — either no hook event at all, or an installed client whose hook API is unavailable (e.g. a pre-promotion Codex client, or a project that has explicitly disabled hooks) - `inst-check-hook-support`
    1. [ ] - `p1` - Record the matching fixed-enum reason and **RETURN** target_mode = `file` - `inst-return-file-no-hook`
 3. [ ] - `p1` - Locate any existing Studio-owned hook entry in the harness's hook config by its stable identifier - `inst-find-owned-entry`
 4. [ ] - `p1` - **IF** a Studio-owned entry already exists - `inst-if-entry-exists`
@@ -212,6 +232,7 @@ Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [C
    2. [ ] - `p1` - Record the matching fixed-enum reason and **RETURN** target_mode = `file` - `inst-return-file-verify-failed`
 9. [ ] - `p1` - **IF** the harness's execution receipt does not show this exact hook entry having run at least once since it was written - `inst-check-receipt`
    1. [ ] - `p1` - Record the "hook installed, first run not yet observed" fixed-enum reason and **RETURN** target_mode = `file`, so the fallback keeps delivering for one more cycle while the hook proves itself - `inst-return-file-pending-receipt`
+   2. [ ] - `p1` - The entry written this run is in its **receipt-only** window: because the file fallback is still delivering, the hook's command stamps the receipt but **MUST NOT** also emit the payload, so the harness cannot receive the routing text twice in one session (`cpt-studio-dod-hook-based-session-routing-payload-transport`) - `inst-receipt-only-window`
 10. [ ] - `p1` - **RETURN** target_mode = `hook`, hook_path relative to project root - `inst-return-hook-mode`
 
 ### Reconcile Shared Fallback Marker
@@ -234,11 +255,13 @@ Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [C
    2. [ ] - `p1` - **ELSE** add it to the dependency set only when its last known mode is `file` - `inst-add-known-dependency`
 3. [ ] - `p1` - **IF** the dependency set is empty - `inst-if-no-dependents`
    1. [ ] - `p1` - Remove the managed block from **both** root `AGENTS.md` and root `CLAUDE.md` as one operation, using the existing marker-rewrite helpers in `skills/studio/scripts/studio/commands/init.py` - `inst-remove-shared-marker`
+   2. [ ] - `p1` - **IF** removing the block from either file fails (permission denied, read-only tree, or any other filesystem error) - `inst-if-remove-failed`
+      1. [ ] - `p1` - Roll the pair back to its pre-run content where possible, and set routing_mode = `errored` — not `off` — for every harness this run resolved to `off`, attaching the underlying OS error text, so a removal that did not actually happen is never finalized as a clean disablement - `inst-mark-remove-error`
 4. [ ] - `p1` - **ELSE** - `inst-else-has-dependents`
    1. [ ] - `p1` - Ensure the managed block is present and identical in **both** root `AGENTS.md` and root `CLAUDE.md`, reusing the existing `_compute_managed_block`/`_inject_managed_block` marker injection; the operation is idempotent, so several dependent harnesses produce one block, not several - `inst-ensure-shared-marker`
    2. [ ] - `p1` - **IF** writing either file fails (permission denied, read-only tree, no space, or any other filesystem error) - `inst-if-file-write-failed`
       1. [ ] - `p1` - Roll the pair back to its pre-run content where possible, and set routing_mode = `errored` for every harness in the dependency set, attaching the underlying OS error text so the maintainer sees the real cause rather than a bare `off` or `file` - `inst-mark-write-error`
-5. [ ] - `p1` - **FOR EACH** harness this run touched - `inst-for-each-finalize`
+5. [ ] - `p1` - **FOR EACH** harness affected by this run — every harness the run touched, **plus** every in-scope harness the run did not select whose state this run's shared-marker outcome changed (e.g. an unselected dependent marked `errored` by a failed shared-marker write on an `--agent`-scoped run) - `inst-for-each-finalize`
    1. [ ] - `p1` - Resolve its final routing_mode from its target mode and the marker outcome above - `inst-resolve-final-mode`
    2. [ ] - `p1` - Persist that final state to the harness's own state file for **every** mode — `off`, `file`, `hook`, and `errored` alike — so a later inspection never has to guess from a missing file - `inst-persist-state-all-modes`
    3. [ ] - `p1` - **IF** routing_mode = `file` - `inst-if-final-file`
@@ -294,14 +317,21 @@ Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [C
 
 **Derivation precedence**: the installed resources are the source of truth and the state file is a cross-check, not an oracle. Derived state resolves as `HookInstalled` when a verified Studio-owned hook entry and a confirming receipt are both present; otherwise `FileFallback` when the shared marker is present; otherwise `Off`. `unknown` is reserved for a genuine disagreement between derived and persisted state — it is never the answer merely because a file is absent.
 
+**Why `Errored` needs its own inspection rule**: `Errored` is the one persisted state derivation cannot produce. It is set at the moment of a failed write, and nothing on disk afterwards says "the last write failed" — so a later read that only ran the precedence rule above would either silently downgrade a genuinely broken harness to `off`/`file`, or report it as `unknown` merely because derivation cannot express it. Inspection therefore treats a persisted `errored` as a **claim to re-test**, not as a disagreement: it re-attempts derivation against the resources as they are now, reports the freshly derived mode when the resources resolve cleanly (the error was transient or has since been fixed by hand), and keeps reporting `errored` with the reason recorded in the state file when they still do not.
+
 **Steps**:
 1. [ ] - `p1` - Derive the harness's actual state from installed resources: presence and verifiability of its Studio-owned hook entry, presence of its execution receipt, and presence of the shared `AGENTS.md`/`CLAUDE.md` managed block - `inst-derive-from-resources`
 2. [ ] - `p1` - Read the harness's own state file, treating it as absent when it is missing, unparseable, or carries a `schema_version` this Studio version does not recognise - `inst-read-state-file`
 3. [ ] - `p1` - **IF** the state file is absent by that definition - `inst-read-state-missing`
    1. [ ] - `p1` - **RETURN** the derived state, and repair the state file by rewriting it from that derivation on the next `generate-agents` run; a fresh project with nothing installed therefore reports `off`, matching the initial state in Section 4, rather than `unknown` - `inst-return-derived-state`
-4. [ ] - `p1` - **IF** the persisted state disagrees with the derived state (for example the file says `hook` but the hook entry was removed outside Studio, or it says `file` while the shared marker is gone) - `inst-if-state-disagrees`
+4. [ ] - `p1` - **IF** the persisted state is `errored` - `inst-if-persisted-errored`
+   1. [ ] - `p1` - Re-attempt derivation from the resources actually installed now, treating the persisted `errored` as a claim to re-test rather than as a disagreement - `inst-reattempt-derivation`
+   2. [ ] - `p1` - **IF** the resources resolve cleanly — the derived state is one of `off`, `file`, or `hook` with no half-installed evidence (no unverifiable Studio-owned hook entry, and the shared managed block either present in both root files or absent from both) - `inst-if-errored-resolved`
+      1. [ ] - `p1` - **RETURN** the freshly derived state, treating the recorded error as transient or since repaired; the state file is rewritten from that derivation on the next `generate-agents` run - `inst-return-recovered-state`
+   3. [ ] - `p1` - **ELSE RETURN** routing_mode = `errored`, carrying the failure reason recorded in the state file, since delivery is still not established - `inst-return-still-errored`
+5. [ ] - `p1` - **IF** the persisted state disagrees with the derived state (for example the file says `hook` but the hook entry was removed outside Studio, or it says `file` while the shared marker is gone) - `inst-if-state-disagrees`
    1. [ ] - `p1` - **RETURN** routing_mode = `unknown`, naming both the persisted and the derived value so the maintainer can see what drifted; the harness is reported, never silently omitted - `inst-return-unknown-state`
-5. [ ] - `p1` - **RETURN** the agreed state for this harness - `inst-return-current-outcome`
+6. [ ] - `p1` - **RETURN** the agreed state for this harness - `inst-return-current-outcome`
 
 ## 4. States (CDSL)
 
@@ -319,15 +349,15 @@ Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [C
 3. [ ] - `p1` - **FROM** FileFallback **TO** HookInstalled **WHEN** a later run finds the hook usable and its entry written, verified, and confirmed to have run - `inst-transition-file-to-hook`
 4. [ ] - `p1` - **FROM** HookInstalled **TO** FileFallback **WHEN** a later run finds the previously-verified hook entry missing, unverifiable, or no longer carrying the intact payload - `inst-transition-hook-to-file`
 5. [ ] - `p1` - **FROM** FileFallback **TO** Off **WHEN** disablement switch is set to "routing off"; the shared `AGENTS.md`/`CLAUDE.md` marker is removed by the reconciliation pass only if no in-scope harness still depends on it, and is otherwise left in place - `inst-transition-file-to-off`
-6. [ ] - `p1` - **FROM** HookInstalled **TO** Off **WHEN** disablement switch is set to "routing off"; this harness's hook entry, state file, and receipt are removed, and the shared marker is removed by the reconciliation pass only if no in-scope harness still depends on it - `inst-transition-hook-to-off`
-7. [ ] - `p1` - **FROM** any state **TO** Errored **WHEN** the file-fallback write this harness depends on fails with a filesystem error, so neither channel is known to be delivering - `inst-transition-any-to-errored`
-8. [ ] - `p1` - **FROM** Errored **TO** FileFallback or HookInstalled **WHEN** a later run succeeds in establishing the corresponding channel - `inst-transition-errored-to-delivering`
+6. [ ] - `p1` - **FROM** HookInstalled **TO** Off **WHEN** disablement switch is set to "routing off"; this harness's hook entry and receipt are removed while its state file is retained and rewritten to record `off`, and the shared marker is removed by the reconciliation pass only if no in-scope harness still depends on it - `inst-transition-hook-to-off`
+7. [ ] - `p1` - **FROM** any state **TO** Errored **WHEN** the shared-marker write or removal this harness depends on fails with a filesystem error, so neither channel is known to be delivering — or, for a harness being disabled, so the marker Studio meant to remove is still on disk - `inst-transition-any-to-errored`
+8. [ ] - `p1` - **FROM** Errored **TO** FileFallback, HookInstalled, or Off **WHEN** a later run succeeds in establishing the corresponding channel, or when a later inspection re-tests the recorded error and finds the installed resources now resolving cleanly - `inst-transition-errored-to-delivering`
 
 No partial-downgrade state exists: a harness is always in exactly one of Off, FileFallback, HookInstalled, or Errored; the disablement switch (`cpt-studio-dod-hook-based-session-routing-disablement`) flips this harness's hook state and its dependence on the file marker atomically. `Errored` is distinct from `Off`: `Off` is an intentional, successful outcome, while `Errored` records that Studio tried and could not establish delivery, and is surfaced as an error-level line.
 
 **Shared marker, not per-harness state**: Off means "this harness receives no routing precondition from the hook or file channel". Because the file marker lives in two shared, project-wide files (root `AGENTS.md`/`CLAUDE.md`) rather than one file per harness, an Off harness may coexist with a marker that is still on disk for another harness's sake. That is not residual state for the Off harness — it is another harness's live state — but it does mean disabling one harness does not necessarily empty the shared files.
 
-**All four in-scope harnesses can reach HookInstalled**: per the capability survey in Section 1.4, claude, codex, cursor, and copilot each expose a session-start hook, so every transition above applies to every in-scope harness. `codex` is the one harness with a conditional path: while its experimental `codex_hooks` opt-in is disabled it resolves to FileFallback with the corresponding fixed-enum reason — a configuration-dependent outcome, not a permanent property of the harness — and it moves to HookInstalled by the ordinary transitions once the opt-in is enabled.
+**All four in-scope harnesses can reach HookInstalled**: per the capability survey in Section 1.4, claude, codex, cursor, and copilot each expose a session-start hook that is available by default, so every transition above applies identically to every in-scope harness — `codex` included, with no opt-in special case. Any harness whose installed client has hooks turned off or unavailable resolves to FileFallback with the corresponding fixed-enum reason, which is a configuration-dependent outcome rather than a permanent property of the harness, and moves to HookInstalled by the ordinary transitions once the hook becomes usable and its first execution is observed.
 
 **Migration from pre-existing file injection**: every Studio-managed project created before this feature already has the routing precondition injected unconditionally into root `AGENTS.md`/`CLAUDE.md` (per `cpt-studio-feature-agent-integration`). On the first post-upgrade `cfs generate-agents` run, such a project MUST be read as starting in FileFallback for every in-scope harness — the existing marker is recognised as the file-fallback state, not ignored or re-injected — and each harness then proceeds through the normal transitions from there. Because the two shared files are one logical resource, the marker being present in **either or both** of root `AGENTS.md` and root `CLAUDE.md` is sufficient evidence of prior FileFallback for the whole in-scope harness set; a partial state left by a manual edit or an interrupted earlier run is treated as prior FileFallback and reconciled so both files match the computed target. Upgrading MUST NOT require the project to pass through Off, and MUST NOT produce a duplicate marker.
 
@@ -339,7 +369,7 @@ No partial-downgrade state exists: a harness is always in exactly one of Off, Fi
 
 The system **MUST** implement a single cross-harness "on_session_start" abstraction, compiled per harness inside `cfs generate-agents` (`skills/studio/scripts/studio/commands/agents.py`).
 
-The system **MUST** drive hook capability from a dedicated per-harness capability table that names, for each in-scope harness, its session-start event name, its hook configuration path, and any opt-in that gates it — the table in Section 1.4. The system **MUST NOT** infer hook capability from `_TOOL_PROVIDER_SUPPORT`/`_TOOL_PROVIDER_DEFAULT`, which map tools to model providers for model/tier selection and carry no hook information; that matrix **MAY** still be used for its existing purpose of enumerating which harnesses are in scope.
+The system **MUST** drive hook capability from a dedicated per-harness capability table that names, for each in-scope harness, its session-start event name and the single hook configuration path Studio writes to — the table in Section 1.4. Where a harness accepts more than one configuration location (Codex accepts `.codex/hooks.json` or a `[hooks]` table in `config.toml`), the system **MUST** write only the location named in that table and **MUST NOT** write the alternative. The abstraction **MUST** compile down to the per-harness native entry shape recorded in Section 1.4 — ownership identifier, command, and event/matcher binding — rather than a shape invented per call site. The system **MUST NOT** infer hook capability from `_TOOL_PROVIDER_SUPPORT`/`_TOOL_PROVIDER_DEFAULT`, which map tools to model providers for model/tier selection and carry no hook information; that matrix **MAY** still be used for its existing purpose of enumerating which harnesses are in scope.
 
 When the run is scoped with `--agent <name>`, the system **MUST** compile routing for exactly that harness — matching how `--agent` already scopes every other `generate-agents` behavior — while the shared-marker reconciliation **MUST** still account for all in-scope harnesses, so a scoped run cannot remove a marker an unselected harness still needs.
 
@@ -354,7 +384,7 @@ When the run is scoped with `--agent <name>`, the system **MUST** compile routin
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-hook-ownership`
 
-The system **MUST** stamp the hook entry it writes with a stable, Studio-owned identifier — a fixed reserved value in the harness's own naming field (the entry's `name`/`id` for configs that key entries by name, or the reserved hook filename for harnesses such as Copilot that use one file per hook). This identifier plays the same ownership role for hook configs that `MARKER_START`/`MARKER_END` plays for the file-injection path.
+The system **MUST** stamp the hook entry it writes with a stable, Studio-owned identifier — a fixed reserved value in the harness's own naming field (the entry's `name`/`id` for configs that key entries by name, or the reserved hook filename for harnesses such as Copilot that use one file per hook), per the per-harness entry-shape table in Section 1.4. Where a harness's format has **no** per-entry naming field at all, the identifier **MUST** be the reserved Studio-owned hook-script path the entry's command invokes — a path Studio owns exclusively, matched as a whole path rather than by scanning free-form command text (Section 7, item (g)). This identifier plays the same ownership role for hook configs that `MARKER_START`/`MARKER_END` plays for the file-injection path.
 
 The system **MUST** use that identifier as the sole means of finding, replacing, and removing its own entry, and **MUST NOT** match entries by event name, command text, or position, so a user's own session-start hook in the same config is never clobbered. Every entry Studio does not own **MUST** survive install, reinstall, and uninstall byte-for-byte.
 
@@ -374,6 +404,10 @@ The system **MUST** define, per harness, exactly one transport for getting `ROOT
 
 The system **MUST** make the hook command, on execution, both emit the payload to the harness and stamp a per-harness execution receipt recording that this exact entry ran. That receipt is the "first observed execution" signal the fallback gate depends on.
 
+**Delivery is unconditional**: when a harness is in `HookInstalled`, the hook **MUST** emit the payload on **every** configured session-start execution, with no per-session relevance, task-type, or "does this session need Studio?" check. This is deliberate and mirrors today's unconditional `AGENTS.md`/`CLAUDE.md` injection exactly — the same text reaches every session either way; only the channel changes.
+
+**Receipt-only during the pending-first-run window**: between the run that writes a hook entry and the run that observes its receipt, the file fallback is still delivering (`cpt-studio-dod-hook-based-session-routing-fallback`), so an entry that also emitted the payload would deliver the routing text twice in one session. The hook command **MUST** therefore behave in two phases: while the harness's persisted mode is anything other than `hook`, the command stamps the receipt and emits **nothing**; once the receipt has been observed and the harness has been promoted to `HookInstalled`, the command both stamps the receipt and emits the payload — which is also the point at which file-fallback delivery stops. Exactly one channel therefore delivers the payload at any moment.
+
 The system **MUST** verify payload fidelity — recovering the payload through the reverse of the transport encoding and comparing it byte-for-byte against the intended text — rather than accepting syntactic validity of the config as proof the payload survived.
 
 **Implements**:
@@ -388,7 +422,9 @@ The system **MUST** persist routing state in **one state file per harness** — 
 
 The state file **MUST** be separate from `init.py`'s `MARKER_START`/`MARKER_END` `AGENTS.md`/`CLAUDE.md` scan, since hook installs live in harness-specific config rather than in those files.
 
-The system **MUST** write the state file for **every** resolved mode — `off`, `file`, `hook`, and `errored` alike — never only for the hook case, so inspection never has to infer a harness's mode from an absent file.
+The system **MUST** write the state file for **every** resolved mode — `off`, `file`, `hook`, and `errored` alike — never only for the hook case, so inspection never has to infer a harness's mode from an absent file. `off` is explicitly included: disabling routing for a harness **MUST NOT** delete that harness's state file, it **MUST** rewrite it to record `routing_mode: off`. The state file is bookkeeping, not a delivery channel, so retaining it does not contradict the no-residual-delivery-state guarantee in `cpt-studio-dod-hook-based-session-routing-disablement`.
+
+The system **MUST** write the final state for every harness **affected** by a run, not only the harnesses the run explicitly selected. When an `--agent`-scoped run's shared-marker outcome changes an unselected in-scope harness's state — most notably a failed shared-marker write, which marks every harness in the dependency set `errored` — that harness's own state file **MUST** be written too, so `cfs agents` reports the fresh error rather than the unselected harness's stale mode.
 
 The state file **MUST** carry a `schema_version` field. A state file that is unparseable, or whose `schema_version` this Studio version does not recognise, **MUST** be treated exactly as an absent file: the state is re-derived from installed resources and the file is rewritten from that derivation on the next `generate-agents` run, rather than failing the run or being partially trusted.
 
@@ -422,6 +458,8 @@ The system **MUST** decide marker removal exactly once per run, from the complet
 
 The system **MUST** treat a failure to write the shared `AGENTS.md`/`CLAUDE.md` fallback — permission denied, read-only working tree, exhausted disk, or any other filesystem error — as an explicit `errored` outcome for every harness that depended on that write, and **MUST NOT** report such a harness as `off` or as `file`.
 
+The same treatment **MUST** apply to the mirror-image operation: when the dependency set is empty and the shared managed block is therefore **removed**, a failure of that removal **MUST** mark every harness this run resolved to `off` as `errored` rather than finalizing it as `off`. A disablement that did not actually take effect on disk **MUST NOT** be reported as a clean success; the underlying OS error is surfaced exactly as for the write path.
+
 The `errored` outcome **MUST** carry the underlying OS error text, **MUST** be rendered as an error-level line in the summary, and **MUST** feed the command's existing `PARTIAL` result contract so the run is not reported as a clean success.
 
 Hook-side failures are deliberately treated differently: an unwritable or unverifiable hook entry degrades to the fallback with a warning and is not an error, because delivery is preserved. `errored` is reserved for the case where no channel is known to be delivering.
@@ -436,12 +474,13 @@ Hook-side failures are deliberately treated differently: an unwritable or unveri
 
 The system **MUST** provide exactly one disablement switch per harness with exactly two states — "routing on" (hook when usable, else file) and "routing off" (neither hook nor file for that harness) — and **MUST** flip that harness's hook install and its dependence on the shared file marker atomically, so no silent partial-downgrade state can occur.
 
-**Scope of the guarantee**: this single-switch, no-residual-state guarantee covers the `AGENTS.md`/`CLAUDE.md` and hook-entry delivery paths only. The same two named exceptions stated in Section 1.2 apply, and nothing elsewhere in this document may claim otherwise:
+**Scope of the guarantee**: this single-switch, no-residual-**delivery**-state guarantee covers the `AGENTS.md`/`CLAUDE.md` and hook-entry delivery paths only. The same three named exceptions stated in Section 1.2 apply, and nothing elsewhere in this document may claim otherwise:
 
 - **Generated shim-file copies (out of scope)**: `_follow_protocol_lines()` (`skills/studio/scripts/studio/commands/agents.py`) embeds `ROOT_AGENTS_PIPELINE_INSTRUCTION` into every generated per-harness workflow/skill shim file over a second, independent channel. Those copies **MUST** be documented as persisting regardless of switch state, and the switch **MUST NOT** claim to remove them. Gating that channel belongs to a future iteration.
-- **Shared marker retention**: because the file marker is project-wide rather than harness-owned (`cpt-studio-dod-hook-based-session-routing-fallback`), "routing off" for one harness **MUST NOT** remove the marker while another in-scope harness still depends on it. With every in-scope harness now hook-capable, this case narrows to harnesses currently in `FileFallback` — a `codex` installation without its experimental opt-in, a hook awaiting its first observed execution, or a harness whose hook stopped verifying — but it remains reachable and is not claimed away.
+- **Shared marker retention**: because the file marker is project-wide rather than harness-owned (`cpt-studio-dod-hook-based-session-routing-fallback`), "routing off" for one harness **MUST NOT** remove the marker while another in-scope harness still depends on it. With every in-scope harness now hook-capable by default, this case narrows to harnesses currently in `FileFallback` — a hook awaiting its first observed execution, a harness whose hook stopped verifying, or an installed client whose hook API is unavailable — but it remains reachable and is not claimed away.
+- **The harness's own state file**: the state file **MUST** be retained on disablement and rewritten to record `routing_mode: off` (`cpt-studio-dod-hook-based-session-routing-state-file`). It carries no payload and delivers nothing; keeping it is what lets a later inspection distinguish "deliberately off" from "never touched" without guessing.
 
-Within those exceptions, turning routing off for a harness **MUST** leave no hook entry, no state file, and no execution receipt for that harness.
+Within those exceptions, turning routing off for a harness **MUST** leave no hook entry and no execution receipt for that harness — no residual delivery state of any kind — while the harness's state file persists by design to record the `off` state.
 
 **Implements**:
 - `cpt-studio-algo-hook-based-session-routing-compile-harness`
@@ -492,7 +531,7 @@ The system **MUST** express every path it reports — the harness's hook config 
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-reason-enum`
 
-The system **MUST** attach a one-clause fallback reason to each fallback warning, drawn from a fixed, stable enum of known limitation reasons rather than free text. The enum **MUST** at minimum distinguish a hook API gated behind a disabled experimental opt-in (the `codex` case), a hook entry that failed verification, and a hook entry awaiting its first observed execution, since these three produce the same `file` mode for very different reasons and call for different maintainer action. The exact enum values are Section 7, item (c).
+The system **MUST** attach a one-clause fallback reason to each fallback warning, drawn from a fixed, stable enum of known limitation reasons rather than free text. The enum **MUST** at minimum distinguish a hook API the installed client does not expose (an outdated client, or one whose hooks have been explicitly disabled), a hook entry that failed verification, and a hook entry awaiting its first observed execution, since these three produce the same `file` mode for very different reasons and call for different maintainer action. The exact enum values are Section 7, item (c).
 
 **Implements**:
 - `cpt-studio-algo-hook-based-session-routing-compile-harness`
@@ -502,21 +541,27 @@ The system **MUST** attach a one-clause fallback reason to each fallback warning
 
 - [ ] All 4 in-scope harnesses (claude, codex, cursor, copilot) go through the compile process and end in exactly one of the four states (Off, FileFallback, HookInstalled, Errored) with no partial-downgrade state observable. Windsurf is not processed by this path and keeps its existing unconditional file injection.
 - [ ] Each of the 4 in-scope harnesses can reach HookInstalled: with routing on, a usable hook, and a confirming execution receipt, claude, codex, cursor, and copilot each install via their own session-start hook entry at the event and config path named in Section 1.4.
-- [ ] With routing on and the `codex_hooks` experimental opt-in disabled, codex ends in FileFallback and is reported with the experimental-opt-in reason rather than as an error; enabling the opt-in and re-running moves codex to HookInstalled without any other change.
+- [ ] codex takes the ordinary hook path with no opt-in handling: a default installation reaches HookInstalled without Studio reading or writing `[features].hooks` or the deprecated `codex_hooks` alias, and codex's entry is written to `.codex/hooks.json` only — `config.toml` is left untouched.
+- [ ] A harness whose installed client does not expose a usable session-start hook ends in FileFallback with the hook-unavailable reason rather than as an error, and moves to HookInstalled by the ordinary transitions once the hook becomes usable and its first execution is observed.
 - [ ] A harness whose hook entry is written but not yet observed to have run stays in FileFallback with the pending-first-run reason, and is promoted to HookInstalled on a later run once its execution receipt confirms the entry ran.
+- [ ] During that pending-first-run window the routing text is delivered exactly once per session: the newly written hook stamps its receipt but emits nothing while the file fallback is still delivering, and only starts emitting after promotion to HookInstalled, when fallback delivery stops.
+- [ ] Once a harness is in HookInstalled, its hook emits the payload on every session-start execution with no per-session relevance check, matching the unconditional delivery of today's file injection.
 - [ ] Hook capability is read from the dedicated capability table; changing `_TOOL_PROVIDER_SUPPORT`'s provider sets has no effect on any harness's routing_mode.
 - [ ] Installing into a hook config that already contains a user-authored session-start hook leaves that user entry byte-for-byte unchanged, and running `generate-agents` repeatedly produces exactly one Studio-owned entry rather than accumulating duplicates.
 - [ ] A hook entry that is written and then fails verification is removed from the config before the fallback is taken, leaving no orphaned unverified entry on disk.
 - [ ] Verification rejects a hook entry whose payload did not survive transport intact (altered quoting, truncated newlines), not merely one whose config fails to parse.
 - [ ] A harness with a verified, receipt-confirmed hook stops depending on the shared file marker and appears in the summary with routing_mode = hook and a project-root-relative hook path.
-- [ ] Disabling routing for a harness removes that harness's hook entry, state file, and execution receipt, and removes the shared root `AGENTS.md`/`CLAUDE.md` marker **only when** no other in-scope harness still depends on it; when another in-scope harness is still in FileFallback, the shared marker is verifiably left in place and the disabled harness is still reported as `off`.
+- [ ] Disabling routing for a harness removes that harness's hook entry and execution receipt, rewrites its state file to record `off` rather than deleting it, and removes the shared root `AGENTS.md`/`CLAUDE.md` marker **only when** no other in-scope harness still depends on it; when another in-scope harness is still in FileFallback, the shared marker is verifiably left in place and the disabled harness is still reported as `off`.
 - [ ] The shared-marker outcome is identical regardless of the order harnesses are processed in: for any given set of target modes, permuting the iteration order produces the same marker state and the same per-harness outcomes.
 - [ ] A `--agent <name>`-scoped run compiles routing only for the named harness, and still leaves the shared marker in place when an unselected in-scope harness depends on it.
 - [ ] When an unselected harness's state cannot be determined, the run keeps the shared marker rather than removing it.
 - [ ] Root `AGENTS.md` and root `CLAUDE.md` are always left in the same marker state as each other; a run that starts with the marker in only one of them ends with both matching the computed target.
-- [ ] Disabling routing for every in-scope harness removes the shared root `AGENTS.md`/`CLAUDE.md` marker, all Studio-owned hook entries, all per-harness state files, and all receipts, leaving no residual per-harness state — while the routing text embedded in generated shim files by `_follow_protocol_lines()` is expected to remain (documented out-of-scope exception, not a defect).
+- [ ] Disabling routing for every in-scope harness removes the shared root `AGENTS.md`/`CLAUDE.md` marker, all Studio-owned hook entries, and all receipts, leaving no residual delivery state — while each harness's state file remains, recording `off`, and the routing text embedded in generated shim files by `_follow_protocol_lines()` is expected to remain (documented out-of-scope exceptions, not defects).
 - [ ] A failed shared-marker write reports every affected harness as `errored` with the underlying OS error, contributes to the `PARTIAL` result contract, and is never reported as `off` or `file`.
-- [ ] Every resolved mode is persisted: after a run, each touched harness has a state file recording `off`, `file`, `hook`, or `errored`, and `cfs agents` on a fresh untouched project reports `off` rather than `unknown`.
+- [ ] A failed shared-marker **removal** — the empty-dependency-set path — reports every harness this run resolved to `off` as `errored` with the underlying OS error instead of finalizing it as a clean `off`.
+- [ ] On an `--agent`-scoped run whose shared-marker write fails, an unselected but affected dependent gets its own state file rewritten to `errored`, so a later `cfs agents` reports the fresh error rather than that harness's stale mode.
+- [ ] Every resolved mode is persisted: after a run, each affected harness has a state file recording `off`, `file`, `hook`, or `errored`, and `cfs agents` on a fresh untouched project reports `off` rather than `unknown`.
+- [ ] A harness whose state file records `errored` is re-tested on the next `cfs agents` read: if its installed resources now resolve cleanly it is reported with the freshly derived `off`/`file`/`hook` mode, and if they still do not it is reported as `errored` with the reason recorded in the state file.
 - [ ] `cfs agents` derives state from installed resources: removing a Studio-owned hook entry or the shared marker outside Studio makes the affected harness report `unknown` with both the persisted and derived values named, rather than the stale persisted value.
 - [ ] A state file that is corrupt or carries an unrecognised `schema_version` is treated as absent: state is re-derived from installed resources and the file is rewritten, without failing the run.
 - [ ] A project that already has the pre-existing file-injected marker in either or both root files is read as starting in FileFallback (not Off) on its first post-upgrade `cfs generate-agents` run, is not re-injected or duplicated, has both files reconciled to match, and then transitions normally to HookInstalled for each harness whose hook is usable and confirmed.
@@ -529,10 +574,11 @@ These side-topics are deliberately left open. They **MUST** be resolved before o
 
 - [ ] **(a) Execution-receipt lifetime**: The fallback gate depends on a per-harness execution receipt proving the current hook entry has run (`cpt-studio-dod-hook-based-session-routing-payload-transport`). Its exact location, format, and staleness policy need a decision — in particular whether a receipt older than some interval should demote a harness from HookInstalled back to FileFallback, and how the receipt binds to a specific entry revision so editing the entry invalidates it.
 - [ ] **(b) Disablement switch surface**: Should the disablement switch (`cpt-studio-dod-hook-based-session-routing-disablement`) be a CLI flag, a config-file setting, or both? This affects how `cfs generate-agents` and `cfs agents` read and expose the switch value.
-- [ ] **(c) Fallback-reason enum values**: What is the fixed enum of harness-limitation reasons referenced by `cpt-studio-dod-hook-based-session-routing-reason-enum`? It must at least cover the disabled experimental opt-in, verification failure, and pending first execution; the full enumeration and its exact string values need a decision before the summary rendering can be finalized.
-- [ ] **(d) Codex experimental opt-in policy**: Section 1.4 decides that Studio does not set `codex_hooks = true` itself. Whether to offer an explicit maintainer-initiated opt-in (a flag or prompt that writes the flag with consent) rather than only printing instructions is an open product decision.
+- [ ] **(c) Fallback-reason enum values**: What is the fixed enum of harness-limitation reasons referenced by `cpt-studio-dod-hook-based-session-routing-reason-enum`? It must at least cover an unavailable hook API, verification failure, and pending first execution; the full enumeration and its exact string values need a decision before the summary rendering can be finalized.
+- [ ] **(d) Detecting a client whose hooks are unavailable**: Codex hooks are enabled by default (`[features].hooks`, default true) and Studio does not manage that flag, so the common case needs no detection. How Studio should recognise the uncommon case — an outdated client, or a project that has explicitly disabled hooks — needs a decision: whether to probe the client version, read the flag read-only for a better fallback reason, or simply let the missing execution receipt produce the fallback with a generic reason.
 - [ ] **(e) ADR-0016 amendment**: ADR-0016 states Cursor has no hook support, which the 2026-09-23 capability survey supersedes. Amending that ADR is a follow-up outside this feature's diff and needs to be scheduled; no design in this document depends on the stale claim.
 - [ ] **(f) Per-harness payload transport**: `cpt-studio-dod-hook-based-session-routing-payload-transport` requires one defined transport per harness and defaults to a referenced payload file. Which harnesses can instead carry the payload inline losslessly, and the exact payload-file location per harness, need a decision.
+- [ ] **(g) Exact native hook-entry schema per harness**: Section 1.4 pins down, for each harness, the config location Studio writes, the event/matcher binding, the command, and where the Studio ownership identifier lives. It deliberately does **not** pin down the exact field names, nesting, and version keys of each harness's native format, because those are vendor schemas that move and must be confirmed against the shipping client at implementation time. Two parts need an explicit decision rather than an assumption: how ownership is expressed for formats with **no per-entry name field** (the Claude Code case, where the current answer is the reserved Studio-owned hook-script path the command invokes, which must be reconciled with `cpt-studio-dod-hook-based-session-routing-hook-ownership`'s "never match by command text" rule), and whether Codex's `.codex/hooks.json` accepts a per-entry identifier at all. This is a known documentation gap, not a silently missing detail.
 
 ## 8. Applicability
 
@@ -560,8 +606,9 @@ PASS 1 — per harness H, harness-owned resources only
                off   v               v
      ┌──────────────────────┐   ┌────────────────────────────────┐
      │ Remove H's owned hook │   │ Hook usable for H?              │
-     │ entry, state file,    │   │ (capability table; incl. Codex  │
-     │ receipt               │   │  codex_hooks opt-in)            │
+     │ entry + receipt       │   │ (capability table; all four     │
+     │ (state file KEPT,     │   │  harnesses hook-capable by      │
+     │  rewritten to "off")  │   │  default)                       │
      │ → target: off         │   └──────┬──────────────────┬───────┘
      └──────────────────────┘      yes  │                  │ no
                                         v                  │
@@ -601,18 +648,21 @@ PASS 2 — once per run, shared resources
         └────────┬──────────────────┬──────────┘
               no │                  │ yes
                  v                  v
-   ┌──────────────────────┐  ┌────────────────────────────────┐
-   │ Clear managed block   │  │ Ensure identical managed block │
-   │ from BOTH AGENTS.md   │  │ in BOTH AGENTS.md + CLAUDE.md  │
-   │ and CLAUDE.md         │  │ (write fails → errored, with   │
-   └──────────────────────┘  │  the OS error attached)         │
-                             └────────────────────────────────┘
+   ┌───────────────────────────────┐  ┌────────────────────────────────┐
+   │ Clear managed block from BOTH  │  │ Ensure identical managed block │
+   │ AGENTS.md and CLAUDE.md        │  │ in BOTH AGENTS.md + CLAUDE.md  │
+   │ (removal fails → every "off"   │  │ (write fails → errored, with   │
+   │  harness errored, OS error     │  │  the OS error attached)         │
+   │  attached)                     │  └────────────────────────────────┘
+   └───────────────────────────────┘
                           │
                           v
         ┌────────────────────────────────────────┐
-        │ Persist final state per harness for     │
-        │ EVERY mode (off/file/hook/errored),     │
-        │ then render the `routing` summary       │
+        │ Persist final state for every AFFECTED  │
+        │ harness (touched + unselected ones this │
+        │ run's marker outcome changed) for EVERY │
+        │ mode (off/file/hook/errored), then      │
+        │ render the `routing` summary            │
         │ (table + --json, same data)             │
         └────────────────────────────────────────┘
 ```

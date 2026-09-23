@@ -142,7 +142,7 @@ cfs <command> [subcommand] [options] [arguments]
 
 **Exception 1**: the `cfs mirror *` subcommand family (`mirror override`, `mirror list`, `mirror remove`, `mirror clear`, and the `--help` / no-subcommand fallback) is user-facing and emits **plain-text** output to stdout instead of JSON. The JSON-only convention does NOT apply to these subcommands.
 
-**Exception 2 — human-readable default with `--json` opt-in**: a command MAY render its result to stdout as human-readable text by default, provided the **same** result data is available as JSON on stdout when `--json` is passed. Where this applies, `--json` is the stable machine-readable contract and the default rendering is presentation only; the two MUST carry the same fields, and no data may exist in one form and not the other. This exception currently covers the routing-summary output of `agents` and `generate-agents` (the per-harness `routing` section defined by `cpt-studio-feature-hook-based-session-routing`). Commands not named here remain JSON-only on stdout.
+**Exception 2 — human-readable default with `--json` opt-in**: a command MAY render its result to stdout as human-readable text by default, provided the **same** result data is available as JSON on stdout when `--json` is passed. Where this applies, `--json` is the stable machine-readable contract and the default rendering is presentation only; the two MUST carry the same fields, and no data may exist in one form and not the other. This exception is **not yet in force for any shipped command**: it applies to the routing-summary output of `agents` and `generate-agents` (the per-harness `routing` section) only once `cpt-studio-feature-hook-based-session-routing` ships — that feature is currently `planned` in DECOMPOSITION.md and unimplemented, so today both commands remain JSON-only on stdout like every other command. Commands not named here remain JSON-only on stdout in all cases.
 
 ### Exit Codes
 
@@ -158,9 +158,11 @@ cfs <command> [subcommand] [options] [arguments]
 |--------|-------------|
 | `--version` | Show cache and project skill versions |
 | `--help` | Show help for command |
-| `--json` | Force JSON output (default, explicit for clarity) |
+| `--json` | Force JSON output (default, explicit for clarity) — see the note below for the `agents` / `generate-agents` routing output |
 | `--quiet` | Suppress stderr |
 | `--verbose` | Increase stderr detail |
+
+Stdout is JSON by default for every command except the `cfs mirror *` family ([Exception 1](#output)), so passing `--json` changes nothing today. The one planned departure from that default is [Exception 2](#output) under Output: once `cpt-studio-feature-hook-based-session-routing` ships, the routing summary of `agents` and `generate-agents` will render as human-readable text by default and as JSON only when `--json` is passed.
 
 ---
 
