@@ -849,15 +849,24 @@ def resolve_entry_code_files(
     resolved_code_path = code_path.resolve()
     for candidate in candidates:
         try:
+            is_link = candidate.is_symlink()
             resolved = candidate.resolve()
         except OSError as exc:
             _warn_codebase(f"failed to resolve {candidate}: {exc}")
             excluded += 1
             continue
+        # A symlink is registered under its own path, never under its target's.
+        # Resolving one yields the file it points at, and claiming that identity
+        # made the *real* file -- reached later in this walk or under another
+        # entry -- look already-decided, so it silently left the scan while the
+        # link that displaced it was excluded anyway. `candidates` is a set, so
+        # which of the two came first moved with `PYTHONHASHSEED`: the same tree
+        # scanned twice could report different files (#236 review).
+        identity = candidate.absolute() if is_link else resolved
         if seen is not None:
-            if resolved in seen:
+            if identity in seen:
                 continue          # decided under an earlier entry; neither file nor skip
-            seen.add(resolved)
+            seen.add(identity)
         if _is_in_default_ignored_dir(resolved, resolved_code_path):
             excluded += 1
             continue

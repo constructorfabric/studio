@@ -1125,3 +1125,76 @@ class TestASingleFileEntryIsDedupedToo:
 
         assert first == [target]
         assert second == [target], "omitting `seen` must not start deduplicating"
+
+
+class TestASymlinkNeverClaimsItsTargetsIdentity:
+    """A link resolves to the file it points at, and `seen` is keyed on identity.
+
+    Registering the resolved path for a symlink claimed the *target's* identity,
+    so the real file -- reached later in the same walk, or under another entry --
+    looked already-decided and left the scan, while the link that displaced it was
+    excluded anyway. `candidates` is a set, so which of the two was reached first
+    moved with `PYTHONHASHSEED`: the same tree scanned twice could report
+    different files (#236 review).
+    """
+
+    @staticmethod
+    def _entry(path, root, seen):
+        from studio.utils.codebase import resolve_entry_code_files
+        return resolve_entry_code_files(path, [".py"], project_root=root, seen=seen)
+
+    @staticmethod
+    def _tree(tmp_path):
+        (tmp_path / "src").mkdir()
+        real = tmp_path / "src" / "real.py"
+        real.write_text("x = 1", encoding="utf-8")
+        link = tmp_path / "src" / "link.py"
+        link.symlink_to(real)
+        return real, link
+
+    def test_the_real_file_survives_whichever_was_reached_first(self, tmp_path: Path) -> None:
+        real, _link = self._tree(tmp_path)
+
+        files, _ = self._entry(tmp_path / "src", tmp_path, set())
+
+        assert files == [real], "the symlink displaced the file it points at"
+
+    def test_the_real_file_survives_across_entries_too(self, tmp_path: Path) -> None:
+        """A symlink under one entry must not hide a real file covered by another."""
+        real, link = self._tree(tmp_path)
+        (tmp_path / "other").mkdir()
+        seen: set = set()
+
+        first, _ = self._entry(link, tmp_path, seen)
+        second, _ = self._entry(tmp_path / "src", tmp_path, seen)
+
+        assert first == [], "a symlink entry is still excluded"
+        assert real in second, "the symlink registered its target and hid the real file"
+
+    def test_a_link_reached_by_two_overlapping_entries_is_excluded_once(
+            self, tmp_path: Path) -> None:
+        """Keying on its own path has to keep the exclusion deduped, too.
+
+        Two registered directories where one contains the other, which is the
+        overlap `seen` was added for. Both walks reach the same link and the same
+        file; the second must find them already decided.
+        """
+        real, _link = self._tree(tmp_path)
+        seen: set = set()
+
+        first, excluded_first = self._entry(tmp_path, tmp_path, seen)
+        second, excluded_second = self._entry(tmp_path / "src", tmp_path, seen)
+
+        assert first == [real]
+        assert excluded_first == 1, "the link is the one skip"
+        assert second == [], "the file was already decided under the parent entry"
+        assert excluded_second == 0, "the same link was counted against the total twice"
+
+    def test_the_totals_still_add_up(self, tmp_path: Path) -> None:
+        """`scanned + skipped` has to equal what was actually there."""
+        real, _link = self._tree(tmp_path)
+
+        files, excluded = self._entry(tmp_path / "src", tmp_path, set())
+
+        assert files == [real]
+        assert excluded == 1, "two candidates, one file and one link: the link is the skip"
