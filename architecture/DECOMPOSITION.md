@@ -986,18 +986,22 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-hook-based-session-routing`
 
-- **Purpose**: Deliver Studio's routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`) through a harness's native on-session-start hook where one exists, instead of unconditionally writing it into every project's root `AGENTS.md`/`CLAUDE.md`, while keeping file injection as a verified fallback and making routing delivery reversible per harness through a single disablement switch.
+- **Purpose**: Deliver Studio's routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`) through each harness's native on-session-start hook, instead of unconditionally writing it into every project's root `AGENTS.md`/`CLAUDE.md`, while keeping file injection as a verified fallback and making routing delivery reversible per harness through a single disablement switch.
 
 - **Depends On**: `cpt-studio-feature-agent-integration`, `cpt-studio-feature-subagent-registration`
 
 - **Scope**:
-  - One cross-harness `on_session_start` abstraction compiled per harness inside `cfs generate-agents`, reusing the existing per-(tool, provider) matrix
-  - Hook-install verification before file fallback is stopped for a harness
-  - Retained `AGENTS.md`/`CLAUDE.md` file injection as fallback, modeled as a shared project-wide marker rather than a per-harness resource
-  - A per-harness state file for hook-install state, separate from the `MARKER_START`/`MARKER_END` scan
+  - One cross-harness `on_session_start` abstraction compiled per harness inside `cfs generate-agents`, driven by a dedicated per-harness hook-capability table (event name, config path, gating opt-in) rather than by the model/provider matrix
+  - A stable Studio-owned identifier on the hook entry so install, repeat install, and uninstall never touch user-authored hooks
+  - Hook verification (owned entry present, config parses, payload round-trips intact) plus an execution-receipt gate before file fallback is stopped for a harness
+  - Retained `AGENTS.md`/`CLAUDE.md` file injection as fallback, modeled as one shared project-wide resource spanning both files rather than as a per-harness resource
+  - An order-independent two-pass compile: per-harness hook work first, then a single shared-marker reconciliation against the complete target-mode set
+  - A per-harness state file (`<harness-config-dir>/.cf-studio-routing-state.json`) carrying `schema_version`, written for every mode, separate from the `MARKER_START`/`MARKER_END` scan
+  - State derived from installed resources on inspection, with the persisted file as a cross-check and `unknown` reserved for disagreement
+  - An explicit `errored` outcome when the fallback write itself fails
   - One disablement switch per harness (routing on / routing off) covering the hook and file channels
-  - Per-harness install-outcome summary on `generate-agents` (human table + `--json`), re-derivable later via `cfs agents`
-  - Migration of already-file-injected projects into the FileFallback state on first post-upgrade run
+  - Per-harness install-outcome summary on `generate-agents` under a new top-level `routing` key (human table + `--json`), re-derivable later via `cfs agents`
+  - Migration of already-file-injected projects into the FileFallback state on first post-upgrade run, including partial states where only one of the two root files carries the marker
 
 - **Out of scope**:
   - Changing the routing instruction payload itself (issue #144)
@@ -1014,9 +1018,10 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `cfs agents` — re-derives and reports current per-harness routing state
 
 - **Data**:
-  - Harness-native hook config (e.g. `.claude/settings.json`) — hook entries
-  - Root `AGENTS.md` / `CLAUDE.md` managed block — shared file-fallback marker
-  - Per-harness routing state file — hook-install state
+  - Harness-native hook config (`.claude/settings.json`, `.codex/hooks.json`, `.cursor/hooks.json`, `.github/hooks/<name>.json`) — Studio-owned hook entries
+  - Root `AGENTS.md` / `CLAUDE.md` managed block — shared file-fallback marker, treated as one resource spanning both files
+  - Per-harness routing state file `<harness-config-dir>/.cf-studio-routing-state.json` — routing state and `schema_version`
+  - Per-harness execution receipt — evidence the installed hook entry has actually run
 
 
 ---

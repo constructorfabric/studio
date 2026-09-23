@@ -1,6 +1,9 @@
 ---
-version: 0.2.0
+version: 0.3.0
 significant_changes:
+  - version: 0.3.0
+    date: 2026-09-23
+    summary: PR review fixes — record verified per-harness hook capability (all four in-scope harnesses now expose a session-start hook, including Cursor, which supersedes ADR-0016's "Cursor has no hook support" claim), note Codex's experimental `codex_hooks` opt-in, split the compile step into an order-independent two-pass algorithm with a dedicated shared-marker reconciliation, persist state for every mode, re-derive read-state from installed resources instead of trusting the state file, add a Studio-owned hook-entry identifier plus repeat-install replace and failed-hook cleanup, add an Errored state for write failures, name the concrete per-harness state-file path and its schema version, define payload transport and an execution-receipt gate before file fallback is dropped, and treat root AGENTS.md/CLAUDE.md as one atomic pair.
   - version: 0.2.0
     date: 2026-09-22
     summary: Review fixes — reconcile with ADR-0016 (Cursor has no hook support; project-level SessionStart deferral resolved here), scope out generated shim-file payload copies and Windsurf, document AGENTS.md/CLAUDE.md marker as shared across harnesses, add terminology/naming notes, replace stale brainstorm decision references with DoD IDs, add migration-from-file-injection criterion, and add non-applicable checklist domains.
@@ -23,6 +26,7 @@ significant_changes:
   - [Inspect Routing State](#inspect-routing-state)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Compile Harness Routing Delivery](#compile-harness-routing-delivery)
+  - [Reconcile Shared Fallback Marker](#reconcile-shared-fallback-marker)
   - [Verify Hook Install](#verify-hook-install)
   - [Render Install-Outcome Summary](#render-install-outcome-summary)
   - [Read Current Routing State](#read-current-routing-state)
@@ -30,8 +34,11 @@ significant_changes:
   - [Per-Harness Routing State](#per-harness-routing-state)
 - [5. Definitions of Done](#5-definitions-of-done)
   - [Cross-Harness Hook Abstraction](#cross-harness-hook-abstraction)
+  - [Studio-Owned Hook Entry Identity](#studio-owned-hook-entry-identity)
+  - [Hook Payload Transport](#hook-payload-transport)
   - [Per-Harness Install State File](#per-harness-install-state-file)
   - [File-Injection Fallback Retained](#file-injection-fallback-retained)
+  - [Write-Failure Error Outcome](#write-failure-error-outcome)
   - [Single Disablement Switch](#single-disablement-switch)
   - [Minimal, Swappable Hook Payload](#minimal-swappable-hook-payload)
   - [Per-Harness Install-Outcome Summary](#per-harness-install-outcome-summary)
@@ -52,21 +59,37 @@ significant_changes:
 
 ### 1.1 Overview
 
-This feature moves delivery of Studio's routing precondition from unconditional `AGENTS.md`/`CLAUDE.md` file injection to harness session hooks, where a harness supports them. File injection remains as a documented, verified fallback, and a single switch turns routing on or off per harness.
+This feature moves delivery of Studio's routing precondition from unconditional `AGENTS.md`/`CLAUDE.md` file injection to harness session-start hooks. All four in-scope harnesses expose such a hook today (see the capability table in Section 1.4), so the hook path is the normal path rather than the exception. File injection remains as a documented, verified fallback for the cases where a hook cannot be installed, verified, or confirmed to have run, and a single switch turns routing on or off per harness.
 
 **Terminology**: "Harness" in this document is the same entity that `cpt-studio-feature-agent-integration` and `cpt-studio-feature-subagent-registration` call a "tool" or an "agent" — the `--agent <name>` target of `cfs generate-agents`. No new entity is introduced; the term is used here only because this feature is about the host program that starts a session, not about the agent definitions generated for it.
 
-**Harness naming**: this document uses `codex` for the OpenAI Codex harness because that is the key used by `_TOOL_PROVIDER_SUPPORT` (`skills/studio/scripts/studio/commands/agents.py`), the matrix this feature extends. The same harness is called `openai` (`--agent openai`, "OpenAI") in `cpt-studio-feature-agent-integration` and `cpt-studio-feature-subagent-registration`, where `.codex/agents` is only an output path. `codex` and `openai` refer to one and the same harness throughout.
+**Harness naming**: this document uses `codex` for the OpenAI Codex harness because that is the key used by `_TOOL_PROVIDER_SUPPORT` (`skills/studio/scripts/studio/commands/agents.py`), the matrix that enumerates this feature's in-scope harnesses. The same harness is called `openai` (`--agent openai`, "OpenAI") in `cpt-studio-feature-agent-integration` and `cpt-studio-feature-subagent-registration`, where `.codex/agents` is only an output path. `codex` and `openai` refer to one and the same harness throughout.
+
+**State vocabulary**: this feature uses one set of lifecycle state names and one set of serialized values, with a fixed one-to-one mapping used identically here and in `DESIGN.md`:
+
+| Lifecycle state (`HarnessRoutingState`) | Serialized `routing_mode` value | Meaning |
+|---|---|---|
+| `Off` | `off` | Routing is intentionally disabled for this harness; no hook entry and no dependence on the shared marker. |
+| `FileFallback` | `file` | The shared `AGENTS.md`/`CLAUDE.md` marker is what actually delivers the precondition to this harness. |
+| `HookInstalled` | `hook` | This harness's own verified hook entry delivers the precondition and has been confirmed to run. |
+| `Errored` | `errored` | Studio could not establish either channel for this harness on the last run; delivery is not guaranteed. |
 
 ### 1.2 Purpose
 
-GitHub issue #143 ("Studio Routing — Use Harness Session Hooks Instead of Writing Into AGENTS.md / CLAUDE.md") reports that `cfs generate-agents` writes the routing precondition into every project's own `AGENTS.md`/`CLAUDE.md`, regardless of whether the target harness offers a native session-start hook. This feature gives harnesses that support session hooks a cleaner delivery path, while preserving today's file-injection behavior as a fallback for harnesses that do not, so the routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`, `skills/studio/scripts/studio/constants.py`) is still reliably delivered to every harness in scope.
+GitHub issue #143 ("Studio Routing — Use Harness Session Hooks Instead of Writing Into AGENTS.md / CLAUDE.md") reports that `cfs generate-agents` writes the routing precondition into every project's own `AGENTS.md`/`CLAUDE.md`, regardless of whether the target harness offers a native session-start hook. This feature gives every harness that supports session hooks a cleaner delivery path, while preserving today's file-injection behavior as a fallback, so the routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`, `skills/studio/scripts/studio/constants.py`) is still reliably delivered to every harness in scope.
 
-**Scope of "everywhere"**: this feature governs the four harnesses in `_TOOL_PROVIDER_SUPPORT` (claude, codex, cursor, copilot). Windsurf — a fifth host in the default selected set of `cpt-studio-feature-agent-integration` — is explicitly out of scope and keeps today's unconditional `AGENTS.md`/`CLAUDE.md` file injection unchanged (see Section 1.4).
+**Scope of "everywhere"**: this feature governs the four harnesses enumerated by `_TOOL_PROVIDER_SUPPORT` (claude, codex, cursor, copilot). That matrix is used here only to decide **which** harnesses to iterate over; it maps tools to model providers and says nothing about hook capability, which is tracked separately in Section 1.4. Windsurf — a fifth host in the default selected set of `cpt-studio-feature-agent-integration` — is explicitly out of scope and keeps today's unconditional `AGENTS.md`/`CLAUDE.md` file injection unchanged (see Section 1.4).
 
-**Requirements**: deliver the routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`, `skills/studio/scripts/studio/constants.py`) to a supported harness via that harness's native on-session-start hook whenever the harness offers one, falling back to today's file injection into `AGENTS.md`/`CLAUDE.md` for harnesses that do not; and keep switching a harness's routing delivery mode (hook, file, or off) fully reversible per harness, with no residual hook files, file markers, or partial-downgrade state left behind for that harness or any other.
+**Requirements**: deliver the routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`, `skills/studio/scripts/studio/constants.py`) to a supported harness via that harness's native on-session-start hook whenever that hook is available and usable, falling back to today's file injection into `AGENTS.md`/`CLAUDE.md` whenever it is not; and keep switching a harness's routing delivery mode (hook, file, or off) fully reversible per harness, subject to the two named exceptions below.
 
-**Principles**: routing delivery for a harness is governed by exactly one disablement switch per harness — for the `AGENTS.md`/`CLAUDE.md` and hook-file delivery paths — which flips hook install and file-marker state atomically, so within those two paths there is never more than one place that determines whether a harness receives the routing precondition. Copies of `ROOT_AGENTS_PIPELINE_INSTRUCTION` embedded in generated per-harness workflow/skill shim files are a separate, out-of-scope concern (see Section 1.4).
+**Reversibility, and its two named exceptions**: turning routing off for a harness leaves no residual **hook** state for that harness and no residual **per-harness** state anywhere. It does not always empty the two shared fallback files, and it does not touch generated shim files. Specifically:
+
+- The `AGENTS.md`/`CLAUDE.md` managed block is a single project-wide resource shared by all harnesses, so it is retained while **any** in-scope harness is still in `FileFallback` (for example a Codex installation whose experimental hook opt-in is off). It is removed only when no in-scope harness depends on it. This is another harness's live state, not residual state for the disabled harness.
+- Copies of `ROOT_AGENTS_PIPELINE_INSTRUCTION` embedded in generated per-harness workflow/skill shim files are a separate, out-of-scope delivery channel and persist regardless of switch state (see Section 1.4).
+
+Both exceptions are restated verbatim in `cpt-studio-dod-hook-based-session-routing-disablement`; this summary and that DoD are intentionally the same claim.
+
+**Principles**: routing delivery for a harness is governed by exactly one disablement switch per harness — for the `AGENTS.md`/`CLAUDE.md` and hook-entry delivery paths — which flips hook install and file-marker dependence atomically, so within those two paths there is never more than one place that determines whether a harness receives the routing precondition.
 
 ### 1.3 Actors
 
@@ -79,22 +102,37 @@ GitHub issue #143 ("Studio Routing — Use Harness Session Hooks Instead of Writ
 
 - **PRD**: [PRD.md](../PRD.md)
 - **Design**: [DESIGN.md](../DESIGN.md)
-- **Dependencies**: `cpt-studio-feature-agent-integration` (per-(tool,provider) matrix pattern this feature reuses), `cpt-studio-feature-subagent-registration` (adjacent agent-integration surface, not duplicated here)
+- **CLI contract**: [specs/cli.md](../specs/cli.md) — global output conventions (including the human-default stdout exception that covers this feature's summary), and the existing `agents` / `generate-agents` command contracts this feature extends
+- **Dependencies**: `cpt-studio-feature-agent-integration` (per-(tool,provider) matrix and generation pipeline this feature reuses), `cpt-studio-feature-subagent-registration` (adjacent agent-integration surface, not duplicated here)
 - **ADR**: `cpt-studio-adr-ai-cli-extensibility-subagents` ([ADR-0016](../ADR/0016-cpt-studio-adr-ai-cli-extensibility-subagents-v1.md)) — accepted; scopes hooks to subagent-level only and defers project-level `SessionStart` hooks to a future decision
 - **Source issue**: GitHub issue #143, constructorfabric/studio — "Studio Routing — Use Harness Session Hooks Instead of Writing Into AGENTS.md / CLAUDE.md"
 - **Out of scope**:
   - Changing the payload content of the routing instruction itself (tracked separately in issue #144).
-  - **Windsurf**: Windsurf is not covered by this feature. It is not in `_TOOL_PROVIDER_SUPPORT`, and — mirroring the explicit-exclusion pattern `cpt-studio-feature-subagent-registration` uses for Windsurf subagents — it continues to receive today's unconditional `AGENTS.md`/`CLAUDE.md` file injection, unchanged and ungoverned by the disablement switch. Bringing Windsurf under this feature would require adding it to the tool/provider matrix first and is a separate change.
-  - **Generated shim-file copies of the routing precondition**: `_follow_protocol_lines()` (`skills/studio/scripts/studio/commands/agents.py`) bakes `ROOT_AGENTS_PIPELINE_INSTRUCTION` into every generated per-harness workflow/skill shim file. That is a second, independent delivery channel, separate from the `AGENTS.md`/`CLAUDE.md` channel this feature models. It is **out of scope** for this feature's disablement switch: those embedded copies persist regardless of switch state, so "routing off" for a harness removes its hook and its file marker but does **not** remove the routing text already present in that harness's generated shim files. This is a known, named residual-state exception; gating the shim-file channel is deliberately left to a future iteration.
+  - **Windsurf**: Windsurf is not covered by this feature. It is not in `_TOOL_PROVIDER_SUPPORT`, no session-hook mechanism for it was found during the capability survey below, and — mirroring the explicit-exclusion pattern `cpt-studio-feature-subagent-registration` uses for Windsurf subagents — it continues to receive today's unconditional `AGENTS.md`/`CLAUDE.md` file injection, unchanged and ungoverned by the disablement switch. Bringing Windsurf under this feature would require adding it to the tool/provider matrix first and is a separate change.
+  - **Generated shim-file copies of the routing precondition**: `_follow_protocol_lines()` (`skills/studio/scripts/studio/commands/agents.py`) bakes `ROOT_AGENTS_PIPELINE_INSTRUCTION` into every generated per-harness workflow/skill shim file. That is a second, independent delivery channel, separate from the `AGENTS.md`/`CLAUDE.md` channel this feature models. It is **out of scope** for this feature's disablement switch: those embedded copies persist regardless of switch state, so "routing off" for a harness removes its hook entry and its dependence on the file marker but does **not** remove the routing text already present in that harness's generated shim files. This is a known, named residual-state exception; gating the shim-file channel is deliberately left to a future iteration.
   - A dedicated ADR restating the hook-vs-file architectural choice; ADR-0016 already owns the deferral this document resolves (see below).
+
+**Harness hook capability (surveyed 2026-09-23)**: hook capability is a per-harness property of the harness's own extensibility surface. It is **not** derivable from `_TOOL_PROVIDER_SUPPORT`, which maps tools to model providers for model/tier selection only. The table below is the authoritative capability input for `cpt-studio-algo-hook-based-session-routing-compile-harness`; implementation reads it as a dedicated table, not by reusing the provider matrix.
+
+| Harness | Session-start hook event | Hook configuration location | Availability |
+|---------|--------------------------|-----------------------------|--------------|
+| `claude` | `SessionStart` | `.claude/settings.json` | Generally available. |
+| `codex` | `SessionStart` (matcher `startup`) | `.codex/hooks.json`, or a `[hooks]` table in `config.toml` | **Experimental**; shipped in v0.114 and inert unless `codex_hooks = true` is set in the user's `config.toml`. |
+| `cursor` | `sessionStart` | `.cursor/hooks.json` | Generally available. |
+| `copilot` | `sessionStart` | `.github/hooks/<name>.json` | Generally available. |
+| `windsurf` | None found | Not applicable | No hook mechanism found; out of scope for this feature regardless. |
+
+Capability sources: [Codex hooks](https://developers.openai.com/codex/hooks), [ChatGPT hooks reference](https://learn.chatgpt.com/docs/hooks), [Copilot CLI session lifecycle hooks](https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-hooks/session-lifecycle), [Cursor hooks](https://cursor.com/docs/hooks).
+
+**Codex experimental opt-in — decision**: Studio **does not** set `codex_hooks = true` on the user's behalf. That flag lives in the user's own `config.toml` rather than in the project working tree, and flipping a global experimental opt-in is outside the project-local blast radius this feature otherwise keeps. The compile step therefore reads the flag: when it is unset, `codex` resolves to `FileFallback` with the fixed-enum reason for a disabled experimental hook API, and the summary line tells the maintainer how to opt in; when it is set, `codex` follows the ordinary hook path. Revisiting this (for example, offering an explicit `--enable-codex-hooks` opt-in) is Section 7, item (d).
 
 **Reconciliation with ADR-0016**: ADR-0016 deferred project-level `SessionStart` hooks for injecting Studio context into all sessions, pending three prerequisites. This document addresses that deferral and supplies the design for the routing-precondition slice of it:
 
-- **Config merging** — `cpt-studio-dod-hook-based-session-routing-state-file` keeps hook-install bookkeeping in a dedicated per-harness state file rather than in the harness config, and `cpt-studio-algo-hook-based-session-routing-verify-hook` re-parses the harness's own config format after writing, so Studio's entry can be added to and removed from a shared config (e.g. `.claude/settings.json`) idempotently without clobbering user-defined hooks.
-- **Fail-open semantics** — `cpt-studio-algo-hook-based-session-routing-compile-harness` never fails the run on hook trouble: an unwritable or unverifiable hook degrades to the existing file-injection path with a warning, so routing delivery is preserved rather than blocked.
-- **Multi-tool format divergence** — `cpt-studio-dod-hook-based-session-routing-hook-abstraction` defines one cross-harness `on_session_start` abstraction compiled per harness through the existing per-(tool, provider) matrix, with the fallback path covering harnesses that have no hook API at all.
+- **Config merging** — `cpt-studio-dod-hook-based-session-routing-state-file` keeps hook-install bookkeeping in a dedicated per-harness state file rather than in the harness config, and `cpt-studio-dod-hook-based-session-routing-hook-ownership` gives Studio's entry a stable owned identifier, so it can be added to and removed from a shared config (e.g. `.claude/settings.json`) idempotently without clobbering user-defined hooks.
+- **Fail-open semantics** — `cpt-studio-algo-hook-based-session-routing-compile-harness` never fails the run on hook trouble: an unwritable or unverifiable hook degrades to the existing file-injection path with a warning, so routing delivery is preserved rather than blocked. Only a failure of the fallback channel itself is escalated (`cpt-studio-dod-hook-based-session-routing-write-failure`).
+- **Multi-tool format divergence** — `cpt-studio-dod-hook-based-session-routing-hook-abstraction` defines one cross-harness `on_session_start` abstraction compiled per harness from the capability table above, with the fallback path covering harnesses whose hook cannot currently be used.
 
-ADR-0016 also records that **Cursor has no hook support at all**. This document takes that as current fact (no contrary evidence exists in the repository today): Cursor is permanently file-fallback-only under this design. ADR-0016's other deferred items — project-level `PreToolUse`/`PostToolUse` validation hooks and a `cfs hooks install` / `uninstall` CLI command — remain deferred and are not addressed here.
+**ADR-0016 correction required (follow-up)**: ADR-0016 records that **Cursor has no hook support at all**. The 2026-09-23 survey above supersedes that: Cursor ships a `sessionStart` hook configured in `.cursor/hooks.json`. This document therefore treats all four in-scope harnesses as hook-capable. Amending ADR-0016's Cursor claim is a **follow-up change outside this feature's diff** and is tracked as Section 7, item (e); no design here depends on the stale claim. ADR-0016's other deferred items — project-level `PreToolUse`/`PostToolUse` validation hooks and a `cfs hooks install` / `uninstall` CLI command — remain deferred and are not addressed here.
 
 ## 2. Actor Flows (CDSL)
 
@@ -105,23 +143,22 @@ ADR-0016 also records that **Cursor has no hook support at all**. This document 
 **Actor**: Project maintainer
 
 **Success Scenarios**:
-- Every hook-capable harness among the 4 supported (Claude, Codex, Copilot) installs via hook; Cursor — which has no hook API (`cpt-studio-adr-ai-cli-extensibility-subagents`) — installs via the file fallback and is flagged with its one-clause reason. This is the expected steady state, not an error.
-- A mix of hook-capable and hook-incapable harnesses installs, with fallback harnesses clearly flagged.
+- Every in-scope harness (claude, codex, cursor, copilot) has a session-start hook, so each one installs via its own hook entry and, once that entry is confirmed to have run, stops depending on the shared file marker. This is the expected steady state.
+- A harness whose hook cannot currently be used — most commonly `codex` before its experimental opt-in is enabled — installs via the file fallback and is flagged with its one-clause reason. This is an expected outcome, not an error.
+- A harness whose hook entry was written this run but has not yet been observed to run stays in `FileFallback` for one more cycle and is promoted on a later run.
 
 **Error Scenarios**:
-- A harness's hook file is written but fails syntactic verification; that harness falls back to file injection and is reported with a warning.
-- Routing is disabled for a harness (via the disablement switch); no hook and no file marker are written for it.
+- A harness's hook entry is written but fails verification; the failed entry is cleaned up and that harness falls back to file injection with a warning.
+- The file-fallback write itself fails (permissions, read-only tree, full disk); that harness is reported as `errored` with the underlying OS error, not silently as `off` or `file`.
+- Routing is disabled for a harness (via the disablement switch); no hook entry is kept for it, and the shared marker is dropped only if no other in-scope harness still needs it.
 
 **Steps**:
-1. [ ] - `p1` - Project maintainer runs `cfs generate-agents` (optionally with `--json`) - `inst-run-generate-agents`
-2. [ ] - `p1` - **FOR EACH** supported harness (claude, codex, cursor, copilot) - `inst-for-each-harness`
-   1. [ ] - `p1` - Algorithm: compile on-session-start routing delivery for harness using `cpt-studio-algo-hook-based-session-routing-compile-harness` - `inst-compile-harness`
-3. [ ] - `p1` - Algorithm: render per-harness install-outcome summary using `cpt-studio-algo-hook-based-session-routing-render-summary` - `inst-render-summary`
-4. [ ] - `p1` - **IF** `--json` was passed - `inst-if-json-flag`
-   1. [ ] - `p1` - CLI: emit summary as the existing global `--json` structured payload (same fields as the human table) - `inst-emit-json-summary`
-5. [ ] - `p1` - **ELSE** - `inst-else-human-table`
-   1. [ ] - `p1` - CLI: print summary as a short human-readable table, one row per harness - `inst-emit-human-summary`
-6. [ ] - `p1` - **RETURN** per-harness install outcome (routing_mode, hook_path or file_marker_path, warnings) - `inst-return-install-outcome`
+1. [ ] - `p1` - Project maintainer runs `cfs generate-agents` (optionally with `--json`, optionally scoped with `--agent <name>`) - `inst-run-generate-agents`
+2. [ ] - `p1` - **FOR EACH** in-scope harness selected by the run (all of claude, codex, cursor, copilot by default; exactly the named harness when `--agent` is given) - `inst-for-each-harness`
+   1. [ ] - `p1` - Algorithm: resolve the harness's target routing mode and apply its hook-level changes using `cpt-studio-algo-hook-based-session-routing-compile-harness` - `inst-compile-harness`
+3. [ ] - `p1` - Algorithm: reconcile the shared `AGENTS.md`/`CLAUDE.md` marker once, against the complete target-mode set, using `cpt-studio-algo-hook-based-session-routing-reconcile-marker` - `inst-reconcile-marker`
+4. [ ] - `p1` - Algorithm: render per-harness install-outcome summary using `cpt-studio-algo-hook-based-session-routing-render-summary` - `inst-render-summary`
+5. [ ] - `p1` - **RETURN** per-harness install outcome (routing_mode, hook_path or file_marker_paths, warnings) as a new top-level `routing` section alongside the command's existing result fields - `inst-return-install-outcome`
 
 ### Inspect Routing State
 
@@ -130,16 +167,18 @@ ADR-0016 also records that **Cursor has no hook support at all**. This document 
 **Actor**: CLI operator
 
 **Success Scenarios**:
-- Operator runs `cfs agents` after install and sees the same per-harness routing state that `generate-agents` last printed, re-derived rather than replayed.
+- Operator runs `cfs agents` after install and sees the per-harness routing state derived from what is actually installed on disk, not replayed from the last run's output.
+- Operator runs `cfs agents` after an unrelated tool or a manual edit removed Studio's hook entry; the harness is reported as `unknown` rather than as the stale `hook` value the state file still holds.
 
 **Error Scenarios**:
-- Per-harness state file (`cpt-studio-dod-hook-based-session-routing-state-file`) is missing or unreadable for a harness; that harness is reported as "routing state unknown", not silently omitted.
+- The persisted state for a harness disagrees with the resources actually installed for it; that harness is reported as `unknown` with the disagreement named, not silently trusted.
+- The persisted state file for a harness is unparseable or carries an unrecognised schema version; it is treated as absent and the state is re-derived from installed resources.
 
 **Steps**:
 1. [ ] - `p1` - CLI operator runs `cfs agents` (the existing "show generated agent integration status" command) - `inst-run-cfs-agents`
-2. [ ] - `p1` - **FOR EACH** supported harness - `inst-inspect-for-each-harness`
-   1. [ ] - `p1` - Algorithm: re-derive current routing state from the per-harness state file using `cpt-studio-algo-hook-based-session-routing-read-state` - `inst-read-state`
-3. [ ] - `p1` - **RETURN** current per-harness routing state (not a cached copy of the last `generate-agents` run) - `inst-return-current-state`
+2. [ ] - `p1` - **FOR EACH** in-scope harness selected by the run - `inst-inspect-for-each-harness`
+   1. [ ] - `p1` - Algorithm: derive current routing state from installed resources and cross-check it against the persisted state file using `cpt-studio-algo-hook-based-session-routing-read-state` - `inst-read-state`
+3. [ ] - `p1` - **RETURN** current per-harness routing state as a new top-level `routing` section, derived live rather than replayed from a cache - `inst-return-current-state`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -147,46 +186,83 @@ ADR-0016 also records that **Cursor has no hook support at all**. This document 
 
 - [ ] `p1` - **ID**: `cpt-studio-algo-hook-based-session-routing-compile-harness`
 
-**Input**: harness identifier (one of: claude, codex, cursor, copilot), current disablement-switch value for that harness, `ROOT_AGENTS_PIPELINE_INSTRUCTION` payload
+**Input**: harness identifier (one of: claude, codex, cursor, copilot), current disablement-switch value for that harness, the harness's row from the hook-capability table (Section 1.4), `ROOT_AGENTS_PIPELINE_INSTRUCTION` payload
 
-**Output**: per-harness install outcome record (routing_mode: `hook` | `file` | `off`, hook_path or file_marker_path relative to project root, warning entry if fallback occurred)
+**Output**: provisional per-harness outcome record (target_mode: `hook` | `file` | `off` | `errored`, hook_path relative to project root when a hook entry is present, warning or error entry with its fixed-enum reason)
 
-**Shared-resource note (file-fallback marker)**: the file-fallback marker is **not** a per-harness resource. `_inject_root_agents()`/`_inject_root_claude()` (`skills/studio/scripts/studio/commands/init.py`) write one managed block into exactly two shared, project-wide files — root `AGENTS.md` and root `CLAUDE.md` — which multiple harnesses read by convention. There is no per-harness marker file. Consequently the marker is owned collectively: it is created or kept whenever **any** in-scope harness needs the file fallback, and it is removed only when **no** in-scope harness still depends on it (that is, every file-fallback-dependent harness is either "routing off" or in `HookInstalled`). Hook files, by contrast, are genuinely per-harness and are always removed with their own harness. The steps below reflect this asymmetry.
+**Two-pass contract**: this algorithm is **pass 1** and is deliberately confined to resources owned by the single harness it is given — that harness's hook entry, that harness's state file. It never creates or removes the shared `AGENTS.md`/`CLAUDE.md` marker, and it never inspects other harnesses' target modes. All shared-resource decisions are deferred to pass 2 (`cpt-studio-algo-hook-based-session-routing-reconcile-marker`), which runs once per `generate-agents` invocation against the complete target-mode set. This is what makes the run's result independent of the order harnesses are processed in.
+
+**Shared-resource note (file-fallback marker)**: the file-fallback marker is **not** a per-harness resource. `_inject_root_agents()`/`_inject_root_claude()` (`skills/studio/scripts/studio/commands/init.py`) write one managed block into exactly two shared, project-wide files — root `AGENTS.md` and root `CLAUDE.md` — which multiple harnesses read by convention. There is no per-harness marker file, and the two files are treated as one logical resource. Hook entries, by contrast, are genuinely per-harness and are always added and removed with their own harness.
 
 **Steps**:
 1. [ ] - `p1` - **IF** disablement switch for this harness is "routing off" - `inst-check-disabled`
-   1. [ ] - `p1` - Remove this harness's own hook install, if any - `inst-remove-hook-file`
-   2. [ ] - `p1` - **IF** no other in-scope harness still depends on the shared `AGENTS.md`/`CLAUDE.md` marker (every other harness is "routing off" or hook-installed) - `inst-check-shared-marker-unused`
-      1. [ ] - `p1` - Remove the shared `AGENTS.md`/`CLAUDE.md` marker, atomically with the hook removal above (no partial-downgrade state) - `inst-remove-shared-marker`
-   3. [ ] - `p1` - **ELSE** keep the shared marker in place, because it is still serving at least one other harness; record that this harness's `off` state is hook-level only and the shared marker remains - `inst-keep-shared-marker`
-   4. [ ] - `p1` - **RETURN** routing_mode = `off` - `inst-return-off`
-2. [ ] - `p1` - **IF** harness supports an on-session-start hook (per the existing per-(tool, provider) matrix pattern in `skills/studio/scripts/studio/commands/agents.py`) - `inst-check-hook-support`
-   1. [ ] - `p1` - Write the harness-specific hook file (e.g. an entry under `.claude/settings.json` for the `claude` harness), sourcing its payload from `ROOT_AGENTS_PIPELINE_INSTRUCTION` without duplicating or hardcoding the text - `inst-write-hook-file`
-   2. [ ] - `p1` - Algorithm: verify the hook install using `cpt-studio-algo-hook-based-session-routing-verify-hook` - `inst-verify-hook`
-   3. [ ] - `p1` - **IF** verification succeeds - `inst-if-verified`
-      1. [ ] - `p1` - Stop depending on the shared file-injection fallback for this harness; remove the shared `AGENTS.md`/`CLAUDE.md` marker only if no other in-scope harness still depends on it, otherwise leave it in place untouched (per the rollback-path precedent in `skills/studio/scripts/studio/commands/migrate_from_cypilot.py`) - `inst-stop-fallback`
-      2. [ ] - `p1` - Persist per-harness install state to the harness's dedicated state file (separate from `init.py`'s `MARKER_START`/`MARKER_END` scan) - `inst-persist-hook-state`
-      3. [ ] - `p1` - **RETURN** routing_mode = `hook`, hook_path (relative to project root) - `inst-return-hook-mode`
-   4. [ ] - `p1` - **ELSE** - `inst-else-verify-failed`
-      1. [ ] - `p1` - **GOTO** file-injection fallback (step 3) - `inst-goto-fallback`
-3. [ ] - `p1` - Fall back to file injection: ensure the shared managed block is present in the two project-wide files, reusing existing `_compute_managed_block`/`_inject_managed_block`-style marker injection into root `AGENTS.md`/`CLAUDE.md` (`skills/studio/scripts/studio/commands/init.py`); the operation is idempotent because the marker is shared, so a second harness reaching this step finds it already written rather than writing a second copy - `inst-file-fallback-inject`
-4. [ ] - `p1` - Append a warning-level entry to the outcome record, reusing the CLI's existing `warnings` array shape (as in `cfs info --json`), with a one-clause reason drawn from the fixed limitation-reason enum (see Section 7, item c) - `inst-append-fallback-warning`
-5. [ ] - `p1` - **RETURN** routing_mode = `file`, file_marker_path (relative to project root) - `inst-return-file-mode`
+   1. [ ] - `p1` - Remove this harness's Studio-owned hook entry, matched by the stable identifier from `cpt-studio-dod-hook-based-session-routing-hook-ownership`, leaving any user-authored entries in the same config untouched - `inst-remove-hook-entry`
+   2. [ ] - `p1` - Remove this harness's own state file and its execution receipt, so no per-harness residue remains - `inst-remove-state-file`
+   3. [ ] - `p1` - **RETURN** target_mode = `off` (the shared marker is not touched here; pass 2 decides it) - `inst-return-off`
+2. [ ] - `p1` - **IF** the harness's capability row reports no usable session-start hook — either no hook event at all, or a hook API gated behind an opt-in that is currently disabled (e.g. `codex` without `codex_hooks = true`) - `inst-check-hook-support`
+   1. [ ] - `p1` - Record the matching fixed-enum reason and **RETURN** target_mode = `file` - `inst-return-file-no-hook`
+3. [ ] - `p1` - Locate any existing Studio-owned hook entry in the harness's hook config by its stable identifier - `inst-find-owned-entry`
+4. [ ] - `p1` - **IF** a Studio-owned entry already exists - `inst-if-entry-exists`
+   1. [ ] - `p1` - Replace that entry in place with the freshly compiled one, so repeat runs update rather than duplicate it; any additional entries carrying the same identifier are collapsed to one - `inst-replace-owned-entry`
+5. [ ] - `p1` - **ELSE** append a new Studio-owned entry to the harness's hook config, preserving every entry Studio does not own - `inst-append-owned-entry`
+6. [ ] - `p1` - Embed the payload using the harness's transport rule from `cpt-studio-dod-hook-based-session-routing-payload-transport`, sourcing the text from `ROOT_AGENTS_PIPELINE_INSTRUCTION` without duplicating or hardcoding it - `inst-embed-payload`
+7. [ ] - `p1` - Algorithm: verify the hook install using `cpt-studio-algo-hook-based-session-routing-verify-hook` - `inst-verify-hook`
+8. [ ] - `p1` - **IF** verification fails - `inst-if-verify-failed`
+   1. [ ] - `p1` - Remove the unverified Studio-owned entry that was just written, restoring the config to its pre-run content, so no orphaned hook entry is left beside the file fallback - `inst-cleanup-failed-entry`
+   2. [ ] - `p1` - Record the matching fixed-enum reason and **RETURN** target_mode = `file` - `inst-return-file-verify-failed`
+9. [ ] - `p1` - **IF** the harness's execution receipt does not show this exact hook entry having run at least once since it was written - `inst-check-receipt`
+   1. [ ] - `p1` - Record the "hook installed, first run not yet observed" fixed-enum reason and **RETURN** target_mode = `file`, so the fallback keeps delivering for one more cycle while the hook proves itself - `inst-return-file-pending-receipt`
+10. [ ] - `p1` - **RETURN** target_mode = `hook`, hook_path relative to project root - `inst-return-hook-mode`
+
+### Reconcile Shared Fallback Marker
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-hook-based-session-routing-reconcile-marker`
+
+**Input**: the complete set of target modes produced by pass 1 for the harnesses this run touched, plus the last known mode of every in-scope harness this run did **not** touch (from `cpt-studio-algo-hook-based-session-routing-read-state`)
+
+**Output**: final per-harness outcome records (routing_mode, hook_path or the pair of file_marker_paths, warnings and errors), with state persisted for every harness
+
+**Order independence**: this algorithm runs exactly once per `generate-agents` invocation, after every selected harness has been through pass 1. It reads the complete target-mode set rather than a partially-processed one, so the outcome does not depend on the order harnesses were iterated in.
+
+**Two files, one resource**: root `AGENTS.md` and root `CLAUDE.md` are treated as a single logical resource. They are always written together and always cleared together. If they have diverged — one carries the managed block and the other does not — this algorithm restores **both** to whichever target it computes, rather than preserving the divergence.
+
+**Steps**:
+1. [ ] - `p1` - Build the dependency set: every in-scope harness whose target mode for this run is `file` - `inst-build-dependency-set`
+2. [ ] - `p1` - **FOR EACH** in-scope harness not selected by this run (e.g. when `--agent` scoped the run to one harness) - `inst-for-each-untouched`
+   1. [ ] - `p1` - **IF** that harness's last known mode cannot be determined — state file missing, unparseable, or inconsistent with its installed resources - `inst-if-sibling-unknown`
+      1. [ ] - `p1` - Treat it conservatively as still depending on the shared marker and add it to the dependency set, so an undeterminable sibling can never cause the marker to be removed out from under it - `inst-assume-dependency`
+   2. [ ] - `p1` - **ELSE** add it to the dependency set only when its last known mode is `file` - `inst-add-known-dependency`
+3. [ ] - `p1` - **IF** the dependency set is empty - `inst-if-no-dependents`
+   1. [ ] - `p1` - Remove the managed block from **both** root `AGENTS.md` and root `CLAUDE.md` as one operation, using the existing marker-rewrite helpers in `skills/studio/scripts/studio/commands/init.py` - `inst-remove-shared-marker`
+4. [ ] - `p1` - **ELSE** - `inst-else-has-dependents`
+   1. [ ] - `p1` - Ensure the managed block is present and identical in **both** root `AGENTS.md` and root `CLAUDE.md`, reusing the existing `_compute_managed_block`/`_inject_managed_block` marker injection; the operation is idempotent, so several dependent harnesses produce one block, not several - `inst-ensure-shared-marker`
+   2. [ ] - `p1` - **IF** writing either file fails (permission denied, read-only tree, no space, or any other filesystem error) - `inst-if-file-write-failed`
+      1. [ ] - `p1` - Roll the pair back to its pre-run content where possible, and set routing_mode = `errored` for every harness in the dependency set, attaching the underlying OS error text so the maintainer sees the real cause rather than a bare `off` or `file` - `inst-mark-write-error`
+5. [ ] - `p1` - **FOR EACH** harness this run touched - `inst-for-each-finalize`
+   1. [ ] - `p1` - Resolve its final routing_mode from its target mode and the marker outcome above - `inst-resolve-final-mode`
+   2. [ ] - `p1` - Persist that final state to the harness's own state file for **every** mode — `off`, `file`, `hook`, and `errored` alike — so a later inspection never has to guess from a missing file - `inst-persist-state-all-modes`
+   3. [ ] - `p1` - **IF** routing_mode = `file` - `inst-if-final-file`
+      1. [ ] - `p1` - Append a warning-level entry to the outcome record, reusing the CLI's existing `warnings` array shape (as in `cfs info --json`), with a one-clause reason drawn from the fixed limitation-reason enum (see Section 7, item c) - `inst-append-fallback-warning`
+6. [ ] - `p1` - **RETURN** the finalized outcome records - `inst-return-final-outcomes`
 
 ### Verify Hook Install
 
 - [ ] `p1` - **ID**: `cpt-studio-algo-hook-based-session-routing-verify-hook`
 
-**Input**: harness identifier, written hook file path
+**Input**: harness identifier, hook config path, the payload text that was supposed to be embedded
 
 **Output**: verified (boolean)
 
+**What this proves, and what it does not**: these checks prove that Studio's own entry is present in the harness's config, well-formed under that config's format, and carrying the payload intact. They do **not** prove the harness has registered the entry or will execute it. That gap is closed separately, outside this algorithm, by the execution-receipt gate in `cpt-studio-algo-hook-based-session-routing-compile-harness`: file fallback is retained until the hook is observed to have actually run. Verification alone never authorises dropping the fallback.
+
 **Steps**:
-1. [ ] - `p1` - **IF** hook file does not exist at the expected path - `inst-verify-missing`
+1. [ ] - `p1` - **IF** the hook config file does not exist at the expected path - `inst-verify-missing`
    1. [ ] - `p1` - **RETURN** verified = false - `inst-verify-return-false-missing`
 2. [ ] - `p1` - **TRY** - `inst-verify-try`
-   1. [ ] - `p1` - Parse the hook file with the harness's own config format (e.g. JSON for `.claude/settings.json`) and confirm the routing entry is syntactically well-formed - `inst-verify-parse`
-3. [ ] - `p1` - **CATCH** parse error - `inst-verify-catch`
+   1. [ ] - `p1` - Parse the hook config with the harness's own format (e.g. JSON for `.claude/settings.json`, `.cursor/hooks.json`, `.codex/hooks.json`) - `inst-verify-parse`
+   2. [ ] - `p1` - Locate exactly one entry bearing Studio's stable ownership identifier, and confirm it is bound to that harness's session-start event as named in the capability table - `inst-verify-locate-owned-entry`
+   3. [ ] - `p1` - Compare the payload recovered from the entry, after reversing the harness's transport encoding, against the payload text that was supposed to be embedded; confirm it round-trips byte-for-byte so quoting, escaping, and newlines survived - `inst-verify-payload-fidelity`
+3. [ ] - `p1` - **CATCH** parse error, missing or duplicated owned entry, or payload mismatch - `inst-verify-catch`
    1. [ ] - `p1` - **RETURN** verified = false - `inst-verify-return-false-parse-error`
 4. [ ] - `p1` - **RETURN** verified = true - `inst-verify-return-true`
 
@@ -194,16 +270,19 @@ ADR-0016 also records that **Cursor has no hook support at all**. This document 
 
 - [ ] `p1` - **ID**: `cpt-studio-algo-hook-based-session-routing-render-summary`
 
-**Input**: list of per-harness install outcome records
+**Input**: list of finalized per-harness outcome records
 
-**Output**: human-readable table (default) or `--json` structured payload
+**Output**: a `routing` section rendered through the CLI's shared result helper — a human-readable table by default, the same data as structured output under `--json`
 
 **Steps**:
-1. [ ] - `p1` - **FOR EACH** install outcome record - `inst-summary-for-each`
-   1. [ ] - `p1` - Render harness name, routing_mode, and the hook file path or file marker path expressed relative to project root (never absolute, for `--json` stability across machines/CI) - `inst-render-row`
-   2. [ ] - `p1` - **IF** routing_mode = `file` (fallback occurred) - `inst-render-if-fallback`
+1. [ ] - `p1` - **FOR EACH** outcome record - `inst-summary-for-each`
+   1. [ ] - `p1` - Render harness name, routing_mode, and either the hook config path or the pair of shared file-marker paths, all expressed relative to project root (never absolute, for `--json` stability across machines/CI) - `inst-render-row`
+   2. [ ] - `p1` - **IF** routing_mode = `file` (fallback in effect) - `inst-render-if-fallback`
       1. [ ] - `p1` - Render the row as a visually distinct warning-level line, including the one-clause limitation reason - `inst-render-fallback-warning-line`
-2. [ ] - `p1` - **RETURN** rendered summary (table or `--json`, same underlying data) - `inst-return-rendered-summary`
+   3. [ ] - `p1` - **IF** routing_mode = `errored` - `inst-render-if-errored`
+      1. [ ] - `p1` - Render the row as an error-level line carrying the underlying filesystem error, and contribute to the command's existing `PARTIAL` result contract rather than being reported as a successful install - `inst-render-error-line`
+2. [ ] - `p1` - Attach the rendered section under a new top-level `routing` key, leaving the command's existing result fields (`status`, `agents`, `project_root`, `studio_root`, `results`) unchanged - `inst-attach-routing-section`
+3. [ ] - `p1` - **RETURN** rendered summary (table or structured payload, same underlying data) - `inst-return-rendered-summary`
 
 ### Read Current Routing State
 
@@ -211,13 +290,18 @@ ADR-0016 also records that **Cursor has no hook support at all**. This document 
 
 **Input**: harness identifier
 
-**Output**: current install outcome record (re-derived, not cached)
+**Output**: current routing state, derived from installed resources and cross-checked against the persisted state file
+
+**Derivation precedence**: the installed resources are the source of truth and the state file is a cross-check, not an oracle. Derived state resolves as `HookInstalled` when a verified Studio-owned hook entry and a confirming receipt are both present; otherwise `FileFallback` when the shared marker is present; otherwise `Off`. `unknown` is reserved for a genuine disagreement between derived and persisted state — it is never the answer merely because a file is absent.
 
 **Steps**:
-1. [ ] - `p1` - Read the harness's dedicated state file (`cpt-studio-dod-hook-based-session-routing-state-file`) if present - `inst-read-state-file`
-2. [ ] - `p1` - **IF** state file is missing or unreadable - `inst-read-state-missing`
-   1. [ ] - `p1` - **RETURN** routing_mode = "unknown" (never silently omitted) - `inst-return-unknown-state`
-3. [ ] - `p1` - **RETURN** current install outcome record for this harness - `inst-return-current-outcome`
+1. [ ] - `p1` - Derive the harness's actual state from installed resources: presence and verifiability of its Studio-owned hook entry, presence of its execution receipt, and presence of the shared `AGENTS.md`/`CLAUDE.md` managed block - `inst-derive-from-resources`
+2. [ ] - `p1` - Read the harness's own state file, treating it as absent when it is missing, unparseable, or carries a `schema_version` this Studio version does not recognise - `inst-read-state-file`
+3. [ ] - `p1` - **IF** the state file is absent by that definition - `inst-read-state-missing`
+   1. [ ] - `p1` - **RETURN** the derived state, and repair the state file by rewriting it from that derivation on the next `generate-agents` run; a fresh project with nothing installed therefore reports `off`, matching the initial state in Section 4, rather than `unknown` - `inst-return-derived-state`
+4. [ ] - `p1` - **IF** the persisted state disagrees with the derived state (for example the file says `hook` but the hook entry was removed outside Studio, or it says `file` while the shared marker is gone) - `inst-if-state-disagrees`
+   1. [ ] - `p1` - **RETURN** routing_mode = `unknown`, naming both the persisted and the derived value so the maintainer can see what drifted; the harness is reported, never silently omitted - `inst-return-unknown-state`
+5. [ ] - `p1` - **RETURN** the agreed state for this harness - `inst-return-current-outcome`
 
 ## 4. States (CDSL)
 
@@ -225,25 +309,27 @@ ADR-0016 also records that **Cursor has no hook support at all**. This document 
 
 - [ ] `p1` - **ID**: `cpt-studio-state-hook-based-session-routing-per-harness`
 
-**States**: Off, FileFallback, HookInstalled
+**States**: Off, FileFallback, HookInstalled, Errored (serialized as `off`, `file`, `hook`, `errored` per the mapping table in Section 1.1)
 
-**Initial State**: Off for a project that has never had the routing precondition delivered. For a project already managed by Studio before this feature ships, the initial state is **FileFallback**, not Off — see the migration note below.
+**Initial State**: Off for a project that has never had the routing precondition delivered — a project with no state file and no installed resources derives to Off, not to `unknown`. For a project already managed by Studio before this feature ships, the initial state is **FileFallback**, not Off — see the migration note below.
 
 **Transitions**:
-1. [ ] - `p1` - **FROM** Off **TO** FileFallback **WHEN** disablement switch is set to "routing on" and the harness has no supported session-hook API, or hook write/verify fails - `inst-transition-off-to-file`
-2. [ ] - `p1` - **FROM** Off **TO** HookInstalled **WHEN** disablement switch is set to "routing on" and hook write + verify succeed - `inst-transition-off-to-hook`
-3. [ ] - `p1` - **FROM** FileFallback **TO** HookInstalled **WHEN** a later `generate-agents` run finds hook support has become available and hook write + verify succeed - `inst-transition-file-to-hook`
-4. [ ] - `p1` - **FROM** HookInstalled **TO** FileFallback **WHEN** a later `generate-agents` run finds the previously-verified hook no longer verifies - `inst-transition-hook-to-file`
-5. [ ] - `p1` - **FROM** FileFallback **TO** Off **WHEN** disablement switch is set to "routing off"; the shared `AGENTS.md`/`CLAUDE.md` marker is removed only if no other in-scope harness still depends on it, and is otherwise left in place - `inst-transition-file-to-off`
-6. [ ] - `p1` - **FROM** HookInstalled **TO** Off **WHEN** disablement switch is set to "routing off" (this harness's hook file removed; shared marker removed in the same atomic operation only if no other in-scope harness still depends on it) - `inst-transition-hook-to-off`
+1. [ ] - `p1` - **FROM** Off **TO** FileFallback **WHEN** disablement switch is set to "routing on" and the harness's hook cannot currently be used, hook write or verify fails, or the hook's first execution has not yet been observed - `inst-transition-off-to-file`
+2. [ ] - `p1` - **FROM** Off **TO** HookInstalled **WHEN** disablement switch is set to "routing on" and hook write, verify, and execution-receipt confirmation all succeed - `inst-transition-off-to-hook`
+3. [ ] - `p1` - **FROM** FileFallback **TO** HookInstalled **WHEN** a later run finds the hook usable and its entry written, verified, and confirmed to have run - `inst-transition-file-to-hook`
+4. [ ] - `p1` - **FROM** HookInstalled **TO** FileFallback **WHEN** a later run finds the previously-verified hook entry missing, unverifiable, or no longer carrying the intact payload - `inst-transition-hook-to-file`
+5. [ ] - `p1` - **FROM** FileFallback **TO** Off **WHEN** disablement switch is set to "routing off"; the shared `AGENTS.md`/`CLAUDE.md` marker is removed by the reconciliation pass only if no in-scope harness still depends on it, and is otherwise left in place - `inst-transition-file-to-off`
+6. [ ] - `p1` - **FROM** HookInstalled **TO** Off **WHEN** disablement switch is set to "routing off"; this harness's hook entry, state file, and receipt are removed, and the shared marker is removed by the reconciliation pass only if no in-scope harness still depends on it - `inst-transition-hook-to-off`
+7. [ ] - `p1` - **FROM** any state **TO** Errored **WHEN** the file-fallback write this harness depends on fails with a filesystem error, so neither channel is known to be delivering - `inst-transition-any-to-errored`
+8. [ ] - `p1` - **FROM** Errored **TO** FileFallback or HookInstalled **WHEN** a later run succeeds in establishing the corresponding channel - `inst-transition-errored-to-delivering`
 
-No partial-downgrade state exists: a harness is always in exactly one of Off, FileFallback, or HookInstalled; the disablement switch (`cpt-studio-dod-hook-based-session-routing-disablement`) flips this harness's hook state and its dependence on the file marker atomically.
+No partial-downgrade state exists: a harness is always in exactly one of Off, FileFallback, HookInstalled, or Errored; the disablement switch (`cpt-studio-dod-hook-based-session-routing-disablement`) flips this harness's hook state and its dependence on the file marker atomically. `Errored` is distinct from `Off`: `Off` is an intentional, successful outcome, while `Errored` records that Studio tried and could not establish delivery, and is surfaced as an error-level line.
 
 **Shared marker, not per-harness state**: Off means "this harness receives no routing precondition from the hook or file channel". Because the file marker lives in two shared, project-wide files (root `AGENTS.md`/`CLAUDE.md`) rather than one file per harness, an Off harness may coexist with a marker that is still on disk for another harness's sake. That is not residual state for the Off harness — it is another harness's live state — but it does mean disabling one harness does not necessarily empty the shared files.
 
-**Cursor never reaches HookInstalled**: per `cpt-studio-adr-ai-cli-extensibility-subagents`, Cursor has no hook support at all. Cursor's reachable states are therefore Off and FileFallback only; transitions 2, 3 and 4 do not apply to it. This is a permanent property of the current Cursor surface, not a transient failure, and its fallback warning carries the corresponding fixed-enum reason rather than an error. Should Cursor gain a session-hook API, no change to this state machine is needed — only the tool/provider matrix entry.
+**All four in-scope harnesses can reach HookInstalled**: per the capability survey in Section 1.4, claude, codex, cursor, and copilot each expose a session-start hook, so every transition above applies to every in-scope harness. `codex` is the one harness with a conditional path: while its experimental `codex_hooks` opt-in is disabled it resolves to FileFallback with the corresponding fixed-enum reason — a configuration-dependent outcome, not a permanent property of the harness — and it moves to HookInstalled by the ordinary transitions once the opt-in is enabled.
 
-**Migration from pre-existing file injection**: every Studio-managed project created before this feature already has the routing precondition injected unconditionally into root `AGENTS.md`/`CLAUDE.md` (per `cpt-studio-feature-agent-integration`). On the first post-upgrade `cfs generate-agents` run, such a project MUST be read as starting in FileFallback for every in-scope harness — the existing marker is recognised as the file-fallback state, not ignored or re-injected — and each harness then proceeds through the normal transitions from there (transition 3 to HookInstalled for hook-capable harnesses, or staying in FileFallback). Upgrading MUST NOT require the project to pass through Off, and MUST NOT produce a duplicate marker.
+**Migration from pre-existing file injection**: every Studio-managed project created before this feature already has the routing precondition injected unconditionally into root `AGENTS.md`/`CLAUDE.md` (per `cpt-studio-feature-agent-integration`). On the first post-upgrade `cfs generate-agents` run, such a project MUST be read as starting in FileFallback for every in-scope harness — the existing marker is recognised as the file-fallback state, not ignored or re-injected — and each harness then proceeds through the normal transitions from there. Because the two shared files are one logical resource, the marker being present in **either or both** of root `AGENTS.md` and root `CLAUDE.md` is sufficient evidence of prior FileFallback for the whole in-scope harness set; a partial state left by a manual edit or an interrupted earlier run is treated as prior FileFallback and reconciled so both files match the computed target. Upgrading MUST NOT require the project to pass through Off, and MUST NOT produce a duplicate marker.
 
 ## 5. Definitions of Done
 
@@ -251,7 +337,11 @@ No partial-downgrade state exists: a harness is always in exactly one of Off, Fi
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-hook-abstraction`
 
-The system **MUST** implement a single cross-harness "on_session_start" abstraction, compiled per harness inside `cfs generate-agents` (`skills/studio/scripts/studio/commands/agents.py`), reusing the existing per-(tool, provider) matrix pattern (`_TOOL_PROVIDER_SUPPORT`, `_TOOL_PROVIDER_DEFAULT`) already used there for model/tier mapping.
+The system **MUST** implement a single cross-harness "on_session_start" abstraction, compiled per harness inside `cfs generate-agents` (`skills/studio/scripts/studio/commands/agents.py`).
+
+The system **MUST** drive hook capability from a dedicated per-harness capability table that names, for each in-scope harness, its session-start event name, its hook configuration path, and any opt-in that gates it — the table in Section 1.4. The system **MUST NOT** infer hook capability from `_TOOL_PROVIDER_SUPPORT`/`_TOOL_PROVIDER_DEFAULT`, which map tools to model providers for model/tier selection and carry no hook information; that matrix **MAY** still be used for its existing purpose of enumerating which harnesses are in scope.
+
+When the run is scoped with `--agent <name>`, the system **MUST** compile routing for exactly that harness — matching how `--agent` already scopes every other `generate-agents` behavior — while the shared-marker reconciliation **MUST** still account for all in-scope harnesses, so a scoped run cannot remove a marker an unselected harness still needs.
 
 **Implements**:
 - `cpt-studio-flow-hook-based-session-routing-install`
@@ -260,14 +350,52 @@ The system **MUST** implement a single cross-harness "on_session_start" abstract
 **Touches**:
 - Entities: `HarnessRoutingOutcome`
 
+### Studio-Owned Hook Entry Identity
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-hook-ownership`
+
+The system **MUST** stamp the hook entry it writes with a stable, Studio-owned identifier — a fixed reserved value in the harness's own naming field (the entry's `name`/`id` for configs that key entries by name, or the reserved hook filename for harnesses such as Copilot that use one file per hook). This identifier plays the same ownership role for hook configs that `MARKER_START`/`MARKER_END` plays for the file-injection path.
+
+The system **MUST** use that identifier as the sole means of finding, replacing, and removing its own entry, and **MUST NOT** match entries by event name, command text, or position, so a user's own session-start hook in the same config is never clobbered. Every entry Studio does not own **MUST** survive install, reinstall, and uninstall byte-for-byte.
+
+A repeat install — `generate-agents` run again when a Studio-owned entry already exists — **MUST** replace that entry in place rather than appending a second one, and **MUST** collapse any pre-existing duplicates bearing the identifier to exactly one entry.
+
+A hook entry that is written and then fails verification **MUST** be removed before the fallback path is taken, restoring the config to its pre-run content, so no orphaned unverified hook entry is left on disk alongside the file-fallback marker.
+
+**Implements**:
+- `cpt-studio-algo-hook-based-session-routing-compile-harness`
+- `cpt-studio-algo-hook-based-session-routing-verify-hook`
+
+### Hook Payload Transport
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-payload-transport`
+
+The system **MUST** define, per harness, exactly one transport for getting `ROOT_AGENTS_PIPELINE_INSTRUCTION` — multi-line text containing quotes — into that harness's hook format, and **MUST** apply that harness's native escaping rather than string concatenation. Each harness's hook entry invokes a command, so the system **MUST** use a Studio-written payload file referenced by that command as the default transport, with direct embedding as an escaped string value permitted only where the harness's format accepts the full payload losslessly. The chosen transport per harness is Section 7, item (f).
+
+The system **MUST** make the hook command, on execution, both emit the payload to the harness and stamp a per-harness execution receipt recording that this exact entry ran. That receipt is the "first observed execution" signal the fallback gate depends on.
+
+The system **MUST** verify payload fidelity — recovering the payload through the reverse of the transport encoding and comparing it byte-for-byte against the intended text — rather than accepting syntactic validity of the config as proof the payload survived.
+
+**Implements**:
+- `cpt-studio-algo-hook-based-session-routing-compile-harness`
+- `cpt-studio-algo-hook-based-session-routing-verify-hook`
+
 ### Per-Harness Install State File
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-state-file`
 
-The system **MUST** persist hook-install state in a new, small, per-harness state file that is separate from `init.py`'s `MARKER_START`/`MARKER_END` AGENTS.md/CLAUDE.md scan, since hook installs live in harness-specific config (e.g. `.claude/settings.json`) rather than in AGENTS.md/CLAUDE.md.
+The system **MUST** persist routing state in **one state file per harness** — not a single shared file keyed by harness — so each harness's write is isolated and no cross-harness merge or atomic-upsert contract is needed for partial-failure safety. Each file **MUST** live in that harness's own configuration directory under the reserved name `.cf-studio-routing-state.json`, mirroring how `cpt-studio-feature-agent-integration` names `.opencode/.cf-studio-installed` and `.codex/.cf-installed`: `.claude/.cf-studio-routing-state.json`, `.codex/.cf-studio-routing-state.json`, `.cursor/.cf-studio-routing-state.json`, and `.github/.cf-studio-routing-state.json`. These files **MUST** be covered by the managed `.gitignore` block that `generate-agents` already refreshes.
+
+The state file **MUST** be separate from `init.py`'s `MARKER_START`/`MARKER_END` `AGENTS.md`/`CLAUDE.md` scan, since hook installs live in harness-specific config rather than in those files.
+
+The system **MUST** write the state file for **every** resolved mode — `off`, `file`, `hook`, and `errored` alike — never only for the hook case, so inspection never has to infer a harness's mode from an absent file.
+
+The state file **MUST** carry a `schema_version` field. A state file that is unparseable, or whose `schema_version` this Studio version does not recognise, **MUST** be treated exactly as an absent file: the state is re-derived from installed resources and the file is rewritten from that derivation on the next `generate-agents` run, rather than failing the run or being partially trusted.
+
+The persisted state **MUST** be treated as a cross-check against installed resources, never as the sole source of truth; the derivation and disagreement rules are `cpt-studio-algo-hook-based-session-routing-read-state`.
 
 **Implements**:
-- `cpt-studio-algo-hook-based-session-routing-compile-harness`
+- `cpt-studio-algo-hook-based-session-routing-reconcile-marker`
 - `cpt-studio-algo-hook-based-session-routing-read-state`
 
 **Touches**:
@@ -277,24 +405,43 @@ The system **MUST** persist hook-install state in a new, small, per-harness stat
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-fallback`
 
-The system **MUST** keep file injection (`_compute_managed_block`/`_inject_managed_block` and related marker-rewrite helpers in `skills/studio/scripts/studio/commands/init.py`) as the default fallback for a harness, and **MUST** only stop injecting for that harness once its hook install is verified (hook file written and syntactically valid), mirroring the rollback-path precedent in `skills/studio/scripts/studio/commands/migrate_from_cypilot.py`.
+The system **MUST** keep file injection (`_compute_managed_block`/`_inject_managed_block` and related marker-rewrite helpers in `skills/studio/scripts/studio/commands/init.py`) as the fallback for a harness, and **MUST** only stop depending on it for that harness once the harness's hook entry is verified **and** its execution receipt confirms that entry has run at least once. Syntactic validity of the hook config alone **MUST NOT** authorise dropping the fallback, because it does not prove the harness registered or will execute the entry. This mirrors the rollback-path precedent in `skills/studio/scripts/studio/commands/migrate_from_cypilot.py`.
 
-The system **MUST** treat the injected marker as a **shared, project-wide** resource — one managed block in root `AGENTS.md` and one in root `CLAUDE.md`, written by `_inject_root_agents()`/`_inject_root_claude()` and consumed by multiple harnesses by convention — and **MUST NOT** model it as harness-owned. Accordingly the system **MUST** remove the shared marker only when no in-scope harness still depends on it, and **MUST** leave it in place when disabling or hook-upgrading a single harness while another in-scope harness is still in FileFallback.
+The system **MUST** treat the injected marker as a **shared, project-wide** resource — one managed block in root `AGENTS.md` and one in root `CLAUDE.md`, written by `_inject_root_agents()`/`_inject_root_claude()` and consumed by multiple harnesses by convention — and **MUST NOT** model it as harness-owned. The two files **MUST** be treated as one logical resource, always written together and always cleared together; when they diverge, the reconciliation pass **MUST** restore both to the computed target rather than preserving the divergence.
+
+The system **MUST** decide marker removal exactly once per run, from the complete target-mode set for all in-scope harnesses, so the result does not depend on the order harnesses were processed in. When a harness's dependency on the marker cannot be determined — it was not selected by this run and its state is missing, unparseable, or inconsistent with its installed resources — the system **MUST** fail closed and treat that harness as still depending on the marker.
 
 **Implements**:
 - `cpt-studio-algo-hook-based-session-routing-compile-harness`
+- `cpt-studio-algo-hook-based-session-routing-reconcile-marker`
 - `cpt-studio-algo-hook-based-session-routing-verify-hook`
+
+### Write-Failure Error Outcome
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-write-failure`
+
+The system **MUST** treat a failure to write the shared `AGENTS.md`/`CLAUDE.md` fallback — permission denied, read-only working tree, exhausted disk, or any other filesystem error — as an explicit `errored` outcome for every harness that depended on that write, and **MUST NOT** report such a harness as `off` or as `file`.
+
+The `errored` outcome **MUST** carry the underlying OS error text, **MUST** be rendered as an error-level line in the summary, and **MUST** feed the command's existing `PARTIAL` result contract so the run is not reported as a clean success.
+
+Hook-side failures are deliberately treated differently: an unwritable or unverifiable hook entry degrades to the fallback with a warning and is not an error, because delivery is preserved. `errored` is reserved for the case where no channel is known to be delivering.
+
+**Implements**:
+- `cpt-studio-algo-hook-based-session-routing-reconcile-marker`
+- `cpt-studio-algo-hook-based-session-routing-render-summary`
 
 ### Single Disablement Switch
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-disablement`
 
-The system **MUST** provide exactly one disablement switch per harness with exactly two states — "routing on" (hook if supported, else file) and "routing off" (neither hook nor file for that harness) — and **MUST** flip that harness's hook install and its dependence on the shared file marker atomically, so no silent partial-downgrade state can occur.
+The system **MUST** provide exactly one disablement switch per harness with exactly two states — "routing on" (hook when usable, else file) and "routing off" (neither hook nor file for that harness) — and **MUST** flip that harness's hook install and its dependence on the shared file marker atomically, so no silent partial-downgrade state can occur.
 
-**Scope of the guarantee**: this single-switch, no-residual-state guarantee covers the `AGENTS.md`/`CLAUDE.md` and hook-file delivery paths only. Two named exceptions are deliberately outside it:
+**Scope of the guarantee**: this single-switch, no-residual-state guarantee covers the `AGENTS.md`/`CLAUDE.md` and hook-entry delivery paths only. The same two named exceptions stated in Section 1.2 apply, and nothing elsewhere in this document may claim otherwise:
 
 - **Generated shim-file copies (out of scope)**: `_follow_protocol_lines()` (`skills/studio/scripts/studio/commands/agents.py`) embeds `ROOT_AGENTS_PIPELINE_INSTRUCTION` into every generated per-harness workflow/skill shim file over a second, independent channel. Those copies **MUST** be documented as persisting regardless of switch state, and the switch **MUST NOT** claim to remove them. Gating that channel belongs to a future iteration.
-- **Shared marker retention**: because the file marker is project-wide rather than harness-owned (`cpt-studio-dod-hook-based-session-routing-fallback`), "routing off" for one harness **MUST NOT** remove the marker while another in-scope harness still depends on it.
+- **Shared marker retention**: because the file marker is project-wide rather than harness-owned (`cpt-studio-dod-hook-based-session-routing-fallback`), "routing off" for one harness **MUST NOT** remove the marker while another in-scope harness still depends on it. With every in-scope harness now hook-capable, this case narrows to harnesses currently in `FileFallback` — a `codex` installation without its experimental opt-in, a hook awaiting its first observed execution, or a harness whose hook stopped verifying — but it remains reachable and is not claimed away.
+
+Within those exceptions, turning routing off for a harness **MUST** leave no hook entry, no state file, and no execution receipt for that harness.
 
 **Implements**:
 - `cpt-studio-algo-hook-based-session-routing-compile-harness`
@@ -313,7 +460,9 @@ The system **MUST** source the hook payload directly from `ROOT_AGENTS_PIPELINE_
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-summary`
 
-The system **MUST** print a per-harness install-outcome summary at the end of `cfs generate-agents`, as a short human table by default and as the same data via the CLI's existing global `--json` flag convention. The system **MUST** make the same data queryable later via `cfs agents`, re-derived live from the per-harness state file rather than replayed from a cache.
+The system **MUST** print a per-harness install-outcome summary at the end of `cfs generate-agents`, rendered through the CLI's shared result helper: a short human table by default and the same data as structured output under the global `--json` flag, per the output convention in [specs/cli.md](../specs/cli.md). The system **MUST** make the same data queryable later via `cfs agents`, derived live from installed resources rather than replayed from a cache.
+
+The summary **MUST** be added to both commands' structured output as a new top-level `routing` key holding one record per harness, and **MUST NOT** alter or replace the fields those commands already emit (`status`, `agents`, `project_root`, `studio_root`, `results`).
 
 **Implements**:
 - `cpt-studio-flow-hook-based-session-routing-install`
@@ -327,14 +476,14 @@ The system **MUST** print a per-harness install-outcome summary at the end of `c
 The system **MUST** flag any harness that falls back to file injection with a warning-level, visually distinct line in the summary, reusing the CLI's existing `warnings` array shape (as already used in, e.g., `cfs info --json` output).
 
 **Implements**:
-- `cpt-studio-algo-hook-based-session-routing-compile-harness`
+- `cpt-studio-algo-hook-based-session-routing-reconcile-marker`
 - `cpt-studio-algo-hook-based-session-routing-render-summary`
 
 ### Relative Hook-Path Disclosure
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-relative-paths`
 
-The system **MUST** express the hook file path written per harness relative to the project root (never absolute) in the summary, so `--json` output stays stable across machines and CI.
+The system **MUST** express every path it reports — the harness's hook config path, and the pair of shared file-marker paths — relative to the project root and never absolute, so `--json` output stays stable across machines and CI.
 
 **Implements**:
 - `cpt-studio-algo-hook-based-session-routing-render-summary`
@@ -343,7 +492,7 @@ The system **MUST** express the hook file path written per harness relative to t
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-hook-based-session-routing-reason-enum`
 
-The system **MUST** attach a one-clause fallback reason (e.g. "Codex CLI has no session-hook API yet") to each fallback warning, drawn from a fixed, stable enum of known limitation reasons rather than free text. The exact enum values are an open implementation question (Section 7, item c).
+The system **MUST** attach a one-clause fallback reason to each fallback warning, drawn from a fixed, stable enum of known limitation reasons rather than free text. The enum **MUST** at minimum distinguish a hook API gated behind a disabled experimental opt-in (the `codex` case), a hook entry that failed verification, and a hook entry awaiting its first observed execution, since these three produce the same `file` mode for very different reasons and call for different maintainer action. The exact enum values are Section 7, item (c).
 
 **Implements**:
 - `cpt-studio-algo-hook-based-session-routing-compile-harness`
@@ -351,24 +500,39 @@ The system **MUST** attach a one-clause fallback reason (e.g. "Codex CLI has no 
 
 ## 6. Acceptance Criteria
 
-- [ ] All 4 supported harnesses (claude, codex, cursor, copilot) go through the compile-harness process and end in exactly one of the three states (Off, FileFallback, HookInstalled) with no partial-downgrade state observable. Windsurf is not processed by this path and keeps its existing unconditional file injection.
-- [ ] A harness with no session-hook support falls back to file injection and appears in the summary with a warning-level line and a one-clause reason.
-- [ ] With routing on for all 4 harnesses, cursor ends in FileFallback (never HookInstalled) and is reported with the "no hook API" reason rather than as an error, matching `cpt-studio-adr-ai-cli-extensibility-subagents`.
-- [ ] A harness with verified hook support stops depending on the shared file marker and appears in the summary with routing_mode = hook and a project-root-relative hook path.
-- [ ] Disabling routing for a harness removes that harness's hook install, and removes the shared root `AGENTS.md`/`CLAUDE.md` marker in the same atomic operation **only when** no other in-scope harness still depends on it; when another in-scope harness is still in FileFallback, the shared marker is verifiably left in place and the disabled harness is still reported as `off`.
-- [ ] Disabling routing for every in-scope harness removes the shared root `AGENTS.md`/`CLAUDE.md` marker and all hook files, leaving no residual marker or hook file — while the routing text embedded in generated shim files by `_follow_protocol_lines()` is expected to remain (documented out-of-scope exception, not a defect).
-- [ ] A project that already has the pre-existing file-injected marker from before this feature is read as starting in FileFallback (not Off) on its first post-upgrade `cfs generate-agents` run, is not re-injected or duplicated, and then transitions normally to HookInstalled for each hook-capable harness.
-- [ ] `cfs generate-agents --json` and the default human table expose the same underlying per-harness data (routing_mode, path, warnings).
-- [ ] `cfs agents` re-derives and reports the same per-harness routing state as the most recent `generate-agents` run, without relying on a cached replay.
+- [ ] All 4 in-scope harnesses (claude, codex, cursor, copilot) go through the compile process and end in exactly one of the four states (Off, FileFallback, HookInstalled, Errored) with no partial-downgrade state observable. Windsurf is not processed by this path and keeps its existing unconditional file injection.
+- [ ] Each of the 4 in-scope harnesses can reach HookInstalled: with routing on, a usable hook, and a confirming execution receipt, claude, codex, cursor, and copilot each install via their own session-start hook entry at the event and config path named in Section 1.4.
+- [ ] With routing on and the `codex_hooks` experimental opt-in disabled, codex ends in FileFallback and is reported with the experimental-opt-in reason rather than as an error; enabling the opt-in and re-running moves codex to HookInstalled without any other change.
+- [ ] A harness whose hook entry is written but not yet observed to have run stays in FileFallback with the pending-first-run reason, and is promoted to HookInstalled on a later run once its execution receipt confirms the entry ran.
+- [ ] Hook capability is read from the dedicated capability table; changing `_TOOL_PROVIDER_SUPPORT`'s provider sets has no effect on any harness's routing_mode.
+- [ ] Installing into a hook config that already contains a user-authored session-start hook leaves that user entry byte-for-byte unchanged, and running `generate-agents` repeatedly produces exactly one Studio-owned entry rather than accumulating duplicates.
+- [ ] A hook entry that is written and then fails verification is removed from the config before the fallback is taken, leaving no orphaned unverified entry on disk.
+- [ ] Verification rejects a hook entry whose payload did not survive transport intact (altered quoting, truncated newlines), not merely one whose config fails to parse.
+- [ ] A harness with a verified, receipt-confirmed hook stops depending on the shared file marker and appears in the summary with routing_mode = hook and a project-root-relative hook path.
+- [ ] Disabling routing for a harness removes that harness's hook entry, state file, and execution receipt, and removes the shared root `AGENTS.md`/`CLAUDE.md` marker **only when** no other in-scope harness still depends on it; when another in-scope harness is still in FileFallback, the shared marker is verifiably left in place and the disabled harness is still reported as `off`.
+- [ ] The shared-marker outcome is identical regardless of the order harnesses are processed in: for any given set of target modes, permuting the iteration order produces the same marker state and the same per-harness outcomes.
+- [ ] A `--agent <name>`-scoped run compiles routing only for the named harness, and still leaves the shared marker in place when an unselected in-scope harness depends on it.
+- [ ] When an unselected harness's state cannot be determined, the run keeps the shared marker rather than removing it.
+- [ ] Root `AGENTS.md` and root `CLAUDE.md` are always left in the same marker state as each other; a run that starts with the marker in only one of them ends with both matching the computed target.
+- [ ] Disabling routing for every in-scope harness removes the shared root `AGENTS.md`/`CLAUDE.md` marker, all Studio-owned hook entries, all per-harness state files, and all receipts, leaving no residual per-harness state — while the routing text embedded in generated shim files by `_follow_protocol_lines()` is expected to remain (documented out-of-scope exception, not a defect).
+- [ ] A failed shared-marker write reports every affected harness as `errored` with the underlying OS error, contributes to the `PARTIAL` result contract, and is never reported as `off` or `file`.
+- [ ] Every resolved mode is persisted: after a run, each touched harness has a state file recording `off`, `file`, `hook`, or `errored`, and `cfs agents` on a fresh untouched project reports `off` rather than `unknown`.
+- [ ] `cfs agents` derives state from installed resources: removing a Studio-owned hook entry or the shared marker outside Studio makes the affected harness report `unknown` with both the persisted and derived values named, rather than the stale persisted value.
+- [ ] A state file that is corrupt or carries an unrecognised `schema_version` is treated as absent: state is re-derived from installed resources and the file is rewritten, without failing the run.
+- [ ] A project that already has the pre-existing file-injected marker in either or both root files is read as starting in FileFallback (not Off) on its first post-upgrade `cfs generate-agents` run, is not re-injected or duplicated, has both files reconciled to match, and then transitions normally to HookInstalled for each harness whose hook is usable and confirmed.
+- [ ] `cfs generate-agents --json` and the default human table expose the same underlying per-harness data (routing_mode, paths, warnings), carried under a new top-level `routing` key that leaves both commands' existing output fields unchanged.
 - [ ] The hook payload text is sourced from `ROOT_AGENTS_PIPELINE_INSTRUCTION` and is not duplicated elsewhere in the hook-writing code path.
 
 ## 7. Open Implementation Questions
 
-These three side-topics were raised during design brainstorming and are deliberately left open. They **MUST** be resolved before or during implementation, not silently decided by this FEATURE document:
+These side-topics are deliberately left open. They **MUST** be resolved before or during implementation, not silently decided by this FEATURE document:
 
-- [ ] **(a) Hook verification signal**: What exact verification signal proves a hook install succeeded, before file-fallback is turned off for that harness? `cpt-studio-algo-hook-based-session-routing-verify-hook` currently specifies "hook file exists and parses under the harness's config format" as a placeholder verification step; the precise signal (e.g. a harness-reported round-trip check, a dry-run invocation, or parse-only validation) needs a decision.
-- [ ] **(b) Disablement switch surface**: Should the disablement switch (Section 5, `cpt-studio-dod-hook-based-session-routing-disablement`) be a CLI flag, a config-file setting, or both? This affects how `cfs generate-agents` and `cfs agents` read and expose the switch value.
-- [ ] **(c) Fallback-reason enum values**: What is the fixed enum of harness-limitation reasons referenced by `cpt-studio-dod-hook-based-session-routing-reason-enum` (e.g. `no-hook-api`, `unsupported-tool-version`)? The full enumeration and its exact string values need a decision before the summary rendering can be finalized.
+- [ ] **(a) Execution-receipt lifetime**: The fallback gate depends on a per-harness execution receipt proving the current hook entry has run (`cpt-studio-dod-hook-based-session-routing-payload-transport`). Its exact location, format, and staleness policy need a decision — in particular whether a receipt older than some interval should demote a harness from HookInstalled back to FileFallback, and how the receipt binds to a specific entry revision so editing the entry invalidates it.
+- [ ] **(b) Disablement switch surface**: Should the disablement switch (`cpt-studio-dod-hook-based-session-routing-disablement`) be a CLI flag, a config-file setting, or both? This affects how `cfs generate-agents` and `cfs agents` read and expose the switch value.
+- [ ] **(c) Fallback-reason enum values**: What is the fixed enum of harness-limitation reasons referenced by `cpt-studio-dod-hook-based-session-routing-reason-enum`? It must at least cover the disabled experimental opt-in, verification failure, and pending first execution; the full enumeration and its exact string values need a decision before the summary rendering can be finalized.
+- [ ] **(d) Codex experimental opt-in policy**: Section 1.4 decides that Studio does not set `codex_hooks = true` itself. Whether to offer an explicit maintainer-initiated opt-in (a flag or prompt that writes the flag with consent) rather than only printing instructions is an open product decision.
+- [ ] **(e) ADR-0016 amendment**: ADR-0016 states Cursor has no hook support, which the 2026-09-23 capability survey supersedes. Amending that ADR is a follow-up outside this feature's diff and needs to be scheduled; no design in this document depends on the stale claim.
+- [ ] **(f) Per-harness payload transport**: `cpt-studio-dod-hook-based-session-routing-payload-transport` requires one defined transport per harness and defaults to a referenced payload file. Which harnesses can instead carry the payload inline losslessly, and the exact payload-file location per harness, need a decision.
 
 ## 8. Applicability
 
@@ -384,57 +548,75 @@ This feature is a CLI-command change: `cfs generate-agents` and `cfs agents` wri
 
 ### Per-Harness Install / Verify / Fallback / Disablement Flow
 
-The diagram below shows how a single harness moves through compile-harness processing during one `cfs generate-agents` run — first checking the disablement switch, then hook support, then hook verification, with file injection as the fallback path whenever hook delivery is unavailable or unverified.
+The diagram below shows the two passes of one `cfs generate-agents` run. Pass 1 runs per harness and touches only that harness's own resources; pass 2 runs once, after every selected harness has resolved a target mode, and is the only step that touches the two shared files. Splitting them this way is what makes the run's result independent of harness iteration order.
 
 ```
-                         ┌─────────────────────────┐
-                         │  cfs generate-agents     │
-                         │  for harness H           │
-                         └───────────┬──────────────┘
-                                     │
-                                     v
-                    ┌────────────────────────────────┐
-                    │ Disablement switch for H?       │
-                    └───────────┬──────────┬───────────┘
-                     routing off│          │routing on
-                                v          v
-                  ┌──────────────────┐   ┌───────────────────────────┐
-                  │ Remove hook file  │   │ H supports on_session_start│
-                  │ AND file marker   │   │ hook? (tool/provider matrix)│
-                  │ atomically        │   └───────────┬────────┬───────┘
-                  │ → state: Off      │            yes│        │no
-                  └──────────────────┘                v        v
-                                          ┌───────────────────┐ │
-                                          │ Write hook file,   │ │
-                                          │ payload from       │ │
-                                          │ ROOT_AGENTS_       │ │
-                                          │ PIPELINE_          │ │
-                                          │ INSTRUCTION         │ │
-                                          └─────────┬───────────┘ │
-                                                     v             │
-                                          ┌───────────────────┐   │
-                                          │ Verify hook: file  │   │
-                                          │ exists + parses OK?│   │
-                                          └───────┬────┬────────┘   │
-                                          verified│    │not verified│
-                                                  v    v            v
-                               ┌────────────────────┐ ┌─────────────────────────┐
-                               │ Stop file fallback   │ │ Inject/keep file marker │
-                               │ for H; persist state │ │ (AGENTS.md / CLAUDE.md) │
-                               │ → state: HookInstalled│ │ via _inject_managed_    │
-                               │ (hook path relative   │ │ block; attach warning + │
-                               │ to project root)      │ │ one-clause reason       │
-                               └────────────────────┘ │ → state: FileFallback   │
-                                                        └─────────────────────────┘
-                                                                     │
-                                     ┌───────────────────────────────┘
-                                     v
-                       ┌───────────────────────────────┐
-                       │ Append H's outcome to summary   │
-                       │ (table + --json, same data)     │
-                       └───────────────────────────────┘
+PASS 1 — per harness H, harness-owned resources only
+─────────────────────────────────────────────────────
+              ┌──────────────────────────────┐
+              │ Disablement switch for H?     │
+              └──────┬───────────────┬────────┘
+            routing  │               │ routing on
+               off   v               v
+     ┌──────────────────────┐   ┌────────────────────────────────┐
+     │ Remove H's owned hook │   │ Hook usable for H?              │
+     │ entry, state file,    │   │ (capability table; incl. Codex  │
+     │ receipt               │   │  codex_hooks opt-in)            │
+     │ → target: off         │   └──────┬──────────────────┬───────┘
+     └──────────────────────┘      yes  │                  │ no
+                                        v                  │
+                          ┌───────────────────────────┐    │
+                          │ Add or replace H's        │    │
+                          │ Studio-owned entry by     │    │
+                          │ stable id; embed payload  │    │
+                          │ per transport rule        │    │
+                          └───────────┬───────────────┘    │
+                                      v                    │
+                          ┌───────────────────────────┐    │
+                          │ Verify: owned entry found,│    │
+                          │ config parses, payload    │    │
+                          │ round-trips intact?       │    │
+                          └──────┬─────────────┬──────┘    │
+                            yes  │             │ no        │
+                                 v             v           │
+                    ┌────────────────────┐  ┌───────────────────────┐
+                    │ Receipt shows this │  │ Remove the unverified │
+                    │ entry has run?     │  │ entry; → target: file │
+                    └───┬───────────┬────┘  └───────────┬───────────┘
+                    yes │           │ no                │
+                        v           └───────────────────┴──────┐
+              ┌──────────────────┐                             v
+              │ → target: hook   │                   ┌──────────────────┐
+              └──────────────────┘                   │ → target: file   │
+                                                     └──────────────────┘
+
+PASS 2 — once per run, shared resources
+────────────────────────────────────────
+   Collect target modes for all in-scope harnesses
+   (untouched harnesses: last known mode, or "depends" if undeterminable)
+                          │
+                          v
+        ┌─────────────────────────────────────┐
+        │ Any in-scope harness targeting file? │
+        └────────┬──────────────────┬──────────┘
+              no │                  │ yes
+                 v                  v
+   ┌──────────────────────┐  ┌────────────────────────────────┐
+   │ Clear managed block   │  │ Ensure identical managed block │
+   │ from BOTH AGENTS.md   │  │ in BOTH AGENTS.md + CLAUDE.md  │
+   │ and CLAUDE.md         │  │ (write fails → errored, with   │
+   └──────────────────────┘  │  the OS error attached)         │
+                             └────────────────────────────────┘
+                          │
+                          v
+        ┌────────────────────────────────────────┐
+        │ Persist final state per harness for     │
+        │ EVERY mode (off/file/hook/errored),     │
+        │ then render the `routing` summary       │
+        │ (table + --json, same data)             │
+        └────────────────────────────────────────┘
 ```
 
-This flow is not applicable to harnesses outside the 4 currently supported by `_TOOL_PROVIDER_SUPPORT` (claude, codex, cursor, copilot) — notably Windsurf, which stays on unconditional file injection (Section 1.4); adding a new harness extends that existing matrix rather than this flow. Cursor always takes the "no" branch at the hook-support decision, since it has no hook API at all.
+This flow is not applicable to harnesses outside the 4 in scope (claude, codex, cursor, copilot) — notably Windsurf, which stays on unconditional file injection (Section 1.4); adding a new harness means adding a row to the capability table and to the in-scope set, not changing this flow.
 
-In the diagram, "Inject/keep file marker (AGENTS.md / CLAUDE.md)" and "Remove hook file AND file marker" both act on the two shared, project-wide files rather than on a per-harness file: the inject step is idempotent across harnesses, and the remove step drops the shared marker only when no other in-scope harness still depends on it.
+In the diagram, every pass-2 box acts on the two shared, project-wide files as one resource: the ensure step is idempotent across harnesses and writes both files, and the clear step empties both, only when no in-scope harness still depends on the marker.
