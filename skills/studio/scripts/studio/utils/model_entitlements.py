@@ -68,19 +68,26 @@ def entitled_codex_models() -> Optional[FrozenSet[str]]:
     changed underneath -- there is no wrapper for it, because nothing in
     production has a reason to.
     """
-    path: object = "<unresolved>"
+    # `Path.home()` raises RuntimeError where no home can be determined -- a
+    # container with no `$HOME` and no passwd entry. That means codex cannot have
+    # run here, so there is nothing to check against and nothing has gone wrong.
     try:
-        path = codex_cache_path()
-        data = json.loads(path.read_text(encoding="utf-8"))
-    # `Path.home()` raises RuntimeError where no home can be determined, and
-    # that is inside the try for the same reason the read is: this function
-    # promises an answer, never an exception, to a caller that must not fail.
-    except (FileNotFoundError, NotADirectoryError, RuntimeError) as exc:
-        # No cache and no home are both ordinary: they mean codex has not run
-        # here, which is not a problem and must not be narrated at the level
-        # command output is read at.
-        logger.debug("model entitlements: no codex cache at %s: %s", path, exc)
+        path: object = codex_cache_path()
+    except RuntimeError as exc:
+        logger.debug("model entitlements: no home, so no codex cache: %s", exc)
         return None
+
+    # A plain condition rather than a caught `FileNotFoundError`, because that is
+    # what it is: no cache file means codex has not run on this machine, which is
+    # the ordinary state of most machines and not a failure to absorb. Asking
+    # first also takes this branch out of the silent-swallowing question entirely
+    # -- there is no handler here to route anywhere (#245 review).
+    if not path.is_file():
+        logger.debug("model entitlements: no codex cache at %s", path)
+        return None
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         # A cache that exists and still cannot be read is the opposite case:
         # something is wrong with a file this machine wrote, and the only

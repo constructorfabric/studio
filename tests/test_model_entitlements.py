@@ -807,3 +807,54 @@ class TestTheCheckCannotStopGeneration:
 
         assert agents._resolve_model_id(
             "codex", "openai", "cf:tier:balanced", "generate", "codebase") is not None
+
+
+class TestTheOrdinaryMissIsNotAnException:
+    """"No cache" is a condition, not a failure to absorb.
+
+    It used to be a caught `FileNotFoundError` whose handler only logged at
+    debug, which this repository's contract does not count as a visible signal --
+    so it read as a swallowed exception. Asking `is_file()` first says what is
+    actually true and leaves no handler to route anywhere (#245 review).
+    """
+
+    @staticmethod
+    def _entitled():
+        from studio.utils import model_entitlements
+        model_entitlements.entitled_codex_models.cache_clear()
+        return model_entitlements.entitled_codex_models()
+
+    def test_a_missing_cache_file_is_unknown_and_quiet(self, tmp_path, monkeypatch, caplog):
+        monkeypatch.setenv("CODEX_HOME", str(tmp_path / "never-used"))
+
+        with caplog.at_level(logging.WARNING):
+            assert self._entitled() is None
+
+        assert caplog.text == ""
+
+    def test_a_directory_where_the_cache_should_be_is_also_a_miss(
+            self, tmp_path, monkeypatch, caplog):
+        """Not a readable file either, and not worth a warning: still just absent."""
+        home = tmp_path / "codex_home"
+        (home / "models_cache.json").mkdir(parents=True)
+        monkeypatch.setenv("CODEX_HOME", str(home))
+
+        with caplog.at_level(logging.WARNING):
+            assert self._entitled() is None
+
+        assert caplog.text == ""
+
+    def test_no_resolvable_home_is_a_miss_rather_than_a_crash(self, monkeypatch, caplog):
+        """A container with no `$HOME` and no passwd entry: codex cannot have run."""
+        from studio.utils import model_entitlements
+
+        def _no_home():
+            raise RuntimeError("Could not determine home directory")
+
+        monkeypatch.delenv("CODEX_HOME", raising=False)
+        monkeypatch.setattr(model_entitlements.Path, "home", staticmethod(_no_home))
+
+        with caplog.at_level(logging.WARNING):
+            assert self._entitled() is None
+
+        assert caplog.text == ""
