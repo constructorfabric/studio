@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
-import textwrap
 import unittest
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from tests.pylint_plugin_fakes import (
+    run_pylint,
     Attribute,
     Call,
     Const,
@@ -21,37 +19,11 @@ from tests.pylint_plugin_fakes import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PYTHONPATH = os.pathsep.join([
-    str(REPO_ROOT / "src"),
-    str(REPO_ROOT / "skills" / "studio" / "scripts"),
-])
 
 
-def _run_pylint(code: str, *, relative_path: str = "sample.py") -> subprocess.CompletedProcess[str]:
-    with TemporaryDirectory() as td:
-        target = Path(td) / relative_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(textwrap.dedent(code), encoding="utf-8")
-        env = dict(os.environ)
-        env["PYTHONPATH"] = PYTHONPATH
-        return subprocess.run(
-            [
-                "pipx",
-                "run",
-                "--spec",
-                "pylint",
-                "pylint",
-                "--score=n",
-                "--disable=all",
-                "--enable=stdout-bypass,stderr-bypass",
-                str(target),
-            ],
-            cwd=REPO_ROOT,
-            env=env,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+def _run_pylint(code: str, *, relative_path: str = "sample.py"):
+    """One launcher for the family; see `pylint_plugin_fakes.run_pylint`."""
+    return run_pylint(code, enable="stdout-bypass,stderr-bypass", relative_path=relative_path)
 
 
 def _assert_pylint_ran(result: subprocess.CompletedProcess[str]) -> None:

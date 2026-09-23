@@ -190,6 +190,10 @@ TEMPLATE_DEF_PLACEHOLDER_WRONG_HEADINGS = "template-def-placeholder-wrong-headin
 TEMPLATE_REF_PLACEHOLDER_WRONG_HEADINGS = "template-ref-placeholder-wrong-headings"
 TEMPLATE_READ_ERROR = "template-read-error"
 CONSTRAINTS_INVALID = "constraints-invalid"
+#: A key under a ``[validation]`` table this engine does not understand. A
+#: warning rather than an error: a kit written for a newer engine stays
+#: installable on an older one, the same bargain the manifest already makes.
+CONSTRAINTS_UNKNOWN_KEY = "constraints-unknown-key"
 KIT_TEMPLATE_BINDING_MISSING = "kit-template-binding-missing"
 KIT_RESOURCE_PATH_NOT_FOUND = "kit-resource-path-not-found"
 KIT_MODEL_INVALID = "kit-model-invalid"

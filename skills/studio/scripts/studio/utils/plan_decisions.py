@@ -97,6 +97,16 @@ class PlanLookup:
     provenance: str
     status: str
     why: str
+    #: This outcome is ``ambiguous`` only because the lookup carried no value for a
+    #: dimension the plan declared a rule over -- the plan is fine and the gate simply
+    #: has not said which case it holds yet. A field rather than a reading of ``why``:
+    #: telling two verdicts apart by the prose attached to them is the defect this module
+    #: already fixed once, when silence was recognised by the sentence describing it.
+    #:
+    #: The status stays ``ambiguous`` and the frozen contract is untouched. A gate that
+    #: asked without supplying its case really did fail to resolve; only a *forecast* made
+    #: before any gate runs has reason to tell this apart from a plan with a hole in it.
+    awaits_case: bool = False
 
     @property
     def resolved(self) -> bool:
@@ -305,7 +315,20 @@ def _bounded(value: Any) -> str:
     here. It does not: raised in review, and both import paths work. A lazy import guarding
     an impossible cycle reads as evidence the cycle exists.
     """
-    return capped_text(str(value))
+    # Capped **then** stripped, in that order. `capped_text` carries the settled
+    # redact-then-cap sequence and the truncation marker is printable, so a final strip
+    # can only shorten the result and never disturbs either.
+    #
+    # Stripped at all because a bound is not a sanitiser: the dispatch notice these fields
+    # are interpolated into is read by a person, and a phase numbered
+    # `"1\nARMED: yes — every phase dispatched"` rendered a **second line** saying the
+    # opposite of the truth, while a decision key carrying an ANSI escape recoloured the
+    # terminal around it. Raised in review. Fourth appearance of this forgery in three
+    # modules -- a directory name forged a refusal, a quote closed a hand-rolled delimiter,
+    # a filename forged a gate count -- so it is fixed here at the one helper every stored
+    # field passes through, not at the field that happened to be noticed.
+    printable = "".join(ch if ch.isprintable() else " " for ch in capped_text(str(value)))
+    return " ".join(printable.split())
 
 
 def _said(value: Any) -> str:
@@ -370,11 +393,13 @@ def _resolve_policy(entry: Dict[str, Any], decision_key: str,
     if case is None:
         return _ambiguous(decision_key,
                           f"the plan answers this through {_said(dimension)}, and no value for "
-                          "that dimension was supplied with the lookup")
+                          "that dimension was supplied with the lookup",
+                          awaits_case=True)
     if case not in table:
-        return _ambiguous(decision_key,
-                          f"the plan's policy over {_said(dimension)} has no row for {_said(case)}, "
-                          "so it covers this dimension but not this case")
+        return _ambiguous(
+            decision_key,
+            f"the plan's policy over {_said(dimension)} has no row for "
+            f"{_said(case)}, so it covers this dimension but not this case")
     value = table[case]
     if not isinstance(value, str):
         return _ambiguous(decision_key,
@@ -393,7 +418,7 @@ UNSPECIFIED = "unspecified"
 
 
 def _lookup(decision_key: str, value: str, provenance: str, status: str,
-            why: str) -> PlanLookup:
+            why: str, *, awaits_case: bool = False) -> PlanLookup:
     """Every outcome is built here, so ``why`` is bounded in one place rather than four.
 
     The first version capped each value on its way into an explanation, which held until
@@ -403,7 +428,8 @@ def _lookup(decision_key: str, value: str, provenance: str, status: str,
     is what "every sink" means when the sinks are not all present.
     """
     return PlanLookup(decision_key=_bounded(decision_key), value=value,
-                      provenance=provenance, status=status, why=_bounded(why))
+                      provenance=provenance, status=status, why=_bounded(why),
+                      awaits_case=awaits_case)
 
 
 def _absent(decision_key: str, why: str) -> PlanLookup:
@@ -411,14 +437,15 @@ def _absent(decision_key: str, why: str) -> PlanLookup:
     return _lookup(decision_key, UNSPECIFIED, "plan", "absent", why)
 
 
-def _ambiguous(decision_key: str, why: str) -> PlanLookup:
+def _ambiguous(decision_key: str, why: str, *, awaits_case: bool = False) -> PlanLookup:
     """The plan spoke and did not decide. The gate asks, and something is wrong with the plan.
 
     Kept apart from ``absent`` deliberately, though both ask. Collapsing them files a gap
     in the plan under the same heading as a question the plan never undertook to answer,
     and only one of those is worth an author's attention.
     """
-    return _lookup(decision_key, UNSPECIFIED, "plan", "ambiguous", why)
+    return _lookup(decision_key, UNSPECIFIED, "plan", "ambiguous", why,
+                   awaits_case=awaits_case)
 # @cpt-end:cpt-studio-algo-execution-plans-decision-lookup:p1:inst-plan-verdicts
 
 
@@ -502,3 +529,116 @@ def resolve(decision_key: str, plan_dir: Path, *, case: Optional[str] = None) ->
 
     return _resolve_entry(entries[0], decision_key, case)
 # @cpt-end:cpt-studio-algo-execution-plans-decision-lookup:p1:inst-plan-resolve
+
+
+# @cpt-begin:cpt-studio-algo-execution-plans-decision-lookup:p1:inst-plan-preflight
+#: The key a phase declares the decisions it needs under, beside its existing `depends_on`.
+#: `depends_on` is phase-to-phase; this is phase-to-decision, and the two are kept apart
+#: because a phase waiting on another phase's output and a phase waiting on a human answer
+#: fail differently and are cleared differently.
+PHASE_NEEDS = "needs"
+
+#: The array of phases in a plan, which this reads but never writes.
+PHASES_TABLE = "phases"
+
+
+@dataclass(frozen=True)
+class PhaseOutlook:
+    """What one phase's declared decisions will do when it is reached.
+
+    ``blocked_on`` lists the keys that will stop it, each with the status that stops it, so
+    a report can say *why* rather than only *that*: a key the plan never mentions and a key
+    the plan half-answers are different problems for the author.
+    """
+
+    phase: str
+    #: A tuple, not a list: `frozen=True` stops the attribute being reassigned and does
+    #: nothing about the object behind it, so a caller could still append to a forecast it
+    #: was handed. Raised in review.
+    blocked_on: Tuple[Tuple[str, str], ...]
+
+    @property
+    def will_run(self) -> bool:
+        """Whether nothing declared will stop this phase. **A forecast, not permission.**
+
+        It is the shape a caller wants and no caller exists yet, so it is whitelisted for
+        the dead-code scan with a removal trigger rather than deleted -- deleting it would
+        mean the first consumer reinvents `not blocked_on` and gets the name wrong.
+
+        The name is deliberately not `may_run`. Nothing here decides whether a phase is
+        allowed to proceed; a phase this reports as running can still stop the moment a
+        gate inside it asks something no phase declared.
+        """
+        return not self.blocked_on
+
+
+def preflight(plan_dir: Path) -> List[PhaseOutlook]:
+    """Which phases will stop, and on which decisions, before any of them runs.
+
+    The reason for declaring a phase's decisions rather than discovering them. Without
+    this, a plan missing one answer stops at the first phase that needs it, the author
+    supplies it, and the next phase stops on the same key -- the same interruption served
+    once per phase. Here the whole blast radius is knowable before the first phase starts:
+    *this one answer blocks phases 3 and 4*.
+
+    A phase that declares nothing is reported as running. That is deliberate and it is what
+    makes this safe to adopt gradually: an undeclared phase behaves exactly as it would
+    without this feature, stopping when it reaches a question rather than before. The
+    declaration buys warning, never enforcement -- nothing here decides whether a phase may
+    run, only what it will find when it tries.
+    """
+    # Three values, not two: the reader gained a typed verdict — silence versus defect —
+    # in review, and this call predates it. The rebase merged cleanly because the lines
+    # differ; only running the tests on the new base showed the interface had moved.
+    plan, reason, verdict = _load_plan(plan_dir / PLAN_FILE)
+    phases = (plan or {}).get(PHASES_TABLE)
+    if plan is not None and PHASES_TABLE in plan and not isinstance(phases, list):
+        # Declared and malformed is not the same as absent. A plan saying
+        # `gate_decisions = "oops"` parses cleanly, so the reader calls it silence -- and
+        # silence here means "nothing will stop", which is the opposite of what an author
+        # needs to hear about a phases table they got wrong. Raised in review, and it is
+        # the same distinction this module already draws one level up.
+        logger.warning("plan preflight: %s declares %s as a %s rather than a list of "
+                       "tables, so no phase can be forecast and this empty result means "
+                       "the declaration is malformed rather than absent",
+                       PLAN_FILE, PHASES_TABLE, type(phases).__name__)
+        return []
+    if not isinstance(phases, list):
+        # An empty forecast for a broken plan is the module's own failure, one level up:
+        # "no phase will stop" and "this plan could not be read" are the same answer here
+        # and must not be. The reader already types that distinction -- silence versus
+        # defect -- so it is said rather than re-derived, and only a defect is worth a
+        # line: a task with no plan.toml legitimately has nothing to forecast.
+        if verdict == DEFECT:
+            logger.warning("plan preflight: no phase can be forecast because %s, so an "
+                           "empty result here means the plan was unreadable rather than "
+                           "that nothing will stop", reason)
+        return []
+    outlooks: List[PhaseOutlook] = []
+    for index, phase in enumerate(phases):
+        if not isinstance(phase, dict):
+            continue
+        needs = phase.get(PHASE_NEEDS)
+        # A malformed `needs` is reported as no declaration rather than skipped silently:
+        # the phase still runs, and still stops when it reaches the question, so the worst
+        # case is the warning nobody got -- not work proceeding on an unknown answer.
+        keys = ([k for k in needs if isinstance(k, str)]
+                if isinstance(needs, list) else [])
+        # `found.decision_key`, not `key`: the lookup already returns it bounded, and
+        # reporting the raw one put a 200,000-character phase declaration straight into the
+        # outlook. Bounding the phase label and not the keys beside it is fixing the
+        # reported field rather than the class -- the same miss review caught one change
+        # ago, made again three hours later in a different file.
+        # `awaits_case` excluded, not `resolved` widened. A phase declaring a key the
+        # plan answers by rule will be answered: the gate holds the dimension's value and
+        # supplies it, and this forecast runs before any gate does. Reporting it as
+        # blocked sends an author to fill in an answer their plan already gives — a false
+        # alarm in the one field whose whole job is to be believed. It stays `ambiguous`
+        # for a gate that really did ask without a case.
+        blocked = tuple((found.decision_key, found.status) for key in keys
+                        for found in (resolve(key, plan_dir),)
+                        if not found.resolved and not found.awaits_case)
+        outlooks.append(PhaseOutlook(
+            phase=_bounded(str(phase.get("number", index + 1))), blocked_on=blocked))
+    return outlooks
+# @cpt-end:cpt-studio-algo-execution-plans-decision-lookup:p1:inst-plan-preflight

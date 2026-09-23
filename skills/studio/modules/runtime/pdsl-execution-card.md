@@ -31,6 +31,24 @@ RULES:
   ALWAYS after any `WAIT`/`STOP_TURN` resume at the exact active PDSL
     continuation target; REQUIRED: do not reinterpret the user's reply as
     broad permission for generic autonomous execution.
+  ALWAYS record exactly one outcome for a gate that cannot be resolved: an open
+    question naming the decision key it turns on, or a ruling — never both, and
+    never neither. An indeterminate gate that records nothing has silently become
+    a guess.
+  NEVER record the question's wording; an unresolved gate is registered as the
+    decision key it turns on, written to the phase it blocks as
+    `awaiting_decision` — never named for the brainstorm carryover it is not — so
+    the register cannot become a second copy of the prompt and the consent rule
+    governing saved open questions stays satisfied.
+  ALWAYS write `awaiting_decision` as a list of every key that phase is waiting
+    on, never the first one found: a phase blocked on two keys and told about one
+    sends its author back for the second, which is the serial rediscovery this
+    register exists to end.
+  NEVER treat `awaiting_decision` as the authority on whether a phase may run; it
+    records what was outstanding when it was written, and dispatch re-resolves a
+    phase's declared `needs` at dispatch time. Nothing clears the field, and
+    nothing has to: a record that has since been answered cannot hold work,
+    because no decision is taken from it.
   ALWAYS treat a session's declared mode and a gate's declared risk type —
     the literal type named in that gate's own MENU block — as workflow-owned
     behaviour, not an interpretation of the user's reply; resolving a gate by
@@ -56,9 +74,22 @@ RULES:
     applies to that pairing, not to text output that merely lists choices
     without waiting on a reply.
   ALWAYS, when executing `EMIT_MENU`, first check the menu is native-dialog
-    shape-compatible: at most 4 top-level `OPTIONS` entries, and no entry
-    documented as accepting free-text/arbitrary input (a path, a name, "or
-    describe your own", etc.) rather than choosing among the listed entries.
+    shape-compatible, which always requires at most 4 top-level `OPTIONS`
+    entries — every native tool bound today hard-caps at 4 choices, and
+    `SHAPE` never overrides a tool's own mechanical limit. Within that cap:
+    a `MENU` declaring `SHAPE: free-form` is never shape-compatible,
+    regardless of option count or wording; one declaring exactly `SHAPE:
+    fixed-choice` is shape-compatible on that fact alone (issue #186) —
+    read only the first `SHAPE` line in the MENU's own declaration region (up
+    to `OPTIONS`); a later or out-of-scope `SHAPE` line is not a second
+    declaration and is not read. When `SHAPE` is undeclared, or its first
+    in-scope line holds any other value (unvalidated PDSL is still
+    executable; PDSL validation flags this at authoring time but a runtime
+    reader must not depend on it having run), fall back to the wording
+    heuristic: no entry or `TITLE` documented as accepting free-text/
+    arbitrary input, an open-ended list, or more than one selection (a path,
+    a name, "or describe your own", "reply with numbers or `all`", etc.)
+    rather than a single choice among the listed entries.
   ALWAYS treat an `ask_tool_name` context that was never established (no
     generated shim or dispatch prompt set it at all) identically to `unset`;
     the distinction between "explicitly no binding" and "never bound" carries
@@ -89,13 +120,21 @@ RULES:
     it: state the question, list the numbered options, and mark it explicitly
     as a blocking question the assistant is waiting on — placed as the last
     content in the turn.
-  ALWAYS, for a shape-incompatible `EMIT_MENU` (more than 4 options, or any
-    free-text-accepting entry), render as today's text menu regardless of
-    `ask_tool_name` — a native dialog's fixed-choice shape cannot represent it
+  ALWAYS, for a shape-incompatible `EMIT_MENU` (more than 4 options, a
+    declared `SHAPE: free-form`, or — when `SHAPE` is undeclared/invalid —
+    any free-text-accepting entry per the wording heuristic), render as
+    today's text menu regardless of `ask_tool_name` — a native dialog's
+    fixed-choice shape cannot represent it
     faithfully — but still place it last in the turn and mark it blocking.
   NEVER treat a harness with no matching native affordance as an error;
     fall back to the same explicitly-marked, end-of-turn text rendering used
     for shape-incompatible menus.
+  ALWAYS treat a bound `ask_tool_name` that is absent from the current
+    session's actual available tool list — not merely a call that returns an
+    unmatched result, but the tool never being offered at all — identically
+    to `unset`; a per-target binding declares intent, not a runtime
+    guarantee the tool is present (e.g. availability gated by the harness's
+    own mode or model choice, outside this workflow's control).
   ALWAYS treat `ON_ERROR` as the named recovery path for matching failures.
   ALWAYS treat `NOTES` as explanatory only; NOTES do not create executable
     obligations unless an active rule references them.

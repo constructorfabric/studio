@@ -154,6 +154,22 @@ _GIT_REDIRECT_VARS = (
     # ``GIT_CONFIG_GLOBAL``, ``GIT_CONFIG_SYSTEM`` and ``GIT_CONFIG_NOSYSTEM``, plus the
     # undocumented ``GIT_CONFIG_PARAMETERS`` above, which was verified by measurement.
     "GIT_CONFIG_NOSYSTEM",
+    # A ref *namespace*, and the honest note is that it changes **nothing these queries
+    # answer**. Measured against every command above -- `rev-parse --is-inside-work-tree`,
+    # `--absolute-git-dir`, `--verify HEAD`, `symbolic-ref --short HEAD`, and plain ref
+    # lookups -- and the output is identical with and without it. `GIT_NAMESPACE` is a
+    # ref-advertisement mechanism: it bites `fetch`, `ls-remote` and the pack protocols,
+    # not local resolution.
+    #
+    # It is here because it is one of git's redirection variables and this tuple is the
+    # place they are removed, so the shared list holds the union rather than the larger of
+    # two partial lists -- the reversal fixtures were sanitising it locally and adopting
+    # this tuple dropped it. Not because it affects the queries below; an earlier version
+    # of this comment claimed it did, which was written without measuring.
+    #
+    # Where it *would* bite is `git_utils._run_git`, which runs `fetch` and passes no
+    # sanitised environment at all. That is a separate exposure this tuple does not reach.
+    "GIT_NAMESPACE",
 )
 
 #: Refs tried in order when the caller names no base.

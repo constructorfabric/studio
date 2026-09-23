@@ -356,6 +356,10 @@ _REASONS: Dict[str, List[str]] = {
         "constraints.toml failed to parse or violates its schema — see the `errors` list on this finding",
         "A constraints edit introduced a malformed table, an unknown key, or a wrong value type",
     ],
+    EC.CONSTRAINTS_UNKNOWN_KEY: [
+        "Key `{key}` under `{table}` is not one this engine reads, so it configures nothing",
+        "The key is misspelled, or it belongs to a newer constraints schema than this engine implements",
+    ],
     EC.KIT_TEMPLATE_BINDING_MISSING: [
         "Constraints declare artifact kind `{artifact_kind}` but the manifest binds"
         " neither a template nor examples for it",

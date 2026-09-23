@@ -7,12 +7,29 @@ from __future__ import annotations
 
 import re
 import logging
-from dataclasses import dataclass, replace
+# `field` is aliased: this module uses `field` as an ordinary local name in the
+# constraint parsers, and shadowing the dataclasses helper there reads as a bug.
+from dataclasses import dataclass, field as dataclass_field, replace
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from . import error_codes as EC
-from .severity import default_severity, reject_caller_severity
+from .severity import (
+    ENTRY_HEADING,
+    ENTRY_IDENTIFIER,
+    EntryKey,
+    EntrySeverity,
+    SeverityPolicy,
+    SeverityTables,
+    apply_policy,
+    default_severity,
+    entry_key,
+    is_stricter,
+    merge_severity_tables,
+    parse_kit_validation,
+    parse_severity_value,
+    reject_caller_severity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +56,10 @@ class HeadingConstraint:
     prev: Optional[str] = None
     next: Optional[str] = None
     pointer: Optional[str] = None
+    #: Severity for the rules this entry owns, overriding the code's default.
+    severity: Optional[str] = None
+    #: When true, a project may raise this entry's rules but not lower them.
+    locked: bool = False
 
 @dataclass(frozen=True)
 class IdConstraint:
@@ -55,6 +76,10 @@ class IdConstraint:
     to_code: Optional[bool] = None
     headings: Optional[List[str]] = None
     references: Optional[Dict[str, ReferenceRule]] = None
+    #: Severity for the rules this entry owns, overriding the code's default.
+    severity: Optional[str] = None
+    #: When true, a project may raise this entry's rules but not lower them.
+    locked: bool = False
 
 def _parse_optional_bool(
     v: object, field: str,
@@ -73,6 +98,25 @@ def _parse_optional_bool(
     return None, f"Constraint field '{field}' must be boolean, got {type(v).__name__}"
 
 @dataclass(frozen=True)
+class TocOptions:
+    """How deep, and how large, TOC checking looks for one artifact kind.
+
+    ``None`` is "this kind has no opinion", not a value. Storing the engine
+    default here instead would make a kit that says nothing about depth
+    indistinguishable from one that deliberately asked for today's depth — and
+    a `--max-level` on the command line could no longer be told from silence,
+    which is the whole precedence question this table exists to answer.
+    """
+
+    max_level: Optional[int] = None
+    max_section_lines: Optional[int] = None
+
+
+#: Every option ``[artifacts.<KIND>.validation.toc]`` understands.
+_TOC_OPTION_KEYS = frozenset({"max_level", "max_section_lines"})
+
+
+@dataclass(frozen=True)
 class ArtifactKindConstraints:
     """Validation constraints attached to one artifact kind."""
 
@@ -81,12 +125,19 @@ class ArtifactKindConstraints:
     defined_id: List[IdConstraint]
     headings: Optional[List[HeadingConstraint]] = None
     toc: bool = True
+    #: ``[artifacts.<KIND>.validation]`` — this kind's own severity table.
+    validation: SeverityTables = dataclass_field(default_factory=SeverityTables)
+    #: ``[artifacts.<KIND>.validation.toc]`` — this kind's TOC options.
+    toc_options: TocOptions = dataclass_field(default_factory=TocOptions)
 
 @dataclass(frozen=True)
 class KitConstraints:
     """Loaded validation constraints for all artifact kinds in a kit."""
 
     by_kind: Dict[str, ArtifactKindConstraints]
+    #: Top-level ``[validation]`` — the kit's whole-kit severity table. Lifted
+    #: out before the ``artifacts`` unwrap, or it would be read as a kind.
+    validation: SeverityTables = dataclass_field(default_factory=SeverityTables)
 
 
 @dataclass(frozen=True)
@@ -1162,17 +1213,24 @@ def _validate_artifact_toc(
     artifact_path: Path,
     errors: List[Dict[str, object]],
     warnings: List[Dict[str, object]],
+    options: Optional[TocOptions] = None,
 ) -> None:
     from .document import read_text_safe as _read_text_safe
+    from .toc import DEFAULT_MAX_SECTION_LINES, DEFAULT_TOC_MAX_LEVEL
     from .toc import validate_toc as _validate_toc
 
     toc_lines = _read_text_safe(artifact_path)
     if toc_lines is None:
         return
+    options = options or TocOptions()
     toc_result = _validate_toc(
         "\n".join(toc_lines),
         artifact_path=artifact_path,
-        max_heading_level=3,
+        max_heading_level=(
+            options.max_level if options.max_level is not None else DEFAULT_TOC_MAX_LEVEL),
+        max_section_lines=(
+            options.max_section_lines if options.max_section_lines is not None
+            else DEFAULT_MAX_SECTION_LINES),
     )
     errors.extend(toc_result.get("errors", []))
     warnings.extend(toc_result.get("warnings", []))
@@ -1609,12 +1667,11 @@ def _validate_artifact_heading_phase(
     kind: str,
     constraints_path: Optional[Path],
     kit_id: Optional[str],
-    errors: List[Dict[str, object]],
-    warnings: List[Dict[str, object]],
-) -> bool:
-    """Run heading validation and return whether later ID validation may continue."""
+    policy: Optional[SeverityPolicy] = None,
+) -> Tuple[List[Dict[str, object]], List[Dict[str, object]], bool]:
+    """Run heading validation; return its findings and whether ID checks may continue."""
     if not getattr(constraints, "headings", None):
-        return True
+        return [], [], True
     rep = validate_headings_contract(
         path=artifact_path,
         constraints=constraints,
@@ -1623,9 +1680,20 @@ def _validate_artifact_heading_phase(
         constraints_path=constraints_path,
         kit_id=kit_id,
     )
-    errors.extend(rep.get("errors", []))
-    warnings.extend(rep.get("warnings", []))
-    return not bool(rep.get("errors"))
+    heading_errors = list(rep.get("errors", []))
+    heading_warnings = list(rep.get("warnings", []))
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-gate-on-errors
+    # The gate counts error-severity findings, not findings. A heading rule the
+    # project lowered to `warning` used to hide every TOC and identifier
+    # finding in the file behind it — the reader saw one advisory note and no
+    # sign that two whole phases had been skipped.
+    #
+    # Resolving here only decides whether to continue; the findings themselves
+    # are settled once, at the end of the file's run, so nothing is dropped or
+    # counted twice on the way.
+    gate = apply_policy(policy, heading_errors + heading_warnings, kind=kind)
+    return heading_errors, heading_warnings, not bool(gate.errors)
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-gate-on-errors
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
 
 
@@ -1832,7 +1900,8 @@ def validate_artifact_file(
     registered_systems: Optional[Iterable[str]] = None,
     constraints_path: Optional[Path] = None,
     kit_id: Optional[str] = None,
-) -> Dict[str, List[Dict[str, object]]]:
+    policy: Optional[SeverityPolicy] = None,
+) -> Dict[str, object]:
     """Validate one artifact file against structural constraints."""
     errors: List[Dict[str, object]] = []
     warnings: List[Dict[str, object]] = []
@@ -1840,26 +1909,31 @@ def validate_artifact_file(
     kind = str(artifact_kind).strip().upper()
 
     if constraints is None:
-        return {"errors": errors, "warnings": warnings}
+        return {"errors": errors, "warnings": warnings, "suppressed": 0, "refusals": []}
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-ids-entry
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
     # Phase 1: headings contract
-    can_continue = _validate_artifact_heading_phase(
+    heading_errors, heading_warnings, can_continue = _validate_artifact_heading_phase(
         artifact_path=artifact_path,
         constraints=constraints,
         registered_systems=registered_systems,
         kind=kind,
         constraints_path=constraints_path,
         kit_id=kit_id,
-        errors=errors,
-        warnings=warnings,
+        policy=policy,
     )
+    errors.extend(heading_errors)
+    warnings.extend(heading_warnings)
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-headings-fail
     # Stop here: IDs are validated only after outline contract is satisfied.
     if not can_continue:
         # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-fail
-        return {"errors": errors, "warnings": warnings}
+        # Policy still settles the findings on the way out: the phases that
+        # were skipped produced nothing, but what the heading phase found is
+        # reported at its configured severity like everything else.
+        gated = _apply_artifact_policy(policy, kind, errors, warnings)
+        return gated
         # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-fail
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-headings-fail
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
@@ -1867,7 +1941,8 @@ def validate_artifact_file(
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
     # Phase 1b: TOC validation (only when toc=true in constraints)
     if getattr(constraints, "toc", True):
-        _validate_artifact_toc(artifact_path, errors, warnings)
+        _validate_artifact_toc(
+            artifact_path, errors, warnings, getattr(constraints, "toc_options", None))
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
 
     _validate_artifact_identifier_phase(
@@ -1881,9 +1956,41 @@ def validate_artifact_file(
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-return-structure
     # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-pass
-    return {"errors": errors, "warnings": warnings}
+    report = _apply_artifact_policy(policy, kind, errors, warnings)
+    return report
     # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-pass
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-return-structure
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-apply-artifact-policy
+def _stamp_artifact_kind(kind: str, findings: Iterable[Dict[str, object]]) -> None:
+    """Record the artifact kind on every finding from this file.
+
+    Only heading findings carried it before. Without it a per-kind severity
+    could never reach a TOC, CDSL or identifier finding, and the command-level
+    pass would have no way to tell which kind a finding belongs to.
+    """
+    for finding in findings:
+        finding.setdefault("artifact_kind", kind)
+
+
+def _apply_artifact_policy(
+    policy: Optional[SeverityPolicy],
+    kind: str,
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+) -> Dict[str, object]:
+    """Stamp the kind, then settle severity for everything this file produced."""
+    _stamp_artifact_kind(kind, errors)
+    _stamp_artifact_kind(kind, warnings)
+    outcome = apply_policy(policy, list(errors) + list(warnings), kind=kind)
+    return {
+        "errors": outcome.errors,
+        "warnings": outcome.warnings,
+        "suppressed": outcome.suppressed,
+        "refusals": outcome.refusals,
+    }
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-apply-artifact-policy
 
 # @cpt-algo:cpt-studio-algo-traceability-validation-cross-validate:p1
 # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-datamodel
@@ -2379,6 +2486,7 @@ def _validate_duplicate_definitions(
                 path=drow.get("artifact_path"),
                 line=int(drow.get("line", 1) or 1),
                 id=did,
+                artifact_kind=drow.get("artifact_kind"),
             ))
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-duplicate-defs
 
@@ -2404,6 +2512,7 @@ def _validate_reference_definitions_exist(
                 path=row.get("artifact_path"),
                 line=int(row.get("line", 1) or 1),
                 id=rid,
+                artifact_kind=row.get("artifact_kind"),
             ))
         # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-no-def
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-ref
@@ -2435,6 +2544,7 @@ def _validate_checked_reference_consistency(
                     path=row.get("artifact_path"),
                     line=int(row.get("line", 1) or 1),
                     id=rid,
+                    artifact_kind=row.get("artifact_kind"),
                 ))
             # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-ref-done-def-not
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-ref
@@ -2468,6 +2578,7 @@ def _validate_definition_completion_consistency(
                     path=row.get("artifact_path"),
                     line=int(row.get("line", 1) or 1),
                     id=rid,
+                    artifact_kind=row.get("artifact_kind"),
                     def_artifact_kind=defs_with_task[0].get("artifact_kind"),
                 ))
         # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-def-done-ref-not
@@ -2483,6 +2594,7 @@ def _validate_definition_completion_consistency(
                 path=row.get("artifact_path"),
                 line=int(row.get("line", 1) or 1),
                 id=rid,
+                artifact_kind=row.get("artifact_kind"),
             ))
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-def
 
@@ -2924,10 +3036,36 @@ def _validate_heading_constraint_pattern(pattern: Optional[str]) -> Optional[str
     return None
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-entry-severity
+def _parse_entry_severity(
+    obj: Dict[str, object],
+    label: str,
+) -> Tuple[Optional[EntrySeverity], Optional[str]]:
+    """Parse ``severity`` and ``locked`` from one constraint entry.
+
+    ``locked`` without a ``severity`` is accepted and meaningful: it locks
+    whatever the code's default or the kit's tables already say, which is how a
+    kit protects a rule it is content to leave at the built-in severity.
+    """
+    errors: List[str] = []
+    raw_severity = obj.get("severity")
+    severity = (
+        parse_severity_value(raw_severity, f"{label} field 'severity'", errors)
+        if raw_severity is not None else None
+    )
+    if errors:
+        return None, errors[0]
+    locked = obj.get("locked", False)
+    if not isinstance(locked, bool):
+        return None, f"{label} field 'locked' must be boolean"
+    return EntrySeverity(severity=severity, locked=locked), None
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-entry-severity
+
+
 def _collect_heading_constraint_options(  # pylint: disable=too-many-locals
     obj: Dict[str, object],
-) -> Tuple[Optional[Tuple[bool, Optional[bool], Optional[bool]]], Optional[str]]:
-    """Parse the boolean-only heading options for one heading constraint."""
+) -> Tuple[Optional[Tuple[bool, Optional[bool], Optional[bool], EntrySeverity]], Optional[str]]:
+    """Parse the boolean-only heading options and the entry's severity policy."""
     required_bool, req_err = _parse_required_bool_field(obj, "required")
     if req_err:
         return None, "Heading constraint field 'required' must be boolean"
@@ -2937,7 +3075,10 @@ def _collect_heading_constraint_options(  # pylint: disable=too-many-locals
     numbered, err = _parse_optional_bool_constraint(obj, "numbered", "Heading constraint")
     if err:
         return None, err
-    return (bool(required_bool), multiple, numbered), None
+    entry_severity, err = _parse_entry_severity(obj, "Heading constraint")
+    if err or entry_severity is None:
+        return None, err
+    return (bool(required_bool), multiple, numbered, entry_severity), None
 
 
 def _parse_id_constraint_scalar_fields(
@@ -3056,6 +3197,25 @@ def _parse_artifact_kind_constraints(
     if parsed is None:
         return None
     text_fields, headings, defined_id, toc_val = parsed
+    kind_errors: List[str] = []
+    where = f"[artifacts.{kind.strip().upper()}.validation]"
+    validation = parse_kit_validation(
+        raw.get("validation"),
+        kind_errors,
+        where=where,
+        allow_kinds=False,
+    )
+    toc_options, toc_unknown = _parse_kind_toc_options(raw.get("validation"), where, kind_errors)
+    if kind_errors:
+        errors.extend(f"constraints for {kind}: {message}" for message in kind_errors)
+        return None
+    if toc_unknown:
+        # Reported through the severity table's channel rather than a second
+        # one: `validate-kits` already turns `unknown_keys` into a warning, and
+        # a misspelled `max_levl` is the same failure as a misspelled rule code
+        # — a setting its author believes is in force that nothing reads.
+        validation = replace(
+            validation, unknown_keys=tuple(sorted(validation.unknown_keys + tuple(toc_unknown))))
 
     return ArtifactKindConstraints(
         name=text_fields["name"],
@@ -3063,7 +3223,60 @@ def _parse_artifact_kind_constraints(
         defined_id=defined_id,
         headings=headings,
         toc=toc_val,
+        validation=validation,
+        toc_options=toc_options,
     )
+
+
+def _parse_kind_toc_options(
+    validation_raw: object,
+    where: str,
+    errors: List[str],
+) -> Tuple[TocOptions, List[str]]:
+    """Parse ``[artifacts.<KIND>.validation.toc]`` into TOC options.
+
+    An unreadable value is an error rather than an absent opinion: it leaves
+    the check running to a depth nobody can predict, which is the same reason
+    an unreadable severity fails the load instead of being skipped.
+    """
+    if not isinstance(validation_raw, dict):
+        return TocOptions(), []
+    raw = validation_raw.get("toc")
+    if raw is None:
+        return TocOptions(), []
+    if not isinstance(raw, dict):
+        errors.append(f"{where}.toc must be a table of TOC options")
+        return TocOptions(), []
+    unknown = [f"{where}.toc.{key}" for key in sorted(raw) if str(key) not in _TOC_OPTION_KEYS]
+    return TocOptions(
+        max_level=_parse_toc_option_int(raw, "max_level", where, errors, maximum=6),
+        max_section_lines=_parse_toc_option_int(raw, "max_section_lines", where, errors),
+    ), unknown
+
+
+def _parse_toc_option_int(
+    raw: Dict[str, object],
+    name: str,
+    where: str,
+    errors: List[str],
+    *,
+    maximum: Optional[int] = None,
+) -> Optional[int]:
+    """Read one positive-integer TOC option, or None when it is not set."""
+    if name not in raw:
+        return None
+    value = raw.get(name)
+    # `bool` is an `int` in Python, so `max_level = true` would otherwise be
+    # accepted as depth 1 — a document checked one level deep because someone
+    # meant to switch something on.
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        bound = f" between 1 and {maximum}" if maximum else " of 1 or more"
+        errors.append(f"{where}.toc.{name} must be an integer{bound}")
+        return None
+    if maximum is not None and value > maximum:
+        errors.append(f"{where}.toc.{name} must be an integer between 1 and {maximum}")
+        return None
+    return value
 
 
 def _parse_artifact_kind_constraint_parts(
@@ -3154,7 +3367,7 @@ def _parse_heading_constraint(
     if err:
         return None, err
 
-    required_bool, multiple, numbered = options
+    required_bool, multiple, numbered, entry_severity = options
 
     return HeadingConstraint(
         id=_normalize_heading_identifier(string_values["id"]) or None,
@@ -3167,6 +3380,8 @@ def _parse_heading_constraint(
         prev=_normalize_heading_identifier(string_values["prev"]) or None,
         next=_normalize_heading_identifier(string_values["next"]) or None,
         pointer=_normalize_optional_text(pointer),
+        severity=entry_severity.severity,
+        locked=entry_severity.locked,
     ), None
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-heading
 
@@ -3208,6 +3423,9 @@ def _parse_id_constraint(obj: object) -> Tuple[Optional[IdConstraint], Optional[
     parsed_fields, err = _collect_id_constraint_fields(obj)
     if err or parsed_fields is None:
         return None, err
+    entry_severity, err = _parse_entry_severity(obj, "Constraint entry")
+    if err or entry_severity is None:
+        return None, err
 
     return (
         IdConstraint(
@@ -3222,6 +3440,8 @@ def _parse_id_constraint(obj: object) -> Tuple[Optional[IdConstraint], Optional[
             to_code=parsed_fields["to_code"],
             headings=parsed_fields["headings"],
             references=parsed_fields["references"],
+            severity=entry_severity.severity,
+            locked=entry_severity.locked,
         ),
         None,
     )
@@ -3366,7 +3586,10 @@ def _parse_identifiers_block(
 
 
 # @cpt-algo:cpt-studio-algo-traceability-validation-load-constraints:p1
-def parse_kit_constraints(data: object) -> Tuple[Optional[KitConstraints], List[str]]:
+def parse_kit_constraints(
+    data: object,
+    validation: Optional[SeverityTables] = None,
+) -> Tuple[Optional[KitConstraints], List[str]]:
     """Parse kit constraints."""
     # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-kit
     if data is None:
@@ -3397,8 +3620,14 @@ def parse_kit_constraints(data: object) -> Tuple[Optional[KitConstraints], List[
 
     if errors:
         return None, errors
-    return KitConstraints(by_kind=out), []
+    # The unknown-*kind* check deliberately does not happen here. A kit file is
+    # parsed alone, and in a multi-kit project one kit may legitimately scope a
+    # severity to a kind a companion kit declares. Only the loader that has
+    # every kit in hand can tell that from a typo, so the check lives there.
+    return KitConstraints(by_kind=out, validation=validation or SeverityTables()), []
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-kit
+
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-constraints-normalize
 def _merge_reference_rule(base: ReferenceRule, incoming: ReferenceRule) -> ReferenceRule:
@@ -3438,7 +3667,25 @@ def _merge_id_constraint(base: IdConstraint, incoming: IdConstraint) -> IdConstr
         to_code=incoming.to_code if incoming.to_code is not None else base.to_code,
         headings=_merge_unique_strings(base.headings, incoming.headings),
         references=references or None,
+        severity=_merge_entry_severity(base.severity, incoming.severity),
+        locked=bool(base.locked or incoming.locked),
     )
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-merge-entry-severity
+def _merge_entry_severity(base: Optional[str], incoming: Optional[str]) -> Optional[str]:
+    """Take the stricter of two entry severities, matching how ``required`` merges.
+
+    Both kits are authorities over an entry they both declare, so the merge
+    that cannot quietly relax what one of them meant to enforce is the strict
+    one. ``locked`` is a plain OR for the same reason.
+    """
+    if base is None:
+        return incoming
+    if incoming is None:
+        return base
+    return incoming if is_stricter(incoming, base) else base
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-merge-entry-severity
 
 
 def _merge_artifact_constraints(
@@ -3470,7 +3717,37 @@ def _merge_artifact_constraints(
         defined_id=[by_id_kind[key] for key in order if key in by_id_kind],
         headings=(base.headings or []) + (incoming.headings or []) or None,
         toc=base.toc if base.toc == incoming.toc else False,
+        validation=merge_severity_tables([base.validation, incoming.validation]),
+        toc_options=_merge_toc_options(base.toc_options, incoming.toc_options),
     )
+
+
+def _merge_toc_options(base: TocOptions, incoming: TocOptions) -> TocOptions:
+    """Combine two kits' TOC options for one kind, strictest-wins.
+
+    The same rule `required` and `severity` merge by, read through what each
+    option does: a deeper `max_level` puts more headings under the
+    completeness check, and a smaller `max_section_lines` flags more sections.
+    A kit with no opinion never loosens one that has one.
+    """
+    return TocOptions(
+        max_level=_strictest_toc_option(base.max_level, incoming.max_level, max),
+        max_section_lines=_strictest_toc_option(
+            base.max_section_lines, incoming.max_section_lines, min),
+    )
+
+
+def _strictest_toc_option(
+    base: Optional[int],
+    incoming: Optional[int],
+    stricter: Callable[[int, int], int],
+) -> Optional[int]:
+    """Pick the stricter of two optional bounds, where None is "no opinion"."""
+    if base is None:
+        return incoming
+    if incoming is None:
+        return base
+    return stricter(base, incoming)
 
 
 def merge_kit_constraints_all_of(constraints: Sequence[KitConstraints]) -> Optional[KitConstraints]:
@@ -3487,7 +3764,117 @@ def merge_kit_constraints_all_of(constraints: Sequence[KitConstraints]) -> Optio
                 by_kind[normalized] = incoming
     if not by_kind:
         return None
-    return KitConstraints(by_kind=by_kind)
+    return KitConstraints(
+        by_kind=by_kind,
+        validation=merge_severity_tables([_kit_validation_tables(kc) for kc in constraints]),
+    )
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-build-policy
+def collect_entry_severities(
+    kit_constraints: Iterable[KitConstraints],
+) -> Dict[str, Dict[EntryKey, EntrySeverity]]:
+    """Index every entry that declares a severity or a lock, by kind and entry key.
+
+    Heading entries are keyed by heading id and identifier entries by ID kind —
+    the two fields findings already carry, so a finding can be matched back to
+    the entry that produced it without a new key having to be threaded through
+    every emission site. The key carries which of the two it is, because the
+    same string can legitimately name both a heading and an ID kind and one
+    must not inherit the other's severity or lock.
+    """
+    entries: Dict[str, Dict[EntryKey, EntrySeverity]] = {}
+    for kit in kit_constraints:
+        for kind, kind_constraints in (getattr(kit, "by_kind", None) or {}).items():
+            normalized = str(kind).strip().upper()
+            for heading in getattr(kind_constraints, "headings", None) or []:
+                _record_entry(
+                    entries,
+                    normalized,
+                    entry_key(ENTRY_HEADING, getattr(heading, "id", None)),
+                    getattr(heading, "severity", None),
+                    bool(getattr(heading, "locked", False)),
+                )
+            for identifier in getattr(kind_constraints, "defined_id", None) or []:
+                _record_entry(
+                    entries,
+                    normalized,
+                    entry_key(ENTRY_IDENTIFIER, getattr(identifier, "kind", None)),
+                    getattr(identifier, "severity", None),
+                    bool(getattr(identifier, "locked", False)),
+                )
+    return entries
+
+
+def _kit_validation_tables(kit: object) -> SeverityTables:
+    """Read a kit's own ``[validation]`` table, tolerating partial stand-ins.
+
+    Callers hand this whatever their context loaded, including the stripped-down
+    objects the command tests build, so a missing table means "declares
+    nothing" rather than an attribute error.
+    """
+    table = getattr(kit, "validation", None)
+    return table if isinstance(table, SeverityTables) else SeverityTables()
+
+
+def _record_entry(
+    entries: Dict[str, Dict[EntryKey, EntrySeverity]],
+    kind: str,
+    key: Optional[EntryKey],
+    severity: Optional[str],
+    locked: bool,
+) -> None:
+    if key is None or (severity is None and not locked):
+        return
+    by_entry = entries.setdefault(kind, {})
+    existing = by_entry.get(key)
+    if existing is None:
+        by_entry[key] = EntrySeverity(severity=severity, locked=locked)
+        return
+    by_entry[key] = EntrySeverity(
+        severity=_merge_entry_severity(existing.severity, severity),
+        locked=bool(existing.locked or locked),
+    )
+
+
+def _kit_severity_layer(kit: object) -> SeverityTables:
+    """One kit's complete severity opinion: whole-kit table plus kind-scoped ones.
+
+    Assembled as a single layer so the merge can compare each kit's *effective*
+    value for a kind against every other kit's. Contributing the two tables as
+    separate layers, or folding the kind-scoped ones in afterwards, both lose
+    the distinction between "this kit's own per-kind override" — which wins by
+    specificity — and "another kit's opinion", which wins by strictness.
+    """
+    whole_kit = _kit_validation_tables(kit)
+    by_kind: Dict[str, Dict[str, str]] = {
+        kind: dict(table) for kind, table in whole_kit.by_kind.items()
+    }
+    unknown = list(whole_kit.unknown_keys)
+    for kind, kind_constraints in (getattr(kit, "by_kind", None) or {}).items():
+        scoped = _kit_validation_tables(kind_constraints)
+        unknown.extend(scoped.unknown_keys)
+        if scoped.by_code:
+            by_kind.setdefault(str(kind).strip().upper(), {}).update(scoped.by_code)
+    return SeverityTables(
+        by_code=dict(whole_kit.by_code),
+        by_kind=by_kind,
+        unknown_keys=tuple(sorted(set(unknown))),
+    )
+
+
+def build_severity_policy(
+    kit_constraints: Iterable[KitConstraints],
+    project: Optional[SeverityTables] = None,
+) -> SeverityPolicy:
+    """Assemble the policy from every loaded kit plus the project's own table."""
+    loaded = list(kit_constraints)
+    return SeverityPolicy(
+        kit=merge_severity_tables([_kit_severity_layer(kit) for kit in loaded]),
+        project=project or SeverityTables(),
+        entries=collect_entry_severities(loaded),
+    )
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-build-policy
 # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-constraints-normalize
 
 def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[str]]:
@@ -3502,9 +3889,20 @@ def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[st
     except (OSError, ValueError, KeyError) as e:
         return None, [f"Failed to parse {path.name}: {e}"]
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-lift-validation
+    # Lifted before the unwrap below. In the legacy unwrapped layout the kinds
+    # sit at the top level, so a `[validation]` table left in place would be
+    # parsed as an artifact kind named VALIDATION and fail the whole file.
+    validation_errors: List[str] = []
+    validation = parse_kit_validation(data.get("validation"), validation_errors)
+    if validation_errors:
+        return None, [f"{path.name}: {message}" for message in validation_errors]
+    data = {key: value for key, value in data.items() if key != "validation"}
+    # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-lift-validation
+
     # TOML wraps kinds under "artifacts" key
     artifacts_data = data.get("artifacts", data)
-    constraints, errs = parse_kit_constraints(artifacts_data)
+    constraints, errs = parse_kit_constraints(artifacts_data, validation)
     if errs:
         return None, errs
     return constraints, []
@@ -3542,8 +3940,11 @@ __all__ = [
     "IdConstraint",
     "ArtifactKindConstraints",
     "KitConstraints",
+    "TocOptions",
     "ArtifactRecord",
     "ParsedStudioId",
+    "build_severity_policy",
+    "collect_entry_severities",
     "cross_validate_artifacts",
     "error",
     "load_constraints_file",

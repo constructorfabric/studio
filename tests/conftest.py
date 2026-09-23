@@ -64,6 +64,40 @@ def _restore_studio_logger():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_studio_context():
+    """Give each test its own view of the process-wide context singleton.
+
+    ``studio.utils.context`` keeps ``_global_context`` at module level: ``get_context()``
+    returns it, ``set_context()`` writes it, and ``get_context()`` itself *replaces* a
+    ``StudioContext`` with a ``WorkspaceContext`` the first time it is called, recording that
+    it has done so in ``_workspace_upgrade_attempted``. Nothing reset any of the three between
+    tests, so whatever the first test in a worker left there, every later test in that worker
+    inherited.
+
+    That is a contamination channel with the same shape as the logger one above, and it
+    produced the same signature: green one at a time, red together, and red in a file that
+    never mentions the thing that broke it. In CI it surfaced as five
+    ``tests/test_toc.py::TestCmdValidateToc`` tests failing with
+    ``AttributeError: 'StudioContext' object has no attribute 'project_root'`` — raised inside
+    ``validate_toc`` against a context it did not create, on whichever branch happened to be
+    running. It needs parallel workers to appear, because that is what changes which tests
+    share a process, and it is invisible serially.
+
+    Saving and restoring all three rather than clearing them: a test that deliberately sets a
+    context still sees it, and the upgrade flag travels with the value it belongs to, so a
+    restored context is not re-upgraded on someone else's behalf.
+    """
+    from studio.utils import context as context_module
+    saved = (context_module._global_context,           # pylint: disable=protected-access
+             context_module._workspace_upgrade_attempted,   # pylint: disable=protected-access
+             context_module._workspace_upgrade_error)       # pylint: disable=protected-access
+    yield
+    (context_module._global_context,                   # pylint: disable=protected-access
+     context_module._workspace_upgrade_attempted,      # pylint: disable=protected-access
+     context_module._workspace_upgrade_error) = saved  # pylint: disable=protected-access
+
+
+@pytest.fixture(autouse=True)
 def _isolate_decision_log(tmp_path_factory, monkeypatch):
     """Redirect decision-log telemetry (on by default) to a throwaway path.
 

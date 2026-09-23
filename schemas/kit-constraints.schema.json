@@ -3,7 +3,7 @@
   "$id": "https://example.com/constructor-studio/kit-constraints.schema.json",
   "title": "Constructor Studio Kit Constraints (constraints.json)",
   "type": "object",
-  "description": "Kit-level constraints for artifact IDs. Root keys are artifact kinds (e.g. PRD, DESIGN, FEATURE).",
+  "description": "Kit-level constraints for artifact IDs. Artifact kinds (e.g. PRD, DESIGN, FEATURE) live under `artifacts`; in the legacy unwrapped layout they are root keys instead.",
   "patternProperties": {
     "^\\$": {}
   },
@@ -11,10 +11,83 @@
     "type": "string",
     "minLength": 1
   },
+  "properties": {
+    "artifacts": {
+      "type": "object",
+      "description": "Wrapped layout: map of artifact kind to its constraints.",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "additionalProperties": { "$ref": "#/$defs/artifact_kind_constraints" }
+    },
+    "validation": {
+      "$ref": "#/$defs/kit_validation",
+      "description": "Kit-wide validation policy. Lifted out before the `artifacts` unwrap, so that it is never mistaken for an artifact kind named VALIDATION in the legacy layout."
+    }
+  },
   "additionalProperties": {
     "$ref": "#/$defs/artifact_kind_constraints"
   },
   "$defs": {
+    "severity": {
+      "type": "string",
+      "enum": ["error", "warning", "off"],
+      "description": "error gates the run, warning is reported without gating, off suppresses the rule (and is counted in the report's suppressed_count). An unrecognised value fails the load rather than resolving to no opinion."
+    },
+    "severity_table": {
+      "type": "object",
+      "description": "Map of rule code to severity. At the root a value may also be a table keyed by artifact kind, whose own keys are rule codes; under an artifact kind only rule codes are accepted.",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/severity" },
+          {
+            "type": "object",
+            "description": "Per-artifact-kind overrides: rule code to severity.",
+            "propertyNames": { "type": "string", "minLength": 1 },
+            "additionalProperties": { "$ref": "#/$defs/severity" }
+          }
+        ]
+      }
+    },
+    "kit_validation": {
+      "type": "object",
+      "description": "A key this engine does not know is reported by validate-kits as a constraints-unknown-key warning and the rest of the file still loads, so a kit written for a newer engine stays installable on an older one. The schema therefore permits unknown properties here; it does not describe them as valid.",
+      "additionalProperties": true,
+      "properties": {
+        "severity": { "$ref": "#/$defs/severity_table" }
+      }
+    },
+    "kit_validation_for_kind": {
+      "type": "object",
+      "description": "Validation policy under one artifact kind. Same unknown-key tolerance as the root table; a nested artifact kind is refused, because this table is already scoped to one.",
+      "additionalProperties": true,
+      "properties": {
+        "severity": {
+          "type": "object",
+          "description": "Rule code to severity, for this artifact kind only.",
+          "propertyNames": { "type": "string", "minLength": 1 },
+          "additionalProperties": { "$ref": "#/$defs/severity" }
+        },
+        "toc": { "$ref": "#/$defs/toc_options" }
+      }
+    },
+    "toc_options": {
+      "type": "object",
+      "description": "How deep and how large TOC checking looks for this artifact kind. Per kind only: there is no kit-wide equivalent, because outline depth is a property of the kind the way the `toc` switch it configures is. An option left out means this kind has no opinion, so an explicit --max-level / --max-section-lines flag and a configured value stay distinguishable.",
+      "additionalProperties": true,
+      "properties": {
+        "max_level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "description": "Deepest heading level the TOC must cover (engine default 3)."
+        },
+        "max_section_lines": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Warn when a section exceeds this many lines (engine default 300)."
+        }
+      }
+    },
     "artifact_kind_constraints": {
       "type": "object",
       "additionalProperties": false,
@@ -22,6 +95,14 @@
       "properties": {
         "name": { "type": "string" },
         "description": { "type": "string" },
+        "toc": {
+          "type": "boolean",
+          "description": "Whether the TOC phase runs for this artifact kind (default true)."
+        },
+        "validation": {
+          "$ref": "#/$defs/kit_validation_for_kind",
+          "description": "Validation policy scoped to this artifact kind. Overrides the kit-wide table for the same rule code."
+        },
         "headings": {
           "type": "array",
           "description": "Outline contract for markdown headings within this artifact kind.",
@@ -62,6 +143,14 @@
           "description": "Whether priority marker is required (true), prohibited (false), or allowed (null/omitted)."
         },
         "to_code": { "type": "boolean" },
+        "severity": {
+          "$ref": "#/$defs/severity",
+          "description": "Severity for the rules this ID-kind entry owns, overriding the code's default."
+        },
+        "locked": {
+          "type": "boolean",
+          "description": "When true, a project may raise this entry's rules but may not lower them; the refusal is reported."
+        },
         "references": {
           "type": "object",
           "description": "Map of artifact kinds to reference rules.",
@@ -113,6 +202,24 @@
         "numbered": {
           "type": ["boolean", "null"],
           "description": "Whether numbered headings are required (true), prohibited (false), or allowed (null/omitted)."
+        },
+        "prev": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Heading constraint id expected before this one. Parsed and used in message text only; ordering is not enforced from it."
+        },
+        "next": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Heading constraint id expected after this one. Parsed and used in message text only; ordering is not enforced from it."
+        },
+        "severity": {
+          "$ref": "#/$defs/severity",
+          "description": "Severity for the rules this heading entry owns, overriding the code's default. A required heading declared `warning` is reported when absent rather than failing the run."
+        },
+        "locked": {
+          "type": "boolean",
+          "description": "When true, a project may raise this entry's rules but may not lower them; the refusal is reported."
         }
       }
     }

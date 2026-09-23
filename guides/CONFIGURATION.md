@@ -12,6 +12,9 @@
   - [ID format](#id-format)
   - [ID kinds (in `constraints.toml`)](#id-kinds-in-constraintstoml)
   - [What `cfs validate` checks](#what-cfs-validate-checks)
+  - [Severity — decide which rules gate the run](#severity--decide-which-rules-gate-the-run)
+  - [Table of contents rules](#table-of-contents-rules)
+  - [What `cfs validate` does not check](#what-cfs-validate-does-not-check)
   - [Nested identifiers](#nested-identifiers)
   - [CDSL and instruction-level traceability](#cdsl-and-instruction-level-traceability)
   - [Traceability mode (in `artifacts.toml`)](#traceability-mode-in-artifactstoml)
@@ -190,6 +193,100 @@ When you run `cfs validate`, the tool performs these checks on IDs:
   - Definition has no checkbox → code marker **must** exist
   - Every `@cpt-begin` has a matching `@cpt-end`, no empty blocks, no orphan markers
 
+### Severity — decide which rules gate the run
+
+Every finding carries a **severity**: `error` gates the run, `warning` is reported without gating, and `off` suppresses the rule. Suppressed findings are still counted, under `suppressed_count`, so a silenced run never looks like a clean one.
+
+You do not have to delete a rule to stop it failing your build. Set its severity instead — the rule keeps its name, its default, and a record that you turned it down.
+
+**A kit ships a posture** in `constraints.toml`:
+
+```toml
+[validation.severity]                      # applies to every artifact kind
+"toc-missing" = "warning"
+
+[artifacts.PRD.validation.severity]        # applies to PRD only
+"heading-number-not-consecutive" = "off"
+
+[[artifacts.PRD.headings]]
+id = "prd-metrics"
+severity = "warning"                       # this section is advisory: reported when absent, never fails
+locked = true                              # and a project may not turn it down further
+```
+
+**Your project overrides it** in `config/core.toml`:
+
+```toml
+[validation]
+fail_on_warnings = false                   # true = warnings alone fail the run (exit 2)
+
+[validation.severity]
+"toc-missing" = "warning"                  # every kind
+
+[validation.severity.FEATURE]
+"heading-missing" = "error"                # FEATURE only
+```
+
+**What you may change.** You may always *raise* a rule — holding yourself to more than the kit asks needs no permission. You may *lower* any rule the kit has not marked `locked`, and every lowering is listed under `severity_overrides` in the report of every run it affects. A `locked` rule refuses the lowering and says so. No CLI flag lowers anything: `--fail-on-warnings` raises, and relaxation lives in configuration where it is diffed and reviewed.
+
+A severity you misspell fails the run rather than being ignored — an unreadable value would otherwise switch a rule off while the run still reported success.
+
+A misspelled **key**, a rule code this engine does not have, or an artifact kind your project does not have, depends on which file it is in. In a **kit's `constraints.toml`** it is a `constraints-unknown-key` warning from `cfs validate-kits`, and the rest of the file still loads, so a kit written for a newer engine still installs on an older one. In your **own `core.toml`** it fails the run: there is no older-engine case to protect, and a typo in your own configuration is better said out loud than carried as a setting you believe is in force.
+
+That last case is the easiest to miss, because the usual reason to scope a rule to one kind is to *raise* it — so a typo leaves you believing a rule now blocks when it never runs at all.
+
+For a **kit**, the kind check needs to see every kit your project installs, since one kit may legitimately scope a severity to a kind another kit provides. `cfs validate-kits` with no `--kit` filter has that view and reports the typo; `cfs validate-kits <path>` and `--kit` do not, and say nothing rather than calling a composable setting a mistake.
+
+- 🖥 `cfs validate --explain-severity --kind PRD --rule heading-missing` — the effective severity and which layer set it
+- 🖥 `cfs validate --fail-on-warnings` — make a warning-only run fail
+
+### Table of contents rules
+
+A document with a table of contents is checked on four things: that the TOC exists at all (`toc-missing`), that every TOC link points at a real heading (`toc-anchor-broken`), that every heading within the configured depth is listed (`toc-heading-not-in-toc`), and that the TOC still matches the document (`toc-stale`, a warning). Four further warnings describe how easy the document is to retrieve from rather than whether its TOC is right: duplicate heading titles, heading depth jumps, oversized sections, and a missing description block at the top.
+
+These run in two places. `cfs validate` runs them on every registered artifact whose kind has not set `toc = false`. `cfs validate-toc <file>...` runs them on the files you name, and is the one to reach for on a document the registry does not know about.
+
+**How deep, and how large**, is per artifact kind, in the kit's `constraints.toml`:
+
+```toml
+[artifacts.PRD]
+toc = true                  # false switches the whole TOC phase off for this kind
+
+[artifacts.PRD.validation.toc]
+max_level = 2               # the TOC must list headings down to level 2 (default 3)
+max_section_lines = 150     # warn above this section length (default 300)
+```
+
+Leave an option out and the kind has no opinion about it. That matters because `cfs validate-toc` takes both as flags too, and the order is: an explicit `--max-level` / `--max-section-lines` on the command line, else the artifact kind's configured value, else the default. If "unset" were stored as 3, a kit could never be overridden and an explicit `--max-level 3` could never be told from silence.
+
+`cfs toc` regenerates to the same depth, so the fix-it workflow and the check agree: regenerating at a fixed 3 in a project whose kind asks for 2 would produce a table listing headings the check then reports as anchors to nothing. Its post-generation check is graded by the same severity settings too — the question it answers is "will the validators accept this", so a rule you switched off is silent there as well.
+
+`fail_on_warnings` reaches it as well: set it, and a `cfs toc` run whose generated table produces only warnings exits 2 — the file is still written, but the run reports a failure, the same way the validators would.
+
+One difference: a `[validation]` table that cannot be read stops `cfs validate` and `cfs validate-toc`, but not `cfs toc`. Losing the command that repairs documents to a typo in the config would take away the tool you fix things with, so it generates anyway, ungraded, and tells you the configuration was ignored.
+
+`toc = false` means the kind has no table-of-contents contract at all. `cfs validate` skips the phase, and `cfs validate-toc` reports the file as passing but **not applicable** rather than checking it anyway — and says so, so a file nobody examined does not read like a file that came back clean.
+
+`cfs toc` still writes a table for such a file if you ask it to: the switch says a table is not *required*, and there is no setting that forbids one. It reports its post-generation check as skipped, so the one command that writes tables is not also the only one that grades them.
+
+Severity works here like everywhere else. Run inside a Studio project, `cfs validate-toc` reads the same `[validation.severity]` tables `cfs validate` does and maps each registered file to its kind, so this is enough to make a missing TOC visible without blocking the build:
+
+```toml
+# config/core.toml
+[validation.severity]
+"toc-missing" = "warning"
+```
+
+Run outside a project there is nothing to read, and the command behaves as it always has: engine defaults, every finding at its built-in severity.
+
+- 🖥 `cfs validate-toc docs/*.md` — check a set of files directly
+- 🖥 `cfs validate-toc --max-level 4 docs/guide.md` — override the depth for one run
+- 🖥 `cfs toc <file>` — regenerate a stale TOC rather than hand-editing it
+
+### What `cfs validate` does not check
+
+Validation is about **structure**, not prose or formatting. It does not check spelling, grammar, line length, list markers, heading capitalisation, table alignment, or any other formatting convention — use `markdownlint` or a formatter for those; they are not Studio gates. It does not assess whether content is *good*, only whether the declared structure and the declared identifier relationships hold. Semantic quality is the job of the checklist-driven review (`cf-analyze`), which runs after the deterministic gate passes.
+
 ### Nested identifiers
 
 IDs form a hierarchy that mirrors your project structure. The depth depends on how many levels you define in `artifacts.toml`:
@@ -318,9 +415,9 @@ Each artifact kind (ADR, PRD, DESIGN, FEATURE, etc.) has resource files. Paths a
 
 ### Structural constraints — control heading structure, ID placement
  
- Constraints define the exact heading structure that `cfs validate` enforces. They are the most strict form of validation — a missing required heading fails validation. Edit these when you add new template sections that should be mandatory.
+ Constraints define the exact heading structure that `cfs validate` enforces. Edit these when you add new template sections that should be mandatory.
  
- Each heading entry in `constraints.toml` needs `id`, `level`, `required`, `pattern`.
+ Each heading entry in `constraints.toml` needs `id`, `level`, `required`, `pattern`. A missing required heading fails validation by default; add `severity = "warning"` to the entry to have it reported without gating, or `locked = true` to stop a project lowering it. See [Severity](#severity--decide-which-rules-gate-the-run).
  
 - 💬 `cf-sdlc-doc-adr: update ADR constraints.toml so a required level-2 heading Migration Plan with id adr-migration-plan is enforced`
 - 💬 `cf-sdlc-doc-feature: update FEATURE constraints.toml so ## Performance Targets is optional instead of required`

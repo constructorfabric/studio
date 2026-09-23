@@ -1,9 +1,17 @@
 [run]
-source = skills/cypilot/scripts/cypilot
+# The tree this project actually ships. The previous value named
+# `skills/cypilot/scripts/cypilot`, a path that has not existed since the rename, so a bare
+# `coverage run` measured nothing at all -- `make test-coverage` only looked right because
+# it passes `--cov=` on the command line, which overrides this.
+source = skills/studio/scripts/studio
+# Paths recorded relative to the repository root rather than to `source`. A report carrying
+# the runner's absolute paths cannot be matched against the repository by anything reading
+# it afterwards.
+relative_files = True
 omit =
-    */cypilot/__main__.py
+    */studio/__main__.py
     */__main__.py
-    */cypilot/vendor/*
+    */studio/vendor/*
 
 [report]
 exclude_lines =

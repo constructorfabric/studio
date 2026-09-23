@@ -1426,7 +1426,19 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
                 self.assertEqual(out.get("status"), "FAIL")
                 self.assertIn("warnings", out)
 
-    def test_validate_pass_can_include_failed_artifacts_summary(self):
+    def test_validate_pass_never_reports_a_failed_artifact(self):
+        """A passing run cannot name a failing artifact.
+
+        This used to assert the opposite, using an error list that reports a
+        non-zero length while iterating empty — the only way to get an artifact
+        report marked FAIL while the aggregate error list stayed empty.
+
+        Severity policy made that divergence reachable for real: a rule lowered
+        or switched off removes findings from the aggregate lists after the
+        per-artifact reports were already built. Every artifact report is now
+        recounted from the settled lists, so the two can no longer disagree,
+        and the `failed_artifacts` summary has nothing to list on a PASS.
+        """
         from studio.commands import validate as validate_cmd
 
         class _TruthyEmpty:
@@ -1492,7 +1504,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             self.assertEqual(rc, 0)
             out = json.loads(buf.getvalue())
             self.assertEqual(out.get("status"), "PASS")
-            self.assertIn("failed_artifacts", out)
+            self.assertNotIn("failed_artifacts", out)
 
 
 class TestCLIPyCoverageListIdKindsBranches(unittest.TestCase):

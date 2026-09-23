@@ -132,14 +132,19 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 
 **Error Scenarios**:
 - File not found → ERROR per file
+- File written but not readable back → per-file `validation.status` ERROR, counted as a failure, because a check that never ran must not be reported as a pass
 - Post-generation validation fails → VALIDATION_FAIL with details
+- Post-generation validation finds only warnings, after the project severity policy has graded them → VALIDATION_WARN with `warning_count`; the run does not fail, because warnings gate nothing here unless the project asks
+- The same, in a project setting `fail_on_warnings` → VALIDATION_FAIL with `failed_on: "warnings"` and exit 2; the file is still written, since the gate is about the verdict rather than the work
+- Severity configuration unreadable → generation proceeds ungraded and the configuration is reported under `policy_errors`, rather than refusing the one command that repairs documents
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs toc <files> [--max-level N] [--indent N] [--dry-run] [--skip-validate]` - `inst-toc-gen-parse-args`
-2. [x] - `p1` - **FOR EACH** file - `inst-toc-gen-foreach-file`
+2. [x] - `p1` - Index the surrounding project's registered artifacts, when there is one, so each file is regenerated to the depth its own artifact kind configures and its post-generation check is graded by the same severity policy the validators apply. Generating at this command's own default where a kind asks for a shallower one would emit a table of contents listing headings the checks then report as anchors to nothing, so the documented way to repair a stale table would hand back a file that fails validation. Unlike the validators, a severity configuration that cannot be read never stops this command: it repairs documents, and losing that to a typo would take away the tool the reader fixes things with — the unread configuration is reported instead - `inst-toc-gen-kind-depth`
+3. [x] - `p1` - **FOR EACH** file - `inst-toc-gen-foreach-file`
    1. [x] - `p1` - Process file: extract headings, generate TOC, insert/update between `<!-- toc -->` markers - `inst-toc-gen-process`
-   2. [x] - `p1` - **IF** not dry-run and not skip-validate, validate generated TOC - `inst-toc-gen-validate`
-3. [x] - `p1` - **RETURN** JSON: `{status, files_processed, results}` - `inst-toc-gen-return`
+   2. [x] - `p1` - **IF** not dry-run and not skip-validate, validate generated TOC at the severity the project configured, counting what the policy suppressed — unless the file's artifact kind declares it has no table-of-contents contract, in which case the check is reported as skipped with its reason. The table is still written, because that switch says a table is not required and has no way to say one is forbidden, but this command must not be the only one in the toolchain that judges a table the validators decline to judge, nor grade raw what they grade by policy - `inst-toc-gen-validate`
+4. [x] - `p1` - **RETURN** JSON: `{status, files_processed, results}`, plus `warning_count` when the graded check produced warnings, `failed_on` when the project's setting turned those warnings into the failure, and `policy_errors` when the severity configuration could not be read and generation therefore went ungraded. Each `results[]` entry carries its own `validation` object once the file has been generated and checked, which is absent when nothing was validated — a dry run, an explicitly skipped check, or a file that was never processed - `inst-toc-gen-return`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for toc command - `inst-toc-gen-imports`
@@ -226,7 +231,7 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 1. [x] - `p1` - Load constraints.toml for each kit - `inst-load-kit-constraints`
 2. [x] - `p1` - For each artifact kind, locate template and example paths - `inst-locate-files`
 3. [x] - `p1` - Validate template headings match constraints heading contract - `inst-validate-headings`
-4. [x] - `p1` - Validate example artifacts against the same heading and constraint contract used for user artifacts - `inst-validate-example`
+4. [x] - `p1` - Validate example artifacts against the same heading and constraint contract used for user artifacts, under the kit's own declared severity policy and not the project's — a kit that declares a rule advisory means it for its own examples, and a project has no say over whether someone else's kit satisfies itself - `inst-validate-example`
 5. [x] - `p1` - Check that template defines all required ID kinds from constraints - `inst-check-id-kinds`
 
 ### Resolve Variables

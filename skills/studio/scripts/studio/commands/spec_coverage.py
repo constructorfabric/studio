@@ -655,8 +655,12 @@ def _human_spec_coverage(data: dict) -> None:
         # structural status/exit are already set.
         ui.info(f"semantic (advisory, never gates): pass errored, skipped — {semantic['error']}")
     elif semantic:
-        from ..utils.semantic_coverage import summary_line
+        from ..utils.semantic_coverage import flagged_lines, summary_line
         ui.info(summary_line(semantic))
+        # Name the flagged requirements beneath the count, so a reader can act without --json
+        # (#195). Rendering only; the section is advisory, exactly like the summary line above it.
+        for line in flagged_lines(semantic):
+            ui.info(line)
 
     # Per-file details — files is a dict {path: entry_dict}
     files = data.get("files", {})

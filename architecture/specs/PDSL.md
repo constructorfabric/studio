@@ -407,9 +407,10 @@ Rules:
   grandfathered set rests on those three paths being narrow and reviewed — not on
   a default that has been demonstrated.
 - **`TYPE` is read only in the menu's declaration region:** from the menu
-  header up to the first section that is not `TITLE` or `TYPE`. A declaration
-  outside a menu, nested in its body, or trailing it is inert, and is reported
-  rather than ignored.
+  header up to the first section that is not `TITLE`, `TYPE`, or `SHAPE` (the
+  two declarations share one region -- see "Declared menu shape" below). A
+  declaration outside a menu, nested in its body, or trailing it is inert,
+  and is reported rather than ignored.
 - **A line indented deeper than the menu's other sub-headers is continuation
   text of the header above it**, not a header of its own — so a title running
   onto a second line is read as title text. A `TYPE:` written there is not read
@@ -426,10 +427,11 @@ Rules:
   itself sits at the level**, since a `TYPE:` indented deeper is continuation
   text by this same rule. Resolve the two rules in that order — the exemption
   first, then the region-ending rule below.
-- **Any recognized section other than `TITLE` or `TYPE` ends the region** — `OPTIONS:`,
-  `INVALID:`, and also `NOTES:`, `RULES:`, `ON_ERROR:`, `PURPOSE:` and the
-  rest. Unrecognized prose headers such as `NOTE:` and `ELSE:` do not. So put
-  `TYPE` before `NOTES:`, not after it.
+- **Any recognized section other than `TITLE`, `TYPE`, or `SHAPE` ends the
+  region** — `OPTIONS:`, `INVALID:`, and also `NOTES:`, `RULES:`,
+  `ON_ERROR:`, `PURPOSE:` and the rest. Unrecognized prose headers such as
+  `NOTE:` and `ELSE:` do not. So put `TYPE` (and `SHAPE`, if declared)
+  before `NOTES:`, not after it.
 - A sub-header **in that region** that is a near-miss of `TYPE` is an error, so
   a typo cannot silently leave a gate undeclared. Reported: a misspelling
   (`TYP:`, `TPYE:`), a miscasing (`Type:`) when its value is a gate type,
@@ -471,6 +473,83 @@ Rules:
   nothing after it is an abandoned declaration rather than front matter — the one
   case where a lower-case candidate is reported despite its value not being a gate
   type.
+
+### Declared menu shape
+
+A menu may declare whether its real reply is a closed set of numbered choices
+or something a native-dialog tool cannot represent faithfully, so native-dialog
+routing reads that fact from source rather than inferring it from prose
+(issue #186).
+
+```pdsl
+MENU OpenEndedReplyMenu:
+  TITLE: Reply with numbers/names or `all`
+  TYPE: decision
+  SHAPE: free-form
+  OPTIONS:
+    1 repo-a -> CONTINUE CurrentWorkflow
+    2 repo-b -> CONTINUE CurrentWorkflow
+    3 all -> CONTINUE CurrentWorkflow
+  INVALID:
+    EMIT "Reply with one or more numbers/names, or `all`."
+    WAIT user.reply
+    STOP_TURN
+```
+
+`TYPE` and `SHAPE` may be declared in either order — both are shown here to
+illustrate that a menu commonly carries both, not because either requires the
+other.
+
+| `SHAPE` | meaning |
+|---|---|
+| `fixed-choice` | the real reply is a single pick among the listed entries — a closed set a native dialog can render faithfully |
+| `free-form` | the real reply is an open-ended list, a multi-select, or a value embedded in prose rather than a single pick — never native-dialog-routed, regardless of option count or wording |
+
+Rules:
+
+- `SHAPE` is a **static constant**: one bare lowercase token from the table
+  above, never interpolated, never a variable, never carrying a `WHEN` clause.
+- At most one `SHAPE` per menu.
+- **`SHAPE` may be omitted.** An undeclared menu, or one whose declaration the
+  validator rejects, falls back to the option-count/wording heuristic in
+  `skills/studio/modules/runtime/pdsl-execution-card.md`: at most 4 top-level
+  `OPTIONS` entries, and no entry or `TITLE` documented as accepting
+  free-text/arbitrary input, an open-ended list, or more than one selection.
+  **Unlike `TYPE`'s undeclared-defaults-to-`blocking` contract, this fallback
+  is live, executable behaviour today** — it is what routes every menu
+  predating this declaration, not a deferred intent.
+- `SHAPE` and `TYPE` **share one declaration region**: it runs from the menu
+  header up to the first section that is not `TITLE`, `TYPE`, or `SHAPE`.
+  Neither header ends the other's region, so either may be declared first —
+  `SHAPE` before `TYPE`, or `TYPE` before `SHAPE`, both read correctly. A
+  declaration outside a menu, nested in its body, or trailing it is inert, and
+  is reported rather than ignored.
+- **A line indented deeper than the menu's other sub-headers is continuation
+  text of the header above it**, not a header of its own, exactly as for
+  `TYPE` — see that rule above; it applies identically to `SHAPE`.
+- **Any recognized section other than `TITLE`, `TYPE`, or `SHAPE` ends the
+  region** — `OPTIONS:`, `INVALID:`, and also `NOTES:`, `RULES:`, `ON_ERROR:`,
+  `PURPOSE:` and the rest. Unrecognized prose headers such as `NOTE:` and
+  `ELSE:` do not.
+- A sub-header **in that region** that is a near-miss of `SHAPE` is an error,
+  so a typo cannot silently leave a menu unshaped. Reported: a misspelling
+  (`SHAP:`, `SHPAE:`), a miscasing (`Shape:`) when its value is a shape token,
+  decoration around the name, a separator other than `:` or none at all, an
+  invisible or confusable character in the name, and a rejected alternative
+  (`ARITY:`, `MENU_SHAPE:`, `REPLY_SHAPE:`, `SELECTION_SHAPE:`,
+  `ANSWER_SHAPE:`).
+- Detection is by edit distance 1 from `SHAPE`, counting a transposition as
+  one, after folding case and trimming `_`/`-` from the ends, plus that alias
+  list — the same mechanism `TYPE` uses. The ordinary English words this
+  catches are `SHARE`, `SHAKE`, `SHADE`, `SHAME`, `SHALE`, `SHAPED` and
+  `SHAPES`.
+- The same boundary as `TYPE`'s applies: decoration is discarded, not listed,
+  so a declaration with another token embedded in it, a near-miss outside the
+  region or written as continuation text, and a name spelled in lookalikes at
+  two or more positions are not detected — each is prose, or (inside the
+  region, at the right indent) inert.
+- An **empty** value is not prose, for the same reason as `TYPE:` — `shape:`
+  and `Shape:` are reported as near-misses and `SHAPE:` as a non-literal.
 
 ---
 

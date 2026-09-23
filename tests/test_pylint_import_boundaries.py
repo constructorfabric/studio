@@ -2,47 +2,18 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
-import textwrap
 import unittest
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
-from tests.pylint_plugin_fakes import Import, ImportFrom, Name, load_plugin_module, set_root
+from tests.pylint_plugin_fakes import (Import, ImportFrom, Name, load_plugin_module,
+                                       run_pylint, set_root)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PYTHONPATH = os.pathsep.join([
-    str(REPO_ROOT / "src"),
-    str(REPO_ROOT / "skills" / "studio" / "scripts"),
-])
 
 
-def _run_pylint(code: str, *, relative_path: str) -> subprocess.CompletedProcess[str]:
-    with TemporaryDirectory() as td:
-        target = Path(td) / relative_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(textwrap.dedent(code), encoding="utf-8")
-        env = dict(os.environ)
-        env["PYTHONPATH"] = PYTHONPATH
-        return subprocess.run(
-            [
-                "pipx",
-                "run",
-                "--spec",
-                "pylint",
-                "pylint",
-                "--score=n",
-                "--disable=all",
-                "--enable=proxy-imports-studio,studio-imports-proxy",
-                str(target),
-            ],
-            cwd=REPO_ROOT,
-            env=env,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+def _run_pylint(code: str, *, relative_path: str = "sample.py"):
+    """One launcher for the family; see `pylint_plugin_fakes.run_pylint`."""
+    return run_pylint(code, enable="proxy-imports-studio,studio-imports-proxy", relative_path=relative_path)
 
 
 class TestImportBoundariesChecker(unittest.TestCase):

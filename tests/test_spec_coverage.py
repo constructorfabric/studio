@@ -746,6 +746,35 @@ class TestHumanSpecCoverage(unittest.TestCase):
         with patch("sys.stderr", buf):
             _human_spec_coverage(data)
 
+    def test_human_output_names_flagged_semantic_requirements(self):
+        # #195 wiring: when --semantic ran, _human_spec_coverage lists the flagged requirements
+        # (weak/wrong), not just the count line, so the block_id reaches the human output.
+        from studio.commands.spec_coverage import _human_spec_coverage
+        from studio.utils.ui import is_json_mode, set_json_mode
+        from studio.utils import eval_semantic as sem
+        data = {
+            "status": "PASS",
+            "summary": {"covered_files": 1, "total_files": 1, "coverage_pct": 60.0,
+                        "granularity_score": 0.5},
+            "files": {},
+            "semantic": {"assessed": 1, "presumed_covered": 0, "unjudgeable": [],
+                         "findings": [{"block_id": "algo-a:inst-x", "path": "a.py",
+                                       "start_line": 10, "verdict": sem.SEM_WRONG}]},
+        }
+        import io
+        out = io.StringIO()
+        saved = is_json_mode()
+        set_json_mode(False)
+        try:
+            with patch("sys.stdout", out), patch("sys.stderr", out):
+                _human_spec_coverage(data)
+        finally:
+            set_json_mode(saved)
+        text = out.getvalue()
+        self.assertIn("algo-a:inst-x", text)     # the flagged requirement is named on screen,
+        self.assertIn("a.py:10", text)           # with its location — both only via flagged_lines
+        #                                          (not the "weak/wrong" summary line above it)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ table is therefore compared by value, entry by entry.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List
 
@@ -53,6 +54,7 @@ EXPECTED_DEFAULT_SEVERITY: Dict[str, str] = {
     "code-task-unchecked": "error",
     "codebase-entry-empty": "warning",
     "constraints-invalid": "error",
+    "constraints-unknown-key": "warning",
     "def-done-ref-not-done": "error",
     "def-missing-priority": "error",
     "def-missing-task": "error",
@@ -164,30 +166,36 @@ def test_no_code_defaults_to_off_yet():
 def test_the_module_refuses_to_import_when_the_registry_gains_an_unlisted_code(monkeypatch):
     """Exhaustiveness is enforced at import, not only by this test file.
 
-    A test-only check is a promise production never hears. This reloads the
+    A test-only check is a promise production never hears. This executes the
     module under a drifted registry and expects it to refuse — and it is the
-    reload, not a direct call, that is asserted, so removing the module-level
-    guard invocation fails here even if the function itself survives.
+    execution, not a direct call, that is asserted, so removing the
+    module-level guard invocation fails here even if the function survives.
+
+    The module is executed into a throwaway namespace rather than reloaded in
+    place. ``importlib.reload`` rebinds the real module's classes to fresh
+    objects while every module that did ``from .severity import ...`` keeps the
+    originals, so a reload here leaves ``isinstance`` checks elsewhere in the
+    codebase quietly false for the rest of the session — a failure that lands
+    in whichever unrelated test happens to run next.
     """
-    import importlib
+    import importlib.util
 
     monkeypatch.setattr(EC, "PROBE_CODE_WITHOUT_A_DEFAULT", "probe-code-without-a-default", raising=False)
-    try:
-        # The attribute name must appear, not only the value: a bare
-        # `missing=['1.0']` would leave a reader unable to tell a non-rule-code
-        # constant from a rule code whose default was forgotten.
-        with pytest.raises(
-            RuntimeError,
-            match=(
-                "missing=\\[\"PROBE_CODE_WITHOUT_A_DEFAULT = 'probe-code-without-a-default'\"\\]"
-                ".*does not belong in that module"
-            ),
-        ):
-            importlib.reload(sev)
-    finally:
-        monkeypatch.undo()
-        importlib.reload(sev)  # leave the module healthy for every test that follows
+    spec = importlib.util.spec_from_file_location("studio.utils._severity_import_probe", sev.__file__)
+    probe = importlib.util.module_from_spec(spec)
+    # The attribute name must appear, not only the value: a bare
+    # `missing=['1.0']` would leave a reader unable to tell a non-rule-code
+    # constant from a rule code whose default was forgotten.
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "missing=\\[\"PROBE_CODE_WITHOUT_A_DEFAULT = 'probe-code-without-a-default'\"\\]"
+            ".*does not belong in that module"
+        ),
+    ):
+        spec.loader.exec_module(probe)
 
+    assert "studio.utils._severity_import_probe" not in sys.modules
     assert sev.default_severity(EC.TOC_STALE) == "warning"
 
 

@@ -725,6 +725,21 @@ def _append_constraints_load_failure(
 
 
 # @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-example
+def _kit_only_policy(kit_constraints: object) -> Optional[object]:
+    """Build the severity policy from the kit alone, with no project layer.
+
+    A project may relax rules for its own documents; it has no say over
+    whether a kit's shipped examples satisfy the kit. Admitting the project
+    layer here would let a project's `core.toml` hide a broken example in
+    someone else's kit.
+    """
+    if kit_constraints is None:
+        return None
+    from ..utils.constraints import build_severity_policy
+
+    return build_severity_policy([kit_constraints])
+
+
 def _validate_example_paths(
     *,
     example_paths: List[Path],
@@ -732,9 +747,16 @@ def _validate_example_paths(
     kit_id: str,
     constraints_for_kind: object,
     constraints_path: Optional[Path],
+    policy: Optional[object] = None,
 ) -> Dict[str, List[Dict[str, object]]]:
-    """Validate example artifacts for one kind."""
-    issues: Dict[str, List[Dict[str, object]]] = {"errors": [], "warnings": []}
+    """Validate example artifacts for one kind.
+
+    The kit's own severity policy applies here. A kit that declares a rule
+    advisory means it for its own examples too, and without this its examples
+    would be judged at the built-in default while every user artifact honoured
+    the declaration — the kit failing its own published policy.
+    """
+    issues: Dict[str, object] = {"errors": [], "warnings": [], "suppressed": 0}
     for example_path in example_paths:
         report = validate_artifact_file(
             artifact_path=example_path,
@@ -745,9 +767,15 @@ def _validate_example_paths(
             registered_systems=None,
             constraints_path=constraints_path,
             kit_id=str(kit_id),
+            policy=policy,
         )
         issues["errors"].extend(list(report.get("errors", []) or []))
         issues["warnings"].extend(list(report.get("warnings", []) or []))
+        # Carried, not dropped. Now that the kit's own policy applies here, a
+        # rule the kit set to `off` removes findings from its examples, and a
+        # suppression nobody counts is the silence this whole model exists to
+        # prevent — one level in from where it was fixed for `validate`.
+        issues["suppressed"] += int(report.get("suppressed") or 0)
     return issues
 # @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-example
 
@@ -772,7 +800,7 @@ def _build_kind_result(
         "examples_checked": len(example_paths),
         "status": "PASS",
     }
-    issues: Dict[str, List[Dict[str, object]]] = {"errors": [], "warnings": []}
+    issues: Dict[str, object] = {"errors": [], "warnings": [], "suppressed": 0}
     # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-template
     if template_path is not None and template_path.is_file():
         report = _check_template_constraints_consistency(
@@ -796,9 +824,11 @@ def _build_kind_result(
             kit_id=kit_ctx.kit_id,
             constraints_for_kind=_get_constraints_for_kind(kit_ctx.constraints, kind_u),
             constraints_path=kit_ctx.constraints_path,
+            policy=_kit_only_policy(kit_ctx.constraints),
         )
         issues["errors"].extend(issues_for_examples["errors"])
         issues["warnings"].extend(issues_for_examples["warnings"])
+        issues["suppressed"] += int(issues_for_examples["suppressed"])
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-validate-example
 
     # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
@@ -810,6 +840,13 @@ def _build_kind_result(
         item["warning_count"] = len(issues["warnings"])
         if issues["errors"] or bool(verbose):
             item["warnings"] = issues["warnings"]
+    if issues["suppressed"]:
+        # Per kind, beside the counts it belongs with. Deliberately not summed
+        # into a top-level `validate-kits` field: `suppressed_count` is part of
+        # `validate`'s documented report contract, and quietly giving the name
+        # a second meaning on another command is how a contract stops meaning
+        # one thing.
+        item["suppressed_count"] = issues["suppressed"]
     return item
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
 # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-for-each-kind

@@ -58,6 +58,26 @@ DO:
 - [ ] `[[phases]]` blocks match actual phase files.
 - [ ] Phase numbers are sequential.
 - [ ] `depends_on` forms a valid DAG.
+- [ ] `needs`, where a phase declares one, lists the decision keys that phase requires — a
+      list of strings, each naming a key a gate in that phase will ask for. It is optional:
+      a phase declaring none behaves exactly as it would without it, stopping when it
+      reaches an unanswered question rather than being warned about beforehand. It is
+      **phase-to-decision** and is kept apart from `depends_on`, which is phase-to-phase:
+      waiting on another phase's output and waiting on a human answer fail differently and
+      are cleared differently.
+- [ ] `awaiting_decision`, where present, is a list of strings naming every decision key
+      that phase was waiting on when the register last wrote it. Written at runtime by a
+      gate that could not resolve, never by the plan's author. It is a **record, not a
+      gate**: nothing clears it, and nothing needs to, because dispatch decides whether a
+      phase may run by re-resolving that phase's `needs` against the plan rather than by
+      reading this field. A key answered since simply stops holding anything.
+- [ ] `status`, where present, is one of exactly five values — `pending`, `in_progress`,
+      `blocked`, `done`, `failed`. The set is closed, and anything else is an invalid state
+      rather than a sixth meaning: a hand-edited `Block` matches neither the runnable set
+      nor the held one, so without this it is dropped from both and reads as finished work.
+- [ ] `status = "blocked"`, where present, holds a phase regardless of its decisions. It is
+      the one hold a person or an external tool sets by hand, so it carries no key and the
+      notice says so rather than naming one it does not have.
 - [ ] `outputs` and `inputs` are consistent across dependent phases.
 - [ ] Every `[[phases]]` entry has `brief_file`.
 - [ ] Every `brief-{NN}-{slug}.md` exists.
