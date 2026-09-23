@@ -213,11 +213,17 @@ def _checked(tool: str, provider: str, model_id: Optional[str]) -> Optional[str]
     from its own catalogue outright, and the Anthropic cells were each probed
     against a live CLI.
     """
-    if model_id is None or (tool, provider) != _entitlement_scope():
-        return model_id
-    if os.environ.get(_ENTITLEMENT_OPT_OUT):
+    if model_id is None or os.environ.get(_ENTITLEMENT_OPT_OUT):
         return model_id
     try:
+        # Inside the guard, not before it. `_entitlement_scope()` raises when the
+        # provider table stops naming exactly one provider for codex -- deliberately,
+        # because picking one would be a guess -- and calling it outside this block
+        # meant an unrelated edit to that table would raise out of *every* codex
+        # model resolution. An advisory check that can stop generation is worse than
+        # no check, which is the whole reason this block exists (#245 review).
+        if (tool, provider) != _entitlement_scope():
+            return model_id
         if not model_entitlements.codex_model_is_withdrawn(model_id):
             return model_id
         seen = (tool, provider, model_id)

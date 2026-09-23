@@ -737,3 +737,73 @@ class TestTheScopeIsReadOffTheProviderTable:
 
         with pytest.raises(ValueError, match="cannot choose between them"):
             agents._entitlement_scope()
+
+
+class TestTheCheckCannotStopGeneration:
+    """The guarantee the whole `try` exists for: advisory means advisory.
+
+    `_entitlement_scope()` raises when the provider table stops naming exactly
+    one provider for codex -- on purpose, because choosing one would be a guess.
+    It was called *before* the guard, so an unrelated edit to that table would
+    have raised out of every codex model resolution and stopped generation
+    outright. A check that can break the thing it advises on is worse than no
+    check (#245 review).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from studio.commands import agents
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+        yield
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+
+    def test_an_ambiguous_provider_table_does_not_raise_out_of_resolution(
+            self, monkeypatch, caplog):
+        from studio.commands import agents
+        monkeypatch.setitem(agents._TOOL_PROVIDER_SUPPORT, "codex", {"openai", "another"})
+
+        with caplog.at_level(logging.WARNING):
+            resolved = agents._resolve_model_id(
+                "codex", "openai", "cf:tier:balanced", "generate", "codebase")
+
+        assert resolved is not None, "the model must still be resolved"
+        assert "cannot choose between them" in caplog.text, (
+            "the failure has to be visible; a silent one is indistinguishable from a pass")
+
+    def test_it_is_said_once_rather_than_per_agent(self, monkeypatch, caplog):
+        """44 agents must not produce 44 copies of the same broken-table notice."""
+        from studio.commands import agents
+        monkeypatch.setitem(agents._TOOL_PROVIDER_SUPPORT, "codex", {"openai", "another"})
+
+        with caplog.at_level(logging.WARNING):
+            for _ in range(5):
+                agents._resolve_model_id(
+                    "codex", "openai", "cf:tier:balanced", "generate", "codebase")
+
+        assert caplog.text.count("cannot choose between them") == 1
+
+    def test_a_tool_outside_the_scope_never_reaches_the_table_at_all(self, monkeypatch):
+        """The opt-out and the None check still short-circuit ahead of everything."""
+        from studio.commands import agents
+
+        def _must_not_be_called():
+            raise AssertionError("the scope was resolved for a tool it does not cover")
+
+        monkeypatch.setattr(agents, "_entitlement_scope", _must_not_be_called)
+
+        assert agents._resolve_model_id(
+            "claude", "anthropic", "cf:tier:balanced", "generate", "codebase") is not None
+
+    def test_the_opt_out_short_circuits_before_the_table_is_read(self, monkeypatch):
+        from studio.commands import agents
+        monkeypatch.setenv(agents._ENTITLEMENT_OPT_OUT, "1")
+
+        def _must_not_be_called():
+            raise AssertionError("the scope was resolved despite the opt-out")
+
+        monkeypatch.setattr(agents, "_entitlement_scope", _must_not_be_called)
+
+        assert agents._resolve_model_id(
+            "codex", "openai", "cf:tier:balanced", "generate", "codebase") is not None
