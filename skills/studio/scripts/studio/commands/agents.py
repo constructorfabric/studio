@@ -140,10 +140,12 @@ _ENTITLEMENT_NOTICES: List[Dict[str, Any]] = []
 #: reads, and someone who knows that should be able to say so once.
 _ENTITLEMENT_OPT_OUT = "CF_SKIP_MODEL_ENTITLEMENT_CHECK"
 
-#: The one cell there is evidence for. Derived from the provider tables rather
-#: than written twice, so a tool gaining or losing OpenAI support cannot leave
-#: this behind.
-_ENTITLEMENT_SCOPE = ("codex", "openai")
+#: The tool the entitlement evidence is about. The provider half of the scope is
+#: not written here: `_entitlement_scope()` reads it off `_TOOL_PROVIDER_SUPPORT`
+#: below, so a tool gaining or losing OpenAI support cannot leave this behind.
+#: It was a second hand-written literal, under a comment claiming it was derived
+#: -- exactly the drift the comment promised to prevent (#245 review).
+_ENTITLEMENT_TOOL = "codex"
 
 _LOG_WITHDRAWN_MODEL = (
     "%s config asks for model %r, which `codex` does not list for this account "
@@ -211,7 +213,7 @@ def _checked(tool: str, provider: str, model_id: Optional[str]) -> Optional[str]
     from its own catalogue outright, and the Anthropic cells were each probed
     against a live CLI.
     """
-    if model_id is None or (tool, provider) != _ENTITLEMENT_SCOPE:
+    if model_id is None or (tool, provider) != _entitlement_scope():
         return model_id
     if os.environ.get(_ENTITLEMENT_OPT_OUT):
         return model_id
@@ -924,6 +926,28 @@ _TOOL_PROVIDER_SUPPORT: Dict[str, Set[str]] = {
     "cursor": {"anthropic", "openai"},
     "copilot": {"anthropic", "openai"},
 }
+
+def _entitlement_scope() -> Tuple[str, str]:
+    """The one (tool, provider) pair the codex entitlement cache is evidence for.
+
+    Read from `_TOOL_PROVIDER_SUPPORT` rather than restated, so that the pair
+    cannot quietly disagree with the table that decides which providers the tool
+    supports at all. `codex` supports exactly one provider; if it ever supports
+    more, that is a decision about which of them the cache speaks for, and this
+    raises rather than guessing.
+
+    Cheap enough to call per resolution -- one dict lookup on a four-entry table
+    -- and calling it is what keeps it honest, since a cached value computed at
+    import time would be the same literal one indirection further away.
+    """
+    providers = _TOOL_PROVIDER_SUPPORT.get(_ENTITLEMENT_TOOL, set())
+    if len(providers) != 1:
+        raise ValueError(
+            f"{_ENTITLEMENT_TOOL!r} supports {sorted(providers)}; the entitlement "
+            "check covers one provider and cannot choose between them"
+        )
+    return (_ENTITLEMENT_TOOL, next(iter(providers)))
+
 
 _TOOL_PROVIDER_DEFAULT: Dict[str, str] = {
     "claude": "anthropic",

@@ -68,25 +68,43 @@ def entitled_codex_models() -> Optional[FrozenSet[str]]:
     changed underneath -- there is no wrapper for it, because nothing in
     production has a reason to.
     """
+    path: object = "<unresolved>"
     try:
         path = codex_cache_path()
         data = json.loads(path.read_text(encoding="utf-8"))
     # `Path.home()` raises RuntimeError where no home can be determined, and
     # that is inside the try for the same reason the read is: this function
     # promises an answer, never an exception, to a caller that must not fail.
-    except (OSError, RuntimeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        path = "<unresolved>"
-        logger.debug("model entitlements: no usable codex cache at %s: %s", path, exc)
+    except (FileNotFoundError, NotADirectoryError, RuntimeError) as exc:
+        # No cache and no home are both ordinary: they mean codex has not run
+        # here, which is not a problem and must not be narrated at the level
+        # command output is read at.
+        logger.debug("model entitlements: no codex cache at %s: %s", path, exc)
+        return None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        # A cache that exists and still cannot be read is the opposite case:
+        # something is wrong with a file this machine wrote, and the only
+        # consequence is that entitlement checking goes quiet for the rest of
+        # the run. `debug` is not a visible signal by this repository's own
+        # contract -- `scripts/pylint_plugins/silent_exceptions.py` leaves it out
+        # of `_VISIBLE_SIGNAL_NAMES` deliberately -- so reporting this failure at
+        # debug was reporting it nowhere (#245 review). Same split, and the same
+        # reason, as `doc_index._read_cache_file`: the caller already knows the
+        # file is there.
+        logger.warning("model entitlements: codex cache at %s cannot be read, "
+                       "so no model can be checked against it: %s", path, exc)
         return None
 
     entries = data.get("models") if isinstance(data, dict) else None
     if not isinstance(entries, list):
-        logger.debug("model entitlements: unfamiliar cache shape at %s", path)
+        logger.warning("model entitlements: codex cache at %s has an unfamiliar shape, "
+                       "so no model can be checked against it", path)
         return None
 
     listed = frozenset(
         entry["slug"] for entry in entries
         if isinstance(entry, dict) and isinstance(entry.get("slug"), str)
+        and entry["slug"].strip()
         and entry.get("visibility") == _LISTED
     )
     if entries and not listed:
@@ -94,8 +112,13 @@ def entitled_codex_models() -> Optional[FrozenSet[str]]:
         # "offered to a person". Far likelier that the shape moved than that an
         # account is entitled to nothing, and the two are indistinguishable from
         # here -- so the honest answer is that nothing is known.
-        logger.debug("model entitlements: %d entries at %s, none listed; "
-                     "treating the shape as unfamiliar", len(entries), path)
+        #
+        # A blank slug is excluded above for the same reason it is not skipped
+        # quietly: an entry whose slug is empty names no model, and counting it
+        # would turn this branch's "nothing is known" into a set of one that
+        # every real model then appears to be missing from (#245 review).
+        logger.warning("model entitlements: %d entries in the codex cache at %s, "
+                       "none of them listed; treating the shape as unfamiliar", len(entries), path)
         return None
     return listed
 

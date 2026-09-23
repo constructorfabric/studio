@@ -307,21 +307,53 @@ class TestTheWarningInGenerate:
         assert len(agents.drain_entitlement_warnings()) == 1
         assert agents.drain_entitlement_warnings() == []
 
-    def test_the_shipped_matrix_is_checked_against_the_real_cache_shape(
+    def test_every_shipped_tier_reaches_the_checker_as_a_bare_slug(
             self, tmp_path, monkeypatch, caplog):
-        """The slugs actually shipped, through the actual checker — the pairing
-        this exists to protect, rather than a synthetic model id."""
+        """Plumbing, not entitlement: the tier resolves to something checkable.
+
+        Building the cache from the matrix means this can never fail on a real
+        withdrawal, and it should not be read as covering one -- the negative
+        below is what has teeth (#245 review). What it does catch is the
+        resolution path handing the checker something that is not a slug at all:
+        a `cf:tier:` prefix left on, a `None` for a tier that has a model, an
+        override that resolves to a key rather than a value.
+        """
         from studio.commands import agents
         shipped = agents._MODEL_MATRIX[("codex", "openai")]["base"]
         _cache(tmp_path, monkeypatch,
                [{"slug": slug, "visibility": "list"} for slug in shipped.values()])
 
         with caplog.at_level(logging.WARNING):
+            resolved = [self._resolve("codex", "openai", tier, "generate", "codebase")
+                        for tier in shipped]
+
+        assert resolved == [shipped[tier] for tier in shipped], (
+            "a tier reached the checker as something other than its matrix slug")
+        assert caplog.text == "", "every shipped slug must pass against a cache that lists it"
+        assert agents.drain_entitlement_warnings() == []
+
+    def test_a_cache_listing_none_of_the_shipped_slugs_warns_for_every_tier(
+            self, tmp_path, monkeypatch, caplog):
+        """The same pairing, against a cache that disagrees with it.
+
+        This is the shape a real withdrawal takes: codex still answers, still
+        lists models, and the ones this repository ships are not among them. It
+        fails if the checker stops looking at shipped slugs -- which the positive
+        above, built from the matrix itself, cannot.
+        """
+        from studio.commands import agents
+        shipped = agents._MODEL_MATRIX[("codex", "openai")]["base"]
+        _cache(tmp_path, monkeypatch,
+               [{"slug": "some-model-nobody-ships", "visibility": "list"}])
+
+        with caplog.at_level(logging.WARNING):
             for tier in shipped:
                 self._resolve("codex", "openai", tier, "generate", "codebase")
 
-        assert caplog.text == "", "every shipped slug must pass against a cache that lists it"
-        assert agents.drain_entitlement_warnings() == []
+        warned = agents.drain_entitlement_warnings()
+        assert len(warned) == len(shipped), (
+            f"{len(shipped)} shipped tiers, {len(warned)} warnings")
+        assert all(slug in caplog.text for slug in shipped.values())
 
     def test_inherit_resolves_to_nothing_and_is_not_checked(self, tmp_path, monkeypatch, caplog):
         _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
@@ -455,3 +487,253 @@ class TestTheMessageListBoundary:
 
         assert "and 1 more" in message
         assert slugs[-1] not in message
+
+
+class TestTheLegacyEmittersCarryTheFinding:
+    """The v2 emitter was covered end to end; the three legacy ones were not.
+
+    `_attach_entitlement_warnings` was tested against hand-built dicts, and
+    `_emit_v2_generation_result` through a whole generate, but the legacy
+    dry-run preview, the JSON preview and the no-change short-circuit were only
+    covered by reading the source. Omitting the call from one of them, or making
+    it before `_build_result` has filled the dict, left the suite green
+    (#245 review).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from studio.commands import agents
+        from studio.utils.ui import set_json_mode
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+        set_json_mode(True)
+        yield
+        set_json_mode(False)
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+
+    @staticmethod
+    def _queue_a_finding(tmp_path, monkeypatch):
+        """Resolve a tier whose slug the cache does not list, leaving a notice pending."""
+        from studio.commands import agents
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-terra", "visibility": "list"}])
+        monkeypatch.setitem(agents._MODEL_MATRIX[("codex", "openai")]["base"],
+                            "cf:tier:balanced", "gone-model")
+        agents._resolve_model_id("codex", "openai", "cf:tier:balanced", "generate", "codebase")
+
+    def test_the_legacy_preview_emits_the_finding(self, tmp_path, monkeypatch, capsys):
+        from studio.commands import agents
+        self._queue_a_finding(tmp_path, monkeypatch)
+
+        emitted = agents._emit_legacy_preview_result(
+            {}, [], tmp_path, tmp_path, None, None, True, None)
+
+        assert [w["kind"] for w in emitted.get("warnings", [])] == ["model-not-entitled"]
+        assert "model-not-entitled" in capsys.readouterr().out
+
+    def test_the_finding_is_attached_after_the_result_is_built(
+            self, tmp_path, monkeypatch):
+        """Ordering, stated as an observable rather than as a line number.
+
+        Attaching before `_build_result` would lose the warning, because the
+        dict the emitter returns is the one the build produces.
+        """
+        from studio.commands import agents
+        self._queue_a_finding(tmp_path, monkeypatch)
+
+        emitted = agents._emit_legacy_preview_result(
+            {}, [], tmp_path, tmp_path, None, None, False, None)
+
+        assert "warnings" in emitted, "the warning did not survive the build"
+        assert {"status", "agents", "results"} <= set(emitted), (
+            "the built result's own keys are still there")
+
+    def test_the_no_change_short_circuit_emits_the_finding(
+            self, tmp_path, monkeypatch, capsys):
+        """It delegates to the preview emitter in JSON mode; that path is the one at risk."""
+        from studio.commands import agents
+        self._queue_a_finding(tmp_path, monkeypatch)
+
+        agents._emit_legacy_no_changes({}, [], tmp_path, tmp_path, None, None, None)
+
+        assert "model-not-entitled" in capsys.readouterr().out
+
+    def test_a_clean_run_through_the_legacy_preview_invents_no_warnings_key(
+            self, tmp_path, capsys):
+        from studio.commands import agents
+
+        emitted = agents._emit_legacy_preview_result(
+            {}, [], tmp_path, tmp_path, None, None, True, None)
+
+        assert "warnings" not in emitted
+        capsys.readouterr()
+
+    def test_every_emitter_that_builds_a_result_also_attaches_the_finding(self):
+        """The third call site writes files, so it is pinned structurally instead.
+
+        `_run_legacy_generate_path` completes a real write and is not worth
+        driving from here, but a fourth emitter added later without the call is
+        exactly the regression this class exists for. Every function that calls
+        `_build_result` must also call `_attach_entitlement_warnings`.
+        """
+        import ast
+        import inspect
+
+        from studio.commands import agents
+
+        tree = ast.parse(inspect.getsource(agents))
+        calls = {}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                calls[node.name] = {
+                    sub.func.id for sub in ast.walk(node)
+                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+                }
+
+        # Delegation counts: `_run_v2_generate_path` builds the dict and hands it
+        # to `_emit_v2_generation_result`, which attaches. What must not exist is
+        # a function that builds a result and reaches no attaching function at all.
+        attaching = {name for name, called in calls.items()
+                     if "_attach_entitlement_warnings" in called}
+        for _ in range(len(calls)):                       # close over delegation
+            grown = {name for name, called in calls.items() if called & attaching}
+            if grown <= attaching:
+                break
+            attaching |= grown
+
+        missing = sorted(
+            name for name, called in calls.items()
+            if "_build_result" in called and name not in attaching
+        )
+
+        assert not missing, (
+            f"these build a result and never attach entitlement findings: {missing}")
+
+
+class TestWhatTheCacheFailuresAreReportedAs:
+    """A missing cache and a broken one are different events and are said so.
+
+    Everything here used to go to `logger.debug`, which this repository's own
+    lint contract does not count as a visible signal at all -- `debug` is left
+    out of `_VISIBLE_SIGNAL_NAMES` in `scripts/pylint_plugins/silent_exceptions.py`
+    on purpose. So a cache that existed and could not be read disabled
+    entitlement checking for the whole run and said nothing anywhere
+    (#245 review).
+    """
+
+    @staticmethod
+    def _entitled(monkeypatch):
+        from studio.utils import model_entitlements
+        model_entitlements.entitled_codex_models.cache_clear()
+        return model_entitlements.entitled_codex_models()
+
+    def test_a_missing_cache_stays_quiet(self, tmp_path, monkeypatch, caplog):
+        """Codex has not run here. Not a problem, and not worth a line of output."""
+        monkeypatch.setenv("CODEX_HOME", str(tmp_path / "nowhere"))
+
+        with caplog.at_level(logging.WARNING):
+            assert self._entitled(monkeypatch) is None
+
+        assert caplog.text == ""
+
+    def test_a_cache_that_exists_and_cannot_be_decoded_is_reported(
+            self, tmp_path, monkeypatch, caplog):
+        home = tmp_path / "codex_home"
+        home.mkdir()
+        (home / "models_cache.json").write_bytes(b"\xff\xfe not utf-8")
+        monkeypatch.setenv("CODEX_HOME", str(home))
+
+        with caplog.at_level(logging.WARNING):
+            assert self._entitled(monkeypatch) is None
+
+        assert "cannot be read" in caplog.text
+        assert str(home) in caplog.text, "the message must name the file it failed on"
+
+    def test_the_message_names_the_real_path_not_a_placeholder(
+            self, tmp_path, monkeypatch, caplog):
+        """The diagnostic overwrote `path` with `<unresolved>` before using it, so
+        it never named the file it had just failed to read."""
+        home = tmp_path / "codex_home"
+        home.mkdir()
+        (home / "models_cache.json").write_text("{not json", encoding="utf-8")
+        monkeypatch.setenv("CODEX_HOME", str(home))
+
+        with caplog.at_level(logging.WARNING):
+            self._entitled(monkeypatch)
+
+        assert "<unresolved>" not in caplog.text
+
+    def test_an_unfamiliar_shape_is_reported(self, tmp_path, monkeypatch, caplog):
+        _cache(tmp_path, monkeypatch, "not-a-list")
+
+        with caplog.at_level(logging.WARNING):
+            assert self._entitled(monkeypatch) is None
+
+        assert "unfamiliar shape" in caplog.text
+
+
+class TestABlankSlugNamesNoModel:
+    """An entry with `visibility: list` and an empty slug is not an entitlement.
+
+    Counting it made the set non-empty, which is the difference between "nothing
+    is known" and "one model is entitled" -- and under the latter every real
+    model looks withdrawn, so every agent draws a false warning (#245 review).
+    """
+
+    @staticmethod
+    def _entitled():
+        from studio.utils import model_entitlements
+        model_entitlements.entitled_codex_models.cache_clear()
+        return model_entitlements.entitled_codex_models()
+
+    @pytest.mark.parametrize("slug", ["", "   ", "\t", "\n"])
+    def test_a_blank_slug_is_not_counted(self, tmp_path, monkeypatch, slug):
+        _cache(tmp_path, monkeypatch, [{"slug": slug, "visibility": "list"}])
+
+        assert self._entitled() is None, (
+            "entries present and none of them naming a model is 'unknown', not a set of one")
+
+    def test_a_blank_slug_beside_a_real_one_leaves_only_the_real_one(
+            self, tmp_path, monkeypatch):
+        _cache(tmp_path, monkeypatch, [{"slug": "  ", "visibility": "list"},
+                                       {"slug": "gpt-5.6-sol", "visibility": "list"}])
+
+        assert self._entitled() == frozenset({"gpt-5.6-sol"})
+
+    def test_a_blank_slug_alone_does_not_make_every_model_look_withdrawn(
+            self, tmp_path, monkeypatch, caplog):
+        """The consequence, stated where it would have been seen."""
+        from studio.commands import agents
+        _cache(tmp_path, monkeypatch, [{"slug": "", "visibility": "list"}])
+        agents._ENTITLEMENT_WARNED.clear()
+        agents.drain_entitlement_warnings()
+
+        with caplog.at_level(logging.WARNING):
+            agents._resolve_model_id("codex", "openai", "cf:tier:balanced",
+                                     "generate", "codebase")
+
+        assert agents.drain_entitlement_warnings() == []
+
+
+class TestTheScopeIsReadOffTheProviderTable:
+    """The pair was a second hand-written literal under a comment claiming it was
+    derived from the tables -- the drift the comment promised to prevent
+    (#245 review)."""
+
+    def test_it_matches_the_table(self):
+        from studio.commands import agents
+
+        assert agents._entitlement_scope() == ("codex", "openai")
+
+    def test_it_follows_the_table_rather_than_a_literal(self, monkeypatch):
+        from studio.commands import agents
+        monkeypatch.setitem(agents._TOOL_PROVIDER_SUPPORT, "codex", {"someone-else"})
+
+        assert agents._entitlement_scope() == ("codex", "someone-else")
+
+    def test_an_ambiguous_table_raises_rather_than_guessing(self, monkeypatch):
+        from studio.commands import agents
+        monkeypatch.setitem(agents._TOOL_PROVIDER_SUPPORT, "codex", {"openai", "another"})
+
+        with pytest.raises(ValueError, match="cannot choose between them"):
+            agents._entitlement_scope()
