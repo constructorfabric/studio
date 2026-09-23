@@ -39,6 +39,18 @@ NODE_MIN = (22, 22, 0)
 #: newest few are where a qualifying one will be. Probed newest first.
 NVM_PROBE_LIMIT = 8
 
+#: The claude-code release the grading was measured against. `_skill_trace` reads a
+#: `tool_result` with no `is_error` key as a success, because that is the shape this
+#: CLI emits for a successful `Skill` call -- measured, not promised by any schema.
+#: A CLI that starts emitting `is_error: false` explicitly, or stops emitting the key
+#: on failures, would be misread silently and every verdict in the run would be
+#: wrong in the same direction (#229 review).
+#:
+#: A floor, not a pin: the shape has held since this version, and refusing to run on
+#: anything newer would make the check the thing that breaks the suite. What it
+#: catches is a CLI older than the measurement, where the shape is simply unknown.
+CLAUDE_MIN = (2, 1, 276)
+
 #: Where the `codex` CLI caches what the account may use. Written by the CLI
 #: itself, so consulting it costs nothing and needs no API call -- and when it
 #: is missing or stale, that is a reason to say nothing rather than to refuse.
@@ -143,6 +155,38 @@ def check_node() -> list[str]:
     return problem
 
 
+def check_claude() -> list[str]:
+    """Whether the installed `claude` is at least the release grading was measured on.
+
+    Silent when the version cannot be read at all. `claude --version` not
+    answering is its own failure and the suite will report it far more clearly
+    than a preflight guess would; inventing a problem here from a missing answer
+    would be the "unknown means broken" reading this file avoids everywhere else.
+    """
+    try:
+        proc = subprocess.run(["claude", "--version"], capture_output=True, text=True,
+                              timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if proc.returncode != 0:
+        return []
+
+    have = _version(proc.stdout)
+    if have is None or have >= CLAUDE_MIN:
+        return []
+
+    want = ".".join(str(part) for part in CLAUDE_MIN)
+    got = ".".join(str(part) for part in have)
+    return [
+        f"claude {got} is older than {want}, which the grading was measured against.",
+        "  A successful `Skill` call is recognised by its result carrying no",
+        "  `is_error` key. That shape was measured on the version above; on an",
+        "  older CLI it is unknown, and every verdict in the run would be wrong",
+        "  the same way.",
+        "  Upgrade, or set CF_UX_SKIP_CLAUDE_VERSION_CHECK=1 to run anyway.",
+    ]
+
+
 def check_codex_model(model: str) -> list[str]:
     """Whether `codex` still lists the model the pilot is about to ask for.
 
@@ -219,7 +263,10 @@ def main(argv: list[str] | None = None) -> int:
                         "  (read while importing the codex provider; check "
                         "CF_UX_CODEX_CONTEXT)"])
 
+    claude_problems = ([] if os.environ.get("CF_UX_SKIP_CLAUDE_VERSION_CHECK")
+                       else check_claude())
     return _report(check_node()
+                   + claude_problems
                    + (check_codex_model(DEFAULT_MODEL) if DEFAULT_MODEL else []))
 
 
