@@ -126,7 +126,7 @@ or no trace to trust:
 |---|---|---|
 | `ran` | The `cf` router was invoked and its call came back clean. | yes |
 | `bypassed` | A `cf-*` workflow ran **directly**, the router never did. Studio produced the answer, so it is worth grading — but no gate, menu or routing decision happened, which is what this suite measures. Counted as a pass by promptfoo's own tally, so the metadata and the `WARNING` in the log are where a bypass is actually visible. | yes |
-| `absent` | No `Skill` call at all. | no |
+| `absent` | No `Skill` call at all — *and* no error mark in the raw text. The mark is checked first, so a transcript that made no call but whose prose contains `<error>Execute skill: cf</error>` is `failed`, not `absent`. | no |
 | `failed` | A `Skill` call that is neither of the above: it named nothing recognizable, came back an error, or came back not at all. | no |
 
 Order matters, and deliberately so. A router that was **tried and failed**
