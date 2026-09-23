@@ -26,25 +26,21 @@ on:
   pull_request:
     branches: [main, 'release/**', 'v[0-9]*']
 
-# Keyed on the branch, not on `github.ref`, so that the two events this workflow
-# now answers for a release branch collapse into one run instead of two.
+# Keyed on `github.ref`, which keeps a push run and a pull-request run in separate
+# groups -- deliberately, and after trying the opposite.
 #
 # Admitting release branches to `push` means a branch with an open PR into `main`
-# matches twice per commit: once as a push to `release/vX.Y.Z`, once as that PR.
-# Their refs differ -- `refs/heads/release/vX.Y.Z` against `refs/pull/N/merge` --
-# so `github.ref` put them in separate groups and the whole pipeline, every
-# Python version, ran twice concurrently for one commit.
+# matches both events per commit, and a first attempt at this collapsed them into
+# one group so the second would cancel the first. That was wrong: the two runs do
+# not test the same commit. The push run tests the branch head; the pull-request
+# run tests `refs/pull/N/merge`, which is what `main` would become. Sharing a group
+# lets a push cancel the merge-result run, which is the more valuable of the two
+# and the one the release branch exists to earn (#254 review).
 #
-# `github.head_ref` is the PR's head branch and is empty on a push, where
-# `github.ref_name` is the branch; for the same branch both yield the same
-# string, so the two runs share a group and `cancel-in-progress` keeps the
-# later one. The repository is part of the key because head branch names are
-# not unique across forks -- two forks each opening a `patch-1` PR must not
-# cancel each other.
+# So a release branch with an open PR does cost two runs per commit. That is the
+# price of testing both the branch and the merge result, not duplicated work.
 concurrency:
-  group: >-
-    ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name
-    || github.repository }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
