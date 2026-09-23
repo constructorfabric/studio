@@ -1264,6 +1264,7 @@ CI pipelines should check for exit code 2 to detect validation failures.
 | `CFS_NO_VERSION_CHECK` | Disable background version check | unset |
 | `CFS_NO_COLOR` | Disable colored stderr output | unset |
 | `NO_COLOR` | Standard no-color convention (respected) | unset |
+| `CF_STUDIO_LOG_LEVEL` | Level for the `studio` logger family. Lower it to `DEBUG` to read diagnostics the default hides, such as the atomic-write cleanup reports. An unrecognised value falls back to the default rather than failing the command. | `WARNING` |
 
 ---
 

@@ -1069,3 +1069,59 @@ class TestACandidateIsResolvedOnce:
 
         assert files == [good], "one unresolvable file must not lose the rest of the scan"
         assert excluded == 1, "the unresolvable file still has to count against the total"
+
+
+class TestASingleFileEntryIsDedupedToo:
+    """`seen` makes the count honest across entries — in every branch, not most.
+
+    The single-file branch returned before `seen` was consulted, so a file both
+    registered in its own right and covered by a directory entry was counted
+    under both. That is the exact double count `seen` was added to end, surviving
+    in the one branch that skipped it (#236 review).
+    """
+
+    @staticmethod
+    def _entry(path, root, seen):
+        from studio.utils.codebase import resolve_entry_code_files
+        return resolve_entry_code_files(path, [".py"], project_root=root, seen=seen)
+
+    def test_a_file_already_counted_under_a_directory_is_not_counted_again(
+            self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        target = tmp_path / "src" / "a.py"
+        target.write_text("x = 1", encoding="utf-8")
+        seen: set = set()
+
+        first, _ = self._entry(tmp_path / "src", tmp_path, seen)
+        second, excluded = self._entry(target, tmp_path, seen)
+
+        assert first == [target]
+        assert second == [], "the directory entry already covered this file"
+        assert excluded == 0, "a file decided earlier is neither counted nor excluded"
+
+    def test_it_works_in_the_other_order_too(self, tmp_path: Path) -> None:
+        """Registry order is not guaranteed, so the file entry must register itself."""
+        (tmp_path / "src").mkdir()
+        target = tmp_path / "src" / "a.py"
+        target.write_text("x = 1", encoding="utf-8")
+        other = tmp_path / "src" / "b.py"
+        other.write_text("y = 2", encoding="utf-8")
+        seen: set = set()
+
+        first, _ = self._entry(target, tmp_path, seen)
+        second, _ = self._entry(tmp_path / "src", tmp_path, seen)
+
+        assert first == [target]
+        assert second == [other], "the file entry did not register itself in `seen`"
+
+    def test_without_a_shared_set_the_behaviour_is_exactly_as_before(
+            self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        target = tmp_path / "src" / "a.py"
+        target.write_text("x = 1", encoding="utf-8")
+
+        first, _ = self._entry(tmp_path / "src", tmp_path, None)
+        second, _ = self._entry(target, tmp_path, None)
+
+        assert first == [target]
+        assert second == [target], "omitting `seen` must not start deduplicating"

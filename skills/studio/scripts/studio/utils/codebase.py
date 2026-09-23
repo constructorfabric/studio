@@ -808,6 +808,22 @@ def resolve_entry_code_files(
     if _escapes_project(code_path, root):
         return [], 1
     if code_path.is_file():
+        # The single-file entry goes through `seen` like any other candidate.
+        # It used to return unconditionally, so a file registered in its own right
+        # *and* covered by a directory entry was counted under both -- which is the
+        # double count `seen` was added to end, surviving in the one branch that
+        # skipped it. It has to work both ways round, too: registering it here is
+        # what makes a later directory entry skip it, and the entries are walked in
+        # whatever order the registry lists them (#236 review).
+        try:
+            resolved_file = code_path.resolve()
+        except OSError as exc:
+            _warn_codebase(f"failed to resolve {code_path}: {exc}")
+            return [], 1
+        if seen is not None:
+            if resolved_file in seen:
+                return [], 0          # decided under an earlier entry; neither file nor skip
+            seen.add(resolved_file)
         return [code_path], 0
 
     # Candidates are collected before they are judged, so each one is decided
