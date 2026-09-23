@@ -157,7 +157,12 @@ jobs:
     needs: coverage
     runs-on: ubuntu-latest
     env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # A boolean, not the secret. The two steps below have to know whether a scan
+      # is possible, and the job-level `env:` is the only place a step-level `if:`
+      # can read that from -- but putting the token there handed it to `checkout`
+      # and `download-artifact`, neither of which has any use for it. The token
+      # itself now lives on the one step that consumes it (#229 review).
+      SONAR_CONFIGURED: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
@@ -165,13 +170,15 @@ jobs:
           fetch-depth: 0
 
       - name: Download coverage report
-        if: env.SONAR_TOKEN != ''
+        if: env.SONAR_CONFIGURED == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: coverage-report
 
       - name: SonarQube Scan
-        if: env.SONAR_TOKEN != ''
+        if: env.SONAR_CONFIGURED == 'true'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602  # v6.0.0
 
   pylint:

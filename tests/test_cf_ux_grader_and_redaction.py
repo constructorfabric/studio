@@ -436,3 +436,40 @@ class TestAHeaderOverrideIsTreatedAsRouting:
 
         assert "ANTHROPIC_CUSTOM_HEADERS" not in env
         assert "ANTHROPIC_CUSTOM_HEADERS" in capsys.readouterr().err
+
+
+class TestTheGraderDiagnosticIsRedactedBeforeItIsCut:
+    """The third provider's own boundary case, at its own boundary.
+
+    `claude_provider` and `codex_provider` each got a behavioural test placing a
+    secret across the truncation point; the grader had only the source regex,
+    which sees one textual shape and misses a cut-then-redact written with an
+    intermediate variable. Its cap is its own (`_STDERR_CHARS`, shorter than the
+    providers'), so the case has to be built against that number rather than the
+    shared one (#229 review).
+    """
+
+    def test_a_key_straddling_the_cut_is_not_half_left_behind(self, run_grader, monkeypatch):
+        secret = "sk-ant-" + "S" * 40
+        monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+        noise = "E" * (grader_claude._STDERR_CHARS - 20)
+
+        out, _seen = run_grader(returncode=1, stderr=f"{noise}{secret}")
+
+        assert "sk-ant-S" not in out["error"], (
+            "a prefix of the key survived, so the cut happened before the redaction")
+        assert "[redacted]" in out["error"]
+
+    def test_the_diagnostic_is_still_cut_to_the_graders_own_ceiling(
+            self, run_grader, monkeypatch):
+        """Redacting first must not stop it being bounded."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        out, _seen = run_grader(returncode=1, stderr="E" * 5000)
+
+        head = out["error"].split(": ", 1)[1]
+        assert len(head) == grader_claude._STDERR_CHARS
+
+    def test_that_ceiling_stays_below_the_shared_one(self):
+        """Derived, so the inequality the comment claims cannot be inverted."""
+        assert grader_claude._STDERR_CHARS < _sandbox.MAX_DIAGNOSTIC_CHARS
