@@ -1,12 +1,18 @@
 # @cpt-algo:cpt-studio-spec-init-structure-change-infrastructure:p1
 name: CI
 
-# `release/**` alongside `main`: a release is cut on a branch taken from the previous
-# tag, reviewed and tested there, and only then tagged. Filtering CI to `main` meant the
-# one branch whose whole purpose is being tested before a tag was the one branch this
-# pipeline never ran on -- the v1.7.0 release PR showed only the checks that come from
-# apps (DCO, SonarCloud, code-ranker), and no tests, lint, coverage or artifact
-# validation.
+# `release/**` alongside `main`: a release is stabilised on a branch and only then
+# tagged, so that branch is the last thing tested before a version goes out.
+# Filtering CI to `main` meant the one branch whose whole purpose is being tested
+# before a tag was the one branch this pipeline never ran on -- the v1.7.0 release
+# PR showed only the checks that come from apps (DCO, SonarCloud, code-ranker), and
+# no tests, lint, coverage or artifact validation.
+#
+# Deliberately says nothing about where the branch is cut from. CONTRIBUTING.md
+# says `main`; `release/v1.7.0` was in fact cut at the `v1.6.2` tag, which is why
+# it never reached `main`. #257 settles that in CONTRIBUTING's favour, and this
+# trigger is correct either way -- which is the reason not to restate the
+# procedure here and give it a second place to drift (#211, #254 review).
 #
 # Two patterns because the repository has two naming habits. CONTRIBUTING.md
 # documents `git checkout -b vX.Y.Z-beta`, which `v[0-9]*` covers; what was
@@ -20,8 +26,25 @@ on:
   pull_request:
     branches: [main, 'release/**', 'v[0-9]*']
 
+# Keyed on the branch, not on `github.ref`, so that the two events this workflow
+# now answers for a release branch collapse into one run instead of two.
+#
+# Admitting release branches to `push` means a branch with an open PR into `main`
+# matches twice per commit: once as a push to `release/vX.Y.Z`, once as that PR.
+# Their refs differ -- `refs/heads/release/vX.Y.Z` against `refs/pull/N/merge` --
+# so `github.ref` put them in separate groups and the whole pipeline, every
+# Python version, ran twice concurrently for one commit.
+#
+# `github.head_ref` is the PR's head branch and is empty on a push, where
+# `github.ref_name` is the branch; for the same branch both yield the same
+# string, so the two runs share a group and `cancel-in-progress` keeps the
+# later one. The repository is part of the key because head branch names are
+# not unique across forks -- two forks each opening a `patch-1` PR must not
+# cancel each other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name
+    || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
