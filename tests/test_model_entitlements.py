@@ -22,9 +22,16 @@ from studio.utils import model_entitlements  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _forget_the_cached_read():
+def _forget_the_cached_read(monkeypatch):
     """The read is cached for the process, which is the point in production and
-    a cross-test leak here."""
+    a cross-test leak here.
+
+    The opt-out is cleared too. It is the documented way to silence the check, so
+    a developer or runner can have it exported, and with it set 18 of these tests
+    failed for a reason that had nothing to do with the code (CodeRabbit, #245).
+    Tests that exercise the opt-out set it themselves.
+    """
+    monkeypatch.delenv("CF_SKIP_MODEL_ENTITLEMENT_CHECK", raising=False)
     model_entitlements.entitled_codex_models.cache_clear()
     yield
     model_entitlements.entitled_codex_models.cache_clear()
