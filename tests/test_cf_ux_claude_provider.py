@@ -1467,3 +1467,29 @@ class TestTheReportSaysWhoseHomeTheChildHad:
             "", raises=subprocess.TimeoutExpired(cmd=["claude"], timeout=850))
 
         assert out["metadata"]["home"] == "isolated"
+
+
+class TestTheGradedAnswerIsRedactedToo:
+    """Every other returned field went through `redact_secrets`; the answer itself,
+    the one field the model writes freely, did not (#229 review). Redacted but not
+    capped: the grader has to see all of it."""
+
+    _SECRET = "sk-ant-api03-ANSWERSECRETVALUE0123456789"
+
+    def test_a_key_in_the_answer_does_not_reach_the_report(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._SECRET)
+        answer = "Here is your key: " + self._SECRET + ". Done."
+
+        out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result(text=answer)))
+
+        assert self._SECRET not in out["output"]
+        assert out["output"] == "Here is your key: [redacted]. Done."
+
+    def test_a_long_answer_is_not_cut(self, run_provider, monkeypatch):
+        """A guard, passing before the change too: redaction must not become a cap."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._SECRET)
+        answer = "A" * (claude_provider._MAX_DIAGNOSTIC_CHARS * 20)
+
+        out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result(text=answer)))
+
+        assert out["output"] == answer

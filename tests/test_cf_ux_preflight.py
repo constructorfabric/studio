@@ -359,6 +359,8 @@ class TestTheClaudeVersionFloor:
         assert "2.1.100" in problem
         assert "2.1.276" in problem
         assert "is_error" in problem, "the reason has to name the shape it depends on"
+        assert f"{preflight.SKIP_CLAUDE_CHECK_ENV}=1" in problem, (
+            "and the way to run anyway, since the message is the only place a person meets it")
 
     @pytest.mark.parametrize("scenario", ["unreadable", "nonzero", "missing"])
     def test_an_unanswerable_version_is_not_invented_into_a_problem(
@@ -373,15 +375,48 @@ class TestTheClaudeVersionFloor:
 
         assert preflight.check_claude() == []
 
-    def test_the_opt_out_skips_it(self, monkeypatch, capsys):
-        monkeypatch.setenv("CF_UX_SKIP_CLAUDE_VERSION_CHECK", "1")
+    @staticmethod
+    def _main_without_the_other_checks(monkeypatch, *, claude):
+        """Drive the real `main` -- not `--node-only`, which returns before the claude
+        branch is ever reached, so a test through it passed whatever the opt-out did
+        (#229 review)."""
         monkeypatch.setattr(preflight, "check_node", list)
         monkeypatch.setattr(preflight, "check_codex_model", lambda _model: [])
+        monkeypatch.setattr(preflight, "check_claude", claude)
+        return preflight.main([])
+
+    def test_the_opt_out_skips_it_and_says_so(self, monkeypatch, capsys):
+        monkeypatch.setenv(preflight.SKIP_CLAUDE_CHECK_ENV, "1")
 
         def _must_not_be_called():
             raise AssertionError("the version check ran despite the opt-out")
 
-        monkeypatch.setattr(preflight, "check_claude", _must_not_be_called)
+        assert self._main_without_the_other_checks(monkeypatch, claude=_must_not_be_called) == 0
+        err = capsys.readouterr().err
+        assert "claude version check skipped" in err and preflight.SKIP_CLAUDE_CHECK_ENV in err
 
-        assert preflight.main(["--node-only"]) == 0
+    @pytest.mark.parametrize("value", ["0", "false", "no", "true"])
+    def test_any_other_value_keeps_the_check_and_names_the_value(
+            self, monkeypatch, capsys, value):
+        monkeypatch.setenv(preflight.SKIP_CLAUDE_CHECK_ENV, value)
+        ran = []
+
+        assert self._main_without_the_other_checks(
+            monkeypatch, claude=lambda: ran.append(True) or []) == 0
+        assert ran, f"{value!r} switched the check off"
+        assert repr(value) in capsys.readouterr().err
+
+    def test_unset_runs_the_check_silently(self, monkeypatch, capsys):
+        monkeypatch.delenv(preflight.SKIP_CLAUDE_CHECK_ENV, raising=False)
+        ran = []
+
+        self._main_without_the_other_checks(monkeypatch, claude=lambda: ran.append(True) or [])
+
+        assert ran and capsys.readouterr().err == ""
+
+    def test_a_refusal_reaches_the_exit_code(self, monkeypatch, capsys):
+        monkeypatch.delenv(preflight.SKIP_CLAUDE_CHECK_ENV, raising=False)
+
+        assert self._main_without_the_other_checks(
+            monkeypatch, claude=lambda: ["claude 2.1.100 is older than 2.1.276"]) == 1
         capsys.readouterr()

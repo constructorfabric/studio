@@ -100,4 +100,6 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "stderr_tail": (safe_tail(proc.stderr.strip(), env)
                         if proc.stderr else None),
     }
-    return {"output": output_text, "metadata": metadata}
+    # Redacted, not capped, as in `claude_provider`: the whole answer is what gets
+    # graded, and it is model-authored (#229 review).
+    return {"output": redact_secrets(output_text, env), "metadata": metadata}

@@ -50,8 +50,7 @@ class SandboxError(RuntimeError):
 
 
 def _wipe(path: Path) -> None:
-    if path.exists():
-        shutil.rmtree(path, ignore_errors=True)
+    _remove_owned(path, "sandbox")
 
 
 def _atexit_cleanup() -> None:
@@ -156,9 +155,40 @@ def wipe_scratch(path: Path) -> None:
     non-kept teardown, so the two long-lived modes accumulated it run after run
     (#229 review).
     """
-    scratch = path / SCRATCH_DIR_NAME
-    if scratch.is_dir():
-        shutil.rmtree(scratch, ignore_errors=True)
+    _remove_owned(path / SCRATCH_DIR_NAME, "scratch directory")
+
+
+def _remove_owned(target: Path, what: str) -> None:
+    """Remove a directory this harness created, and say so if it could not.
+
+    `rmtree(ignore_errors=True)` made every failure silent, and one of them is
+    the child's to cause: the graded CLI runs unattended and can replace the
+    directory with a symlink, which `rmtree` refuses to follow -- correctly -- and
+    `ignore_errors` then swallowed, so the entry outlived the run with nothing in
+    the output to say so (#229 review). A link is removed as a link, never
+    followed; anything else that fails is named on stderr.
+    """
+    if target.is_symlink():
+        print(f"cf-ux: the {what} {target} had been replaced by a symlink; removing "
+              "the link, not what it points at", file=sys.stderr)
+        target.unlink(missing_ok=True)
+        return
+    if not target.is_dir():
+        return
+    failures: list[str] = []
+
+    def _note(_fn, where, exc) -> None:
+        failures.append(f"{where}: {exc[1] if isinstance(exc, tuple) else exc}")
+
+    # `onexc` from 3.12, where `onerror` is deprecated; the project supports 3.11.
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(target, onexc=_note)
+    else:
+        shutil.rmtree(target, onerror=_note)  # pylint: disable=deprecated-argument
+    if failures:
+        print(f"cf-ux: could not fully remove the {what} {target}: {failures[0]}"
+              + (f" (and {len(failures) - 1} more)" if len(failures) > 1 else ""),
+              file=sys.stderr)
 
 
 #: `CF_UX_ISOLATED_HOME=1` gives each CLI child a home of its own inside the sandbox,
@@ -228,8 +258,7 @@ def wipe_isolated_home(path: Path) -> None:
     credential store is not part of that.
     """
     home = path / ISOLATED_HOME_DIR_NAME
-    if home.is_dir():
-        shutil.rmtree(home, ignore_errors=True)
+    _remove_owned(home, "isolated home")
     _LIVE_HOMES.discard(home)
 
 

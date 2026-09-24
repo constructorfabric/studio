@@ -78,6 +78,9 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
             "metadata": {"duration_s": round(duration, 2)},
         }
     return {
-        "output": proc.stdout.strip(),
+        # The judge's verdict is model-authored too, and it is stored in the
+        # report beside the answers it judged (#229 review, found as the third
+        # sibling of the two providers that review named).
+        "output": redact_secrets(proc.stdout.strip(), env),
         "metadata": {"duration_s": round(duration, 2)},
     }

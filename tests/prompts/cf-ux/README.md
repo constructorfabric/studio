@@ -60,6 +60,7 @@ the `llm-rubric` asserts; sub-100ms text guards catch skill-load failures.
 | `CF_UX_CLAUDE_MODEL` / `CF_UX_CLAUDE_EFFORT` | Override the claude model and reasoning effort. |
 | `CF_UX_CODEX_MODEL` / `CF_UX_CODEX_EFFORT` / `CF_UX_CODEX_CONTEXT` | Override the codex model, reasoning effort and context window. Set the model when the default slug is withdrawn — `codex` lists what the account may use. |
 | `CF_UX_GRADER_MODEL` / `CF_UX_GRADER_EFFORT` | Override the LLM-rubric judge. |
+| `CF_UX_SKIP_CLAUDE_VERSION_CHECK=1` | Run on a `claude` older than the floor in `preflight.py` (`CLAUDE_MIN`). Only `1` skips; any other value is named on stderr and the check runs. A skip is printed too, since verdicts from that run rest on an output shape nobody measured on that CLI. |
 | `CF_UX_CODEX_DISABLE_PLUGINS` | Comma-separated `name@marketplace` to disable, for isolation debugging only — by default the skill is expected to win against competing plugins. |
 
 Defaults live beside the code they configure: `providers/*.py`. This table says

@@ -51,6 +51,12 @@ NVM_PROBE_LIMIT = 8
 #: catches is a CLI older than the measurement, where the shape is simply unknown.
 CLAUDE_MIN = (2, 1, 276)
 
+#: Runs the pilot on a CLI below :data:`CLAUDE_MIN` anyway. Only the exact value
+#: ``1`` counts, as for every other CF_UX_* switch: a bare truthiness test read
+#: ``0`` and ``false`` as "skip", so the spelling that means "keep checking"
+#: switched the check off (#229 review).
+SKIP_CLAUDE_CHECK_ENV = "CF_UX_SKIP_CLAUDE_VERSION_CHECK"
+
 #: Where the `codex` CLI caches what the account may use. Written by the CLI
 #: itself, so consulting it costs nothing and needs no API call -- and when it
 #: is missing or stale, that is a reason to say nothing rather than to refuse.
@@ -183,7 +189,7 @@ def check_claude() -> list[str]:
         "  `is_error` key. That shape was measured on the version above; on an",
         "  older CLI it is unknown, and every verdict in the run would be wrong",
         "  the same way.",
-        "  Upgrade, or set CF_UX_SKIP_CLAUDE_VERSION_CHECK=1 to run anyway.",
+        f"  Upgrade, or set {SKIP_CLAUDE_CHECK_ENV}=1 to run anyway.",
     ]
 
 
@@ -263,11 +269,31 @@ def main(argv: list[str] | None = None) -> int:
                         "  (read while importing the codex provider; check "
                         "CF_UX_CODEX_CONTEXT)"])
 
-    claude_problems = ([] if os.environ.get("CF_UX_SKIP_CLAUDE_VERSION_CHECK")
-                       else check_claude())
+    claude_problems = _claude_problems_unless_skipped()
     return _report(check_node()
                    + claude_problems
                    + (check_codex_model(DEFAULT_MODEL) if DEFAULT_MODEL else []))
+
+
+def _claude_problems_unless_skipped() -> list[str]:
+    """:func:`check_claude`, unless :data:`SKIP_CLAUDE_CHECK_ENV` is ``1``.
+
+    Either way the person is told. A skip that leaves no trace makes a run graded
+    on an unmeasured CLI indistinguishable afterwards from one that was checked,
+    and a value that is set but is not ``1`` is almost certainly someone who meant
+    one or the other -- so it is named rather than silently read as "check"
+    (#229 review).
+    """
+    value = os.environ.get(SKIP_CLAUDE_CHECK_ENV)
+    if value == "1":
+        print(f"cf-ux preflight: claude version check skipped ({SKIP_CLAUDE_CHECK_ENV}=1); "
+              "verdicts from this run rest on an output shape not measured on this CLI",
+              file=sys.stderr)
+        return []
+    if value:
+        print(f"cf-ux preflight: {SKIP_CLAUDE_CHECK_ENV}={value!r} is not 1, so the "
+              "claude version check runs", file=sys.stderr)
+    return check_claude()
 
 
 def _report(problems: list[str]) -> int:

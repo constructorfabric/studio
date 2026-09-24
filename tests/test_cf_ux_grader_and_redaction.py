@@ -638,3 +638,81 @@ class TestTheCodexChildCanHaveAnIsolatedHomeToo:
         monkeypatch.setenv("CODEX_HOME", str(tmp_path / "cx"))
 
         assert codex_provider._codex_credential() == tmp_path / "cx" / "auth.json"
+
+
+class TestTheAnswerIsRedactedInTheSiblingsToo:
+    """The review named the claude provider's answer; codex returns its answer the
+    same way, and the grader returns its verdict the same way (#229 review)."""
+
+    _SECRET = "sk-proj-ANSWERSECRETVALUE0123456789"
+
+    def test_codex_answer(self, run_codex, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", self._SECRET)
+
+        out, _seen = run_codex(stdout=f"the key is {self._SECRET}\n" + "B" * 5000)
+
+        assert self._SECRET not in out["output"]
+        assert out["output"].startswith("the key is [redacted]")
+        assert out["output"].endswith("B" * 5000), "redacted, not cut"
+
+    def test_grader_verdict(self, run_grader, monkeypatch):
+        secret = "sk-ant-api03-GRADERSECRETVALUE0123456789"
+        monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+
+        out, _seen = run_grader(stdout=f"8 -- the answer leaked {secret}")
+
+        assert secret not in out["output"]
+        assert out["output"] == "8 -- the answer leaked [redacted]"
+
+
+class TestCleanupSaysWhenItCouldNotClean:
+    """`rmtree(ignore_errors=True)` made every cleanup failure silent, including the
+    one the unattended child can cause by swapping its scratch directory for a
+    symlink (#229 review). Applied to all three things this harness removes: the
+    scratch, the isolated home, and the sandbox itself."""
+
+    def test_a_scratch_swapped_for_a_symlink_is_unlinked_not_followed(
+            self, tmp_path, capsys):
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("not the harness's", encoding="utf-8")
+        sandbox_dir = tmp_path / "sandbox"
+        sandbox_dir.mkdir()
+        (sandbox_dir / _sandbox.SCRATCH_DIR_NAME).symlink_to(outside, target_is_directory=True)
+
+        _sandbox.wipe_scratch(sandbox_dir)
+
+        assert not (sandbox_dir / _sandbox.SCRATCH_DIR_NAME).exists()
+        assert not (sandbox_dir / _sandbox.SCRATCH_DIR_NAME).is_symlink(), "the link is gone"
+        assert (outside / "keep.txt").is_file(), "and what it pointed at is untouched"
+        assert "replaced by a symlink" in capsys.readouterr().err
+
+    def test_a_failure_to_remove_is_named(self, tmp_path, capsys, monkeypatch):
+        scratch = tmp_path / _sandbox.SCRATCH_DIR_NAME
+        scratch.mkdir()
+        (scratch / "stuck").write_text("x", encoding="utf-8")
+
+        def _failing_rmtree(path, **kwargs):
+            hook = kwargs.get("onexc") or kwargs.get("onerror")
+            error = PermissionError(13, "Permission denied")
+            hook(None, str(path / "stuck"), error if "onexc" in kwargs else (type(error), error, None))
+
+        monkeypatch.setattr(_sandbox.shutil, "rmtree", _failing_rmtree)
+
+        _sandbox.wipe_scratch(tmp_path)
+
+        err = capsys.readouterr().err
+        assert "could not fully remove the scratch directory" in err and "Permission denied" in err
+
+    def test_nothing_is_said_when_there_is_nothing_to_remove(self, tmp_path, capsys):
+        """A guard: reporting failures must not turn into noise on the ordinary path."""
+        _sandbox.wipe_scratch(tmp_path)
+
+        assert capsys.readouterr().err == ""
+
+    def test_the_isolated_home_and_the_sandbox_use_the_same_removal(self):
+        """The shape, not an example: no cleanup in the module keeps a silent rmtree."""
+        import inspect
+
+        source = inspect.getsource(_sandbox)
+        assert "ignore_errors=True)" not in source.replace("`rmtree(ignore_errors=True)`", "")

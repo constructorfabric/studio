@@ -671,7 +671,12 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         # and that is what `skill_state` in the metadata is for -- a bypass
         # counted as an ordinary pass would make the routing finding invisible
         # in every report downstream.
-        result = {"output": output_text, "metadata": metadata}
+        #
+        # Redacted, not capped: the grader needs the whole answer, and a
+        # length ceiling on it would change what is scored. It was the one
+        # returned field without redaction, and the one most likely to carry
+        # a key -- it is what the model chose to say (#229 review).
+        result = {"output": redact_secrets(output_text, env), "metadata": metadata}
     if isinstance(cost, (int, float)):
         result["cost"] = float(cost)
     return result
