@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import functools
 import re
 import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import Tuple
 from unittest import mock
 
 import pytest
@@ -15,6 +17,229 @@ import pytest
 from studio.utils import pdsl
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+#: Directory names that never hold authored PDSL, matching the sibling suite in
+#: `test_pdsl_validate_cli.py` so the two agree about what "the corpus" means.
+CORPUS_GENERATED_DIRECTORIES = frozenset({
+    "node_modules", "vendor", "dist", "build", "__pycache__", "htmlcov",
+    ".cache", ".venv", "site-packages", ".bootstrap",
+})
+#: A tripwire on the scan's subject, not a cost bound. Its value is the error message: a
+#: generated tree landing under a directory this does not know fails here with an
+#: explanation rather than as an unexplained slowdown. Raised in review, which also noted
+#: that three tests below were each walking the tree independently with only a floor.
+#:
+#: **Deliberately not shared with `AUTHORED_CORPUS_CEILING` in `test_pdsl_validate_cli.py`,
+#: and not claimed to match it.** An earlier version of this comment said "the same
+#: convention and the same number", which was misleading: the two cover different corpora.
+#: This one scans `workflows/` + `skills/` and excludes `.bootstrap` — **264 sources**;
+#: that one scans `skills/`, `workflows/`, `requirements/` and `architecture/` and does not
+#: exclude `.bootstrap` — **371**. Both happening to sit at 600 is coincidence, and sharing
+#: one constant would tie two unrelated subjects together. Raised in review.
+CORPUS_CEILING = 600
+
+
+#: Cached for the whole pytest process, and safe to be, for one reason worth stating rather
+#: than assuming: **no test in this suite writes to `workflows/` or `skills/`.** Every
+#: fixture is built under `tmp_path`, so the tree these read is the checked-out working
+#: copy and cannot change while the process runs — there is nothing a stale snapshot could
+#: be stale against. `cache_clear()` is therefore never called, and the first caller's view
+#: is the only view.
+#:
+#: If a test ever does modify the authored tree, this is what it breaks and where to look:
+#: it would be reading a snapshot from before its own change. Raised in review, which asked
+#: for the policy rather than the behaviour.
+#:
+#: **And the policy is now enforced rather than promised.** Review's second point was that a
+#: docstring explaining why staleness cannot happen is not a thing that fails when it does:
+#: a test added anywhere later could break the invariant, and every scan here would keep
+#: reporting confidently on a tree that no longer exists. `_corpus_is_not_mutated_underneath`
+#: below records what the tree looked like when the cache was filled and checks it again
+#: afterwards, so the assumption breaks loudly at its own boundary.
+@functools.lru_cache(maxsize=1)
+def _authored_sources() -> Tuple[Tuple[str, str], ...]:
+    """Every authored markdown source under `workflows/` and `skills/`, read once.
+
+    Cached for the module because three tests each ran their own full-tree walk, reading
+    every file again. Anchored at `REPO_ROOT` rather than a relative `Path("workflows")`,
+    which quietly made those tests depend on the working directory.
+
+    Reads are guarded: an unreadable file is collected and reported together rather than
+    aborting the walk with a bare `OSError` naming one path, and decoding replaces rather
+    than raises, so a corpus file with a stray byte fails on what it says instead of on
+    being read at all. Raised in review.
+    """
+    sources, unreadable, empty = [], [], []
+    for folder in ("workflows", "skills"):
+        root = REPO_ROOT / folder
+        before = len(sources)
+        for path in sorted(root.rglob("*.md")):
+            if CORPUS_GENERATED_DIRECTORIES & set(path.relative_to(REPO_ROOT).parts):
+                continue
+            try:
+                sources.append((str(path.relative_to(REPO_ROOT)),
+                                path.read_text(encoding="utf-8-sig", errors="replace")))
+            except OSError as exc:
+                unreadable.append(f"{path.relative_to(REPO_ROOT)}: {type(exc).__name__}")
+        if len(sources) == before:
+            empty.append(folder)
+    assert not unreadable, f"corpus files could not be read: {unreadable}"
+    # Per root, not over the total. `rglob` on a renamed or deleted directory yields nothing
+    # and raises nothing, so one root disappearing left the other still producing sources,
+    # the combined assertion below still passing, and every scan in this file quietly
+    # covering half the corpus -- a guard reporting a clean result over a subject it had
+    # lost. Contributing nothing is checked rather than merely existing, since an empty
+    # directory loses exactly as much scope as a missing one. Raised in review.
+    assert not empty, (
+        f"these authored corpus roots contributed no sources: {empty}. Every scan in this "
+        "file has silently lost that part of its subject; if the tree really was "
+        "restructured, update the root list deliberately.")
+    assert sources, "no authored PDSL sources found; every scan below has lost its subject"
+    assert len(sources) <= CORPUS_CEILING, (
+        f"the authored corpus has grown to {len(sources)} sources against a ceiling of "
+        f"{CORPUS_CEILING}; if it has genuinely grown, raise the ceiling deliberately, and "
+        "if a generated tree has appeared, add its directory to "
+        "CORPUS_GENERATED_DIRECTORIES instead"
+    )
+    global _CORPUS_AS_CACHED  # pylint: disable=global-statement
+    _CORPUS_AS_CACHED = _corpus_fingerprint()
+    return tuple(sources)
+
+
+#: What the authored tree looked like at the moment the cache above was filled, or `None`
+#: if nothing has read it yet. Compared after the fact; never read by the scans themselves.
+_CORPUS_AS_CACHED = None
+
+
+def _corpus_fingerprint() -> Tuple[Tuple[str, int, int], ...]:
+    """``(path, size, mtime_ns)`` for the authored tree — enough to notice a write.
+
+    Deliberately not a hash of the contents: this runs twice per session, and the point is
+    to detect that something changed, not to say what. A same-size same-timestamp rewrite
+    would slip through, which is a trade accepted for a tripwire that costs nothing.
+    """
+    seen = []
+    for folder in ("workflows", "skills"):
+        for path in sorted((REPO_ROOT / folder).rglob("*.md")):
+            if CORPUS_GENERATED_DIRECTORIES & set(path.relative_to(REPO_ROOT).parts):
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                seen.append((str(path.relative_to(REPO_ROOT)), -1, -1))
+                continue
+            seen.append((str(path.relative_to(REPO_ROOT)), stat.st_size, stat.st_mtime_ns))
+    return tuple(seen)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _corpus_is_not_mutated_underneath():
+    """Fail if the authored tree changes after the process-lifetime cache was filled.
+
+    The cache above is only safe because no test writes to `workflows/` or `skills/`. That
+    was true when written and argued in a comment, which review correctly said is not
+    enforcement: the invariant belongs to the whole suite, anyone can break it from a file
+    far away, and the failure is silent — every scan keeps passing against a snapshot of a
+    tree that has moved.
+
+    Compared only if something actually filled the cache, so this reports a broken
+    assumption and never a merely unused one.
+    """
+    yield
+    if _CORPUS_AS_CACHED is None:
+        return
+    now = _corpus_fingerprint()
+    if now == _CORPUS_AS_CACHED:
+        return
+    was, has = dict((p, (s, m)) for p, s, m in _CORPUS_AS_CACHED), dict(
+        (p, (s, m)) for p, s, m in now)
+    changed = sorted(set(was) ^ set(has)) + sorted(
+        p for p in set(was) & set(has) if was[p] != has[p])
+    raise AssertionError(
+        f"the authored corpus changed while this module ran: {changed[:10]}. Every scan in "
+        "this file read a cached snapshot from before that change, so their results are "
+        "about a tree that no longer exists. Whatever wrote to `workflows/` or `skills/` "
+        "should build its fixture under `tmp_path` instead.")
+
+
+def _required_source(relative: str) -> str:
+    """One named corpus file, read with its absence reported as itself.
+
+    Anchored at `REPO_ROOT`, because a relative `Path("skills/...")` makes the test depend
+    on the working directory, and guarded, because a bare `OSError` naming a path says
+    nothing about which guard just lost its subject. Raised in review.
+    """
+    path = REPO_ROOT / relative
+    try:
+        return path.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError as exc:
+        raise AssertionError(
+            f"{relative} could not be read ({type(exc).__name__}), so the guard that reads "
+            "it is not checking anything; it was renamed, moved or removed"
+        ) from exc
+
+
+def _declared_only(text: str) -> str:
+    """``text`` with everything outside a ```pdsl fence blanked, line count preserved.
+
+    PDSL lives in fenced blocks and prose lives around them, so the fence is what separates
+    a declaration from someone writing about one. Without it a `MENU` quoted in prose, or
+    shown inside a ```bash block as an illustration, counts as a real declaration — and this
+    scan feeds a corpus measurement that a design decision rests on.
+
+    **Zero instances today**: all 106 declarations in `workflows/` + `skills/` are already
+    fenced, so the count does not move. Added because the sibling helper in this file goes
+    through the checker's own block scan for exactly this reason, and a scanner that
+    disagrees with the checker about what a declaration is will eventually disagree about
+    the number. Raised in review.
+
+    Lines are blanked rather than removed so any line number derived from the result still
+    points at the right place in the file.
+    """
+    out, fence = [], None
+    for line in text.splitlines():
+        opening = re.match(r"^```(\w*)", line)
+        if opening is not None:
+            fence = None if fence is not None else (opening.group(1) or "")
+            out.append("")
+            continue
+        out.append(line if fence == "pdsl" else "")
+    return "\n".join(out) + "\n"
+
+
+def _declarations_in(text: str) -> list:
+    """``(name, block)`` for every `MENU` declared in one source.
+
+    Split out from the tree walk so both halves are testable on a crafted source: the
+    corpus has no unfenced declaration and no tab-separated header, so measuring the real
+    tree cannot tell a correct scan from a blind one. Removing the fence filter from the
+    walk left every test green until this was a function.
+    """
+    return [
+        (match.group(1), match.group(0))
+        for match in re.finditer(
+            # The lookahead accepts the same separators the pattern itself does. It read
+            # `^MENU ` with a literal space, so a tab-separated declaration did not
+            # terminate the block before it -- the previous menu's body swallowed it whole
+            # and the declaration vanished from the count. Raised in review.
+            r"^MENU[ \t]+([A-Za-z][\w-]*)(.*?)(?=^MENU[ \t]+|^UNIT[ \t]+|\Z)",
+            _declared_only(text), re.M | re.S)
+    ]
+
+
+@functools.lru_cache(maxsize=1)
+def _menu_declarations() -> Tuple[Tuple[str, str, str], ...]:
+    """``(path, name, body)`` for every `MENU` declared in the corpus.
+
+    A tuple of triples, not a dict keyed by name: `TerminalStates` is declared in two
+    files, so keying by name silently dropped one and measured the survivor twice.
+    """
+    found = []
+    for path, body in _authored_sources():
+        found.extend((path, name, block) for name, block in _declarations_in(body))
+    return tuple(found)
+
+
 STUDIO_PY = REPO_ROOT / "skills" / "studio" / "scripts" / "studio.py"
 
 PROMPT_ROOTS = (
@@ -802,7 +1027,7 @@ def test_prompt_runtime_references_use_cf_studio_path() -> None:
 # this set has to declare a TYPE.
 # Shrink this set as menus are typed; never add to it.
 UNTYPED_MENU_BASELINE: frozenset[str] = frozenset({
-    "architecture/specs/PDSL.md#13::SubAgentApprovalMenu",
+    "architecture/specs/PDSL.md#14::SubAgentApprovalMenu",
     "architecture/specs/PDSL.md#7::ApprovalMenu",
     "requirements/auto-config.md#2::ExistingRulesRefreshMenu",
     "requirements/storytelling-modes.md#0::ModeSelectionMenu",
@@ -843,7 +1068,6 @@ UNTYPED_MENU_BASELINE: frozenset[str] = frozenset({
     "skills/studio/modules/ci-discovery-run.md#0::CiDiscoverySkipMenu",
     "skills/studio/modules/coding-prep-gates.md#0::CodingExploreMenu",
     "skills/studio/modules/coding-prep-gates.md#1::CodingBrainstormMenu",
-    "skills/studio/modules/debug-prompts-command-menu-nav.md#0::DebuggerMenu",
     "skills/studio/modules/debug-prompts-failures.md#0::DebugRunFailureMenu",
     "skills/studio/modules/debug-prompts-failures.md#0::DebugStepFailureMenu",
     "skills/studio/modules/explain-intent-explore.md#2::ExplainExploreMenu",
@@ -882,20 +1106,15 @@ UNTYPED_MENU_BASELINE: frozenset[str] = frozenset({
     "skills/studio/modules/plan-validate-finalize.md#0::OversizedPhaseRecoveryMenu",
     "skills/studio/modules/plan-validate-finalize.md#1::Phase4NextStepsMenu",
     "skills/studio/modules/planning-runtime.md#8::PlanSaveGateMenu",
-    "skills/studio/modules/review/fix-approval.md#0::ReviewFindingsNavigation",
     "skills/studio/modules/review/fix-approval.md#12::ReviewFixPartialIdsRetryMenu",
-    "skills/studio/modules/review/fix-approval.md#3::ReviewFixScope",
     "skills/studio/modules/review/semantic-loop-skeleton.md#0::ReviewGranularityMenu",
     "skills/studio/modules/routing/companion-skills.md#1::CompanionSkillOfferMenu",
     "skills/studio/modules/routing/companion-skills.md#2::CompanionRoutingMenuOptions",
     "skills/studio/modules/routing/root-intent-routing.md#1::IntentSkillMenu",
     "skills/studio/modules/routing/root-intent-routing.md#1::MatchedIntentSkillMenu",
     "skills/studio/modules/routing/root-intent-routing.md#9::AllCfSkillsMenu",
-    "skills/studio/modules/runtime/blocked-next-actions.md#2::BlockedNextActionsMenu",
     "skills/studio/modules/session/shutdown.md#0::StudioShutdownConfirm",
     "skills/studio/modules/subagents/dispatch.md#1::SubAgentApprovalRequest",
-    "skills/studio/modules/subagents/dispatch.md#1::SubAgentFallbackLimitRequest",
-    "skills/studio/modules/subagents/dispatch.md#1::SubAgentFallbackRequest",
     "skills/studio/modules/subagents/git-commit-mode.md#5::GitCommitModeMenu",
     "skills/studio/modules/ui/next-actions.md#0::NextActionsMenu",
     "skills/studio/modules/workspace-configure.md#0::SourceConfirmMenu",
@@ -923,14 +1142,17 @@ UNTYPED_MENU_BASELINE_CEILING = 111
 
 
 
-def _menu_type_declarations() -> dict[str, str | None]:
-    """Map every `<path>::<MenuName>` in the prompt roots to its declared TYPE.
+def _menu_declaration_scan(header: str, valid_tokens: tuple[str, ...]) -> dict[str, str | None]:
+    """Map every `<path>::<MenuName>` in the prompt roots to its declared *header* value.
 
-    Built from the validator's own block scanner and regexes rather than a
-    second parser, so this guard cannot disagree with the checker it guards
+    Shared by `_menu_type_declarations()` (TYPE) and `_menu_shape_declarations()`
+    (SHAPE, issue #186): both read the same MENU declaration region and differ
+    only in which header's value they extract, so the scan itself is written
+    once. Built from the validator's own block scanner and regexes rather than
+    a second parser, so this guard cannot disagree with the checker it guards
     about what a MENU is or where a declaration is read. A private
     reimplementation previously missed indented MENU headers and headers with
-    trailing text, and read `TYPE:` out of prose outside the fence.
+    trailing text, and read a declaration out of prose outside the fence.
     """
     declarations: dict[str, str | None] = {}
     seen_declaration: set[str] = set()
@@ -968,31 +1190,46 @@ def _menu_type_declarations() -> dict[str, str | None]:
                 section = head.group("section")
                 # Mirrors the validator's continuation rule: a line indented
                 # deeper than this menu's first sub-header is that header's own
-                # text. Without it an over-indented `TYPE:` counted here while
-                # the validator ignored it, so a newly added menu could leave
-                # the untyped set with no declaration the validator can see.
+                # text. Without it an over-indented declaration counted here
+                # while the validator ignored it, so a newly added menu could
+                # leave the baseline with no declaration the validator can see.
                 if sub_header_indent is None:
                     sub_header_indent = indent
                 elif section not in pdsl.MENU_SUB_HEADERS and indent > sub_header_indent:
                     continue
-                if section == pdsl.GATE_HEADER:
+                if section == header:
                     # Latch on the FIRST declaration, mirroring the validator's
-                    # `state.menu_type_line`: it flags every later TYPE line as a
-                    # duplicate whatever its value, so a menu whose first
-                    # declaration is invalid stays untyped no matter what follows.
+                    # own per-header state: it flags every later line of this
+                    # header as a duplicate whatever its value, so a menu whose
+                    # first declaration is invalid stays undeclared no matter
+                    # what follows.
                     if current in seen_declaration:
                         continue
                     seen_declaration.add(current)
-                    value = stripped[len(pdsl.GATE_HEADER) + 1:].strip()
+                    value = stripped[len(header) + 1:].strip()
                     # A value the validator would reject is not a declaration.
-                    if value in pdsl.GATE_TYPES:
+                    if value in valid_tokens:
                         declarations[current] = value
                     continue
-                # Mirrors the validator: only a recognized section other than
-                # TITLE or TYPE ends the region. Prose does not.
-                if section in pdsl.SECTION_HEADERS and section != "TITLE":
+                # Mirrors the validator's own DECLARED_HEADER_NON_TERMINATORS
+                # (imported, not re-derived as a separate literal): only a
+                # recognized section outside that set ends the region, so the
+                # *other* declared header can never end this one's region --
+                # a TYPE/SHAPE pair declared in either order would otherwise
+                # leave the second one unread. Prose does not end it either.
+                if section in pdsl.SECTION_HEADERS and section not in pdsl.DECLARED_HEADER_NON_TERMINATORS:
                     in_region = False
     return declarations
+
+
+def _menu_type_declarations() -> dict[str, str | None]:
+    """Map every `<path>::<MenuName>` in the prompt roots to its declared TYPE."""
+    return _menu_declaration_scan(pdsl.GATE_HEADER, pdsl.GATE_TYPES)
+
+
+def _menu_shape_declarations() -> dict[str, str | None]:
+    """Map every `<path>::<MenuName>` in the prompt roots to its declared SHAPE (issue #186)."""
+    return _menu_declaration_scan(pdsl.MENU_SHAPE_HEADER, pdsl.MENU_SHAPE_TYPES)
 
 
 #: The paths that auto-resolve a gate by runtime judgement rather than by reading
@@ -1012,8 +1249,14 @@ RUNTIME_JUDGEMENT_PATHS = {
 #: the bare type tokens, since `SUB_AGENT_GROUP_DECISION` would otherwise match
 #: "decision". A proxy, not a proof: a path could read a declaration in wording
 #: this misses.
+#: The third alternative requires a non-space character before it on the same line, so a
+#: menu's own `TYPE: <token>` **declaration** is not read as evidence that the file reads
+#: declared types. `dispatch.md` began declaring one when its two fallback gates were typed
+#: (GH #219), and this fired — while the file still resolves by runtime judgement exactly as
+#: the comment says. The proxy was wrong in the direction its own note did not anticipate:
+#: it warned that a read could be missed, and it was a declaration that was over-matched.
 DECLARED_TYPE_READ_RE = re.compile(
-    r"declared\s+TYPE|gate\s+risk|TYPE:\s*(?:confirmation|decision|blocking)\b",
+    r"declared\s+TYPE|gate\s+risk|\S[ \t]*TYPE:\s*(?:confirmation|decision|blocking)\b",
     re.IGNORECASE,
 )
 
@@ -1082,6 +1325,129 @@ def test_the_runtime_judgement_paths_named_in_the_baseline_comment_still_exist()
     )
 
 
+class TestWhyNoLintDecidesWhichGateMayAnswerForTheUser:
+    """The evidence that a declared gate type is a human judgement, not a lintable one.
+
+    `confirmation` is the one type that auto-proceeds, so a wrong label on it is the one
+    that could answer a question the user never saw. The obvious guard is to cross-check
+    the label against the blocked-action invariants — and this measures why that cannot
+    work: those invariants are written as *categories* (destructive operations,
+    credentials, git mutation, unknown blast radius), and matching them by their own
+    vocabulary refuses **every menu declaration in the tree**. A lint built that way
+    disables the type rather than guarding it.
+
+    An earlier attempt inverted it into a registry of gates reviewed as safe to
+    auto-proceed. Review found that unsound — it keys on a bare menu name, and a name
+    declared twice authorises the copy nobody read — and it was withdrawn rather than
+    patched, because the inversion answered the wrong question. The frozen design contract
+    for these types and the labelling issue (GH #219) say the same thing: which type a gate
+    carries is a judgement made by a person at labelling time *so that it is reviewable*.
+    The protection belongs where the type is **consumed** — a filter that reads these same
+    invariants while the workflow runs and forces a stop — not where it is written.
+
+    The measurement is kept because it is that argument's evidence: it says plainly that no
+    lint can make this call, so nobody rebuilds one from the same instinct.
+    """
+
+    def test_only_fenced_pdsl_counts_as_a_declaration(self) -> None:
+        """A `MENU` shown as an illustration is not a menu.
+
+        The scan read raw file text, so a declaration quoted in prose or shown inside a
+        ```bash block counted as real — and this scan feeds the corpus measurement a design
+        decision rests on. The sibling helper in this file goes through the checker's own
+        block scan for exactly this reason; this one did not. Raised in review.
+
+        **Zero instances in the tree**, so the published count is unchanged at 106. Pinned
+        on crafted sources for that reason: measuring the corpus cannot tell a fence-aware
+        scan from a blind one when every declaration is already fenced.
+        """
+        assert "MENU" not in _declared_only(
+            "```bash\nMENU Illustration\n  OPTIONS:\n    1 go -> CONTINUE X\n```\n")
+        assert "MENU" not in _declared_only("MENU InProse is how you declare one.\n")
+        # And a real one survives, or the filter would be a silent deletion.
+        kept = _declared_only("```pdsl\nMENU Real\n  OPTIONS:\n    1 go -> CONTINUE X\n```\n")
+        assert "MENU Real" in kept, kept
+        # Blanked, not removed, so a line number taken from the result still points true.
+        assert len(kept.splitlines()) == 5, kept.splitlines()
+
+        # And the extraction actually applies it. Asserted through `_declarations_in`
+        # rather than the filter alone: removing the filter from the walk left every test
+        # green, because no corpus file has an unfenced declaration to notice with.
+        assert _declarations_in("```bash\nMENU Illustration\n  OPTIONS:\n```\n") == []
+        assert [n for n, _b in _declarations_in(
+            "```pdsl\nMENU Real\n  OPTIONS:\n    1 go -> CONTINUE X\n```\n")] == ["Real"]
+
+    def test_a_tab_separated_declaration_still_ends_the_block_before_it(self) -> None:
+        """The corpus scan's lookahead must accept what its own pattern accepts.
+
+        The pattern matches `MENU[ \\t]+name`, but the lookahead that ends a block read
+        `^MENU ` with a literal space. So a tab-separated declaration did not terminate the
+        block before it: the previous menu's body swallowed it whole, and one declaration
+        disappeared from the count entirely. Zero instances in the tree today — this is
+        pinned because a pattern that disagrees with itself is the defect, not how often it
+        fires. Raised in review.
+
+        Asserted on a literal body rather than the corpus, precisely because the corpus has
+        none: measuring the real tree cannot tell this fix from its absence.
+        """
+        body = ("MENU First\n  OPTIONS:\n    1 a -> CONTINUE X\n"
+                "MENU\tSecond\n  OPTIONS:\n    1 b -> CONTINUE Y\n")
+        found = re.findall(
+            r"^MENU[ \t]+([A-Za-z][\w-]*)(.*?)(?=^MENU[ \t]+|^UNIT[ \t]+|\Z)",
+            body, re.M | re.S)
+        assert [name for name, _ in found] == ["First", "Second"], found
+        # And the first block stops where the second begins, rather than absorbing it.
+        assert "Second" not in found[0][1], found[0][1]
+
+    def test_matching_the_invariants_by_vocabulary_refuses_every_gate(self) -> None:
+        """One number carries the whole argument, so the number is pinned.
+
+        The claim is that cross-checking a declared type against the blocked-action
+        categories is *indiscriminate*, not merely imperfect. Nothing reproduced it when it
+        was first asserted, so a corpus that drifted would have left the rationale quietly
+        false. Raised in review.
+
+        Asserted as the relationship rather than the exact count: what matters is that
+        vocabulary-matching is indiscriminate, not that the tree has a particular number
+        of menus. Counted as *declarations* rather than names: two files declare
+        `TerminalStates`, and keying by name measured the survivor twice.
+        """
+        stop = {"prompts", "prompt", "confirmations", "or", "any", "that", "authorize",
+                "auto-answer", "never", "the", "a", "an", "and", "of", "in", "to", "which",
+                "may", "be", "fixed", "selects", "changes", "operations", "controls",
+                "approvals", "choices", "state", "rules", "needs", "human", "judgment",
+                "judgement", "result", "acceptance", "final", "review", "other"}
+        invariants = [
+            line.strip()[2:]
+            for line in _required_source(
+                "skills/studio/modules/brave-new-world-eligibility.md").splitlines()
+            if line.strip().startswith("- NEVER")]
+        terms = {word for line in invariants for fragment in re.split(r",| or ", line)
+                 for word in re.findall(r"[a-z][a-z-]{3,}", fragment.lower())
+                 if word not in stop}
+        assert len(terms) > 50, f"the invariant vocabulary has collapsed to {len(terms)} terms"
+
+        # A list, not a dict keyed by name: `TerminalStates` is declared in two files, so
+        # keying by name silently dropped one of them and measured the survivor twice
+        # over. Raised in review — and it is precisely what the duplicate-name tripwire
+        # beside this test exists to catch, written into the measurement itself.
+        declarations = _menu_declarations()
+        assert len(declarations) > 50, (
+            f"only {len(declarations)} menu declarations found; the corpus scan is wrong")
+        # Matched on **word boundaries**, not substrings. Review asked, fairly, whether the
+        # result was an artefact of loose matching -- `state` hitting `statement`, and so
+        # on. Measured both ways before answering: substring refuses 106 of 106 and word
+        # boundary refuses 106 of 106, so the conclusion does not depend on the method. The
+        # stricter one is used here, because a claim that survives it needs no defending.
+        boundary = [re.compile(r"\b" + re.escape(term) + r"\b") for term in terms]
+        refused = [(path, name) for path, name, body in declarations
+                   if any(pattern.search((name + " " + body).lower()) for pattern in boundary)]
+        assert len(refused) == len(declarations), (
+            "vocabulary-matching no longer refuses every menu declaration, so a blocklist "
+            "may now be viable and the inversion is worth revisiting: "
+            f"{len(refused)} of {len(declarations)}"
+        )
+
 def test_the_untyped_menu_surface_does_not_grow() -> None:
     """A newly introduced MENU must declare a gate risk TYPE.
 
@@ -1118,6 +1484,182 @@ def test_the_untyped_menu_surface_does_not_grow() -> None:
     stale = sorted(UNTYPED_MENU_BASELINE - set(declarations))
     assert not stale, (
         "UNTYPED_MENU_BASELINE lists MENU(s) that no longer exist:\n  "
+        + "\n  ".join(stale)
+        + "\n\nRemove them from the baseline."
+    )
+
+
+# Every MENU that does not yet declare a shape, frozen 2026-09-17 (issue #186).
+# `SHAPE` is new: only the PDSL.md spec's own illustrative example (issue #186)
+# declares it, so this baseline currently covers nearly the entire corpus. The
+# surface migrates menu by menu and must not grow -- anything not in this set
+# has to declare a SHAPE. Shrink this set as menus are shaped; never add to it.
+#
+# Grouped by file (one entry per file, listing that file's undeclared menu
+# suffixes) rather than one flat `"path#idx::Name"` string per line: almost
+# every path here also appears in UNTYPED_MENU_BASELINE above, since neither
+# TYPE nor SHAPE is declared on most of the corpus yet, and a flat list in the
+# same shape as that one showed up as duplicate code against it. Grouping
+# changes nothing this baseline asserts -- `UNSHAPED_MENU_BASELINE` below is
+# still the same flat frozenset of `"path#idx::Name"` strings every test in
+# this module already expects.
+UNSHAPED_MENU_BASELINE_BY_FILE: dict[str, frozenset[str]] = {
+    "architecture/specs/PDSL.md": frozenset({"14::SubAgentApprovalMenu", "7::ApprovalMenu", "8::PlanApprovalGate"}),
+    "requirements/auto-config.md": frozenset({"2::ExistingRulesRefreshMenu"}),
+    "requirements/storytelling-modes.md": frozenset({
+        "0::ModeSelectionMenu", "5::ChallengePostRoundMenu", "5::ChallengeReactionMenu",
+    }),
+    "skills/studio/agents/cf-code-bug-finder.md": frozenset({"3::TerminalStates"}),
+    "skills/studio/agents/cf-generate-author.md": frozenset({"1::DomainClassification"}),
+    "skills/studio/agents/cf-migrate-migrator.md": frozenset({"3::SpecialCaseAItems"}),
+    "skills/studio/agents/cf-migrate-planner.md": frozenset({"0::FindingClassification"}),
+    "skills/studio/agents/cf-prompt-bug-finder.md": frozenset({"3::TerminalStates"}),
+    "skills/studio/agents/cf-ralphex.md": frozenset({
+        "2::DelegationOutcomeMenu", "4::BootstrapApprovalMenu", "4::RetryOrAbortMenu",
+    }),
+    "skills/studio/agents/cf-semantic-reviewer-code.md": frozenset({"2::OutputShape"}),
+    "skills/studio/agents/cf-semantic-reviewer-consistency.md": frozenset({"3::FindingClassificationRules"}),
+    "skills/studio/agents/storytelling-gate.md": frozenset({"4::GenerateRoutingMenu", "6::PlanApprovalMenu"}),
+    "skills/studio/migrate-from-cypilot.md": frozenset({
+        "4::E1_ScannerMenu", "5::E2_PlannerMenu", "6::E3_MigratorMenu",
+        "7::E4_VerifierMenu", "8::E5_MigratorMenu",
+    }),
+    "skills/studio/modules/analyze-routing-menus.md": frozenset({"1::AnalyzeIntentOffer", "2::AnalyzeLoadOffer"}),
+    "skills/studio/modules/analyze-skill-fallbacks.md": frozenset({
+        "0::AnalyzeOtherSkillsMenu", "1::AnalyzeNoMatchMenu",
+    }),
+    "skills/studio/modules/auto-config-detect.md": frozenset({"0::DetectConfirmMenu"}),
+    "skills/studio/modules/auto-config-docs.md": frozenset({"0::DocsConfirmMenu"}),
+    "skills/studio/modules/auto-config-generate.md": frozenset({"0::GenerateConfirmMenu"}),
+    "skills/studio/modules/auto-config-integrate-validate.md": frozenset({"0::IntegrateConfirmMenu"}),
+    "skills/studio/modules/auto-config-precheck.md": frozenset({"0::ExistingRulesRefreshMenu"}),
+    "skills/studio/modules/auto-config-scan-docs.md": frozenset({"0::ScanConfirmMenu"}),
+    "skills/studio/modules/brainstorm-panel-render.md": frozenset({"0::PanelEditMenu"}),
+    "skills/studio/modules/brainstorm-rounds.md": frozenset({"0::PostRoundMenu", "0::QuestionMenu"}),
+    "skills/studio/modules/brainstorm-wrap.md": frozenset({"0::WrapMenu"}),
+    "skills/studio/modules/ci-discovery-run.md": frozenset({"0::CiDiscoveryFailureMenu", "0::CiDiscoverySkipMenu"}),
+    "skills/studio/modules/coding-prep-gates.md": frozenset({"0::CodingExploreMenu", "1::CodingBrainstormMenu"}),
+    "skills/studio/modules/debug-prompts-command-menu-nav.md": frozenset({"0::DebuggerMenu"}),
+    "skills/studio/modules/debug-prompts-failures.md": frozenset({
+        "0::DebugRunFailureMenu", "0::DebugStepFailureMenu",
+    }),
+    "skills/studio/modules/explain-intent-explore.md": frozenset({"2::ExplainExploreMenu"}),
+    "skills/studio/modules/explore-clarify.md": frozenset({"0::ExploreClarifyMenu"}),
+    "skills/studio/modules/explore-save.md": frozenset({"0::ExploreSaveMenu"}),
+    "skills/studio/modules/gates/migrate-from-cypilot-offer.md": frozenset({"0::MigrateFromCypilotConfirm"}),
+    "skills/studio/modules/gates/plan-first.md": frozenset({"0::PlanFirstConfirm", "1::PlanStorageChoice"}),
+    "skills/studio/modules/gates/simple-mode-simple.md": frozenset({"2::SimpleModeBraveNewWorldChoice"}),
+    "skills/studio/modules/gates/simple-mode.md": frozenset({"0::SimpleModeChoice"}),
+    "skills/studio/modules/gates/workflow-prep.md": frozenset({"1::WorkflowPrepExploreRepeatMenu"}),
+    "skills/studio/modules/generate-routing-menus.md": frozenset({"1::GenerateIntentOffer", "2::GenerateLoadOffer"}),
+    "skills/studio/modules/generate-skill-fallbacks.md": frozenset({
+        "0::GenerateOtherSkillsMenu", "1::GenerateNoMatchMenu",
+    }),
+    "skills/studio/modules/kit-discovery-proposal.md": frozenset({"0::KitInitDiscoveryApprovalMenu"}),
+    "skills/studio/modules/kit-discovery-run.md": frozenset({"0::KitInitDiscoveryFailureMenu"}),
+    "skills/studio/modules/kit-edit-render.md": frozenset({"0::KitInitEditRetryMenu"}),
+    "skills/studio/modules/kit-existing-manifest.md": frozenset({"0::KitInitExistingManifestMenu"}),
+    "skills/studio/modules/kit-legacy-preview-menus.md": frozenset({
+        "0::KitInitLegacyApprovalMenu", "0::KitInitPreviewFailureMenu",
+    }),
+    "skills/studio/modules/kit-manual-guidance-preview.md": frozenset({"0::KitInitManualGuidanceRetryMenu"}),
+    "skills/studio/modules/kit-target-entry.md": frozenset({"0::KitInitTargetMenu"}),
+    "skills/studio/modules/kit-target-preflight-route.md": frozenset({"0::KitInitTargetRetryMenu"}),
+    "skills/studio/modules/kit-target-validation.md": frozenset({"0::KitInitValidationFailureMenu"}),
+    "skills/studio/modules/map-config-palette.md": frozenset({
+        "0::ConfigAssistActionMenu", "0::PaletteMenu", "0::UncategorizedMenu",
+    }),
+    "skills/studio/modules/map-execute.md": frozenset({"0::ConfigAssistOfferMenu", "0::MapConfigMenu"}),
+    "skills/studio/modules/map-intent.md": frozenset({"0::MapIntentMenu"}),
+    "skills/studio/modules/map-next.md": frozenset({"0::MapNextStepsMenu"}),
+    "skills/studio/modules/map-preflight.md": frozenset({"2::MapScopeMenu"}),
+    "skills/studio/modules/plan-compile.md": frozenset({"0::PlanProduceChoice"}),
+    "skills/studio/modules/plan-compiler-dispatch.md": frozenset({"2::PlanCompilerFailureMenu"}),
+    "skills/studio/modules/plan-discovery.md": frozenset({"1::PlanGateMenu"}),
+    "skills/studio/modules/plan-validate-finalize.md": frozenset({
+        "0::OversizedPhaseRecoveryMenu", "1::Phase4NextStepsMenu",
+    }),
+    "skills/studio/modules/planning-runtime.md": frozenset({"8::PlanSaveGateMenu"}),
+    "skills/studio/modules/review/fix-approval.md": frozenset({
+        "0::ReviewFindingsNavigation", "12::ReviewFixPartialIdsRetryMenu", "3::ReviewFixScope",
+    }),
+    "skills/studio/modules/review/semantic-loop-skeleton.md": frozenset({"0::ReviewGranularityMenu"}),
+    "skills/studio/modules/routing/companion-skills.md": frozenset({
+        "1::CompanionSkillOfferMenu", "2::CompanionRoutingMenuOptions",
+    }),
+    "skills/studio/modules/routing/root-intent-routing.md": frozenset({
+        "1::IntentSkillMenu", "1::MatchedIntentSkillMenu", "9::AllCfSkillsMenu",
+    }),
+    "skills/studio/modules/runtime/blocked-next-actions.md": frozenset({"2::BlockedNextActionsMenu"}),
+    "skills/studio/modules/session/shutdown.md": frozenset({"0::StudioShutdownConfirm"}),
+    "skills/studio/modules/subagents/dispatch.md": frozenset({
+        "1::SubAgentApprovalRequest", "1::SubAgentFallbackLimitRequest", "1::SubAgentFallbackRequest",
+    }),
+    "skills/studio/modules/subagents/git-commit-mode.md": frozenset({"5::GitCommitModeMenu"}),
+    "skills/studio/modules/ui/next-actions.md": frozenset({"0::NextActionsMenu"}),
+    "skills/studio/modules/workspace-configure.md": frozenset({"0::SourceConfirmMenu"}),
+    "skills/studio/modules/workspace-discover.md": frozenset({
+        "0::RepoSelectionMenu", "0::StorageModeMenu", "0::ZeroResultsMenu",
+    }),
+    "skills/studio/modules/workspace-generate.md": frozenset({"2::GenerateFailureMenu"}),
+    "skills/studio/modules/workspace-next-dispatch.md": frozenset({"0::WorkspaceNextStepsMenu"}),
+    "skills/studio/modules/workspace-router-quick.md": frozenset({
+        "0::WorkspaceIntentMenu", "3::WorkspaceForceSyncConfirm",
+    }),
+    "skills/studio/modules/workspace-validate.md": frozenset({"1::ValidationFailureMenu"}),
+    "skills/studio/modules/write-docs-author-dispatch.md": frozenset({"2::WriteDocsAuthorTargetMissingMenu"}),
+    "skills/studio/modules/write-docs-prep-gates.md": frozenset({
+        "0::WriteDocsExploreMenu", "1::WriteDocsBrainstormMenu",
+    }),
+    "skills/studio/modules/write-skills-author-dispatch.md": frozenset({"2::WriteSkillsNoOutputMenu"}),
+    "skills/studio/modules/write-skills-prep-gates.md": frozenset({
+        "0::WriteSkillsExploreMenu", "1::WriteSkillsBrainstormMenu",
+    }),
+}
+UNSHAPED_MENU_BASELINE: frozenset[str] = frozenset(
+    f"{path}#{suffix}"
+    for path, suffixes in UNSHAPED_MENU_BASELINE_BY_FILE.items()
+    for suffix in suffixes
+)
+
+# The unshaped surface may only shrink. Raising this is a deliberate, reviewable
+# act; a rename does not need it, because a rename leaves the count unchanged.
+UNSHAPED_MENU_BASELINE_CEILING = 113
+
+
+def test_the_unshaped_menu_surface_does_not_grow() -> None:
+    """A newly introduced MENU must declare a SHAPE (issue #186).
+
+    Mirrors `test_the_untyped_menu_surface_does_not_grow` exactly. The tail
+    recorded in UNSHAPED_MENU_BASELINE is grandfathered so the surface can
+    migrate one menu at a time; it is not grandfathered because an undeclared
+    shape is harmless -- an undeclared menu falls back to the existing
+    prose-based shape-compatibility heuristic, which is exactly the ambiguity
+    #186 was filed about. This test freezes the existing unshaped inventory:
+    what must not happen is that inventory growing, so a MENU neither shaped
+    nor in the baseline fails here.
+    """
+    declarations = _menu_shape_declarations()
+    unshaped_now = {key for key, value in declarations.items() if value is None}
+
+    new_unshaped = sorted(unshaped_now - UNSHAPED_MENU_BASELINE)
+    assert not new_unshaped, (
+        "New MENU(s) without a declared SHAPE:\n  "
+        + "\n  ".join(new_unshaped)
+        + "\n\nDeclare `SHAPE: fixed-choice | free-form` on each, or, if the "
+        "menu was renamed or moved, update UNSHAPED_MENU_BASELINE."
+    )
+
+    assert len(UNSHAPED_MENU_BASELINE) <= UNSHAPED_MENU_BASELINE_CEILING, (
+        f"UNSHAPED_MENU_BASELINE holds {len(UNSHAPED_MENU_BASELINE)} entries, above the "
+        f"recorded ceiling of {UNSHAPED_MENU_BASELINE_CEILING}. The unshaped surface may "
+        "only shrink: declare a SHAPE on the new menu rather than grandfathering it. A "
+        "rename swaps one key for another and leaves the count unchanged."
+    )
+
+    stale = sorted(UNSHAPED_MENU_BASELINE - set(declarations))
+    assert not stale, (
+        "UNSHAPED_MENU_BASELINE lists MENU(s) that no longer exist:\n  "
         + "\n  ".join(stale)
         + "\n\nRemove them from the baseline."
     )
@@ -1540,13 +2082,15 @@ def test_the_runtime_judgement_guard_reports_an_unreadable_path(kind: str, messa
     assert message in report, f"the reader's reason is not reported:\n{report}"
 
 
-def _declarations_for(tmp_path: Path, name: str, body: str) -> dict[str, str | None]:
+def _declarations_for(
+    tmp_path: Path, name: str, body: str, scanner=_menu_type_declarations,
+) -> dict[str, str | None]:
     """Run the guard's scanner over a single fixture file."""
     fixture = tmp_path / name
     fixture.write_text(body, encoding="utf-8")
     with mock.patch(f"{__name__}._prompt_files", return_value=[fixture]), \
             mock.patch(f"{__name__}.REPO_ROOT", tmp_path):
-        return _menu_type_declarations()
+        return scanner()
 
 
 def test_the_guard_classifies_declared_and_undeclared_menus(tmp_path: Path) -> None:
@@ -1626,6 +2170,39 @@ def test_the_guard_does_not_accept_a_declaration_the_validator_rejects(tmp_path:
         "  OPTIONS:\n    1 a -> RUN Y\n```\n"
     )
     assert list(_declarations_for(tmp_path, "c.md", valid_then_valid).values()) == ["decision"]
+
+
+def test_the_guard_does_not_let_one_declared_header_truncate_the_others_scan(tmp_path: Path) -> None:
+    """A `SHAPE` before `TYPE` (or vice versa) must not end the other's region.
+
+    `_menu_declaration_scan` is shared by both scanners (issue #186); each
+    must treat the *other* declared header as staying inside the declaration
+    region, not as a section that ends it -- mirroring the validator's own
+    `gate_scope` check, which keeps TITLE/TYPE/SHAPE all non-terminating. An
+    earlier, non-shared version of the TYPE scanner predated SHAPE and had no
+    reason to exempt it, which would have silently truncated this exact case.
+    """
+    shape_then_type = (
+        "```pdsl\nMENU X:\n  TITLE: t\n  SHAPE: fixed-choice\n  TYPE: blocking\n"
+        "  OPTIONS:\n    1 a -> RUN Y\n```\n"
+    )
+    assert list(_declarations_for(tmp_path, "a.md", shape_then_type, _menu_type_declarations).values()) == [
+        "blocking"
+    ]
+    assert list(_declarations_for(tmp_path, "a.md", shape_then_type, _menu_shape_declarations).values()) == [
+        "fixed-choice"
+    ]
+
+    type_then_shape = (
+        "```pdsl\nMENU X:\n  TITLE: t\n  TYPE: decision\n  SHAPE: free-form\n"
+        "  OPTIONS:\n    1 a -> RUN Y\n```\n"
+    )
+    assert list(_declarations_for(tmp_path, "b.md", type_then_shape, _menu_type_declarations).values()) == [
+        "decision"
+    ]
+    assert list(_declarations_for(tmp_path, "b.md", type_then_shape, _menu_shape_declarations).values()) == [
+        "free-form"
+    ]
 
 
 def test_the_guard_ignores_an_over_indented_declaration_like_the_validator(tmp_path: Path) -> None:
@@ -2656,3 +3233,349 @@ def test_holding_a_phase_back_is_announced_not_silent() -> None:
             assert "held by status alone" in line, (
                 f"a by-hand hold would be announced as waiting on a key it has none of: {line}"
             )
+
+
+def _types_in(text: str) -> dict:
+    """``menu name -> declared TYPE`` for one source.
+
+    Split out from the tree walk so it can be exercised on a crafted source. The corpus has
+    no stray `TYPE:` and no tab-separated header, so measuring the real tree cannot tell a
+    correct scan from a loose one — the first version of this kept a menu "current" to the
+    end of the file and attributed a `TYPE:` belonging to no menu to whichever menu came
+    before it. Reproduced, and caught only once there was a fixture for it.
+    """
+    types: dict = {}
+    menu, sub_indent = None, None
+    for line in text.splitlines():
+        stripped = line.strip()
+        header = re.match(r"^\s*MENU\s+([A-Za-z][\w-]*)", line)
+        if header:
+            menu, sub_indent = header.group(1), None
+            continue
+        # The declaration region closes at the first sub-header that is not
+        # `TITLE`/`TYPE`/`SHAPE`, and at anything that opens a new block or ends the fence
+        # -- the same rule the validator applies.
+        if stripped.startswith("UNIT ") or stripped.startswith("```"):
+            menu = None
+            continue
+        section = re.match(r"^\s*([A-Z][A-Z_]*):\s*$", line)
+        if section and section.group(1) not in {"TITLE", "TYPE", "SHAPE"}:
+            menu = None
+            continue
+        # The menu's sub-header indent is learned from its *first* sub-header, and a line
+        # indented deeper is continuation text the validator ignores. Accepting any
+        # indentation let this report a type the validator does not see -- so a gate could
+        # look `blocking` here while being undeclared in the only place that matters, and
+        # the guard built on this would pass on nothing. Raised in review.
+        sub = re.match(r"^(\s*)([A-Z][A-Z_]*):", line)
+        if menu is not None and sub is not None:
+            if sub_indent is None:
+                sub_indent = len(sub.group(1))
+            elif len(sub.group(1)) > sub_indent:
+                continue                    # continuation text, not a sub-header
+        declared = re.match(r"^\s*TYPE:\s*(\S+)\s*$", line)
+        if declared and menu:
+            types[menu] = declared.group(1)
+            menu = None
+    return types
+
+
+#: Every root that holds authored PDSL. `workflows/` and `skills/` alone missed eight menu
+#: declarations in `requirements/` and `architecture/` -- including ones the frozen untyped
+#: baseline already tracks -- so a menu named there was invisible to every guard below, and
+#: a rename could not be told from a deletion. Raised in review.
+#:
+#: **These are not all the same kind of menu, and the counts differ because of it.** The
+#: shipped, reachable surface is `workflows/` + `skills/`: 106 declarations, which is the
+#: figure the story's sizing and GH #219 both use. `architecture/specs/PDSL.md` and
+#: `requirements/` hold a further 8, which are *specification examples* -- illustrations of
+#: the language, not gates any workflow reaches. Two of them carry a `TYPE:` as part of the
+#: illustration, so a naive count of declared types reads 9 where the shipped surface has
+#: 7. Scanned here for **existence**, so the rename check below is complete; never treated
+#: as evidence about how much of the reachable surface is typed.
+AUTHORED_ROOTS = ("workflows", "skills", "requirements", "architecture")
+
+
+def _declared_types() -> dict:
+    """``menu name -> declared TYPE`` across the authored tree.
+
+    Read from the source rather than through the validator, because the question here is
+    what an author wrote, not whether it parses -- the validator has its own tests for that.
+    """
+    types: dict = {}
+    for folder in AUTHORED_ROOTS:
+        for path in sorted((REPO_ROOT / folder).rglob("*.md")):
+            types.update(_types_in(path.read_text(encoding="utf-8-sig", errors="replace")))
+    return types
+
+
+def test_a_type_outside_a_menu_is_not_attributed_to_the_menu_before_it() -> None:
+    """The scan must stop where the menu's declaration region stops.
+
+    A menu with no `TYPE` used to stay "current" to the end of the file, so a `TYPE:` that
+    belongs to no menu -- one the validator would itself reject with `PDSL702` -- was read
+    as that menu's declaration. The consequence is not cosmetic: this scan backs the only
+    enforcement the labels have, so a misattributed type means the guard is checking the
+    wrong menu. Raised in review.
+
+    Crafted rather than measured, because the real tree contains no such line: removing the
+    region termination leaves every corpus answer identical, so only a fixture can tell the
+    two apart.
+    """
+    stray = ("MENU Alpha\nTITLE: first\nOPTIONS:\n  1 go -> CONTINUE X\n"
+             "\nUNIT Somewhere\nDO:\n  EMIT \"x\"\nTYPE: confirmation\n")
+    assert _types_in(stray) == {}, _types_in(stray)
+
+    # And the ordinary case still reads, or the fix above would be a silent deletion.
+    ordinary = "MENU Beta\nTITLE: second\nTYPE: blocking\nOPTIONS:\n  1 go -> CONTINUE X\n"
+    assert _types_in(ordinary) == {"Beta": "blocking"}, _types_in(ordinary)
+
+    # A second menu's declaration is its own, not the first one's.
+    two = ("MENU Gamma\nTITLE: a\nOPTIONS:\n  1 go -> CONTINUE X\n"
+           "MENU Delta\nTITLE: b\nTYPE: decision\nOPTIONS:\n  1 go -> CONTINUE Y\n")
+    assert _types_in(two) == {"Delta": "decision"}, _types_in(two)
+
+    # `OPTIONS:` alone must close the region. Kept as its own case because the first
+    # fixture also contains a `UNIT`, so the block rule caught it and the section rule
+    # could be deleted with everything still green -- found by mutation, not by reading.
+    after_options = ("MENU Epsilon\nTITLE: c\nOPTIONS:\n  1 go -> CONTINUE X\n"
+                     "TYPE: confirmation\n")
+    assert _types_in(after_options) == {}, _types_in(after_options)
+
+    # A `UNIT` closes it with no section header in between, and a fence close does too.
+    # Three cases rather than one because each rule needs an input only it can catch:
+    # with all of them folded into a single fixture, whichever rule fired first made the
+    # others deletable with everything still green. Found by mutating each half in turn.
+    after_unit = "MENU Zeta\nTITLE: d\nUNIT Elsewhere\nTYPE: confirmation\n"
+    assert _types_in(after_unit) == {}, _types_in(after_unit)
+
+    after_fence = "MENU Eta\nTITLE: e\n```\n\nTYPE: confirmation\n"
+    assert _types_in(after_fence) == {}, _types_in(after_fence)
+
+    # Indented deeper than the menu's own sub-headers, the validator reads a line as
+    # continuation text and sees no declaration. Accepting it here would report a type
+    # nothing else agrees exists — so the guard built on this scan would pass while the
+    # gate was, to the validator, undeclared. Raised in review. No corpus file is written
+    # this way, so only a crafted source can tell the rule from its absence.
+    nested = "MENU Theta\nTITLE: f\n    TYPE: blocking\nOPTIONS:\n  1 go -> CONTINUE X\n"
+    assert _types_in(nested) == {}, _types_in(nested)
+
+    # And a menu whose sub-headers are *all* indented is ordinary, not nested — the indent
+    # is learned per menu from its first sub-header, which is how `DebuggerMenu` is written.
+    indented = ("MENU Iota:\n  TITLE: g\n  TYPE: blocking\n  OPTIONS:\n"
+                "    1 go -> CONTINUE X\n")
+    assert _types_in(indented) == {"Iota": "blocking"}, _types_in(indented)
+
+
+#: CamelCase tokens that appear in the invariants and are not menu names. Listed, so that
+#: anything else which stops resolving to a menu fails loudly instead of being filtered out
+#: of the check. `ID` comes from "finding-ID capture"; the rest are PDSL keywords.
+_NOT_MENU_NAMES = frozenset({
+    "ID", "REQUIRE", "ALWAYS", "NEVER", "WAIT", "STOP_TURN", "INVARIANTS",
+})
+
+
+def _never_bullets() -> list:
+    """Each `- NEVER` invariant as one string, continuation lines included.
+
+    Read line by line, a bullet wrapped across two physical lines loses everything after
+    the first -- so a menu named on the second line would silently stop being checked.
+    None wrap today, which is exactly why the reading had to be fixed rather than measured:
+    the corpus cannot tell the two versions apart. Raised in review.
+    """
+    text = (REPO_ROOT / "skills/studio/modules/brave-new-world-eligibility.md").read_text(
+        encoding="utf-8-sig", errors="replace")
+    bullets, current = [], None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- NEVER"):
+            if current is not None:
+                bullets.append(current)
+            current = stripped[2:]
+        elif current is not None:
+            # A continuation is indented and is not itself a new bullet or a fence.
+            if stripped and not stripped.startswith(("- ", "```")) and line[:1].isspace():
+                current += " " + stripped
+            else:
+                bullets.append(current)
+                current = None
+    if current is not None:
+        bullets.append(current)
+    return bullets
+
+
+def test_every_menu_the_invariants_name_is_declared_blocking() -> None:
+    """A gate the never-auto-answer list names by name must never be anything weaker.
+
+    Derived from the invariants rather than listed here, so a menu added to that list later
+    is covered without anyone remembering this test. Those invariants are mostly written as
+    *categories*, which no check can match — matching them by vocabulary refuses every menu
+    in the tree (GH #223) — but where one names a menu outright, the label is mechanical and
+    is pinned here.
+
+    This is the only enforcement there is. The lint that would have refused a weaker
+    declaration was withdrawn as unsound, so between an author's label and the behaviour it
+    authorises there is review and this test. Part of GH #219.
+    """
+    never = _never_bullets()
+    assert len(never) > 5, f"the invariant list has collapsed to {len(never)} entries"
+
+    declared = _declared_types()
+    known = _menu_names()
+    candidates = {
+        word for line in never
+        for word in re.findall(r"\b([A-Z][A-Za-z0-9]*(?:[A-Z][A-Za-z0-9]*)+)\b", line)
+    } - _NOT_MENU_NAMES
+
+    # A name that no longer resolves to a menu **fails**, rather than being filtered out.
+    # The previous version kept only candidates it could find, so renaming or deleting a
+    # menu the invariants name by hand would have quietly shrunk the set this checks and
+    # left the test green with nothing to say. Raised in review.
+    missing = sorted(candidates - known)
+    assert not missing, (
+        f"the never-auto-answer invariants name {missing}, which match no MENU in the "
+        "tree. Either the menu was renamed or removed and the invariant needs updating, "
+        "or the name belongs in _NOT_MENU_NAMES because it was never a menu."
+    )
+
+    named = sorted(candidates)
+    assert named, "no invariant names a menu any more; this guard has lost its subject"
+
+    wrong = {name: declared.get(name, "(undeclared)") for name in named
+             if declared.get(name) != "blocking"}
+    assert not wrong, (
+        f"menus named outright in the never-auto-answer invariants must be declared "
+        f"`blocking`: {wrong}"
+    )
+
+
+def _menu_names() -> set:
+    """Every menu declared anywhere in the authored tree."""
+    found = set()
+    for folder in AUTHORED_ROOTS:
+        for path in sorted((REPO_ROOT / folder).rglob("*.md")):
+            found.update(re.findall(
+                r"^\s*MENU\s+([A-Za-z][\w-]*)",
+                path.read_text(encoding="utf-8-sig", errors="replace"), re.M))
+    return found
+
+
+def test_the_gates_covered_by_an_invariant_category_are_declared_blocking() -> None:
+    """Two gates the invariants cover by subject rather than by name.
+
+    Literals, because the match is a judgement rather than a derivation — and a judgement
+    recorded as a literal with its reasoning is honest, where one dressed up as a
+    derivation is not:
+
+    * `DebuggerMenu` — the invariants name *"debugger prompts, breakpoint controls,
+      step/continue approvals, debug-gate prompts"*, and this menu is all four.
+    * `BlockedNextActionsMenu` — the invariants name *"missing prerequisites"*, and its
+      `override` option exists to bypass the gates that are missing.
+
+    Part of GH #219. If either label is ever revisited, this test is where the argument for
+    it was written down.
+    """
+    declared = _declared_types()
+    for menu in ("DebuggerMenu", "BlockedNextActionsMenu"):
+        assert declared.get(menu) == "blocking", (
+            f"{menu} is declared {declared.get(menu, '(nothing)')}, but the "
+            "never-auto-answer invariants cover it by subject"
+        )
+
+
+def _menu_bodies() -> dict:
+    """``menu name -> the option lines of its body`` across the authored tree."""
+    bodies: dict = {}
+    # The same roots `_declared_types` walks. These disagreed: a menu declared
+    # `confirmation` under `requirements/` or `architecture/` had `bodies.get(menu, [])`
+    # return empty, so the session-wide-option guard below found nothing for it whatever its
+    # options actually said -- a guard silently inapplicable to part of what it checks.
+    # Raised in review.
+    for folder in AUTHORED_ROOTS:
+        for path in sorted((REPO_ROOT / folder).rglob("*.md")):
+            name, collecting = None, []
+            for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+                header = re.match(r"^\s*MENU\s+([A-Za-z][\w-]*)", line)
+                if header:
+                    if name:
+                        bodies[name] = collecting
+                    name, collecting = header.group(1), []
+                    continue
+                if line.strip().startswith("UNIT "):
+                    if name:
+                        bodies[name] = collecting
+                    name, collecting = None, []
+                    continue
+                if name is not None:
+                    collecting.append(line)
+            if name:
+                bodies[name] = collecting
+    return bodies
+
+
+def test_the_two_corpus_scans_cover_the_same_tree() -> None:
+    """`_declared_types` and `_menu_bodies` are read together, so they must see the same menus.
+
+    They did not: one walked all four authored roots and the other two, so a menu declared
+    `confirmation` outside `workflows/`/`skills/` had an empty body as far as the
+    session-wide-option guard was concerned — the guard would have passed it no matter what
+    its options said. A guard that is silently inapplicable to part of its subject is worse
+    than one that is absent, because it reads as coverage. Raised in review.
+
+    Asserted as a relationship between the two rather than on a fixed number, so it stays
+    true as the corpus grows: every menu with a declared type must have a body to check.
+    """
+    declared, bodies = _declared_types(), _menu_bodies()
+    missing = sorted(name for name in declared if name not in bodies)
+    assert not missing, (
+        f"these menus declare a type but have no body for the guards to read: {missing}. "
+        "The two scans are walking different roots again."
+    )
+
+
+def test_no_auto_proceeding_gate_offers_a_session_wide_option() -> None:
+    """A `confirmation` gate may answer for the user — but only for this turn.
+
+    `subagents/dispatch.md` already draws this line and draws it in the shipped rules: a
+    calling workflow **may** pre-set `approve-once` on the user's behalf, and may **never**
+    pre-set `approve-session` — *"session-wide preference must only be set by the user"*.
+    A `confirmation` label says "auto-proceed on the recommendation" without naming which
+    option, so a menu that offers a session-wide choice alongside a one-shot one could have
+    the session-wide one taken autonomously. That is the one thing those rules forbid.
+
+    So the invariant is derived rather than listed: no gate declared `confirmation` may
+    carry an option that sets a session-scoped preference. It is what keeps
+    `SubAgentApprovalRequest` — whose recommendation reads only *"Recommended: native"*,
+    ambiguous between its once and session options — from being labelled `confirmation`
+    until that ambiguity is resolved. Part of GH #219.
+    """
+    declared = _declared_types()
+    bodies = _menu_bodies()
+    offenders = {}
+    for menu, kind in declared.items():
+        if kind != "confirmation":
+            continue
+        session = [line.strip() for line in bodies.get(menu, [])
+                   if re.search(r"SET\s+\w+\s*=\s*\S*session\b", line)]
+        if session:
+            offenders[menu] = session[0][:90]
+    assert not offenders, (
+        "a gate declared `confirmation` offers a session-wide option, so auto-proceeding "
+        f"on its recommendation could set a session-wide preference the user never gave: "
+        f"{offenders}"
+    )
+
+
+def test_the_two_fallback_gates_are_declared_confirmation() -> None:
+    """The two sub-agent gates that offer no session-wide escalation.
+
+    Both state a recommendation in the menu itself (*"inline is suggested"*), every
+    alternative is reversible, and `stop` is always present — the shape `confirmation` is
+    defined for. Neither offers a session-scoped option, so the guard above holds for them
+    by construction rather than by luck. Part of GH #219.
+    """
+    declared = _declared_types()
+    for menu in ("SubAgentFallbackRequest", "SubAgentFallbackLimitRequest"):
+        assert declared.get(menu) == "confirmation", (
+            f"{menu} is declared {declared.get(menu, '(nothing)')}"
+        )

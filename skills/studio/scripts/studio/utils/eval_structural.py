@@ -26,7 +26,9 @@ import tomllib
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-from .eval_harness import (RunArtifacts, Scenario, ScorerKind, ScorerResult,
+from .eval_harness import (lost_run_finding, _lost_run_coverage,
+                           RunArtifacts, Scenario, ScorerKind, ScorerResult,
+                           fence_closes, fence_delim,
                            VERDICT_FAIL, VERDICT_PASS, VERDICT_UNKNOWN)
 
 logger = logging.getLogger(__name__)
@@ -371,9 +373,29 @@ def _check_dependencies_not_forward(inp: StructuralInput) -> Tuple[bool, str]:
     return not forward, _capped(forward)
 
 
+def _declares_outputs(front: Dict[str, object]) -> bool:
+    """Whether a phase's frontmatter declares outputs in a shape that means anything.
+
+    A bare truthiness test passed ``outputs = true``, ``outputs = 1`` and
+    ``outputs = "step.out"`` -- malformed frontmatter collecting the same structural
+    credit as a correctly declared list. A single string is the interesting one: it
+    looks right and is the likeliest mistake, and treating it as a declaration hides
+    exactly the authoring error this check exists to surface.
+    """
+    for key in ("outputs", "output_files"):
+        value = front.get(key)
+        # `all`, not `any`, over a non-empty container: `outputs = ["step.out", 1]` and
+        # `["step.out", ""]` passed an `any` check while still violating the contract.
+        # One good entry does not make the list a list of output names (#234 review).
+        if isinstance(value, (list, tuple)) and value and all(
+                isinstance(item, str) and item.strip() for item in value):
+            return True
+    return False
+
+
 def _check_every_phase_declares_output(inp: StructuralInput) -> Tuple[bool, str]:
     missing = [str(n) for n, front in sorted(inp.phases.items())
-               if not (front.get("outputs") or front.get("output_files"))]
+               if not _declares_outputs(front)]
     return not missing, (f"phases without outputs: {_capped(missing, 5)}" if missing else "")
 # @cpt-end:cpt-studio-algo-eval-structural:p1:inst-structural-checks-phase
 
@@ -385,18 +407,34 @@ def _prose_headings(raw_body: str) -> str:
     code sample is not mistaken for a real heading (which would inflate compliance).
 
     A simple line-based fence toggle, not a Markdown parser: no regex over the whole body, so
-    no backtracking, and it covers the fenced ` ``` ` blocks phase files actually use.
+    no backtracking. Both CommonMark fence characters count -- backticks and tildes. Only
+    backticks were recognised, so a ``## Rules`` heading inside a ``~~~`` block read as a
+    real section and could satisfy :func:`_check_required_sections`, handing deterministic
+    structural credit to a code sample.
+
+    A fence closes on its own character, per CommonMark: tildes inside a backtick block are
+    content, not a delimiter.
     """
     front, normalised = _match_frontmatter(raw_body)
     body = normalised[front.end():] if front else normalised
     visible: List[str] = []
-    in_fence = False
+    fence: Optional[Tuple[str, int]] = None
     for line in body.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
+        stripped = line.lstrip()
+        delim = fence_delim(stripped)
+        if fence is not None:
+            # `fence_closes` rather than a second copy of the rule: the closer contract
+            # (same character, at least as long, nothing but whitespace after) lives in
+            # `eval_harness` and `eval_judge._split_sections` uses the same pair. This
+            # function had its own implementation of it, written without noticing the
+            # first -- which is how two copies of one rule drift (#234 review).
+            if delim is not None and fence_closes(delim, fence, stripped):
+                fence = None
             continue
-        if not in_fence:
-            visible.append(line)
+        if delim is not None:
+            fence = delim
+            continue
+        visible.append(line)
     return "\n".join(visible)
 # @cpt-end:cpt-studio-algo-eval-structural:p1:inst-structural-prose
 
@@ -507,6 +545,28 @@ class StructuralScorer:  # pylint: disable=too-few-public-methods
                     self.name, self.kind, VERDICT_FAIL, 0.0,
                     [f"phase-frontmatter-valid: {_capped(invalid)}"],
                     f"{len(invalid)} phase file(s) with broken [phase] frontmatter")
+            # `not run.phases`, not `not phases`. The outer branch is reached in two ways:
+            # the manifest declares nothing, or it declares files whose `[phase]` blocks would
+            # not parse. Only the first is "a manifest that has lost its run". Guarding on the
+            # parsed result instead reported `the plan declares no phases` for a plan that
+            # declared one perfectly well, naming a defect that did not exist while leaving the
+            # real one unnamed. Found in review.
+            # Routed through the skip set. The first version returned before `_active_checks`
+            # was consulted, so a caller configuring `skip=("manifest-matches-files",)` — the
+            # very rule this finding invokes — could not suppress it. A check that cannot be
+            # switched off is not part of the check registry, it is a second, hidden one.
+            # Found in review.
+            # One shared helper answers this for both scorers, and the skip set is honoured
+            # here as it is for every other check. Written separately, the two copies diverged
+            # three times running.
+            finding = lost_run_finding(run)
+            if finding is not None and "manifest-matches-files" in {
+                    c.name for c in self._active_checks()}:
+                return ScorerResult(
+                    self.name, self.kind, VERDICT_FAIL, 0.0, [finding],
+                    _lost_run_coverage(run))
+            # Nothing declared and nothing on disk: genuinely a different shape, and scoring
+            # it 0% would be the false failure this scorer is built never to produce.
             return self._unknown(
                 "no phase file carries a parseable [phase] frontmatter block",
                 "unscoreable: a different workflow shape, not a failing one")

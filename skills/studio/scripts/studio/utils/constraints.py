@@ -7,12 +7,29 @@ from __future__ import annotations
 
 import re
 import logging
-from dataclasses import dataclass, replace
+# `field` is aliased: this module uses `field` as an ordinary local name in the
+# constraint parsers, and shadowing the dataclasses helper there reads as a bug.
+from dataclasses import dataclass, field as dataclass_field, replace
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
 
 from . import error_codes as EC
-from .severity import default_severity, reject_caller_severity
+from .severity import (
+    ENTRY_HEADING,
+    ENTRY_IDENTIFIER,
+    EntryKey,
+    EntrySeverity,
+    SeverityPolicy,
+    SeverityTables,
+    apply_policy,
+    default_severity,
+    entry_key,
+    is_stricter,
+    merge_severity_tables,
+    parse_kit_validation,
+    parse_severity_value,
+    reject_caller_severity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +56,10 @@ class HeadingConstraint:
     prev: Optional[str] = None
     next: Optional[str] = None
     pointer: Optional[str] = None
+    #: Severity for the rules this entry owns, overriding the code's default.
+    severity: Optional[str] = None
+    #: When true, a project may raise this entry's rules but not lower them.
+    locked: bool = False
 
 @dataclass(frozen=True)
 class IdConstraint:
@@ -55,6 +76,10 @@ class IdConstraint:
     to_code: Optional[bool] = None
     headings: Optional[List[str]] = None
     references: Optional[Dict[str, ReferenceRule]] = None
+    #: Severity for the rules this entry owns, overriding the code's default.
+    severity: Optional[str] = None
+    #: When true, a project may raise this entry's rules but not lower them.
+    locked: bool = False
 
 def _parse_optional_bool(
     v: object, field: str,
@@ -73,6 +98,67 @@ def _parse_optional_bool(
     return None, f"Constraint field '{field}' must be boolean, got {type(v).__name__}"
 
 @dataclass(frozen=True)
+class TocOptions:
+    """How deep, and how large, TOC checking looks for one artifact kind.
+
+    ``None`` is "this kind has no opinion", not a value. Storing the engine
+    default here instead would make a kit that says nothing about depth
+    indistinguishable from one that deliberately asked for today's depth — and
+    a `--max-level` on the command line could no longer be told from silence,
+    which is the whole precedence question this table exists to answer.
+    """
+
+    max_level: Optional[int] = None
+    max_section_lines: Optional[int] = None
+
+
+#: Every option ``[artifacts.<KIND>.validation.toc]`` understands.
+_TOC_OPTION_KEYS = frozenset({"max_level", "max_section_lines"})
+
+
+@dataclass(frozen=True)
+class HeadingOrder:
+    """Which sections must precede which, held as the pairs the kits stated.
+
+    A kit writes a list, and a list is a chain: every id in it precedes every
+    id after it. The shorthand ``order = "declared"`` is the chain of every
+    heading the kind declares — the strictness the matcher used to impose on
+    every kit implicitly, now an explicit opt-in.
+
+    Pairs rather than a sequence, because two kits' orders have to be added up
+    and a sequence cannot hold the sum. Splicing ``("a", "c")`` onto
+    ``("b", "c")`` gives ``("a", "c", "b")``, which says c precedes b — the
+    reverse of what the second kit wrote — and says a precedes b, which
+    neither kit wrote. The union of their pairs says exactly what they said.
+
+    Absent (``ArtifactKindConstraints.order is None``) means the kind imposes
+    no order at all. That is the default, because a rule a kit cannot state
+    is a rule a kit cannot relax either.
+    """
+
+    pairs: FrozenSet[Tuple[str, str]] = frozenset()
+
+    @classmethod
+    def from_sequence(cls, ids: Sequence[str]) -> "HeadingOrder":
+        """Build the chain one ``order`` list states."""
+        return cls(pairs=frozenset(
+            (earlier, later)
+            for position, earlier in enumerate(ids)
+            for later in tuple(ids)[position + 1:]
+        ))
+
+    def relates(self, first_id: Optional[str], second_id: Optional[str]) -> bool:
+        """Whether this order says ``first_id`` must come before ``second_id``."""
+        if not first_id or not second_id or first_id == second_id:
+            return False
+        return (first_id, second_id) in self.pairs
+
+
+#: The one non-list value ``order`` accepts.
+ORDER_DECLARED = "declared"
+
+
+@dataclass(frozen=True)
 class ArtifactKindConstraints:
     """Validation constraints attached to one artifact kind."""
 
@@ -81,12 +167,21 @@ class ArtifactKindConstraints:
     defined_id: List[IdConstraint]
     headings: Optional[List[HeadingConstraint]] = None
     toc: bool = True
+    #: ``[artifacts.<KIND>.validation]`` — this kind's own severity table.
+    validation: SeverityTables = dataclass_field(default_factory=SeverityTables)
+    #: ``[artifacts.<KIND>.validation.toc]`` — this kind's TOC options.
+    toc_options: TocOptions = dataclass_field(default_factory=TocOptions)
+    #: ``[artifacts.<KIND>] order`` — the section order this kind enforces.
+    order: Optional[HeadingOrder] = None
 
 @dataclass(frozen=True)
 class KitConstraints:
     """Loaded validation constraints for all artifact kinds in a kit."""
 
     by_kind: Dict[str, ArtifactKindConstraints]
+    #: Top-level ``[validation]`` — the kit's whole-kit severity table. Lifted
+    #: out before the ``artifacts`` unwrap, or it would be read as a kind.
+    validation: SeverityTables = dataclass_field(default_factory=SeverityTables)
 
 
 @dataclass(frozen=True)
@@ -139,6 +234,25 @@ class HeadingValidationContext:
     constraints_path: Optional[Path]
     kit_id: Optional[str]
     errors: List[Dict[str, object]]
+    #: The order this kind declares, or None when it declares none.
+    order: Optional[HeadingOrder] = None
+    #: Indices of headings some constraint has already matched. Two constraints
+    #: must not both claim one section: without this the rescue pass would
+    #: re-match a section the cursor pass already consumed and report the
+    #: document's only copy as being in two places at once.
+    claimed: Set[int] = dataclass_field(default_factory=set)
+    #: Indices of headings already reported out of order. A displaced section
+    #: carries its subsections with it, so its descendants are not reported
+    #: again — one cause, one finding.
+    reported_idx: Set[int] = dataclass_field(default_factory=set)
+    #: Heading index each matched constraint id landed on, which is what makes
+    #: "this section must come after that one" nameable with a line number.
+    matched_idx_by_id: Dict[str, int] = dataclass_field(default_factory=dict)
+    #: Heading indices whose numbering some constraint has already ruled on.
+    #: The numbering check reads a constraint's whole scope, not only the run
+    #: it claims, so two constraints with overlapping patterns both see a
+    #: heading only one of them takes — and one defect would be reported twice.
+    numbering_judged: Set[int] = dataclass_field(default_factory=set)
 
 def error(
     kind: str,
@@ -1162,17 +1276,24 @@ def _validate_artifact_toc(
     artifact_path: Path,
     errors: List[Dict[str, object]],
     warnings: List[Dict[str, object]],
+    options: Optional[TocOptions] = None,
 ) -> None:
     from .document import read_text_safe as _read_text_safe
+    from .toc import DEFAULT_MAX_SECTION_LINES, DEFAULT_TOC_MAX_LEVEL
     from .toc import validate_toc as _validate_toc
 
     toc_lines = _read_text_safe(artifact_path)
     if toc_lines is None:
         return
+    options = options or TocOptions()
     toc_result = _validate_toc(
         "\n".join(toc_lines),
         artifact_path=artifact_path,
-        max_heading_level=3,
+        max_heading_level=(
+            options.max_level if options.max_level is not None else DEFAULT_TOC_MAX_LEVEL),
+        max_section_lines=(
+            options.max_section_lines if options.max_section_lines is not None
+            else DEFAULT_MAX_SECTION_LINES),
     )
     errors.extend(toc_result.get("errors", []))
     warnings.extend(toc_result.get("warnings", []))
@@ -1609,12 +1730,11 @@ def _validate_artifact_heading_phase(
     kind: str,
     constraints_path: Optional[Path],
     kit_id: Optional[str],
-    errors: List[Dict[str, object]],
-    warnings: List[Dict[str, object]],
-) -> bool:
-    """Run heading validation and return whether later ID validation may continue."""
+    policy: Optional[SeverityPolicy] = None,
+) -> Tuple[List[Dict[str, object]], List[Dict[str, object]], bool]:
+    """Run heading validation; return its findings and whether ID checks may continue."""
     if not getattr(constraints, "headings", None):
-        return True
+        return [], [], True
     rep = validate_headings_contract(
         path=artifact_path,
         constraints=constraints,
@@ -1623,9 +1743,20 @@ def _validate_artifact_heading_phase(
         constraints_path=constraints_path,
         kit_id=kit_id,
     )
-    errors.extend(rep.get("errors", []))
-    warnings.extend(rep.get("warnings", []))
-    return not bool(rep.get("errors"))
+    heading_errors = list(rep.get("errors", []))
+    heading_warnings = list(rep.get("warnings", []))
+    # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-gate-on-errors
+    # The gate counts error-severity findings, not findings. A heading rule the
+    # project lowered to `warning` used to hide every TOC and identifier
+    # finding in the file behind it — the reader saw one advisory note and no
+    # sign that two whole phases had been skipped.
+    #
+    # Resolving here only decides whether to continue; the findings themselves
+    # are settled once, at the end of the file's run, so nothing is dropped or
+    # counted twice on the way.
+    gate = apply_policy(policy, heading_errors + heading_warnings, kind=kind)
+    return heading_errors, heading_warnings, not bool(gate.errors)
+    # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-gate-on-errors
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
 
 
@@ -1832,7 +1963,8 @@ def validate_artifact_file(
     registered_systems: Optional[Iterable[str]] = None,
     constraints_path: Optional[Path] = None,
     kit_id: Optional[str] = None,
-) -> Dict[str, List[Dict[str, object]]]:
+    policy: Optional[SeverityPolicy] = None,
+) -> Dict[str, object]:
     """Validate one artifact file against structural constraints."""
     errors: List[Dict[str, object]] = []
     warnings: List[Dict[str, object]] = []
@@ -1840,26 +1972,31 @@ def validate_artifact_file(
     kind = str(artifact_kind).strip().upper()
 
     if constraints is None:
-        return {"errors": errors, "warnings": warnings}
+        return {"errors": errors, "warnings": warnings, "suppressed": 0, "refusals": []}
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-ids-entry
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
     # Phase 1: headings contract
-    can_continue = _validate_artifact_heading_phase(
+    heading_errors, heading_warnings, can_continue = _validate_artifact_heading_phase(
         artifact_path=artifact_path,
         constraints=constraints,
         registered_systems=registered_systems,
         kind=kind,
         constraints_path=constraints_path,
         kit_id=kit_id,
-        errors=errors,
-        warnings=warnings,
+        policy=policy,
     )
+    errors.extend(heading_errors)
+    warnings.extend(heading_warnings)
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-headings-fail
     # Stop here: IDs are validated only after outline contract is satisfied.
     if not can_continue:
         # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-fail
-        return {"errors": errors, "warnings": warnings}
+        # Policy still settles the findings on the way out: the phases that
+        # were skipped produced nothing, but what the heading phase found is
+        # reported at its configured severity like everything else.
+        gated = _apply_artifact_policy(policy, kind, errors, warnings)
+        return gated
         # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-fail
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-headings-fail
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-headings
@@ -1867,7 +2004,8 @@ def validate_artifact_file(
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
     # Phase 1b: TOC validation (only when toc=true in constraints)
     if getattr(constraints, "toc", True):
-        _validate_artifact_toc(artifact_path, errors, warnings)
+        _validate_artifact_toc(
+            artifact_path, errors, warnings, getattr(constraints, "toc_options", None))
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-check-toc
 
     _validate_artifact_identifier_phase(
@@ -1881,9 +2019,41 @@ def validate_artifact_file(
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-return-structure
     # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-pass
-    return {"errors": errors, "warnings": warnings}
+    report = _apply_artifact_policy(policy, kind, errors, warnings)
+    return report
     # @cpt-end:cpt-studio-state-traceability-validation-report:p1:inst-pass
     # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-return-structure
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-apply-artifact-policy
+def _stamp_artifact_kind(kind: str, findings: Iterable[Dict[str, object]]) -> None:
+    """Record the artifact kind on every finding from this file.
+
+    Only heading findings carried it before. Without it a per-kind severity
+    could never reach a TOC, CDSL or identifier finding, and the command-level
+    pass would have no way to tell which kind a finding belongs to.
+    """
+    for finding in findings:
+        finding.setdefault("artifact_kind", kind)
+
+
+def _apply_artifact_policy(
+    policy: Optional[SeverityPolicy],
+    kind: str,
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+) -> Dict[str, object]:
+    """Stamp the kind, then settle severity for everything this file produced."""
+    _stamp_artifact_kind(kind, errors)
+    _stamp_artifact_kind(kind, warnings)
+    outcome = apply_policy(policy, list(errors) + list(warnings), kind=kind)
+    return {
+        "errors": outcome.errors,
+        "warnings": outcome.warnings,
+        "suppressed": outcome.suppressed,
+        "refusals": outcome.refusals,
+    }
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-apply-artifact-policy
 
 # @cpt-algo:cpt-studio-algo-traceability-validation-cross-validate:p1
 # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-datamodel
@@ -2379,6 +2549,7 @@ def _validate_duplicate_definitions(
                 path=drow.get("artifact_path"),
                 line=int(drow.get("line", 1) or 1),
                 id=did,
+                artifact_kind=drow.get("artifact_kind"),
             ))
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-duplicate-defs
 
@@ -2404,6 +2575,7 @@ def _validate_reference_definitions_exist(
                 path=row.get("artifact_path"),
                 line=int(row.get("line", 1) or 1),
                 id=rid,
+                artifact_kind=row.get("artifact_kind"),
             ))
         # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-no-def
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-ref
@@ -2435,6 +2607,7 @@ def _validate_checked_reference_consistency(
                     path=row.get("artifact_path"),
                     line=int(row.get("line", 1) or 1),
                     id=rid,
+                    artifact_kind=row.get("artifact_kind"),
                 ))
             # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-ref-done-def-not
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-ref
@@ -2468,6 +2641,7 @@ def _validate_definition_completion_consistency(
                     path=row.get("artifact_path"),
                     line=int(row.get("line", 1) or 1),
                     id=rid,
+                    artifact_kind=row.get("artifact_kind"),
                     def_artifact_kind=defs_with_task[0].get("artifact_kind"),
                 ))
         # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-if-def-done-ref-not
@@ -2483,6 +2657,7 @@ def _validate_definition_completion_consistency(
                 path=row.get("artifact_path"),
                 line=int(row.get("line", 1) or 1),
                 id=rid,
+                artifact_kind=row.get("artifact_kind"),
             ))
 # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-foreach-checked-def
 
@@ -2924,10 +3099,36 @@ def _validate_heading_constraint_pattern(pattern: Optional[str]) -> Optional[str
     return None
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-entry-severity
+def _parse_entry_severity(
+    obj: Dict[str, object],
+    label: str,
+) -> Tuple[Optional[EntrySeverity], Optional[str]]:
+    """Parse ``severity`` and ``locked`` from one constraint entry.
+
+    ``locked`` without a ``severity`` is accepted and meaningful: it locks
+    whatever the code's default or the kit's tables already say, which is how a
+    kit protects a rule it is content to leave at the built-in severity.
+    """
+    errors: List[str] = []
+    raw_severity = obj.get("severity")
+    severity = (
+        parse_severity_value(raw_severity, f"{label} field 'severity'", errors)
+        if raw_severity is not None else None
+    )
+    if errors:
+        return None, errors[0]
+    locked = obj.get("locked", False)
+    if not isinstance(locked, bool):
+        return None, f"{label} field 'locked' must be boolean"
+    return EntrySeverity(severity=severity, locked=locked), None
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-entry-severity
+
+
 def _collect_heading_constraint_options(  # pylint: disable=too-many-locals
     obj: Dict[str, object],
-) -> Tuple[Optional[Tuple[bool, Optional[bool], Optional[bool]]], Optional[str]]:
-    """Parse the boolean-only heading options for one heading constraint."""
+) -> Tuple[Optional[Tuple[bool, Optional[bool], Optional[bool], EntrySeverity]], Optional[str]]:
+    """Parse the boolean-only heading options and the entry's severity policy."""
     required_bool, req_err = _parse_required_bool_field(obj, "required")
     if req_err:
         return None, "Heading constraint field 'required' must be boolean"
@@ -2937,7 +3138,10 @@ def _collect_heading_constraint_options(  # pylint: disable=too-many-locals
     numbered, err = _parse_optional_bool_constraint(obj, "numbered", "Heading constraint")
     if err:
         return None, err
-    return (bool(required_bool), multiple, numbered), None
+    entry_severity, err = _parse_entry_severity(obj, "Heading constraint")
+    if err or entry_severity is None:
+        return None, err
+    return (bool(required_bool), multiple, numbered, entry_severity), None
 
 
 def _parse_id_constraint_scalar_fields(
@@ -3056,6 +3260,26 @@ def _parse_artifact_kind_constraints(
     if parsed is None:
         return None
     text_fields, headings, defined_id, toc_val = parsed
+    kind_errors: List[str] = []
+    where = f"[artifacts.{kind.strip().upper()}.validation]"
+    validation = parse_kit_validation(
+        raw.get("validation"),
+        kind_errors,
+        where=where,
+        allow_kinds=False,
+    )
+    toc_options, toc_unknown = _parse_kind_toc_options(raw.get("validation"), where, kind_errors)
+    order = _parse_kind_order(raw.get("order"), headings, kind_errors)
+    if kind_errors:
+        errors.extend(f"constraints for {kind}: {message}" for message in kind_errors)
+        return None
+    if toc_unknown:
+        # Reported through the severity table's channel rather than a second
+        # one: `validate-kits` already turns `unknown_keys` into a warning, and
+        # a misspelled `max_levl` is the same failure as a misspelled rule code
+        # — a setting its author believes is in force that nothing reads.
+        validation = replace(
+            validation, unknown_keys=tuple(sorted(validation.unknown_keys + tuple(toc_unknown))))
 
     return ArtifactKindConstraints(
         name=text_fields["name"],
@@ -3063,7 +3287,151 @@ def _parse_artifact_kind_constraints(
         defined_id=defined_id,
         headings=headings,
         toc=toc_val,
+        validation=validation,
+        toc_options=toc_options,
+        order=order,
     )
+
+
+def _parse_kind_toc_options(
+    validation_raw: object,
+    where: str,
+    errors: List[str],
+) -> Tuple[TocOptions, List[str]]:
+    """Parse ``[artifacts.<KIND>.validation.toc]`` into TOC options.
+
+    An unreadable value is an error rather than an absent opinion: it leaves
+    the check running to a depth nobody can predict, which is the same reason
+    an unreadable severity fails the load instead of being skipped.
+    """
+    if not isinstance(validation_raw, dict):
+        return TocOptions(), []
+    raw = validation_raw.get("toc")
+    if raw is None:
+        return TocOptions(), []
+    if not isinstance(raw, dict):
+        errors.append(f"{where}.toc must be a table of TOC options")
+        return TocOptions(), []
+    unknown = [f"{where}.toc.{key}" for key in sorted(raw) if str(key) not in _TOC_OPTION_KEYS]
+    return TocOptions(
+        max_level=_parse_toc_option_int(raw, "max_level", where, errors, maximum=6),
+        max_section_lines=_parse_toc_option_int(raw, "max_section_lines", where, errors),
+    ), unknown
+
+
+def _parse_toc_option_int(
+    raw: Dict[str, object],
+    name: str,
+    where: str,
+    errors: List[str],
+    *,
+    maximum: Optional[int] = None,
+) -> Optional[int]:
+    """Read one positive-integer TOC option, or None when it is not set."""
+    if name not in raw:
+        return None
+    value = raw.get(name)
+    # `bool` is an `int` in Python, so `max_level = true` would otherwise be
+    # accepted as depth 1 — a document checked one level deep because someone
+    # meant to switch something on.
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        bound = f" between 1 and {maximum}" if maximum else " of 1 or more"
+        errors.append(f"{where}.toc.{name} must be an integer{bound}")
+        return None
+    if maximum is not None and value > maximum:
+        errors.append(f"{where}.toc.{name} must be an integer between 1 and {maximum}")
+        return None
+    return value
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-order
+def _parse_kind_order(
+    raw: object,
+    headings: Optional[List[HeadingConstraint]],
+    errors: List[str],
+) -> Optional[HeadingOrder]:
+    """Parse ``[artifacts.<KIND>] order`` into the section order for one kind.
+
+    Read after the headings, because an order is a statement about heading ids
+    and the ids only exist once ``_normalize_heading_ids`` has assigned them.
+    An id nobody declared fails the load rather than being ignored: a typo in
+    an order entry is a section the author believes is being ordered.
+
+    ``order`` selects which of the declared sections are constrained; it cannot
+    re-sequence them. That is not a simplification, it is what makes the rule
+    enforceable: a section written out of order is found by the rescue pass
+    precisely because it failed to match in declaration order, so an ``order``
+    that ran against the declarations would be one nothing could check.
+    """
+    if raw is None:
+        return None
+    declared_ids = tuple(
+        str(hc.id) for hc in (headings or []) if str(getattr(hc, "id", "") or "").strip()
+    )
+    if isinstance(raw, str):
+        # Compared verbatim, not stripped. `kit-constraints.schema.json` pins
+        # this value with `const`, so accepting a padded one would make the
+        # published schema call invalid a file that loads — the one direction
+        # of disagreement that matters, because it is the schema that teams
+        # write their editors and preflight checks against. Entries in the list
+        # form are still normalised, because they are lookup keys the schema
+        # says nothing about.
+        if raw != ORDER_DECLARED:
+            errors.append(
+                f"field 'order' must be a list of heading ids or \"{ORDER_DECLARED}\"")
+            return None
+        return HeadingOrder.from_sequence(declared_ids)
+    if not isinstance(raw, list):
+        errors.append(f"field 'order' must be a list of heading ids or \"{ORDER_DECLARED}\"")
+        return None
+    return _parse_order_ids(raw, declared_ids, errors)
+
+
+def _parse_order_ids(
+    raw: List[object],
+    declared_ids: Tuple[str, ...],
+    errors: List[str],
+) -> Optional[HeadingOrder]:
+    """Resolve one ``order`` list against the ids the kind declares."""
+    known = {hid.lower(): hid for hid in declared_ids}
+    seen: Set[str] = set()
+    ids: List[str] = []
+    for entry in raw:
+        name = entry.strip() if isinstance(entry, str) else ""
+        if not name:
+            errors.append("field 'order' entries must be non-empty heading ids")
+            return None
+        key = name.lower()
+        if key not in known:
+            errors.append(f"field 'order' references unknown heading id '{name}'")
+            return None
+        if key in seen:
+            errors.append(f"field 'order' lists heading id '{name}' more than once")
+            return None
+        seen.add(key)
+        ids.append(known[key])
+    return _order_following_declarations(ids, declared_ids, errors)
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-order
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-order-follows-declarations
+def _order_following_declarations(
+    ids: List[str],
+    declared_ids: Tuple[str, ...],
+    errors: List[str],
+) -> Optional[HeadingOrder]:
+    """Refuse an order that puts the declared headings in a different sequence."""
+    for position in range(1, len(ids)):
+        earlier, later = ids[position - 1], ids[position]
+        if declared_ids.index(later) < declared_ids.index(earlier):
+            errors.append(
+                f"field 'order' puts '{later}' after '{earlier}', but the headings are "
+                f"declared the other way round — 'order' chooses which sections are "
+                f"constrained, it does not re-sequence them; reorder the headings instead"
+            )
+            return None
+    return HeadingOrder.from_sequence(ids)
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-order-follows-declarations
 
 
 def _parse_artifact_kind_constraint_parts(
@@ -3154,7 +3522,7 @@ def _parse_heading_constraint(
     if err:
         return None, err
 
-    required_bool, multiple, numbered = options
+    required_bool, multiple, numbered, entry_severity = options
 
     return HeadingConstraint(
         id=_normalize_heading_identifier(string_values["id"]) or None,
@@ -3167,6 +3535,8 @@ def _parse_heading_constraint(
         prev=_normalize_heading_identifier(string_values["prev"]) or None,
         next=_normalize_heading_identifier(string_values["next"]) or None,
         pointer=_normalize_optional_text(pointer),
+        severity=entry_severity.severity,
+        locked=entry_severity.locked,
     ), None
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-heading
 
@@ -3208,6 +3578,9 @@ def _parse_id_constraint(obj: object) -> Tuple[Optional[IdConstraint], Optional[
     parsed_fields, err = _collect_id_constraint_fields(obj)
     if err or parsed_fields is None:
         return None, err
+    entry_severity, err = _parse_entry_severity(obj, "Constraint entry")
+    if err or entry_severity is None:
+        return None, err
 
     return (
         IdConstraint(
@@ -3222,6 +3595,8 @@ def _parse_id_constraint(obj: object) -> Tuple[Optional[IdConstraint], Optional[
             to_code=parsed_fields["to_code"],
             headings=parsed_fields["headings"],
             references=parsed_fields["references"],
+            severity=entry_severity.severity,
+            locked=entry_severity.locked,
         ),
         None,
     )
@@ -3366,7 +3741,10 @@ def _parse_identifiers_block(
 
 
 # @cpt-algo:cpt-studio-algo-traceability-validation-load-constraints:p1
-def parse_kit_constraints(data: object) -> Tuple[Optional[KitConstraints], List[str]]:
+def parse_kit_constraints(
+    data: object,
+    validation: Optional[SeverityTables] = None,
+) -> Tuple[Optional[KitConstraints], List[str]]:
     """Parse kit constraints."""
     # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-kit
     if data is None:
@@ -3397,8 +3775,14 @@ def parse_kit_constraints(data: object) -> Tuple[Optional[KitConstraints], List[
 
     if errors:
         return None, errors
-    return KitConstraints(by_kind=out), []
+    # The unknown-*kind* check deliberately does not happen here. A kit file is
+    # parsed alone, and in a multi-kit project one kit may legitimately scope a
+    # severity to a kind a companion kit declares. Only the loader that has
+    # every kit in hand can tell that from a typo, so the check lives there.
+    return KitConstraints(by_kind=out, validation=validation or SeverityTables()), []
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-kit
+
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-constraints-normalize
 def _merge_reference_rule(base: ReferenceRule, incoming: ReferenceRule) -> ReferenceRule:
@@ -3438,12 +3822,32 @@ def _merge_id_constraint(base: IdConstraint, incoming: IdConstraint) -> IdConstr
         to_code=incoming.to_code if incoming.to_code is not None else base.to_code,
         headings=_merge_unique_strings(base.headings, incoming.headings),
         references=references or None,
+        severity=_merge_entry_severity(base.severity, incoming.severity),
+        locked=bool(base.locked or incoming.locked),
     )
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-merge-entry-severity
+def _merge_entry_severity(base: Optional[str], incoming: Optional[str]) -> Optional[str]:
+    """Take the stricter of two entry severities, matching how ``required`` merges.
+
+    Both kits are authorities over an entry they both declare, so the merge
+    that cannot quietly relax what one of them meant to enforce is the strict
+    one. ``locked`` is a plain OR for the same reason.
+    """
+    if base is None:
+        return incoming
+    if incoming is None:
+        return base
+    return incoming if is_stricter(incoming, base) else base
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-merge-entry-severity
 
 
 def _merge_artifact_constraints(
     base: ArtifactKindConstraints,
     incoming: ArtifactKindConstraints,
+    kind: str,
+    errors: List[str],
 ) -> ArtifactKindConstraints:
     by_id_kind = {
         str(c.kind).strip().lower(): c
@@ -3470,11 +3874,131 @@ def _merge_artifact_constraints(
         defined_id=[by_id_kind[key] for key in order if key in by_id_kind],
         headings=(base.headings or []) + (incoming.headings or []) or None,
         toc=base.toc if base.toc == incoming.toc else False,
+        validation=merge_severity_tables([base.validation, incoming.validation]),
+        toc_options=_merge_toc_options(base.toc_options, incoming.toc_options),
+        order=_merge_heading_order(base.order, incoming.order, kind, errors),
     )
 
 
-def merge_kit_constraints_all_of(constraints: Sequence[KitConstraints]) -> Optional[KitConstraints]:
-    """Merge constraints sequentially using allOf-style additive semantics."""
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-merge-order
+def _merge_heading_order(
+    base: Optional[HeadingOrder],
+    incoming: Optional[HeadingOrder],
+    kind: str,
+    errors: List[str],
+) -> Optional[HeadingOrder]:
+    """Add two kits' section orders together, refusing a contradiction.
+
+    Two kits that bind one artifact kind are both authorities over it, so
+    their orders add up — each constrains the ids it names and leaves the rest
+    free. The sum is the union of what they stated, closed under transitivity:
+    one kit's "a before c" and another's "c before b" together mean a before
+    b, and a merge that did not say so would leave a relation both kits imply
+    unenforced.
+
+    What cannot be added up is a pair the two sequence in opposite directions.
+    Keeping either kit's word would enforce an order the other kit's author
+    would read as already satisfied, so that fails the load naming the pair,
+    the same posture an unreadable severity takes.
+    """
+    if base is None:
+        return incoming
+    if incoming is None:
+        return base
+    merged = _order_closure(base.pairs | incoming.pairs)
+    conflict = _first_order_conflict(merged)
+    if conflict is not None:
+        first, second = conflict
+        errors.append(
+            f"constraints for {kind}: field 'order' contradicts another kit's order — "
+            f"'{first}' is required both before and after '{second}'"
+        )
+        return base
+    return HeadingOrder(pairs=merged)
+
+
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-merge-order
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-order-conflict
+def _order_closure(pairs: FrozenSet[Tuple[str, str]]) -> FrozenSet[Tuple[str, str]]:
+    """Every precedence that follows from the given ones."""
+    after: Dict[str, Set[str]] = {}
+    for earlier, later in pairs:
+        after.setdefault(earlier, set()).add(later)
+    closed: Set[Tuple[str, str]] = set()
+    for start in after:
+        reached: Set[str] = set()
+        pending = list(after[start])
+        while pending:
+            node = pending.pop()
+            if node in reached:
+                continue
+            reached.add(node)
+            pending.extend(after.get(node, ()))
+        closed.update((start, node) for node in reached)
+    return frozenset(closed)
+
+
+def _first_order_conflict(pairs: FrozenSet[Tuple[str, str]]) -> Optional[Tuple[str, str]]:
+    """Name the first id pair the merged order requires in both directions.
+
+    Run over the closure, so a cycle that only closes across three kits is one
+    symmetric pair here rather than three relations nobody compared. Sorted,
+    because which pair gets named must not depend on set iteration order.
+    """
+    for earlier, later in sorted(pairs):
+        if earlier != later and (later, earlier) in pairs:
+            return earlier, later
+    return None
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-order-conflict
+
+
+def _merge_toc_options(base: TocOptions, incoming: TocOptions) -> TocOptions:
+    """Combine two kits' TOC options for one kind, strictest-wins.
+
+    The same rule `required` and `severity` merge by, read through what each
+    option does: a deeper `max_level` puts more headings under the
+    completeness check, and a smaller `max_section_lines` flags more sections.
+    A kit with no opinion never loosens one that has one.
+    """
+    return TocOptions(
+        max_level=_strictest_toc_option(base.max_level, incoming.max_level, max),
+        max_section_lines=_strictest_toc_option(
+            base.max_section_lines, incoming.max_section_lines, min),
+    )
+
+
+def _strictest_toc_option(
+    base: Optional[int],
+    incoming: Optional[int],
+    stricter: Callable[[int, int], int],
+) -> Optional[int]:
+    """Pick the stricter of two optional bounds, where None is "no opinion"."""
+    if base is None:
+        return incoming
+    if incoming is None:
+        return base
+    return stricter(base, incoming)
+
+
+def merge_kit_constraints_all_of(
+    constraints: Sequence[KitConstraints],
+    errors: Optional[List[str]] = None,
+) -> Optional[KitConstraints]:
+    """Merge constraints sequentially using allOf-style additive semantics.
+
+    Returns None when the merge cannot be performed at all — two kits ordering
+    one pair of sections in opposite directions. That is unconditional, not a
+    courtesy to callers who pass ``errors``: a partly-merged model carries one
+    arbitrary reading of the contradiction and looks exactly like a successful
+    merge, so handing it back to a caller that did not ask for the messages
+    would make the silence the caller's problem rather than this function's.
+
+    ``errors``, when given, collects those messages as well, so a caller that
+    wants to say *why* the load failed does not have to re-derive it.
+    """
+    merge_errors: List[str] = []
     by_kind: Dict[str, ArtifactKindConstraints] = {}
     for kit_constraints in constraints:
         for kind, incoming in (kit_constraints.by_kind or {}).items():
@@ -3482,12 +4006,125 @@ def merge_kit_constraints_all_of(constraints: Sequence[KitConstraints]) -> Optio
             if not normalized:
                 continue
             if normalized in by_kind:
-                by_kind[normalized] = _merge_artifact_constraints(by_kind[normalized], incoming)
+                by_kind[normalized] = _merge_artifact_constraints(
+                    by_kind[normalized], incoming, normalized, merge_errors)
             else:
                 by_kind[normalized] = incoming
-    if not by_kind:
+    if errors is not None:
+        errors.extend(merge_errors)
+    if not by_kind or merge_errors:
         return None
-    return KitConstraints(by_kind=by_kind)
+    return KitConstraints(
+        by_kind=by_kind,
+        validation=merge_severity_tables([_kit_validation_tables(kc) for kc in constraints]),
+    )
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-build-policy
+def collect_entry_severities(
+    kit_constraints: Iterable[KitConstraints],
+) -> Dict[str, Dict[EntryKey, EntrySeverity]]:
+    """Index every entry that declares a severity or a lock, by kind and entry key.
+
+    Heading entries are keyed by heading id and identifier entries by ID kind —
+    the two fields findings already carry, so a finding can be matched back to
+    the entry that produced it without a new key having to be threaded through
+    every emission site. The key carries which of the two it is, because the
+    same string can legitimately name both a heading and an ID kind and one
+    must not inherit the other's severity or lock.
+    """
+    entries: Dict[str, Dict[EntryKey, EntrySeverity]] = {}
+    for kit in kit_constraints:
+        for kind, kind_constraints in (getattr(kit, "by_kind", None) or {}).items():
+            normalized = str(kind).strip().upper()
+            for heading in getattr(kind_constraints, "headings", None) or []:
+                _record_entry(
+                    entries,
+                    normalized,
+                    entry_key(ENTRY_HEADING, getattr(heading, "id", None)),
+                    getattr(heading, "severity", None),
+                    bool(getattr(heading, "locked", False)),
+                )
+            for identifier in getattr(kind_constraints, "defined_id", None) or []:
+                _record_entry(
+                    entries,
+                    normalized,
+                    entry_key(ENTRY_IDENTIFIER, getattr(identifier, "kind", None)),
+                    getattr(identifier, "severity", None),
+                    bool(getattr(identifier, "locked", False)),
+                )
+    return entries
+
+
+def _kit_validation_tables(kit: object) -> SeverityTables:
+    """Read a kit's own ``[validation]`` table, tolerating partial stand-ins.
+
+    Callers hand this whatever their context loaded, including the stripped-down
+    objects the command tests build, so a missing table means "declares
+    nothing" rather than an attribute error.
+    """
+    table = getattr(kit, "validation", None)
+    return table if isinstance(table, SeverityTables) else SeverityTables()
+
+
+def _record_entry(
+    entries: Dict[str, Dict[EntryKey, EntrySeverity]],
+    kind: str,
+    key: Optional[EntryKey],
+    severity: Optional[str],
+    locked: bool,
+) -> None:
+    if key is None or (severity is None and not locked):
+        return
+    by_entry = entries.setdefault(kind, {})
+    existing = by_entry.get(key)
+    if existing is None:
+        by_entry[key] = EntrySeverity(severity=severity, locked=locked)
+        return
+    by_entry[key] = EntrySeverity(
+        severity=_merge_entry_severity(existing.severity, severity),
+        locked=bool(existing.locked or locked),
+    )
+
+
+def _kit_severity_layer(kit: object) -> SeverityTables:
+    """One kit's complete severity opinion: whole-kit table plus kind-scoped ones.
+
+    Assembled as a single layer so the merge can compare each kit's *effective*
+    value for a kind against every other kit's. Contributing the two tables as
+    separate layers, or folding the kind-scoped ones in afterwards, both lose
+    the distinction between "this kit's own per-kind override" — which wins by
+    specificity — and "another kit's opinion", which wins by strictness.
+    """
+    whole_kit = _kit_validation_tables(kit)
+    by_kind: Dict[str, Dict[str, str]] = {
+        kind: dict(table) for kind, table in whole_kit.by_kind.items()
+    }
+    unknown = list(whole_kit.unknown_keys)
+    for kind, kind_constraints in (getattr(kit, "by_kind", None) or {}).items():
+        scoped = _kit_validation_tables(kind_constraints)
+        unknown.extend(scoped.unknown_keys)
+        if scoped.by_code:
+            by_kind.setdefault(str(kind).strip().upper(), {}).update(scoped.by_code)
+    return SeverityTables(
+        by_code=dict(whole_kit.by_code),
+        by_kind=by_kind,
+        unknown_keys=tuple(sorted(set(unknown))),
+    )
+
+
+def build_severity_policy(
+    kit_constraints: Iterable[KitConstraints],
+    project: Optional[SeverityTables] = None,
+) -> SeverityPolicy:
+    """Assemble the policy from every loaded kit plus the project's own table."""
+    loaded = list(kit_constraints)
+    return SeverityPolicy(
+        kit=merge_severity_tables([_kit_severity_layer(kit) for kit in loaded]),
+        project=project or SeverityTables(),
+        entries=collect_entry_severities(loaded),
+    )
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-build-policy
 # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-constraints-normalize
 
 def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[str]]:
@@ -3502,9 +4139,20 @@ def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[st
     except (OSError, ValueError, KeyError) as e:
         return None, [f"Failed to parse {path.name}: {e}"]
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-lift-validation
+    # Lifted before the unwrap below. In the legacy unwrapped layout the kinds
+    # sit at the top level, so a `[validation]` table left in place would be
+    # parsed as an artifact kind named VALIDATION and fail the whole file.
+    validation_errors: List[str] = []
+    validation = parse_kit_validation(data.get("validation"), validation_errors)
+    if validation_errors:
+        return None, [f"{path.name}: {message}" for message in validation_errors]
+    data = {key: value for key, value in data.items() if key != "validation"}
+    # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-lift-validation
+
     # TOML wraps kinds under "artifacts" key
     artifacts_data = data.get("artifacts", data)
-    constraints, errs = parse_kit_constraints(artifacts_data)
+    constraints, errs = parse_kit_constraints(artifacts_data, validation)
     if errs:
         return None, errs
     return constraints, []
@@ -3526,7 +4174,10 @@ def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstrain
             loaded.append(constraints)
     if errors:
         return None, errors
-    return merge_kit_constraints_all_of(loaded), []
+    merged = merge_kit_constraints_all_of(loaded, errors)
+    if errors:
+        return None, errors
+    return merged, []
 
 
 def load_constraints_toml(kit_root: Path) -> Tuple[Optional[KitConstraints], List[str]]:
@@ -3541,9 +4192,13 @@ __all__ = [
     "HeadingConstraint",
     "IdConstraint",
     "ArtifactKindConstraints",
+    "HeadingOrder",
     "KitConstraints",
+    "TocOptions",
     "ArtifactRecord",
     "ParsedStudioId",
+    "build_severity_policy",
+    "collect_entry_severities",
     "cross_validate_artifacts",
     "error",
     "load_constraints_file",
@@ -3833,19 +4488,70 @@ def _find_heading_matches_in_scope(
     heading_constraint: HeadingConstraint,
     scope_start: int,
     scope_end: int,
+    claimed: Set[int],
 ) -> Tuple[List[Dict[str, object]], int, int]:
+    """Find the first consecutive run of headings no other constraint holds.
+
+    ``claimed`` is what keeps the forward walk and the rescue pass from both
+    standing on one section. The forward walk cannot reach a claimed heading
+    today — every claim lies behind the cursor — but the rule belongs here
+    rather than in an invariant three call sites have to keep true.
+    """
     match_idx = scope_start
-    while match_idx < scope_end and not _match_heading_constraint(headings[match_idx], heading_constraint):
+    while match_idx < scope_end and (
+        match_idx in claimed
+        or not _match_heading_constraint(headings[match_idx], heading_constraint)
+    ):
         match_idx += 1
     if match_idx >= scope_end:
-        return [], scope_start, scope_start
+        return [], scope_start, scope_start, []
     matches = [headings[match_idx]]
     next_idx = match_idx + 1
     if heading_constraint.multiple is not False:
-        while next_idx < scope_end and _match_heading_constraint(headings[next_idx], heading_constraint):
+        while (
+            next_idx < scope_end
+            and next_idx not in claimed
+            and _match_heading_constraint(headings[next_idx], heading_constraint)
+        ):
             matches.append(headings[next_idx])
             next_idx += 1
-    return matches, match_idx, next_idx
+    return matches, match_idx, next_idx, _matches_in_scope(
+        headings=headings,
+        heading_constraint=heading_constraint,
+        scope_start=scope_start,
+        scope_end=scope_end,
+        claimed=claimed,
+    )
+
+
+def _matches_in_scope(
+    *,
+    headings: Sequence[Dict[str, object]],
+    heading_constraint: HeadingConstraint,
+    scope_start: int,
+    scope_end: int,
+    claimed: Set[int],
+) -> List[Tuple[int, Dict[str, object]]]:
+    """Every unclaimed heading anywhere in this scope the constraint matches.
+
+    Deliberately not the same list as ``matches``. The run above stops at the
+    first heading that does not match, because ``multiple = false`` has always
+    meant "not twice in a row" and widening it would report duplicates in
+    documents that pass today, including this repository's own DESIGN under
+    the shipped kit's repeated component entries.
+
+    The two rules that read this list ask about the section rather than about
+    the run. "At least two" asks whether the section repeats within its scope
+    at all, and a section that repeats almost always carries its own
+    subsections between the copies. ``numbered`` is the spec's "each matching
+    heading", which is every copy — checking only the first run left the
+    second copy of a repeated section unvalidated whenever anything sat
+    between them.
+    """
+    return [
+        (idx, headings[idx]) for idx in range(scope_start, scope_end)
+        if idx not in claimed and _match_heading_constraint(headings[idx], heading_constraint)
+    ]
 # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-scope
 
 
@@ -3931,6 +4637,174 @@ def _append_multiple_heading_error(
     ))
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-requires-multiple
+def _append_requires_multiple_heading_error(
+    *,
+    heading_ctx: HeadingValidationContext,
+    heading_constraint: HeadingConstraint,
+    idx: int,
+    line: int,
+) -> None:
+    """Report a section the kit expects to repeat that appears exactly once.
+
+    Off by default: "at least two" is true of a kit's repeated-block sections
+    and false of every document with a single flow, a single state or a single
+    acceptance criterion, so a kit opts in per kind instead of inheriting it.
+    """
+    ctx = _heading_context(
+        heading_constraint=heading_constraint,
+        idx=idx,
+        artifact_kind=heading_ctx.artifact_kind,
+        path=heading_ctx.path,
+        constraints_path=heading_ctx.constraints_path,
+        kit_id=heading_ctx.kit_id,
+    )
+    hc_desc = str(getattr(ctx.heading_constraint, "description", "") or "").strip()
+    desc_s = (f" ({hc_desc})" if hc_desc else "")
+    heading_ctx.errors.append(error(
+        "constraints",
+        (
+            f"Heading `{ctx.heading_constraint.pattern}` "
+            f"(level {int(ctx.heading_constraint.level)}) appears once in "
+            f"{ctx.artifact_kind} artifact but at least 2 are required{desc_s}"
+        ),
+        code=EC.HEADING_REQUIRES_MULTIPLE,
+        path=ctx.path,
+        line=line,
+        artifact_kind=ctx.artifact_kind,
+        heading_level=int(ctx.heading_constraint.level),
+        heading_pattern=ctx.heading_constraint.pattern,
+        **_heading_context_fields(ctx),
+    ))
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-requires-multiple
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-order-violation
+def _ancestor_heading_indices(
+    headings: Sequence[Dict[str, object]],
+    idx: int,
+) -> List[int]:
+    """Every heading that contains ``headings[idx]``, nearest first.
+
+    The whole chain, not the nearest one: a section travels with the ancestor
+    that moved, however many unconstrained headings sit between them. Checking
+    only the immediate parent broke the chain at the first heading no
+    constraint names, which is the common shape — a displaced section with a
+    plain subheading over its constrained detail.
+    """
+    ancestors: List[int] = []
+    level = int(headings[idx].get("level", 0) or 0)
+    for back in range(idx - 1, -1, -1):
+        back_level = int(headings[back].get("level", 0) or 0)
+        if back_level < level:
+            ancestors.append(back)
+            level = back_level
+    return ancestors
+
+
+def _matched_heading_info(
+    heading_ctx: HeadingValidationContext,
+    headings: Sequence[Dict[str, object]],
+    matched: Tuple[int, str],
+) -> Dict[str, object]:
+    """Describe one already-matched section, by constraint and by line."""
+    other_idx, other_id = matched
+    info = _heading_constraint_info(heading_ctx.by_id.get(other_id)) or {"id": other_id}
+    return {**info, "line": int(headings[other_idx].get("line", 1) or 1)}
+
+
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-order-violation
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-order-offender
+def _order_offender(
+    heading_ctx: HeadingValidationContext,
+    headings: Sequence[Dict[str, object]],
+    order: HeadingOrder,
+    heading_id: str,
+    match_idx: int,
+) -> Optional[Dict[str, object]]:
+    """The nearest matched section this one has ended up in front of.
+
+    Nearest rather than all of them, because one displaced section is one
+    finding; naming the section it has to clear makes the fix a single move
+    rather than a list to reconcile.
+
+    Only this direction exists. Constraints are walked in declaration order and
+    an ``order`` follows the declarations, so every section related to this one
+    that has already been matched is one this one is supposed to follow — there
+    is no already-matched section it was supposed to precede.
+    """
+    offenders = [
+        (other_idx, other_id)
+        for other_id, other_idx in heading_ctx.matched_idx_by_id.items()
+        if other_idx > match_idx and order.relates(other_id, heading_id)
+    ]
+    if not offenders:
+        return None
+    return _matched_heading_info(heading_ctx, headings, min(offenders))
+
+
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-order-offender
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-order-violation
+def _append_order_violation_error(
+    *,
+    heading_ctx: HeadingValidationContext,
+    headings: Sequence[Dict[str, object]],
+    heading_constraint: HeadingConstraint,
+    idx: int,
+    match_idx: int,
+) -> None:
+    """Report a section that is present but sits on the wrong side of another.
+
+    Only a declared ``order`` can be violated. Without one the rescue stays
+    silent: the kit never said where the section goes, so nothing in the
+    document contradicts it — and this is the only place that decides so, which
+    is why ``_order_offender`` takes the order as an argument rather than
+    reading it back off the context and defending itself against ``None``.
+    """
+    order = heading_ctx.order
+    if order is None:
+        return
+    ancestors = _ancestor_heading_indices(headings, match_idx)
+    if any(ancestor in heading_ctx.reported_idx for ancestor in ancestors):
+        heading_ctx.reported_idx.add(match_idx)
+        return
+    heading_id = str(getattr(heading_constraint, "id", "") or "")
+    after = _order_offender(heading_ctx, headings, order, heading_id, match_idx)
+    if after is None:
+        return
+    heading_ctx.reported_idx.add(match_idx)
+    ctx = _heading_context(
+        heading_constraint=heading_constraint,
+        idx=idx,
+        artifact_kind=heading_ctx.artifact_kind,
+        path=heading_ctx.path,
+        constraints_path=heading_ctx.constraints_path,
+        kit_id=heading_ctx.kit_id,
+    )
+    line = int(headings[match_idx].get("line", 1) or 1)
+    heading_ctx.errors.append(error(
+        "constraints",
+        (
+            f"Section `{heading_id}` (line {line}) in {ctx.artifact_kind} artifact "
+            f"must come after `{after['id']}` (line {after['line']})"
+        ),
+        code=EC.HEADING_ORDER_VIOLATION,
+        path=ctx.path,
+        line=line,
+        artifact_kind=ctx.artifact_kind,
+        heading_level=int(ctx.heading_constraint.level),
+        heading_pattern=ctx.heading_constraint.pattern,
+        heading_line=line,
+        expected_after=after,
+        **_heading_context_fields(ctx),
+    ))
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-order-violation
+
+
 def _append_numbering_mismatch_error(
     *,
     heading_constraint: HeadingConstraint,
@@ -3969,25 +4843,11 @@ def _append_numbering_mismatch_error(
 def _validate_heading_matches(
     *,
     headings: Sequence[Dict[str, object]],
-    heading_constraints: Sequence[HeadingConstraint],
-    by_id: Dict[str, HeadingConstraint],
-    artifact_kind: str,
-    path: Path,
-    constraints_path: Optional[Path],
-    kit_id: Optional[str],
-    errors: List[Dict[str, object]],
+    heading_ctx: HeadingValidationContext,
 ) -> None:
     cursor = 0
     last_match_idx_by_level: Dict[int, int] = {}
-    heading_ctx = HeadingValidationContext(
-        heading_constraints=heading_constraints,
-        by_id=by_id,
-        artifact_kind=artifact_kind,
-        path=path,
-        constraints_path=constraints_path,
-        kit_id=kit_id,
-        errors=errors,
-    )
+    heading_constraints = heading_ctx.heading_constraints
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings
     # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-match-headings-loop
@@ -4020,11 +4880,83 @@ def _validate_single_heading_match(
         cursor=cursor,
         last_match_idx_by_level=last_match_idx_by_level,
     )
-    matches, match_idx, next_idx = _find_heading_matches_in_scope(
+    matches, match_idx, next_idx, scope_matches = _find_heading_matches_in_scope(
         headings=headings,
         heading_constraint=heading_constraint,
         scope_start=scope_start,
         scope_end=scope_end,
+        claimed=heading_ctx.claimed,
+    )
+    if not matches:
+        rescued = _rescue_unmatched_heading(
+            heading_ctx=heading_ctx,
+            headings=headings,
+            heading_constraint=heading_constraint,
+            idx=idx,
+            last_match_idx_by_level=last_match_idx_by_level,
+        )
+        if rescued is None:
+            return cursor
+        matches, match_idx, next_idx, scope_matches = rescued
+    _claim_heading_matches(
+        heading_ctx=heading_ctx,
+        heading_constraint=heading_constraint,
+        match_idx=match_idx,
+        match_count=len(matches),
+    )
+    # Never backwards: a rescued section sits behind the cursor, and moving the
+    # cursor back to it would re-offer sections later constraints have already
+    # been measured against.
+    cursor = max(cursor, _update_heading_match_state(
+        heading_constraint=heading_constraint,
+        hc_level=hc_level,
+        match_idx=match_idx,
+        next_idx=next_idx,
+        last_match_idx_by_level=last_match_idx_by_level,
+    ))
+    _check_matched_heading_rules(
+        heading_ctx=heading_ctx,
+        heading_constraint=heading_constraint,
+        idx=idx,
+        matches=matches,
+        scope_matches=scope_matches,
+    )
+    return cursor
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-rescue-unmatched
+def _rescue_unmatched_heading(
+    *,
+    heading_ctx: HeadingValidationContext,
+    headings: Sequence[Dict[str, object]],
+    heading_constraint: HeadingConstraint,
+    idx: int,
+    last_match_idx_by_level: Dict[int, int],
+) -> Optional[Tuple[List[Dict[str, object]], int, int, List[Tuple[int, Dict[str, object]]]]]:
+    """Look behind the cursor for a section that is present but out of place.
+
+    The forward-only cursor cannot tell "this section is missing" from "this
+    section was written earlier than the kit declares it", and reported both as
+    `heading-missing`. Searching the constraint's parent range from the start
+    separates the two: a section found here exists, so it is measured by the
+    same `multiple` and `numbered` rules as any other match, and only a kit
+    that declared an `order` gets a finding about where it sits.
+
+    Returns the rescued run, or None after reporting the genuinely missing
+    section (or staying silent for an optional one, as before).
+    """
+    _, scope_start, scope_end = _match_scope_for_constraint(
+        headings=headings,
+        heading_constraint=heading_constraint,
+        cursor=0,
+        last_match_idx_by_level=last_match_idx_by_level,
+    )
+    matches, match_idx, next_idx, scope_matches = _find_heading_matches_in_scope(
+        headings=headings,
+        heading_constraint=heading_constraint,
+        scope_start=scope_start,
+        scope_end=scope_end,
+        claimed=heading_ctx.claimed,
     )
     if not matches:
         if heading_constraint.required:
@@ -4033,14 +4965,47 @@ def _validate_single_heading_match(
                 heading_constraint=heading_constraint,
                 idx=idx,
             )
-        return cursor
-    cursor = _update_heading_match_state(
+        return None
+    _append_order_violation_error(
+        heading_ctx=heading_ctx,
+        headings=headings,
         heading_constraint=heading_constraint,
-        hc_level=hc_level,
+        idx=idx,
         match_idx=match_idx,
-        next_idx=next_idx,
-        last_match_idx_by_level=last_match_idx_by_level,
     )
+    return matches, match_idx, next_idx, scope_matches
+
+
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-rescue-unmatched
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-claim-matches
+def _claim_heading_matches(
+    *,
+    heading_ctx: HeadingValidationContext,
+    heading_constraint: HeadingConstraint,
+    match_idx: int,
+    match_count: int,
+) -> None:
+    """Record which headings this constraint matched, and where it landed."""
+    for offset in range(match_count):
+        heading_ctx.claimed.add(match_idx + offset)
+    heading_id = str(getattr(heading_constraint, "id", "") or "").strip()
+    if heading_id:
+        heading_ctx.matched_idx_by_id[heading_id] = match_idx
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-claim-matches
+
+
+# @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-match-rules
+def _check_matched_heading_rules(
+    *,
+    heading_ctx: HeadingValidationContext,
+    heading_constraint: HeadingConstraint,
+    idx: int,
+    matches: List[Dict[str, object]],
+    scope_matches: List[Tuple[int, Dict[str, object]]],
+) -> None:
+    """Apply the count and numbering rules to one constraint's matched run."""
     if heading_constraint.multiple is False and len(matches) > 1:
         _append_multiple_heading_error(
             heading_ctx=heading_ctx,
@@ -4049,10 +5014,24 @@ def _validate_single_heading_match(
             match_count=len(matches),
             line=int(matches[1].get("line", 1) or 1),
         )
+    elif heading_constraint.multiple is True and len(scope_matches) < 2:
+        _append_requires_multiple_heading_error(
+            heading_ctx=heading_ctx,
+            heading_constraint=heading_constraint,
+            idx=idx,
+            line=int(matches[0].get("line", 1) or 1),
+        )
     if heading_constraint.numbered is None:
-        return cursor
+        return
     want_numbered = heading_constraint.numbered is True
-    for match in matches:
+    for scope_idx, match in scope_matches:
+        # Once per heading, by whichever constraint reaches it first.
+        # Numbering is a property of the section, and two constraints whose
+        # patterns overlap both see a heading only one of them will claim —
+        # without this, that heading is reported twice for one defect.
+        if scope_idx in heading_ctx.numbering_judged:
+            continue
+        heading_ctx.numbering_judged.add(scope_idx)
         if bool(match.get("numbered", False)) == want_numbered:
             continue
         _append_numbering_mismatch_error(
@@ -4065,7 +5044,7 @@ def _validate_single_heading_match(
             kit_id=heading_ctx.kit_id,
             errors=heading_ctx.errors,
         )
-    return cursor
+# @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-check-match-rules
 
 
 def _update_heading_match_state(
@@ -4130,12 +5109,15 @@ def validate_headings_contract(
 
     _validate_heading_matches(
         headings=headings,
-        heading_constraints=heading_constraints,
-        by_id=by_id,
-        artifact_kind=str(artifact_kind).strip().upper(),
-        path=path,
-        constraints_path=constraints_path,
-        kit_id=kit_id,
-        errors=errors,
+        heading_ctx=HeadingValidationContext(
+            heading_constraints=heading_constraints,
+            by_id=by_id,
+            artifact_kind=str(artifact_kind).strip().upper(),
+            path=path,
+            constraints_path=constraints_path,
+            kit_id=kit_id,
+            errors=errors,
+            order=getattr(constraints, "order", None),
+        ),
     )
     return {"errors": errors, "warnings": warnings}

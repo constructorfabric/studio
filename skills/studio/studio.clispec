@@ -38,7 +38,7 @@ RELATED:
 
 COMMAND validate
 SYNOPSIS: cfs validate [--artifact <path>] [--skip-code] [options]
-DESCRIPTION: Validate Constructor Studio artifacts and code traceability. Validates structure against template, cross-references between artifacts, task statuses, and code traceability markers. By default validates both artifacts and code; use --skip-code to validate artifacts only.
+DESCRIPTION: Validate Constructor Studio artifacts and code traceability. Validates structure against template, cross-references between artifacts, task statuses, and code traceability markers. By default validates both artifacts and code; use --skip-code to validate artifacts only. A required section that is present but written out of place is looked for again within its parent section before being called missing; whether its position is then reported as heading-order-violation depends on the artifact kind declaring an `order` in the kit's constraints.toml (see architecture/specs/kit/constraints.md).
 WORKFLOW: design-validate, features-validate, feature-validate, prd-validate, adr-validate, code-validate
 
 ARGUMENTS:
@@ -86,7 +86,7 @@ RELATED:
 
 COMMAND validate-kits
 SYNOPSIS: cfs validate-kits [path] [--kit <id>] [--verbose]
-DESCRIPTION: Validate kit structure, templates, examples, and constraints. With no positional path, validates registered kits from the current project. With a positional path, validates that standalone kit directory directly. Legacy alias: validate-rules. Legacy flag alias: --rule.
+DESCRIPTION: Validate kit structure, templates, examples, and constraints. With no positional path, validates registered kits from the current project. With a positional path, validates that standalone kit directory directly. A kit's own templates and examples are graded by the severity table that kit declares, including the section-order rules (see architecture/specs/kit/constraints.md). Legacy alias: validate-rules. Legacy flag alias: --rule.
 WORKFLOW: kits
 
 ARGUMENTS:

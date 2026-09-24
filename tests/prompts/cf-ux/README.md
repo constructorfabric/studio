@@ -4,7 +4,33 @@ End-to-end UX tests for the `cf` skill, running real `claude` and `codex` CLIs
 inside isolated, freshly-`cfs init`-ed `tempfile.mkdtemp()` sandboxes built
 from the **local repo source** (not `.bootstrap/`, not GitHub).
 
+## Prerequisites
+
+| Needs | Why, and the part that bites |
+|---|---|
+| **Node >= 22.22** | promptfoo's own `engines.node`. An older one fails inside npx talking about the package, not about node. |
+| A node `make` can **spawn** | Under nvm's lazy loader `node` is a *shell function*: an interactive shell answers `node --version` while `make`, which runs recipes in `sh`, finds no program at all. Put a real one on PATH for the command: `PATH="$NVM_DIR/versions/node/v22.22.2/bin:$PATH" make test-prompts`. |
+| `claude`, `codex`, `cfs` on PATH | The pilot drives the real CLIs. `cfs` comes from `make install-proxy`. |
+| Both CLIs **logged in** | Providers inherit only `ANTHROPIC_*`/`CLAUDE_*` and `OPENAI_*`/`CODEX_*`; there is no key to pass in. |
+| A codex model the account **has** | Slugs are withdrawn over time. A stale default costs all 8 codex cases with a 400 in a table cell. |
+
+`make test-prompts` checks what is checkable locally first — the binaries are
+present, node can run promptfoo, the codex model is one the account has. See
+`preflight.py`, which reads `codex`'s own model cache and never touches the
+network. Run it on its own with `make check-prompt-tests`.
+
+It does **not** verify that either CLI is logged in: that costs a call to find
+out, and a preflight that spends money to say the run may proceed is not a
+preflight. A logged-out CLI passes here and fails once the run starts.
+
 ## Run
+
+```bash
+make test-prompts              # preflight, then the full pilot
+make test-prompts-view         # HTML report
+```
+
+Or directly, skipping the preflight:
 
 ```bash
 cd tests/prompts/cf-ux
@@ -30,6 +56,13 @@ the `llm-rubric` asserts; sub-100ms text guards catch skill-load failures.
 | `REQUEST_TIMEOUT_MS=900000` | promptfoo python-worker timeout (default 300s is too short for sandbox init + cold codex). |
 | `CF_UX_SHARED_SANDBOX=/path` | Reuse a pre-initialized sandbox; skip setup/teardown. **Point this only at a throwaway directory** — the Claude provider runs with `--permission-mode bypassPermissions`, which is safe against the per-run temp sandbox it normally builds, but writes wherever this says. |
 | `CF_UX_KEEP_SANDBOX=1` | Keep the sandbox after the run; print its path. |
+| `CF_UX_CLAUDE_MODEL` / `CF_UX_CLAUDE_EFFORT` | Override the claude model and reasoning effort. |
+| `CF_UX_CODEX_MODEL` / `CF_UX_CODEX_EFFORT` / `CF_UX_CODEX_CONTEXT` | Override the codex model, reasoning effort and context window. Set the model when the default slug is withdrawn — `codex` lists what the account may use. |
+| `CF_UX_GRADER_MODEL` / `CF_UX_GRADER_EFFORT` | Override the LLM-rubric judge. |
+| `CF_UX_CODEX_DISABLE_PLUGINS` | Comma-separated `name@marketplace` to disable, for isolation debugging only — by default the skill is expected to win against competing plugins. |
+
+Defaults live beside the code they configure: `providers/*.py`. This table says
+they exist and what they are for, not what today's value is.
 
 ## Layout
 
@@ -41,6 +74,7 @@ tests/prompts/cf-ux/
 │   ├── claude_provider.py   — claude -p, bypassPermissions, stream-json
 │   ├── codex_provider.py    — codex exec, approval=never, workspace-write
 │   └── grader_claude.py     — claude -p --disable-slash-commands (judge)
+├── preflight.py             — node version + codex model entitlement, pre-run
 └── README.md
 ```
 
@@ -120,7 +154,37 @@ or no trace to trust:
 | `result` with a non-success `subtype` | The turn stopped short (`error_max_turns`, `error_during_execution`), so `result` holds a fragment, not an answer — even when the skill did load. An *absent* subtype is not treated this way: an unfamiliar shape should not manufacture failures. |
 | A line that will not parse | Counted in `unparsed_lines` rather than dropped silently, because a lost line can be a lost `tool_result` and the verdict above is read off exactly those. |
 
-Metadata: `skill_state` (`ran` / `failed` / `absent`), `skills_invoked` (the
+`skill_state` has four values:
+
+| State | Meaning | Graded? |
+|---|---|---|
+| `ran` | The `cf` router was invoked and its call came back clean. | yes |
+| `bypassed` | A `cf-*` workflow ran **directly**, the router never did. Studio produced the answer, so it is worth grading — but no gate, menu or routing decision happened, which is what this suite measures. Counted as a pass by promptfoo's own tally, so the metadata and the `WARNING` in the log are where a bypass is actually visible. | yes |
+| `absent` | No `Skill` call at all — *and* no error mark in the raw text. The mark is checked first, so a transcript that made no call but whose prose contains `<error>Execute skill: cf</error>` is `failed`, not `absent`. | no |
+| `failed` | A `Skill` call that is neither of the above: it named nothing recognizable, came back an error, or came back not at all. | no |
+
+Order matters, and deliberately so. A router that was **tried and failed**
+outranks a bypass, because "the router failed" is a finding about the router and
+"the router was never invoked" is not a softer version of it — it is a different
+and false statement. That holds two ways: `<error>Execute skill: cf</error>`
+anywhere in the transcript is `failed` before anything else is considered, and
+so is an unambiguous `cf` call that came back an error or did not come back.
+The workflow is still named in `skills_invoked`, so the bypass is ranked rather
+than lost.
+
+"Unambiguous" carries weight there: a call naming `cf` *among other candidates*
+is the documented false positive, and letting that outrank a bypass would hide a
+real one behind an unrelated error. Only a call that names `cf` and nothing else
+suppresses the bypass — and when the bypass is reported despite some `cf` match
+existing, the detail says "no unambiguous `cf` call" rather than "never
+invoked".
+
+No `Skill` call at all is `absent` before the rest. `skill_match_other_candidates` is populated for `ran`
+and for `bypassed`, and is empty whenever the verdict rested on a single name.
+
+A bypass needs the *whole* call to name `cf-` identifiers and nothing else. `_invoked_names` reports every identifier-shaped string at any depth, so a rival skill carrying a `cf-` name in an unrelated field would otherwise read as one — the loose match the name matcher exists to avoid, widened across a whole prefix.
+
+Metadata: `skill_state` (above), `skills_invoked` (the
 names), `skill_call_inputs` (those inputs verbatim, for when a name did not
 resolve), `skill_match_other_candidates` (above), `unparsed_lines`, and
 `unscored_output` — the answer that was withheld
@@ -138,7 +202,8 @@ previously indistinguishable.
 
 ## Current baseline (pilot)
 
-3 scenarios × 2 providers = 6 cases, ~3-4 min total wall-clock.
+8 scenarios × 2 providers = 16 cases, ~1.5 min wall-clock at the configured
+concurrency (measured 2026-09-18; the table below predates several scenarios).
 
 | Scenario | claude-code | codex |
 |---|---|---|

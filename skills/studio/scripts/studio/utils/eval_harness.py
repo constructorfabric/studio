@@ -22,11 +22,12 @@ Design principles:
 from __future__ import annotations
 
 import logging
+import math
 import tomllib
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Dict, List, Optional, Protocol, Tuple, runtime_checkable
+from pathlib import Path, PurePosixPath
+from typing import Iterable, Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,66 @@ class RunArtifacts:
     plan_meta: Dict[str, object]
     phases: List[Dict[str, object]]
     phase_texts: Dict[str, str]
+    #: Phase-shaped files sitting in the run directory that the manifest does not declare.
+    #: Collected at load time because only the loader knows the directory; a scorer that had
+    #: to go back to disk for this would be reading a tree that may have moved underneath it.
+    undeclared_phase_files: List[str] = field(default_factory=list)
+
+
+
+
+def _lost_run_coverage(run: "RunArtifacts") -> str:
+    """The coverage line for a lost-run FAIL, describing the failure it accompanies.
+
+    A manifest naming only out-of-bounds files was reported as `0 undeclared phase file(s)` —
+    a number with no bearing on why it failed. Found in review.
+    """
+    # Branches in the **same order** as `lost_run_finding`. They were inverted: the finding
+    # led with the out-of-bounds case and the coverage line led with orphans, so when both were
+    # true the coverage counted something the finding never mentioned — the exact mismatch this
+    # helper exists to prevent. Found in review.
+    named = sum(1 for phase in run.phases
+                if isinstance(phase.get("file"), str) and phase["file"])
+    if named:
+        return f"{named} declared phase file(s), none usable inside the run directory"
+    return f"{len(run.undeclared_phase_files)} undeclared phase file(s)"
+
+
+def lost_run_finding(run: "RunArtifacts") -> Optional[str]:
+    """The finding for a manifest that names no phase file while phase files exist — or None.
+
+    **Deliberately one shape.** Earlier rounds also failed a manifest whose every entry was
+    rejected as out-of-bounds, and whose entries named files that were missing or unreadable.
+    Each widening needed another fact about the loader's internals, and each one broke a
+    neighbouring case: a path normalised in one place and not another, an entry counted as
+    declared before the read that proved it was not there, a relative-path computation that
+    could raise and abort the whole suite. Six rounds, all in machinery added past the original
+    scope.
+
+    So this fires only where the evidence is unambiguous and needs nothing but the manifest and
+    the directory listing: the plan names no phase file at all, and phase files are sitting
+    there unclaimed. Every other shape keeps the verdict it had before this change.
+    """
+    named = [phase for phase in run.phases
+             if isinstance(phase.get("file"), str) and phase["file"]]
+    if named or not run.undeclared_phase_files:
+        return None
+    present = ", ".join(run.undeclared_phase_files[:3])
+    more = "" if len(run.undeclared_phase_files) <= 3 else f" (+{len(run.undeclared_phase_files) - 3} more)"
+    return (f"manifest-matches-files: the plan names no phase file while {present}{more} "
+            f"{'is' if len(run.undeclared_phase_files) == 1 else 'are'} present")
+
+
+def _lost_run_coverage(run: "RunArtifacts") -> str:
+    """The coverage line for a lost-run FAIL — one shape, so one sentence."""
+    return f"{len(run.undeclared_phase_files)} undeclared phase file(s)"
+
+
+@dataclass
+class EvalReport:
+    """The outcome of running a suite: per-scenario results."""
+
+    scenarios: List[ScenarioResult]
 
 
 @dataclass
@@ -89,13 +150,6 @@ class ScenarioResult:
     workflow: str
     results: List[ScorerResult]
     expect: str = ""     # the scenario's declared oracle, surfaced for declared-vs-actual
-
-
-@dataclass
-class EvalReport:
-    """The outcome of running a suite: per-scenario results."""
-
-    scenarios: List[ScenarioResult]
 
 
 @runtime_checkable
@@ -159,6 +213,36 @@ class ReferencePresenceScorer:  # pylint: disable=too-few-public-methods
 
 
 # @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-load-scenarios
+def _declared_expect(value: object, descriptor: Path) -> str:
+    """A scenario's oracle, or `"unknown"` with a warning when it is not one of the three.
+
+    `expect` decides whether a scenario's result is compared against its own claim at all, so a
+    value the comparison does not recognise opts that scenario out silently. A single typo --
+    `non-compliant` for `non_compliant` -- was enough to do it, and nothing anywhere said so.
+    Found in review. Still `"unknown"` rather than a hard error, because one malformed
+    descriptor must not sink a suite; the warning is what makes the opt-out visible.
+    """
+    if not isinstance(value, str):
+        # A TOML `true` or number reached the report as "True"/"1" once `str()` was applied
+        # unconditionally. Not a claim in any spelling, so it is reported as the absent claim
+        # it is rather than as a string nobody wrote. Found in review.
+        logger.warning("eval: scenario [scenario].expect is %r, which is not a string — "
+                       "treating it as unknown: %s", value, descriptor)
+        return "unknown"
+    text = value
+    if text not in ("compliant", "non_compliant", "unknown"):
+        logger.warning(
+            "eval: scenario [scenario].expect is %r, which is not one of compliant, "
+            "non_compliant, unknown — this scenario's result is not checked against its own "
+            "claim: %s", text, descriptor)
+    # Returned **as written**, not normalised to "unknown". Rewriting it made a typo
+    # indistinguishable downstream from a deliberate no-claim: the report showed `unknown`
+    # for both, so the only trace of the mistake was a log line nobody reads back. Left as-is,
+    # the report shows `non-compliant` and a reader can see the hyphen. The comparison treats
+    # anything it does not recognise as claiming nothing, which is unchanged. Found in review.
+    return text
+
+
 def load_scenarios(root: Path) -> List[Scenario]:
     """Discover scenarios under ``root`` by globbing ``*/scenario.toml``.
 
@@ -214,7 +298,7 @@ def load_scenarios(root: Path) -> List[Scenario]:
             id=str(scenario_id),
             workflow=str(section.get("workflow", "unknown")),
             run_dir=run_dir,
-            expect=str(section.get("expect", "unknown")),
+            expect=_declared_expect(section.get("expect", "unknown"), descriptor),
             gold_path=gold_path,
         ))
     return scenarios
@@ -250,9 +334,19 @@ def load_run(run_dir: Path) -> Optional[RunArtifacts]:
         name = phase.get("file")
         if not isinstance(name, str) or not name:   # non-string file must not crash the run
             continue
-        target = run_dir / name
+        # Normalised **once**, and used for both the read and the record. Two earlier attempts
+        # normalised only one of the two: the accepted path was rewritten while the read still
+        # used the raw manifest string, so a POSIX run declaring `steps\\phase-1.md` recorded a
+        # file it never opened, dropped the real one off the orphan list, and left the scorers
+        # disagreeing — the very fault this whole change exists to end. Found in review, twice.
+        #
+        # `PurePosixPath` also collapses a leading `./` correctly, where the `lstrip("./")` it
+        # replaces was a character-set strip that turned `.steps/phase-1.md` into
+        # `steps/phase-1.md` and swapped one real file for another.
+        target = run_dir / PurePosixPath(name.replace("\\", "/"))
         if not target.resolve().is_relative_to(run_dir.resolve()):
-            # A phase file that escapes the run dir (absolute or ../) is never read.
+            # A phase file that escapes the run dir (absolute or ../) is never read, and is
+            # not recorded as declared either: it names nothing this run can contain.
             logger.warning("eval: phase file escapes the run dir, skipping: %s", name)
             continue
         try:
@@ -266,7 +360,31 @@ def load_run(run_dir: Path) -> Optional[RunArtifacts]:
             # way a declared file cannot be read.
             logger.warning("eval: declared phase file unreadable (%s): %s", name, exc)
             continue
-    return RunArtifacts(plan_meta=plan_meta, phases=phases, phase_texts=phase_texts)
+    # What is on disk but unclaimed. A manifest declaring nothing while phase files sit beside
+    # it is not "a different workflow shape" -- it is a manifest that has lost its own run, and
+    # the distinction is what lets a scorer fail it instead of shrugging.
+    # Compared as base names on both sides. Differencing `Path.name` against the raw manifest
+    # string reported a declared `./phase-1.md` as undeclared, and a scorer acting on that
+    # produced FAIL 0.0 where the honest answer was UNKNOWN -- the false 0% this scorer
+    # promises never to produce, reintroduced by a string comparison. Found in review.
+    # Relative paths on both sides, and nothing resolved. A manifest entry that is absolute
+    # or climbs out simply will not match — which is harmless here, because a plan that names
+    # any file at all is not the shape this finding fires on.
+    declared = {PurePosixPath(phase["file"].replace("\\", "/")).as_posix()
+                for phase in phases
+                if isinstance(phase.get("file"), str) and phase["file"]}
+    # Deliberately unbounded, after a capped version was tried and reverted. Truncating the
+    # list corrupted every count derived from it — the finding said "(+97 more)" and the
+    # coverage line "100" for 105 orphans, with the real total only in a log nobody reads back
+    # — and it did not bound the walk either, since `sorted` materialises the whole result
+    # before any slice. Determinism is worth more here than a bound that buys nothing: this is
+    # a directory the caller pointed `--scenarios-dir` at, the same shape as every other corpus
+    # scan in this repository. Raised in review, and the cure was worse than the complaint.
+    undeclared = sorted(
+        path.relative_to(run_dir).as_posix() for path in sorted(run_dir.rglob("phase-*.md"))
+        if path.is_file() and path.relative_to(run_dir).as_posix() not in declared)
+    return RunArtifacts(plan_meta=plan_meta, phases=phases, phase_texts=phase_texts,
+                        undeclared_phase_files=undeclared)
 # @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-load-run
 
 
@@ -355,6 +473,91 @@ def structural_compliance(report: EvalReport) -> Optional[float]:
 # @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-compliance
 
 
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-oracle
+#: What a scenario's declared `expect` claims the deterministic verdict will be. `unknown`
+#: makes no claim and is never a mismatch.
+_ORACLE_EXPECTS = {"compliant": VERDICT_PASS, "non_compliant": VERDICT_FAIL}
+
+
+def _deterministic_verdict(verdicts: Iterable[str]) -> str:
+    """The one verdict a scenario's deterministic scorers amount to.
+
+    FAIL wins over PASS, and anything else — including no deterministic result at all — is
+    UNKNOWN. Named rather than written inline in both comparison functions: it was a nested
+    conditional duplicated in two places, which is how the two came to treat the empty case
+    differently in the first place.
+    """
+    seen = set(verdicts)
+    if VERDICT_FAIL in seen:
+        return VERDICT_FAIL
+    if VERDICT_PASS in seen:
+        return VERDICT_PASS
+    return VERDICT_UNKNOWN
+
+
+def oracle_mismatches(scenario_results: List[ScenarioResult]) -> List[str]:
+    """Scenarios whose declared oracle disagrees with what the deterministic scorers said.
+
+    Every scenario declares `expect` in its descriptor, and that value travelled all the way
+    into the JSON report under a comment reading "surfaced for declared-vs-actual" -- while
+    nothing anywhere performed the comparison. A fixture asserting it is non-compliant could
+    therefore come back `UNKNOWN`, be dropped from the denominator, and leave no trace: the
+    suite's own statement of what should happen never met the result.
+
+    `UNKNOWN` counts as a mismatch against either claim, deliberately. A scenario written to
+    demonstrate a failure, which the scorer then cannot assess, is exactly the case that
+    hides -- the suite looks smaller rather than worse. `expect = "unknown"` claims nothing
+    and so can never mismatch.
+    """
+    mismatches: List[str] = []
+    for scenario_result in scenario_results:
+        wanted = _ORACLE_EXPECTS.get(scenario_result.expect)
+        if wanted is None:
+            continue
+        verdicts = [r.verdict for r in scenario_result.results
+                    if r.kind is ScorerKind.DETERMINISTIC]
+        # No deterministic result at all resolves to UNKNOWN rather than being skipped. The
+        # first version `continue`d here, which contradicted this docstring's own policy that
+        # UNKNOWN counts against either claim — and skipped exactly the scenario that
+        # produced nothing to judge. Found in review.
+        got = _deterministic_verdict(verdicts)
+        if got != wanted:
+            mismatches.append(
+                f"{scenario_result.scenario_id}: declared {scenario_result.expect!r} "
+                f"(expects {wanted}) but scored {got}")
+    return sorted(mismatches)
+
+
+def gating_oracle_mismatches(scenario_results: List[ScenarioResult]) -> List[str]:
+    """The subset of `oracle_mismatches` that may fail a build: **definite disagreements only**.
+
+    A scenario that scored `UNKNOWN` against a claim is reported, because it is the shape that
+    hides — but it must not gate. This module's contract is that *unscoreable is never a
+    failure*: a run nobody could assess is not evidence of a defect, and `run_scenario`
+    deliberately degrades a raising scorer to `UNKNOWN` so that one broken plug-in cannot sink
+    a whole suite.
+
+    The first version of this gated on every mismatch, `UNKNOWN` included. A suite of one
+    healthy scenario and one unreadable `plan.toml` then printed "structural compliance: 100%"
+    and exited 2 — the contract inverted, by a change whose whole subject was how unscoreable
+    runs are treated. Found in review; the reporting and the gating are now separate questions.
+    """
+    definite = {VERDICT_PASS, VERDICT_FAIL}
+    gating: List[str] = []
+    for scenario_result in scenario_results:
+        wanted = _ORACLE_EXPECTS.get(scenario_result.expect)
+        if wanted is None:
+            continue
+        verdicts = {r.verdict for r in scenario_result.results
+                    if r.kind is ScorerKind.DETERMINISTIC}
+        got = _deterministic_verdict(verdicts)
+        if got in definite and got != wanted:
+            gating.append(f"{scenario_result.scenario_id}: declared "
+                          f"{scenario_result.expect!r} (expects {wanted}) but scored {got}")
+    return sorted(gating)
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-oracle
+
+
 # @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-gate
 def gate_exit_code(compliance: Optional[float], check: bool, min_compliance: float) -> int:
     """Opt-in gating: exit 2 only under ``check`` when compliance is below the floor.
@@ -437,6 +640,52 @@ def report_to_dict(report: EvalReport) -> Dict[str, object]:
 
 
 # @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-diff-reports
+def _aggregate_baseline(baseline_summary: object) -> Optional[float]:
+    """The baseline's overall compliance, or ``None`` when it is not a usable number."""
+    if not isinstance(baseline_summary, dict):
+        return None
+    value = baseline_summary.get("structural_compliance")
+    return value if _usable_baseline(value) else None
+
+
+def _usable_baseline(value: object) -> bool:
+    """Whether a baseline number can be compared against at all.
+
+    Excludes bool (an int subclass) and the non-finite floats, which survive an
+    ``isinstance`` check and then fail every comparison silently. Shared by the
+    per-scenario values and the aggregate, which were hardened separately and so
+    disagreed about what counted as a number (#234 review).
+    """
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value))
+
+
+# @cpt-begin:cpt-studio-algo-eval-harness-run:p1:inst-fence-delim
+def fence_delim(stripped: str) -> Optional[Tuple[str, int]]:
+    """A Markdown fenced-code delimiter -- three or more backticks or tildes -- as
+    ``(char, run_length)``, else ``None``.
+
+    Here, in the module both scorers already import, rather than in either of them: the
+    CommonMark closer rule (same character, run at least as long as the opener, nothing
+    but whitespace after) was implemented twice, independently, once in
+    ``eval_judge._split_sections`` and once in ``eval_structural._prose_headings``. Two
+    copies of one rule drift, and the second copy was written without noticing the first
+    (constructorfabric/studio#234 review).
+    """
+    for char in ("`", "~"):
+        if stripped.startswith(char * 3):
+            return char, len(stripped) - len(stripped.lstrip(char))
+    return None
+
+
+def fence_closes(delim: Tuple[str, int], opener: Tuple[str, int], stripped: str) -> bool:
+    """Whether ``delim`` closes ``opener``: same character, at least as long, and nothing
+    but whitespace after the run."""
+    return (delim[0] == opener[0] and delim[1] >= opener[1]
+            and not stripped[delim[1]:].strip())
+# @cpt-end:cpt-studio-algo-eval-harness-run:p1:inst-fence-delim
+
+
 def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, object]:
     """Per-scenario compliance change vs a baseline report, bucketed.
 
@@ -465,8 +714,13 @@ def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, o
         seen.add(scenario_id)
         _, _, now = _scenario_compliance(scenario_result)
         before = prev.get(scenario_id)
-        # missing / non-numeric baseline → no comparison; exclude bool (a subclass of int).
-        if not isinstance(before, (int, float)) or isinstance(before, bool):
+        # missing / non-numeric baseline → no comparison; exclude bool (a subclass of int),
+        # and NaN/inf, which are floats and so survive the isinstance check. NaN then
+        # disappears a second time: every comparison against it is False, so the scenario
+        # joined neither `regressed` nor `improved` and `has_regression` stayed False even
+        # for a drop to zero. A corrupt or hand-edited baseline switched the gate off and
+        # said nothing.
+        if not _usable_baseline(before):
             before = None
         if before is None:
             if now is not None:
@@ -479,8 +733,7 @@ def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, o
         elif now > before:
             improved.append({"scenario": scenario_id, "from": before, "to": now})
     for scenario_id, before in prev.items():
-        if (scenario_id not in seen and isinstance(before, (int, float))
-                and not isinstance(before, bool)):
+        if scenario_id not in seen and _usable_baseline(before):
             # gone from the suite entirely — surfaced, but not a gate-worthy regression.
             no_longer_scoreable.append({"scenario": scenario_id, "from": before})
     baseline_summary = baseline.get("summary", {})
@@ -489,8 +742,10 @@ def diff_reports(report: EvalReport, baseline: Dict[str, object]) -> Dict[str, o
         "improved": improved,
         "newly_scoreable": newly_scoreable,
         "no_longer_scoreable": no_longer_scoreable,
-        "aggregate_before": (baseline_summary.get("structural_compliance")
-                             if isinstance(baseline_summary, dict) else None),
+        # Guarded like the per-scenario values above: a corrupt baseline's aggregate is
+        # a number the report *shows a reader*, and NaN rendered beside a real
+        # `aggregate_after` reads as a measurement rather than as missing data.
+        "aggregate_before": _aggregate_baseline(baseline_summary),
         "aggregate_after": structural_compliance(report),
         "has_regression": bool(regressed),   # removals are surfaced, not gated
     }
