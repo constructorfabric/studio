@@ -805,7 +805,16 @@ def resolve_entry_code_files(
     # This also covers the single-file case, which previously returned the path
     # unconditionally: an entry resolving to a file outside the project was
     # refused by `list-ids` and read by `validate` and `spec-coverage`.
-    if _escapes_project(code_path, root):
+    #
+    # Resolved once, here, and handed on: to the containment test, to the
+    # single-file identity, and to the walk as the base it measures against. Each
+    # used to resolve the entry for itself (#236 review).
+    try:
+        resolved_entry = code_path.resolve()
+    except OSError as exc:
+        _warn_codebase(f"failed to resolve {code_path}: {exc}")
+        return [], 1
+    if _escapes_project(code_path, root, resolved=resolved_entry):
         return [], 1
     if code_path.is_file():
         # The single-file entry goes through `seen` like any other candidate.
@@ -815,17 +824,42 @@ def resolve_entry_code_files(
         # skipped it. It has to work both ways round, too: registering it here is
         # what makes a later directory entry skip it, and the entries are walked in
         # whatever order the registry lists them (#236 review).
-        try:
-            resolved_file = code_path.resolve()
-        except OSError as exc:
-            _warn_codebase(f"failed to resolve {code_path}: {exc}")
-            return [], 1
-        if seen is not None:
-            if resolved_file in seen:
-                return [], 0          # decided under an earlier entry; neither file nor skip
-            seen.add(resolved_file)
+        if not _claim(seen, resolved_entry):
+            return [], 0              # decided under an earlier entry; neither file nor skip
         return [code_path], 0
+    return _walk_directory_entry(code_path, resolved_entry, extensions, root, seen)
 
+
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve-entry-files
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-dedupe-across-entries
+def _claim(seen: Optional[Set[Path]], identity: Path) -> bool:
+    """Record *identity* as decided; False if an earlier entry already decided it.
+
+    With no shared set every path is new, which is the single-entry behaviour.
+    """
+    if seen is None:
+        return True
+    if identity in seen:
+        return False
+    seen.add(identity)
+    return True
+
+
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-dedupe-across-entries
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-walk-directory-entry
+def _walk_directory_entry(
+    code_path: Path,
+    resolved_code_path: Path,
+    extensions: List[str],
+    root: Path,
+    seen: Optional[Set[Path]],
+) -> Tuple[List[Path], int]:
+    """The directory half of :func:`resolve_entry_code_files`: every candidate under
+    *code_path* with one of *extensions*, judged once, against the shared *seen*."""
     # Candidates are collected before they are judged, so each one is decided
     # once. Judging inside the extension loop counted a single excluded file
     # once per matching extension, which made the excluded total disagree with
@@ -846,7 +880,6 @@ def resolve_entry_code_files(
     # symlink loop raising ELOOP) propagated out of a function whose other two
     # resolutions both treat that as an ordinary skip. Now it is a skip here
     # too, warned once instead of twice (#236 review).
-    resolved_code_path = code_path.resolve()
     for candidate in candidates:
         try:
             is_link = candidate.is_symlink()
@@ -862,11 +895,8 @@ def resolve_entry_code_files(
         # link that displaced it was excluded anyway. `candidates` is a set, so
         # which of the two came first moved with `PYTHONHASHSEED`: the same tree
         # scanned twice could report different files (#236 review).
-        identity = candidate.absolute() if is_link else resolved
-        if seen is not None:
-            if identity in seen:
-                continue          # decided under an earlier entry; neither file nor skip
-            seen.add(identity)
+        if not _claim(seen, candidate.absolute() if is_link else resolved):
+            continue              # decided under an earlier entry; neither file nor skip
         if _is_in_default_ignored_dir(resolved, resolved_code_path):
             excluded += 1
             continue
@@ -877,7 +907,7 @@ def resolve_entry_code_files(
     return sorted(files, key=str), excluded
 
 
-# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve-entry-files
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-walk-directory-entry
 
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-escapes-project
