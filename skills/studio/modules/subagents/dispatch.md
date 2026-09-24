@@ -52,6 +52,7 @@ OPTIONS:
   INVALID -> EMIT_MENU SubAgentApprovalRequest
 MENU SubAgentFallbackRequest
 TITLE: The sub-agent could not run natively — how should I proceed? (inline is suggested)
+TYPE: confirmation
 OPTIONS:
   1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each synthesized prompt inline for this dispatch group
   2 retry -> SET SUB_AGENT_RETRY_COUNT = SUB_AGENT_RETRY_COUNT + 1; DISPATCH the sub-agent natively
@@ -59,6 +60,7 @@ OPTIONS:
   INVALID -> EMIT_MENU SubAgentFallbackRequest
 MENU SubAgentFallbackLimitRequest
 TITLE: The sub-agent still could not run natively after 2 retries — how should I proceed? (inline is suggested)
+TYPE: confirmation
 OPTIONS:
   1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each synthesized prompt inline for this dispatch group
   2 stop -> STOP_TURN

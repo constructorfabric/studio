@@ -29,6 +29,7 @@ DO:
   STOP_TURN
 MENU DebuggerMenu:
   TITLE: "Debugger — full menu (open with `dbg`)"
+  TYPE: blocking
   OPTIONS:
     1 step -> RUN execute the pending action now, mark its DEBUG_TRACE entry executed, then RUN DebugStepGate on the next action
     2 over -> RUN skip the pending action without executing it, mark its DEBUG_TRACE entry skipped, then RUN DebugStepGate on the next action

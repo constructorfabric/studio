@@ -87,7 +87,17 @@ cpt-{hierarchy-prefix}-{kind}-{slug}
 Where:
 - `cpt-` — literal prefix (required)
 - `{hierarchy-prefix}` — concatenated slugs from system → subsystem → component (e.g., `myapp-core-auth`)
-- `{kind}` — element kind in lowercase (actor, cap, fr, nfr, comp, flow, algo, state, req, etc.)
+- `{kind}` — element kind in lowercase. An **open vocabulary**, not a fixed set: the
+  formal regex below constrains the shape of an id and says nothing about which kinds
+  exist, and a project adds kinds as its artifacts need them. Studio's own artifacts
+  currently use `actor`, `adr`, `algo`, `component`, `constraint`, `dod`, `feature`,
+  `flow`, `fr`, `nfr`, `principle`, `usecase` and others.
+
+  Do not read the kinds appearing in **code markers** (`@cpt-algo:`, `@cpt-flow:`, …)
+  as the permitted list for **artifact ids**. They are two vocabularies in two
+  positions: a marker names the kind of the code block, an id names the kind of the
+  element. A review of constructorfabric/studio#192 read the first as a rule about
+  the second and reported the 134 `cpt-*-feature-*` ids as malformed; they are not.
 - `{slug}` — descriptive slug (lowercase, alphanumeric, hyphens)
 
 **Full regex**: `` `cpt-[a-z0-9][a-z0-9-]+` ``

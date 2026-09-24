@@ -1220,6 +1220,269 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertTrue(_pure_generated_stub_matches(pre_142_body))
         self.assertFalse(_pure_generated_stub_matches(pre_142_body + "\nCUSTOM USER LINE"))
 
+    def test_pure_generated_stub_matches_rejects_ask_question_bearing_content(self):
+        """Issue #206 follow-up: _ASK_TOOL_BINDING_BY_OUTPUT's values must
+        NOT validate as a pure generated stub via this function -- that
+        pool is tool-agnostic (tried against content from any tool's legacy
+        path), so accepting "AskQuestion" here would let it falsely match
+        an unrelated tool's legacy file, the exact cross-tool collision
+        constructorfabric/studio#185 tracks. If candidate_bindings is ever
+        widened to include _ASK_TOOL_BINDING_BY_OUTPUT's values, this test
+        must fail."""
+        from studio.commands.agents import (
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/cf.md"
+        lines = _follow_protocol_lines(
+            target,
+            required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+            ask_tool_name="AskQuestion",
+        )
+        body = "\n".join(line for line in lines if line.strip())
+        self.assertFalse(_pure_generated_stub_matches(body))
+
+    def test_cursor_launcher_ownership_check_short_circuits_before_purity_check(self):
+        """Locks the safety argument documented above candidate_bindings:
+        `.cursor/commands/cf.md`'s own content is classified via
+        `_extract_studio_owned_target`'s match, before
+        `_classify_generated_output_owner`'s `or` ever reaches
+        `_is_pure_studio_generated` -- which is why AskQuestion not being in
+        candidate_bindings doesn't stop this file from being recognized as
+        Studio-owned. If a future refactor reorders or removes that
+        short-circuit, this test must fail."""
+        from studio.commands.agents import (
+            _CURSOR_CF_LAUNCHER_PATH,
+            _GENERATED_MARKER,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _classify_generated_output_owner,
+            _extract_studio_owned_target,
+            _follow_protocol_lines,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/cf.md"
+        lines = [
+            "---",
+            "name: cf",
+            "description: cf",
+            "---",
+            _GENERATED_MARKER,
+            "",
+            *_follow_protocol_lines(
+                target,
+                required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+                ask_tool_name="AskQuestion",
+            ),
+        ]
+        content = "\n".join(lines) + "\n"
+
+        self.assertIsNotNone(
+            _extract_studio_owned_target(content),
+            "expected the follow-link target to be extractable, proving the "
+            "short-circuit condition is met before any purity check runs",
+        )
+        self.assertEqual(
+            _classify_generated_output_owner(_CURSOR_CF_LAUNCHER_PATH, content),
+            "workflow",
+        )
+
+    def test_classify_generated_output_owner_ignores_tool_for_the_common_shape(self):
+        """ainetx (PR #230, Minor): flagged that the shared `.agents/skills/`
+        scan root's `tool=None` fallback would reopen #185's cross-tool
+        collision once a second sharer of that root gains a real binding.
+
+        Verified more broadly than asked, for the common control/follow-target
+        shape only (a second, different shape is covered separately below --
+        see `test_classify_generated_output_owner_needs_the_purity_disjunct_
+        for_legacy_endpoint_only_stubs`, which the claim here does NOT cover):
+        `_classify_generated_output_owner`'s `tool` argument does not change
+        its outcome for *any* provider, because `_extract_studio_owned_target`
+        (the first, tool-agnostic disjunct) is already true whenever the
+        tool-scoped `_is_pure_studio_generated` disjunct could be -- see that
+        function's own docstring. This test constructs exactly the scenario
+        ainetx's own verification steps describe -- a second tool
+        (hypothetically) gaining a binding -- and confirms classification is
+        unaffected by which tool value is passed, positive or negative,
+        because the first disjunct alone already decides it either way.
+        """
+        from unittest.mock import patch as mock_patch
+
+        from studio.commands.agents import (
+            _ASK_TOOL_BINDING,
+            _GENERATED_MARKER,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _classify_generated_output_owner,
+            _follow_protocol_lines,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/some-skill.md"
+        intact_content = "\n".join([
+            "---", "name: some-skill", "description: some-skill", "---",
+            _GENERATED_MARKER, "",
+            *_follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH),
+        ]) + "\n"
+
+        with mock_patch.dict(_ASK_TOOL_BINDING, {"cursor": "SomeFutureCursorTool"}):
+            for tool in (None, "cursor", "copilot", "claude"):
+                self.assertEqual(
+                    _classify_generated_output_owner(".agents/skills/some-skill/SKILL.md", intact_content, tool=tool),
+                    "skill",
+                    tool,
+                )
+
+    def test_classify_generated_output_owner_needs_the_purity_disjunct_for_legacy_endpoint_only_stubs(self):
+        """A deep review caught that the "tool is inert everywhere" claim in
+        `_classify_generated_output_owner`'s docstring (and the test above)
+        was overclaimed: it holds for the common control/follow-target
+        shape, but NOT for a legacy single-line "endpoint-only" proxy stub
+        whose Prompt-source path uses a pre-canonical variable like
+        `{cypilot_path}/`. `_extract_studio_endpoint_target` only accepts
+        the canonical `{cf-studio-path}/` prefix (unlike
+        `_extract_studio_follow_target`'s legacy-prefix allowlist), so
+        `_extract_studio_owned_target` returns None for this shape --
+        `_is_pure_studio_generated`'s own single-line branch is what
+        classifies it as owned. Pins both halves of the corrected claim:
+        the purity disjunct must not be dropped for this shape (it is the
+        *only* thing that classifies it), and `tool`'s specific value still
+        doesn't matter for it (that single-line branch never reads `tool`).
+        """
+        from studio.commands.agents import _GENERATED_MARKER, _classify_generated_output_owner, _extract_studio_owned_target
+
+        content = (
+            _GENERATED_MARKER + "\n\n"
+            "Constructor Studio endpoint only. Prompt source: {cypilot_path}/.core/subagents/foo.md. "
+            "Final prompt is supplied by the cf controller at dispatch time.\n"
+        )
+
+        self.assertIsNone(
+            _extract_studio_owned_target(content),
+            "expected the legacy {cypilot_path}/ prefix to be unrecognized by "
+            "the owned-target extractor, which is what makes this shape "
+            "depend on the purity disjunct at all",
+        )
+        for tool in (None, "claude", "cursor"):
+            self.assertEqual(
+                _classify_generated_output_owner(".claude/agents/foo.md", content, tool=tool),
+                "agent",
+                tool,
+            )
+
+    def test_pure_generated_stub_matches_rejects_a_foreign_tools_binding(self):
+        """Issue #185: a file bearing one tool's ask_tool_name binding must
+        not be misclassified as pure-generated for a *different* tool, once
+        the caller actually knows which tool it's checking. Before this fix,
+        _pure_generated_stub_matches tried every known binding regardless of
+        which tool's file was being examined. The universal unset/no-binding
+        shape is a separate case -- it carries no tool-specific signal, so
+        it's accepted for any known tool rather than treated as another
+        tool's foreign binding."""
+        from studio.commands.agents import (
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/analyze.md"
+        claude_body = "\n".join(
+            line
+            for line in _follow_protocol_lines(
+                target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH, ask_tool_name="AskUserQuestion",
+            )
+            if line.strip()
+        )
+
+        # A caller that knows this file is Claude's own recognizes it.
+        self.assertTrue(_pure_generated_stub_matches(claude_body, tool="claude"))
+        # A caller checking a DIFFERENT tool's file must not accept Claude's
+        # binding as if it were that tool's own (unset) expected shape --
+        # the exact cross-tool collision #185 was filed for.
+        self.assertFalse(_pure_generated_stub_matches(claude_body, tool="windsurf"))
+        self.assertFalse(_pure_generated_stub_matches(claude_body, tool="cursor"))
+        # Unknown tool (the pre-#185 fallback) still recognizes it via the
+        # brute-force candidate loop, preserving prior behavior when tool
+        # identity genuinely can't be resolved.
+        self.assertTrue(_pure_generated_stub_matches(claude_body, tool=None))
+        self.assertTrue(_pure_generated_stub_matches(claude_body))
+
+        # An unset-shaped body carries no tool-specific signal at all -- it's
+        # the shared "no binding recorded" state every currently-unbound tool
+        # renders identically, not a stand-in for any one tool's shape. It is
+        # therefore accepted as a candidate for any known tool, bound or not
+        # (this is what keeps a tool's own pre-binding legacy files
+        # recognized once that tool later gains a real binding -- see the
+        # follow-up test below). What must stay rejected is a DIFFERENT
+        # tool's own *real* binding value, which is the actual #185 hazard
+        # and is what the assertions above already cover.
+        unset_body = "\n".join(
+            line
+            for line in _follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH)
+            if line.strip()
+        )
+        self.assertTrue(_pure_generated_stub_matches(unset_body, tool="windsurf"))
+        self.assertTrue(_pure_generated_stub_matches(unset_body, tool="claude"))
+
+    def test_pure_generated_stub_matches_keeps_recognizing_pre_binding_files_after_a_new_binding_lands(self):
+        """Issue #185 follow-up: the tool-scoped check must not regress the
+        exact scenario legacy_protocol already handles for the pre-#142
+        case, but one step later in time -- a file generated for tool X
+        while X had no binding (ask_tool_name = unset) must still be
+        recognized as X's own pure stub after X *later* gets a real
+        binding, or every pre-existing install's stubs for that tool would
+        silently stop being cleaned up/regenerated the moment the binding
+        is added."""
+        from unittest.mock import patch as mock_patch
+
+        from studio.commands.agents import (
+            _ASK_TOOL_BINDING,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/analyze.md"
+        pre_binding_windsurf_body = "\n".join(
+            line
+            for line in _follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH)
+            if line.strip()
+        )
+
+        with mock_patch.dict(_ASK_TOOL_BINDING, {"windsurf": "SomeFutureWindsurfTool"}):
+            self.assertTrue(_pure_generated_stub_matches(pre_binding_windsurf_body, tool="windsurf"))
+
+    def test_pure_generated_stub_matches_recognizes_a_pre_142_stub_for_any_known_tool(self):
+        """ainetx (PR #230, Minor): a genuine pre-#142 stub body -- context
+        lines fully absent, not the later 'unset' shape -- was only ever
+        exercised with `tool=None` (the default). The `legacy_protocol`
+        branch (checked before the tool-scoped candidate loop) never reads
+        `tool` at all, so it must recognize such a body identically
+        regardless of which concrete tool the caller supplies, including a
+        tool that already has a real, non-null binding -- proving this
+        branch's tool-independence is an intentional, protected contract
+        rather than an accident of `tool=None` being the only value tried."""
+        from studio.commands.agents import (
+            _ASK_TOOL_BINDING,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _follow_protocol_lines,
+            _pure_generated_stub_matches,
+        )
+
+        target = "{cf-studio-path}/.core/workflows/analyze.md"
+        pre_142_body = "\n".join(
+            line
+            for line in _follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH)
+            if line.strip()
+            and not line.startswith("- ask_tool_name")
+            and not line.startswith("- ask_tool_description")
+        )
+
+        for tool in ("claude", "windsurf", "cursor", None):
+            self.assertTrue(_pure_generated_stub_matches(pre_142_body, tool=tool), tool)
+        # Claude already has a real binding today; this is not a hypothetical
+        # future tool, unlike the windsurf/cursor cases above.
+        self.assertIsNotNone(_ASK_TOOL_BINDING.get("claude"))
+
     def test_ask_tool_binding_defaults_to_unset_with_description_fallback(self):
         """Issue #142: every generated shim carries an ask-tool context, even
         when no target passes an explicit binding — the description-based
@@ -1271,6 +1534,54 @@ class TestLegacyStubClassification(unittest.TestCase):
             + "\n"
         )
         self.assertTrue(_is_pure_studio_generated(content, expected_name="cf-analyze"))
+
+    def test_cursor_root_skill_binds_ask_question_via_dedicated_launcher(self):
+        """Issue #142 AC#2 (constructorfabric/studio#206 Option A): Cursor's
+        root `cf` skill has its own dedicated, non-shared launcher file
+        (.cursor/commands/cf.md), so it can carry an exact native-dialog
+        binding (AskQuestion) the way Claude's dedicated bucket does.
+
+        Note: this file is written via _write_or_skip's plain content-diff,
+        not the _is_pure_studio_generated purity check (that check is only
+        reached by separate legacy-cleanup paths for deprecated file naming),
+        so there's no equivalent "untouched stub" assertion to make here --
+        the binding's presence in the rendered template is the whole
+        contract for this file.
+        """
+        from studio.commands.agents import _CURSOR_CF_LAUNCHER_PATH, _default_agents_config
+
+        config = _default_agents_config()
+        outputs = config["agents"]["cursor"]["skills"]["outputs"]
+        cf_md = next((o for o in outputs if o["path"] == _CURSOR_CF_LAUNCHER_PATH), None)
+        self.assertIsNotNone(
+            cf_md,
+            f"Expected {_CURSOR_CF_LAUNCHER_PATH!r} output entry not found in cursor config",
+        )
+        template = "\n".join(cf_md["template"])
+        self.assertIn('- ask_tool_name = "AskQuestion"', template)
+
+    def test_cursor_shared_bucket_outputs_unaffected_by_root_skill_binding(self):
+        """Regression guard for the exact leak #206 warned about, at the
+        config-wiring level: only Cursor's dedicated .cursor/commands/cf.md
+        entry may carry the AskQuestion binding, none of cursor's other
+        config outputs should. (The per-helper invariant -- that
+        _agents_skill_outputs('cursor')/_kit_workflow_skill_template
+        ('cursor') carry no exact binding -- is already covered generically
+        for every non-Claude tool by test_shared_skill_outputs_have_no_exact_
+        ask_tool_binding and test_kit_workflow_skill_templates_have_no_exact_
+        binding_for_non_claude below; no need to re-assert it here.)"""
+        from studio.commands.agents import _CURSOR_CF_LAUNCHER_PATH, _default_agents_config
+
+        outputs = _default_agents_config()["agents"]["cursor"]["skills"]["outputs"]
+        for entry in outputs:
+            if entry["path"] == _CURSOR_CF_LAUNCHER_PATH:
+                continue
+            template = "\n".join(entry["template"])
+            self.assertNotIn(
+                "AskQuestion",
+                template,
+                msg=f"unexpected AskQuestion leak into {entry['path']}",
+            )
 
     def test_claude_skill_outputs_bind_ask_user_question(self):
         """Every Claude-specific generated skill template (the only per-tool
@@ -1365,7 +1676,13 @@ class TestLegacyStubClassification(unittest.TestCase):
         the same no-exact-binding / no-{custom_content} contract as
         _agents_skill_outputs for every non-Claude tool -- previously only
         the latter was covered, so a regression in
-        _build_agents_kit_workflow_template would have gone uncaught."""
+        _build_agents_kit_workflow_template would have gone uncaught.
+
+        Also asserts no `AskQuestion` leak specifically: this is a distinct
+        production call site from Cursor's dedicated cf.md launcher, and
+        neither this test's own `AskUserQuestion` check nor the separate
+        dedicated-launcher regression test would catch AskQuestion leaking
+        in here."""
         from studio.commands.agents import _kit_workflow_skill_template, _default_agents_config
 
         non_claude_tools = [
@@ -1376,6 +1693,7 @@ class TestLegacyStubClassification(unittest.TestCase):
             template = "\n".join(_kit_workflow_skill_template(tool))
             self.assertIn("- ask_tool_name = unset", template, msg=f"tool={tool!r}")
             self.assertNotIn("AskUserQuestion", template, msg=f"tool={tool!r}")
+            self.assertNotIn("AskQuestion", template, msg=f"tool={tool!r}")
             self.assertNotIn("{custom_content}", template, msg=f"tool={tool!r}")
 
     def test_agents_skill_outputs_are_content_identical_across_unbound_tools(self):

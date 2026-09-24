@@ -17,6 +17,7 @@ from ..utils import decision_log
 from ..utils import error_codes as EC
 from ..utils.constraints import error as constraints_error
 from ..utils.fixing import enrich_issues
+from ..utils.severity import run_verdict
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-imports
 
@@ -130,6 +131,116 @@ def _missing_bound_artifact_warnings(
         })
     return results
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+
+
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-unknown-validation-keys
+# @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-unknown-validation-keys
+def _append_unknown_validation_key_warnings(
+    self_check_report: Dict[str, object],
+    loaded_kits: Optional[Dict[str, Any]],
+    composition_known: bool = False,
+) -> None:
+    """Add one advisory result per kit that declares a `[validation]` key we ignore.
+
+    Placed on the shared result builder rather than on the manifest-bound
+    path, so that a kit registered by plain path is checked too — the setting
+    is in its constraints file either way.
+    """
+    kits = loaded_kits or {}
+    # Every kit's kinds together. A kit may legitimately scope a severity to a
+    # kind a companion kit declares, so only the whole composition can tell
+    # that from a typo. `composition_known` says whether this caller has it:
+    # true for an unfiltered registered-mode run, false when validating one kit
+    # by path or through `--kit`, where siblings exist and are not in view. The
+    # check stands down there rather than calling a composable kit's setting a
+    # mistake — and it is the number of kits *in view* that is unknown, not the
+    # number of kits, so a single-kit project still gets the check.
+    known_kinds = _kinds_across_kits(kits) if composition_known else None
+    results: List[Dict[str, object]] = []
+    for kit_id, loaded_kit in sorted(kits.items()):
+        results.extend(
+            _unknown_validation_key_warnings(str(kit_id), loaded_kit, known_kinds))
+    if not results:
+        return
+    existing = self_check_report.get("results")
+    if isinstance(existing, list):
+        existing.extend(results)
+    else:
+        self_check_report["results"] = results
+
+
+def _kinds_across_kits(loaded_kits: Dict[str, Any]) -> Set[str]:
+    """Union of the artifact kinds every loaded kit declares."""
+    return {
+        str(kind).strip().upper()
+        for loaded_kit in loaded_kits.values()
+        for kind in (getattr(getattr(loaded_kit, "constraints", None), "by_kind", None) or {})
+        if str(kind).strip()
+    }
+
+
+def _unknown_validation_key_warnings(
+    kit_id: str,
+    loaded_kit: Any,
+    known_kinds: Optional[Set[str]] = None,
+) -> List[Dict[str, object]]:
+    """Report keys under ``[validation]`` this engine does not understand.
+
+    The kind parser's habit is to read the keys it knows and drop the rest, so
+    a misspelled ``severty`` table becomes a policy the kit author believes is
+    in force and the engine has never seen. Reporting it as a warning rather
+    than an error keeps a kit written for a newer engine installable on an
+    older one, which is the same forward-compatibility bargain the manifest
+    already makes for unknown kit keys.
+    """
+    constraints = getattr(loaded_kit, "constraints", None)
+    unknown: List[Tuple[str, str]] = [
+        ("[validation]", key)
+        for key in getattr(getattr(constraints, "validation", None), "unknown_keys", ()) or ()
+    ]
+    for kind, kind_constraints in (getattr(constraints, "by_kind", {}) or {}).items():
+        unknown.extend(
+            (f"[artifacts.{kind}.validation]", key)
+            for key in getattr(getattr(kind_constraints, "validation", None), "unknown_keys", ()) or ()
+        )
+    # A severity scoped to an artifact kind no kit in this project declares.
+    # Not a rule code, so it resolves to nothing and shows up in no override
+    # report — and the usual direction is a raise, which leaves the author
+    # believing a rule now blocks when it never runs.
+    if known_kinds is not None:
+        unknown.extend(
+            ("[validation.severity]", kind)
+            for kind in getattr(getattr(constraints, "validation", None), "by_kind", None) or {}
+            if str(kind).strip().upper() not in known_kinds
+        )
+    if not unknown:
+        return []
+    warnings = [
+        constraints_error(
+            "constraints",
+            f"Unrecognised key '{key}' under {table} in constraints.toml; it configures nothing",
+            code=EC.CONSTRAINTS_UNKNOWN_KEY,
+            path=None,
+            line=1,
+            kit_id=str(kit_id),
+            table=table,
+            key=key,
+        )
+        for table, key in sorted(unknown)
+    ]
+    return [{
+        "kit": str(kit_id),
+        "kind": None,
+        "example_path": None,
+        "example_paths": [],
+        "examples_checked": 0,
+        "status": "PASS",
+        "error_count": 0,
+        "warning_count": len(warnings),
+        "warnings": warnings,
+    }]
+# @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-unknown-validation-keys
+# @cpt-end:cpt-studio-algo-kit-validate:p1:inst-unknown-validation-keys
 
 
 # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
@@ -609,6 +720,17 @@ def _enrich_kit_validation_findings(
 # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-build-result
 
 
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-count-warnings
+def _count_kit_validation_warnings(self_check_report: Dict[str, object]) -> int:
+    """Sum the per-kit warnings that only ever appeared nested inside the results."""
+    total = 0
+    for item in self_check_report.get("results", []) or []:
+        if isinstance(item, dict):
+            total += len(item.get("warnings") or [])
+    return total
+# @cpt-end:cpt-studio-algo-kit-validate:p1:inst-count-warnings
+
+
 # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-build-result
 # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
 def _build_validate_kits_result(
@@ -618,13 +740,23 @@ def _build_validate_kits_result(
     all_errors: List[Dict[str, object]],
     self_check_report: Dict[str, object],
     project_root: Optional[Path] = None,
+    loaded_kits: Optional[Dict[str, Any]] = None,
+    composition_known: bool = False,
 ) -> Tuple[int, Dict[str, Any]]:
+    _append_unknown_validation_key_warnings(
+        self_check_report, loaded_kits, composition_known)
     _enrich_kit_validation_findings(all_errors, self_check_report, project_root)
-    overall_status = "PASS" if not all_errors else "FAIL"
+    warning_count = _count_kit_validation_warnings(self_check_report)
+    verdict = run_verdict(len(all_errors), warning_count)
+    overall_status = verdict.status
     result: Dict[str, Any] = {
         "status": overall_status,
         "kits_validated": len(kit_reports),
         "error_count": len(all_errors),
+        # Per-kit warnings lived inside `self_check_results[]` and nowhere
+        # else, so a caller reading the top level could not tell a kit with
+        # eleven advisory findings from one with none.
+        "warning_count": warning_count,
     }
     if self_check_report:
         result["templates_checked"] = self_check_report.get("templates_checked", 0)
@@ -644,7 +776,7 @@ def _build_validate_kits_result(
     # Telemetry: authoritative final kit-validation verdict, correlated via the run's id.
     decision_log.record_validation(
         "validate-kits", overall_status, findings=len(all_errors))
-    return (0 if overall_status == "PASS" else 2), result
+    return verdict.exit_code, result
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-build-result
 
@@ -726,7 +858,21 @@ def run_validate_kits(
         all_errors=all_errors,
         self_check_report=self_check_report,
         project_root=project_root,
+        loaded_kits=_filtered_loaded_kits(ctx, kit_filter),
+        # Unfiltered registered mode is the only view that holds every kit the
+        # project composes; `--kit` hides the siblings a kind may come from.
+        composition_known=kit_filter is None,
     )
+
+
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-unknown-validation-keys
+def _filtered_loaded_kits(ctx: Any, kit_filter: Optional[str]) -> Dict[str, Any]:
+    """Return the loaded kits this run is actually reporting on."""
+    kits = getattr(ctx, "kits", None) or {}
+    if kit_filter:
+        return {kit_id: kit for kit_id, kit in kits.items() if str(kit_id) == str(kit_filter)}
+    return dict(kits)
+# @cpt-end:cpt-studio-algo-kit-validate:p1:inst-unknown-validation-keys
 
 
 # @cpt-flow:cpt-studio-flow-kit-validate-cli:p1
@@ -736,7 +882,12 @@ def cmd_validate_kits(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-parse-args
     p = argparse.ArgumentParser(
         prog="validate-kits",
-        description="Validate kit structure, templates, and examples",
+        description=(
+            "Validate kit structure, templates, and examples. "
+            "Narrowing to one kit (by path or --kit) skips the check for a severity "
+            "scoped to an unknown artifact kind: one kit may legitimately scope to a "
+            "kind a companion kit declares, and a narrowed run cannot see the companion."
+        ),
     )
     p.add_argument(
         "path",
@@ -744,7 +895,8 @@ def cmd_validate_kits(argv: List[str]) -> int:
         default=None,
         help=(
             "Path to a kit directory to validate (e.g. kits/sdlc). "
-            "If omitted, validates registered kits."
+            "If omitted, validates registered kits. "
+            "Narrowing skips the unknown-artifact-kind check — see the description."
         ),
     )
     p.add_argument(
@@ -752,7 +904,10 @@ def cmd_validate_kits(argv: List[str]) -> int:
         "--rule",
         dest="kit",
         default=None,
-        help="Kit ID to validate (if omitted, validates all kits)",
+        help=(
+            "Kit ID to validate (if omitted, validates all kits). "
+            "Narrowing skips the unknown-artifact-kind check — see the description."
+        ),
     )
     p.add_argument("--verbose", action="store_true", help="Print full validation report")
     args = p.parse_args(argv)
@@ -866,6 +1021,7 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         all_errors=all_errors,
         self_check_report=self_check_report,
         project_root=kit_dir.parent,
+        loaded_kits={validation.slug: SimpleNamespace(constraints=validation.constraints)},
     )
 
 
@@ -1131,6 +1287,9 @@ def _human_validate_kits(data: dict) -> None:
     if n_tpl:
         ui.detail("Templates checked", str(n_tpl))
     ui.detail("Errors", str(n_err))
+    # Shown unconditionally, alongside the error count. A JSON-only count is
+    # invisible to the reader at a terminal, which is where a kit is edited.
+    ui.detail("Warnings", str(data.get("warning_count", 0)))
 
     _render_verbose_kit_reports(data.get("kits", []))
     sc_results = data.get("self_check_results", [])
@@ -1139,8 +1298,12 @@ def _human_validate_kits(data: dict) -> None:
 
     overall = data.get("status", "")
     ui.blank()
+    n_warn = data.get("warning_count", 0)
     if overall == "PASS":
-        ui.success(f"{n} kit(s) validated, all passed.")
+        if n_warn:
+            ui.success(f"{n} kit(s) validated, all passed — {n_warn} warning(s).")
+        else:
+            ui.success(f"{n} kit(s) validated, all passed.")
     else:
         ui.error(f"{n} kit(s) validated, {n_err} error(s).")
     ui.blank()
@@ -1181,15 +1344,25 @@ def _render_self_check_result(result: dict, *, show_verbose: bool) -> None:
     status = result.get("status", "?")
     error_count = result.get("error_count", 0)
     warning_count = result.get("warning_count", 0)
+    # A kit whose own policy switched a rule off would otherwise look exactly
+    # like a kit whose examples are clean — the distinction the JSON keeps and
+    # the terminal dropped, for the reader most likely to be editing the kit.
+    suppressed = result.get("suppressed_count", 0)
+    suppressed_note = f", {suppressed} suppressed" if suppressed else ""
     if status == "PASS":
         suffix = ""
         if warning_count:
-            suffix = f" ({warning_count} warning(s))"
+            suffix = f" ({warning_count} warning(s){suppressed_note})"
             if not show_verbose:
                 suffix += " - use --verbose for details"
+        elif suppressed:
+            suffix = f" ({suppressed} suppressed by the kit's own severity policy)"
         ui.step(f"{kit_id}/{kind}: PASS{suffix}")
     else:
-        ui.warn(f"{kit_id}/{kind}: {status} - {error_count} error(s), {warning_count} warning(s)")
+        ui.warn(
+            f"{kit_id}/{kind}: {status} - {error_count} error(s), "
+            f"{warning_count} warning(s){suppressed_note}"
+        )
     for error in result.get("errors", [])[:10]:
         _show_error(error)
     for warning in result.get("warnings", [])[:10]:

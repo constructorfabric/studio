@@ -17,6 +17,7 @@ table is therefore compared by value, entry by entry.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List
 
@@ -53,6 +54,7 @@ EXPECTED_DEFAULT_SEVERITY: Dict[str, str] = {
     "code-task-unchecked": "error",
     "codebase-entry-empty": "warning",
     "constraints-invalid": "error",
+    "constraints-unknown-key": "warning",
     "def-done-ref-not-done": "error",
     "def-missing-priority": "error",
     "def-missing-task": "error",
@@ -66,8 +68,9 @@ EXPECTED_DEFAULT_SEVERITY: Dict[str, str] = {
     "heading-missing": "error",
     "heading-number-not-consecutive": "error",
     "heading-numbering-mismatch": "error",
+    "heading-order-violation": "error",
     "heading-prohibits-multiple": "error",
-    "heading-requires-multiple": "error",
+    "heading-requires-multiple": "off",
     "id-kind-not-allowed": "error",
     "id-not-referenced": "error",
     "id-not-referenced-no-scope": "warning",
@@ -152,42 +155,56 @@ def test_every_default_is_a_member_of_the_vocabulary():
     assert set(sev.DEFAULT_SEVERITY.values()) <= set(sev.VALIDATION_SEVERITIES)
 
 
-def test_no_code_defaults_to_off_yet():
-    """``off`` is declared vocabulary; suppression arrives with configuration.
+def test_only_the_reviewed_codes_default_to_off():
+    """Which rules ship non-blocking is a reviewed list, not a side effect.
 
-    If this starts failing, a rule was made non-blocking by default — which is
-    a behaviour change, not a refactor, and belongs in its own review.
+    A default of ``off`` means the rule runs and nobody hears it, so the set is
+    pinned by name here. It is the negative form of the golden table: adding a
+    code to it takes an edit to this test and the argument that goes with it.
+
+    ``heading-requires-multiple`` is the only member. "At least two of this
+    section" is true of a kit's repeated-block constraints and false of every
+    document with a single flow, a single state or a single acceptance
+    criterion, so the kits that want it declare ``multiple = true`` and raise
+    it per kind.
     """
-    assert "off" not in set(sev.DEFAULT_SEVERITY.values())
+    off_codes = {code for code, value in sev.DEFAULT_SEVERITY.items() if value == sev.OFF}
+    assert off_codes == {EC.HEADING_REQUIRES_MULTIPLE}
 
 
 def test_the_module_refuses_to_import_when_the_registry_gains_an_unlisted_code(monkeypatch):
     """Exhaustiveness is enforced at import, not only by this test file.
 
-    A test-only check is a promise production never hears. This reloads the
+    A test-only check is a promise production never hears. This executes the
     module under a drifted registry and expects it to refuse — and it is the
-    reload, not a direct call, that is asserted, so removing the module-level
-    guard invocation fails here even if the function itself survives.
+    execution, not a direct call, that is asserted, so removing the
+    module-level guard invocation fails here even if the function survives.
+
+    The module is executed into a throwaway namespace rather than reloaded in
+    place. ``importlib.reload`` rebinds the real module's classes to fresh
+    objects while every module that did ``from .severity import ...`` keeps the
+    originals, so a reload here leaves ``isinstance`` checks elsewhere in the
+    codebase quietly false for the rest of the session — a failure that lands
+    in whichever unrelated test happens to run next.
     """
-    import importlib
+    import importlib.util
 
     monkeypatch.setattr(EC, "PROBE_CODE_WITHOUT_A_DEFAULT", "probe-code-without-a-default", raising=False)
-    try:
-        # The attribute name must appear, not only the value: a bare
-        # `missing=['1.0']` would leave a reader unable to tell a non-rule-code
-        # constant from a rule code whose default was forgotten.
-        with pytest.raises(
-            RuntimeError,
-            match=(
-                "missing=\\[\"PROBE_CODE_WITHOUT_A_DEFAULT = 'probe-code-without-a-default'\"\\]"
-                ".*does not belong in that module"
-            ),
-        ):
-            importlib.reload(sev)
-    finally:
-        monkeypatch.undo()
-        importlib.reload(sev)  # leave the module healthy for every test that follows
+    spec = importlib.util.spec_from_file_location("studio.utils._severity_import_probe", sev.__file__)
+    probe = importlib.util.module_from_spec(spec)
+    # The attribute name must appear, not only the value: a bare
+    # `missing=['1.0']` would leave a reader unable to tell a non-rule-code
+    # constant from a rule code whose default was forgotten.
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "missing=\\[\"PROBE_CODE_WITHOUT_A_DEFAULT = 'probe-code-without-a-default'\"\\]"
+            ".*does not belong in that module"
+        ),
+    ):
+        spec.loader.exec_module(probe)
 
+    assert "studio.utils._severity_import_probe" not in sys.modules
     assert sev.default_severity(EC.TOC_STALE) == "warning"
 
 

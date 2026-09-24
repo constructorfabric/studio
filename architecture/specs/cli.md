@@ -42,6 +42,7 @@ drivers:
   - [init](#init)
   - [update](#update)
   - [validate](#validate)
+  - [validate-toc](#validate-toc)
   - [list-ids](#list-ids)
   - [where-defined](#where-defined)
   - [where-used](#where-used)
@@ -270,17 +271,25 @@ cfs update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 Validate artifacts.
 
 ```
-cfs validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
+cfs validate [--artifact PATH] [--skip-code] [--verbose] [--output FILE]
+             [--local-only] [--source SOURCE] [--fail-on-warnings]
+             [--explain-severity [--kind KIND] [--rule RULE]]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--artifact PATH` | Validate a single artifact file |
-| `--system SYSTEM` | Validate all artifacts for a system |
-| `--kind KIND` | Filter by artifact kind (PRD, DESIGN, etc.) |
-| `--strict` | Enable strict validation (all checklist items) |
+| `--skip-code` | Skip code traceability validation |
+| `--verbose` | Print the full validation report |
+| `--output FILE` | Write the report to a file instead of stdout |
 | `--local-only` | Skip cross-repo workspace validation (validate local repo only) |
 | `--source SOURCE` | Target a specific workspace source for validation (uses that source's adapter context). Returns error when used outside workspace mode. |
+| `--fail-on-warnings` | Fail the run when there are warnings but no errors (exit 2). Raises only; no flag lowers a rule. |
+| `--explain-severity` | Report each rule's effective severity and the layer that set it, then exit without validating |
+| `--kind KIND` | With `--explain-severity`: restrict the explanation to one artifact kind. Refused on a normal run. |
+| `--rule RULE` | With `--explain-severity`: restrict the explanation to one rule code. Refused on a normal run. |
+
+> Earlier revisions of this table listed `--system`, `--kind` and `--strict` as artifact filters. None were ever implemented. `--kind` now exists with a different, narrower meaning, documented above; `--system` and `--strict` are removed here rather than left describing a surface that does not exist.
 
 **Workspace flag interaction**: `--local-only` and `--source` are independent and can be combined. `--source` narrows **which** artifacts are validated (a single source's artifacts using its own adapter context). `--local-only` controls **whether cross-repo IDs** from other workspace sources are included as reference context. Examples: `cfs validate --source backend` validates the backend source with cross-repo references; `cfs validate --source backend --local-only` validates the backend source without cross-repo references; `cfs validate --local-only` validates the primary repo only without cross-repo references.
 
@@ -307,21 +316,101 @@ cfs validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
   "status": "PASS",
   "artifacts_validated": 3,
   "error_count": 0,
-  "warning_count": 2,
-  "issues": [
+  "warning_count": 1,
+  "suppressed_count": 2,
+  "errors": [],
+  "warnings": [
     {
-      "file": "architecture/PRD.md",
+      "type": "constraints",
+      "path": "architecture/PRD.md",
       "line": 42,
+      "location": "architecture/PRD.md:42",
+      "code": "toc-missing",
       "severity": "warning",
-      "rule": "PLACEHOLDER",
-      "message": "TODO marker detected"
+      "artifact_kind": "PRD",
+      "message": "Document has no table of contents"
+    }
+  ],
+  "severity_overrides": [
+    {
+      "code": "heading-number-not-consecutive",
+      "kind": "PRD",
+      "entry": null,
+      "from": "error",
+      "to": "off",
+      "applied": true,
+      "source": "project-kind"
     }
   ],
   "next_step": "Deterministic validation passed. Now perform semantic validation."
 }
 ```
 
+A warning-only failure adds `"failed_on": "warnings"` alongside `"status": "FAIL"`. `severity_overrides` and `suppressed_count` appear only when non-empty. An override that a `locked` entry refused carries `"applied": false` and names the entry as `"<type>:<id>"`, for example `"heading:prd-metrics"`.
+
+Both `errors` and `warnings` are emitted on every run, passing or failing. When a rule is set to `off`, the findings it removed are counted under `suppressed_count`; when a project lowers a rule, or a `locked` entry refuses a lowering, each is listed under `severity_overrides`. `--fail-on-warnings` (or `fail_on_warnings = true` in `core.toml`) turns a warning-only run into `status: FAIL`, exit 2, with `failed_on: "warnings"`.
+
+**Flags**: `--artifact`, `--skip-code`, `--verbose`, `--output`, `--local-only`, `--source`, `--fail-on-warnings`, `--explain-severity [--kind K] [--rule R]`.
+
+`--explain-severity` reports the effective severity of each rule and the layer that set it (`entry`, `project-kind`, `project`, `kit-kind`, `kit`, `default`), then exits 0 without validating anything.
+
 **Exit**: 0=PASS, 2=FAIL.
+
+---
+
+### validate-toc
+
+Validate the Table of Contents in one or more Markdown files.
+
+```
+cfs validate-toc FILE... [--max-level N] [--max-section-lines N] [--verbose]
+                 [--fail-on-warnings]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `FILE...` | — | One or more Markdown paths to validate |
+| `--max-level N` | the kind's configured level, else 3 | Deepest heading level the TOC must cover |
+| `--max-section-lines N` | the kind's configured size, else 300 | Warn when a section exceeds this many lines |
+| `--verbose` | false | Include the full per-file error and warning lists |
+| `--fail-on-warnings` | false | Fail the run when there are warnings but no errors (exit 2) |
+
+**Inside a Studio project** the command loads the project context and applies the same severity policy `validate` uses, assembled from every loaded kit's `[validation]` tables and the project's `[validation]` table in `core.toml`. Each file that a system registers is matched to its artifact kind, so a per-kind severity and a per-kind TOC option both reach it; a file the registry does not know still receives the project-wide and kit-wide layers. A severity configuration that cannot be read stops the run with `status: ERROR` and exit 1, rather than reporting a verdict under a policy that was never in force.
+
+**Outside a project** nothing is loaded: no policy, no kinds, and the two bounds fall back to their engine defaults. This is the command's oldest contract — a bare directory of Markdown — and it is unchanged.
+
+**Per-kind options** live in `[artifacts.<KIND>.validation.toc]` in a kit's `constraints.toml`:
+
+```toml
+[artifacts.PRD.validation.toc]
+max_level = 2
+max_section_lines = 150
+```
+
+Both are optional, and an unset option means the kind has no opinion rather than that it asked for the default — which is what lets an explicit flag, a configured value and a fallback be told apart. Precedence per file is: an explicit command-line flag, else the artifact kind's configured value, else the engine default. When one kit binds several constraints files that configure the same kind, the stricter value wins: the deeper `max_level`, the smaller `max_section_lines`.
+
+Both bounds also govern structure validation inside `cfs validate`, which checked every kind at a fixed depth of 3 before, and the regeneration `cfs toc` performs — generating a table at one depth and judging it at another would make the documented way to repair a stale table hand back a file that fails validation. `cfs toc` grades its post-generation check through the project's severity policy for the same reason: the question it answers is whether the validators will accept what it wrote, so it reports the graded verdict, adds a `suppressed` count when the policy removed findings, and closes a warning-only run as `"status": "VALIDATION_WARN"` rather than as an unqualified success. It honours `fail_on_warnings` too: in a project that sets it, a warning-only run is `"status": "VALIDATION_FAIL"` with `"failed_on": "warnings"` and exit 2, and the file is still written — the gate is about the verdict, not the work. A `[validation]` table that cannot be read stops `validate` and `validate-toc`, but only downgrades `cfs toc` to ungraded generation, reported under `policy_errors`.
+
+A kind that sets `toc = false` has no table-of-contents contract. `cfs validate` skips the phase, and `cfs validate-toc` reports the file as `"status": "PASS"` with `"applicable": false` and a message naming the kind, rather than checking it anyway or passing it in silence. `cfs toc` still generates a table for such a file on request — the switch says a table is not required, and being two-state with a default of `true` it has no way to say one is forbidden — and reports its post-generation check as `"validation": {"status": "SKIPPED", "reason": ...}`.
+
+**Behavior**:
+1. Parse arguments; load the surrounding project's policy and registered artifact kinds when there is one.
+2. For each file, settle its two bounds, then check that a TOC exists, that every TOC anchor points to a real heading, that every in-range heading is listed, and that the TOC is not stale.
+3. Restamp each finding at its configured severity, dropping those set to `off` and re-partitioning the rest between errors and warnings.
+4. Report per-file and overall counts, plus what the policy changed.
+
+**Output**: `{status, files_validated, error_count, warning_count, results}`. A checked `results[]` entry carries `{file, status, error_count, warning_count}`, its `artifact_kind` when the registry knows the file, and its `suppressed_count` when the policy removed findings from it; `errors` and `warnings` arrays appear when non-empty or under `--verbose`. The run adds `suppressed_count` and `severity_overrides` whenever either is non-empty, and `failed_on: "warnings"` when `--fail-on-warnings` or `fail_on_warnings = true` turned a warning-only run into a failure.
+
+Two `results[]` entries have a different shape, and a consumer indexing `error_count` unconditionally will not find it on either:
+
+- A file that is missing or cannot be read is `{file, status: "ERROR", message, code}` with no counts. One bad file does not abort the batch.
+- A file whose kind sets `toc = false` is `{file, status: "PASS", applicable: false, artifact_kind, message}` with both counts at zero.
+
+`status` is `PASS`, `WARN`, `FAIL` or `ERROR` — the last at the top level when the severity configuration cannot be read, and per file for the missing/unreadable case above. Unlike `validate` and `validate-kits`, this command keeps `WARN`: nothing keys off its `PASS`, so a warning-only run can say so rather than being flattened into one of two verdicts.
+
+**Scope**: the policy governs every registered artifact wherever on disk it resolves — a workspace source lives outside the project root by design. An *unregistered* file outside the project tree is validated as if there were no project at all, rather than being judged by the severity of whichever project the shell happened to be in. Unlike `cfs validate`, this command does not skip artifacts belonging to a kit in a legacy (non-CFS) format: it needs only the registry's kind, not a resolvable template, so the project's per-kind policy still reaches those files.
+
+**Exit**: 0=PASS or WARN, 2=FAIL, 1=ERROR (unreadable severity configuration).
 
 ---
 
@@ -687,12 +776,17 @@ cfs validate-kits [path] [--kit KIT] [--verbose]
 | `--kit KIT` | Validate only a specific kit (e.g., `studio-sdlc`) |
 | `--verbose` | Include full per-template error/warning lists |
 
+> Narrowing to one kit — by `path` or `--kit` — skips the check for a severity scoped to an unknown artifact kind. One kit may legitimately scope to a kind a companion kit declares, and a narrowed run cannot see the companion, so it reports nothing rather than calling a working setting a typo. Unknown keys and unknown rule codes are still reported in every mode.
+
 **Behavior**:
 1. Load installed kits from artifacts registry.
 2. For each kit, load `constraints.toml` and locate template/example files.
 3. Validate each template against constraints (heading contract, ID placeholders, cross-artifact references).
 4. Validate each example artifact against its template structure and constraints.
 5. Report per-kit, per-kind PASS/FAIL with error details.
+6. Report unrecognised keys under any `[validation]` table as `constraints-unknown-key` warnings, rather than dropping them the way the kind parser drops unknown keys.
+
+A top-level `warning_count` sums the per-kit warnings that previously appeared only nested inside `self_check_results[]`, so a caller reading the top level can tell a kit with advisory findings from one with none.
 
 > **Note**: `validate-kits` is also invoked automatically at the end of `cfs update`. If it fails, the update status becomes WARN and the validation report is included in the update output.
 

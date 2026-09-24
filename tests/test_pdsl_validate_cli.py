@@ -468,7 +468,13 @@ def _rule_ids(text: str, source: str = "gate.md") -> list[str]:
 
 
 def test_gate_type_accepts_each_declared_risk_in_both_menu_shapes() -> None:
-    """All three risk types are recognized, indented or at column 0."""
+    """All three risk types are recognized, indented or at column 0.
+
+    This is about the *vocabulary*: each literal token is understood in both menu shapes.
+    An earlier version had to register `GateMenu` for the duration, because a withdrawn
+    rule refused any unregistered `confirmation`; with that rule gone the three tokens are
+    judged on nothing but being one of the three.
+    """
     for indent in ("  ", ""):
         for declared in ("confirmation", "decision", "blocking"):
             assert _rule_ids(_gate_menu(declared=declared, indent=indent)) == [], (indent, declared)
@@ -697,6 +703,151 @@ def test_prose_and_control_flow_headers_are_not_gate_declarations() -> None:
         assert _rule_ids(_gate_menu(extra=benign)) == [], benign
 
 
+def test_menu_shape_accepts_each_declared_shape_in_both_menu_shapes() -> None:
+    """Both shape tokens are recognized, indented or at column 0 (issue #186)."""
+    for indent in ("  ", ""):
+        for declared in ("fixed-choice", "free-form"):
+            assert _rule_ids(_gate_menu(extra=f"SHAPE: {declared}", indent=indent)) == [], (indent, declared)
+
+
+def test_menu_shape_absent_is_valid() -> None:
+    """Absence is never an error: an undeclared menu falls back to the prose heuristic.
+
+    This is what lets the existing menu surface migrate menu by menu instead of
+    in one change, so it is asserted for both menu shapes and with prose present.
+    """
+    for indent in ("  ", ""):
+        assert _rule_ids(_gate_menu(indent=indent)) == [], indent
+    assert _rule_ids(_gate_menu(extra="NOTE: choose 1 to keep going")) == []
+
+
+def test_menu_shape_must_be_one_literal_enum_token() -> None:
+    """Each probe below must fail exactly once with PDSL710."""
+    for value in (
+        "single-select",
+        "{MENU_SHAPE}",
+        "fixed-choice WHEN SIMPLE_MODE == normal",
+        "Fixed-Choice",
+        "<fixed-choice | free-form>",
+    ):
+        assert _rule_ids(_gate_menu(extra=f"SHAPE: {value}")) == ["PDSL710"], value
+
+    # A bare `SHAPE:` with no value declares nothing but is still a declaration.
+    assert _rule_ids(_gate_menu(extra="SHAPE:")) == ["PDSL710"]
+
+
+def test_menu_shape_is_rejected_twice_in_one_menu() -> None:
+    """Two declarations make the effective shape depend on read order."""
+    text = _gate_menu(extra="SHAPE: fixed-choice").replace(
+        "  SHAPE: fixed-choice", "  SHAPE: fixed-choice\n  SHAPE: free-form", 1)
+    findings = validate_source(PdslSource("double.md", text)).findings
+    assert [f.rule_id for f in findings] == ["PDSL711"]
+    assert "more than once" in findings[0].message
+
+
+def test_menu_shape_is_reported_where_nothing_reads_it() -> None:
+    """A declaration outside a MENU, or nested in its body, is inert."""
+    outside = "UNIT Demo\n\nPURPOSE:\n  Do a thing.\n\nSHAPE: fixed-choice\n\nDO:\n  - RUN Something\n"
+    assert _rule_ids(outside) == ["PDSL712"]
+
+    # Trailing prose after a menu is not part of it.
+    assert _rule_ids(_gate_menu(tail="NOTES:\n  SHAPE: free-form\n")) == ["PDSL712"]
+
+    # Nested inside an option's action body.
+    nested = (
+        "MENU G:\n  TITLE: t\n  OPTIONS:\n"
+        "    1 x -> CONTINUE CurrentWorkflow\n      SHAPE: fixed-choice\n"
+    )
+    assert _rule_ids(nested) == ["PDSL712"]
+
+
+def test_a_malformed_menu_shape_header_is_reported() -> None:
+    """A near-miss of SHAPE must not silently leave a menu unshaped."""
+    for variant in (
+        "SHAP: fixed-choice",
+        "SHAPES: fixed-choice",
+        "Shape: fixed-choice",
+        "shape: fixed-choice",
+        "SHAPE : fixed-choice",
+        "- SHAPE: fixed-choice",
+        "ARITY: fixed-choice",
+        "MENU_SHAPE: fixed-choice",
+        # decorated or bulleted forms, which are not headers at all
+        "* SHAPE: fixed-choice",
+        "`SHAPE: fixed-choice`",
+        # a separator PDSL does not use, and none at all
+        "SHAPE = fixed-choice",
+        "SHAPE fixed-choice",
+    ):
+        assert _rule_ids(_gate_menu(extra=variant)) == ["PDSL713"], variant
+
+
+def test_an_abandoned_shape_declaration_is_reported_whatever_its_casing() -> None:
+    """Mirrors `test_an_abandoned_declaration_is_reported_whatever_its_casing`
+    for SHAPE: an empty value is an abandoned declaration in any casing, not
+    prose -- `SHAPE:` (correct casing) is PDSL710 (a literal with no value),
+    while `Shape:`/`shape:` are PDSL713 (a near-miss unrecognized header),
+    since the miscasing guard's suppression of a lower-case candidate whose
+    value is some other token must not apply when the value is empty.
+    """
+    assert _rule_ids(_gate_menu(extra="SHAPE:")) == ["PDSL710"]
+    for variant in ("shape:", "Shape:"):
+        assert _rule_ids(_gate_menu(extra=variant)) == ["PDSL713"], variant
+    # ...while a value that is merely some other token stays prose.
+    for benign in ("shape: skill", "Shape: CLI", "shape: workflow"):
+        assert _rule_ids(_gate_menu(extra=benign)) == [], benign
+
+
+def test_menu_shape_near_miss_does_not_cross_fire_with_gate_type() -> None:
+    """A near-miss of SHAPE is reported as PDSL713, never mistaken for a TYPE near-miss."""
+    assert _rule_ids(_gate_menu(extra="SHAP: fixed-choice")) == ["PDSL713"]
+    assert _rule_ids(_gate_menu(extra="TYP: blocking")) == ["PDSL703"]
+
+
+def test_gate_type_and_menu_shape_declare_and_fail_independently() -> None:
+    """TYPE and SHAPE share one declaration region but are otherwise unrelated.
+
+    A bad value in one must not suppress or alter a finding in the other, and a
+    valid pair of both together is a normal, error-free menu.
+    """
+    both_good = _gate_menu(declared="blocking", extra="SHAPE: fixed-choice")
+    assert _rule_ids(both_good) == []
+
+    bad_type_good_shape = _gate_menu(declared="urgent", extra="SHAPE: fixed-choice")
+    assert _rule_ids(bad_type_good_shape) == ["PDSL700"]
+
+    good_type_bad_shape = _gate_menu(declared="blocking", extra="SHAPE: urgent")
+    assert _rule_ids(good_type_bad_shape) == ["PDSL710"]
+
+
+def test_menu_shape_before_gate_type_is_also_the_canonical_shape() -> None:
+    """`_gate_menu`'s `declared=`/`extra=` order (TYPE then SHAPE) is one
+    ordering; the reverse must be accepted identically, since nothing in the
+    declaration-region check is keyed to which of the two comes first."""
+    text = "MENU G:\n  TITLE: t\n  SHAPE: fixed-choice\n  TYPE: blocking\n  OPTIONS:\n    1 a -> CONTINUE X\n"
+    assert _rule_ids(text) == []
+
+    text_before_title = "MENU G:\n  SHAPE: free-form\n  TYPE: decision\n  TITLE: t\n  OPTIONS:\n    1 a -> CONTINUE X\n"
+    assert _rule_ids(text_before_title) == []
+
+
+def test_a_deeply_indented_menu_shape_is_nested_body_not_a_declaration() -> None:
+    """Mirrors `test_a_declaration_nested_in_the_menu_body_is_inert` for SHAPE:
+    a header indented deeper than the menu's first sub-header is that header's
+    own continuation text, not read as a declaration in its own right."""
+    nested_invalid = (
+        "MENU G:\n  OPTIONS:\n    1 a -> CONTINUE X\n"
+        "  INVALID:\n    TITLE: retry?\n    SHAPE: fixed-choice\n"
+    )
+    assert _rule_ids(nested_invalid) == ["PDSL712"]
+
+    # Indentation alone is not a defect: the declaration is still in the region.
+    deep_but_in_region = (
+        "MENU G:\n  TITLE: t\n              SHAPE: fixed-choice\n  OPTIONS:\n    1 a -> CONTINUE X\n"
+    )
+    assert _rule_ids(deep_but_in_region) == []
+
+
 def test_gate_rules_apply_to_every_menu_in_a_block_not_only_the_last() -> None:
     """Per-menu state must reset at each MENU boundary and not leak across it."""
     good_then_bad = _gate_menu(declared="blocking", name="First") + "\n" + _gate_menu(
@@ -771,7 +922,66 @@ GENERATED_DIRECTORIES = frozenset({
 # GENERATED_DIRECTORIES fails here with an explanation rather than as an
 # unexplained tally change.
 AUTHORED_CORPUS_CEILING = 600
+#: Every gate-risk rule, so a filter built from it cannot quietly stop covering one.
+#: A rule once existed in this band and not in this tuple, which left the read-slot
+#: property test below generating declarations and dropping the very findings they
+#: produced -- a test passing because it could not see the answer. That rule has since
+#: been withdrawn, but the hazard is the tuple's, not that rule's: the assertion beneath
+#: is what keeps this list and the module in step.
 _GATE_FINDINGS = ("PDSL700", "PDSL701", "PDSL702", "PDSL703")
+#: The `SHAPE` rules (issue #186), which share the `PDSL700` band but not the subject:
+#: they are about how a menu collects a reply, not about the risk a gate carries, so the
+#: gate property tests below must not filter on them. Named rather than excluded by a
+#: narrower `PDSL70\d` pattern, so that a rule added anywhere in the band still fails the
+#: assertion below until somebody says which of the two it belongs to.
+_MENU_SHAPE_FINDINGS = ("PDSL710", "PDSL711", "PDSL712", "PDSL713")
+
+
+def test_every_rule_in_the_band_is_classified() -> None:
+    """The filters are derived from the source, not from memory.
+
+    A property test filtered by a hand-written tuple stops covering any rule added to the
+    band afterwards, silently and in the safe-looking direction. This reads the rules the
+    module actually emits in the `PDSL700` band and requires every one of them to be
+    claimed by exactly one of the two tuples above.
+
+    It fired for real on a rebase: `SHAPE` arrived in this band from another change, and an
+    assertion that simply required `_GATE_FINDINGS` to hold everything would have been
+    "fixed" by adding shape rules to the gate filter — which would have had the gate
+    property tests generating shape findings and counting them as gate risk.
+    """
+    import re  # noqa: PLC0415
+
+    # Anchored at the repository root, not relative: a relative read makes this depend on
+    # pytest's working directory and raises `FileNotFoundError` before a single assertion
+    # runs. The corpus helper next door was already anchored; this one was missed. Raised
+    # in review.
+    #
+    # Guarded too, following the convention the same change introduced next door: a bare
+    # `OSError` naming a path says nothing about which guard just lost its subject, and
+    # this one loses it silently -- the rules it classifies would simply stop being read.
+    # Also raised in review, as an inconsistency within one diff.
+    repo_root = Path(__file__).resolve().parent.parent
+    relative = "skills/studio/scripts/studio/utils/pdsl.py"
+    try:
+        source = (repo_root / relative).read_text(encoding="utf-8-sig", errors="replace")
+    except OSError as exc:
+        raise AssertionError(
+            f"{relative} could not be read ({type(exc).__name__}), so the rule catalogue "
+            "this classifies cannot be checked; it was renamed, moved or removed"
+        ) from exc
+    emitted = set(re.findall(r'"(PDSL7\d\d)"', source))
+    assert emitted, "no PDSL700-band rule ids found; this guard has lost its subject"
+
+    overlap = set(_GATE_FINDINGS) & set(_MENU_SHAPE_FINDINGS)
+    assert not overlap, f"a rule is claimed by both filters: {sorted(overlap)}"
+
+    unclaimed = sorted(emitted - set(_GATE_FINDINGS) - set(_MENU_SHAPE_FINDINGS))
+    assert not unclaimed, (
+        f"rules emitted in the PDSL700 band that no filter claims: {unclaimed}. Add each to "
+        "_GATE_FINDINGS if it describes the risk a gate carries, or to "
+        "_MENU_SHAPE_FINDINGS if it describes how a menu collects a reply."
+    )
 
 
 def _gate_rule_ids(text: str) -> list[str]:
@@ -809,6 +1019,10 @@ def test_property_validation_never_raises_on_arbitrary_text() -> None:
         "NOTES:", "RULES:", "```pdsl", "```", "", "   ", "\t", "<name>", "9" * 4400,
         "TYPE: \u202e x", "TYPE: \x00", "MENU :", "MENU <unclosed", "PURPOSE:", "??:",
         "A" * 300 + ":", "\u0661" * 4400,
+        # SHAPE (issue #186) shares the same declaration-region and near-miss
+        # machinery as TYPE; a few fragments exercise that dispatch path too.
+        "SHAPE:", "SHAPE: fixed-choice", "SHAPE : x", "- SHAPE: x", "Shape: x",
+        "SHAPE: \u202e x",
     ]
     for _ in range(PROPERTY_ITERATIONS):
         text = "\n".join(rng.choice(fragments) for _ in range(rng.randint(1, 25))) + "\n"
@@ -893,7 +1107,13 @@ def test_property_an_undeclared_menu_never_yields_a_gate_finding() -> None:
 
 
 def test_property_a_declaration_in_a_read_slot_is_accepted() -> None:
-    """A valid declaration at the menu's own sub-header level must validate clean."""
+    """A valid declaration at the menu's own sub-header level must validate clean.
+
+    This is about *placement*. An earlier version had to substitute a stand-in registry
+    that accepted every name, because the generated menus carry random names and a
+    withdrawn rule refused any unregistered `confirmation`; with that rule gone the
+    declaration is judged on where it sits and nothing else.
+    """
     rng = random.Random(20260910)
     for _ in range(PROPERTY_ITERATIONS):
         text = _generated_menu(

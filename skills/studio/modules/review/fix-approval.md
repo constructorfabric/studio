@@ -37,6 +37,7 @@ RULES:
   NEVER present ReviewFixScope before ReviewFindingsReportBrowser has rendered the current report and set REVIEW_FINDINGS_BROWSER_CONFIRMED = true
 MENU ReviewFindingsNavigation
 TITLE: Review findings — inspect them, mark specific items for fix, switch views, or continue to fix choices.
+TYPE: blocking
 OPTIONS:
   1 next -> increment CURRENT_FINDING_INDEX up to the final finding, SET REVIEW_REPORT_VIEW = detail, and rerender ReviewFindingsReportBrowser
   2 prev -> decrement CURRENT_FINDING_INDEX down to 1, SET REVIEW_REPORT_VIEW = detail, and rerender ReviewFindingsReportBrowser
@@ -103,6 +104,7 @@ RULES:
   NEVER apply review fixes without explicit user approval of the chosen scope
 MENU ReviewFixScope
 TITLE: Review found issues — what should I fix? Inject live counts before emitting: "N CRITICAL/MAJOR and M MINOR findings — nothing is changed until you choose."
+TYPE: blocking
 OPTIONS:
   1 critical + major only — fix the N highest-severity findings, then re-review (suggested when CRITICAL or MAJOR findings exist) -> CONTINUE ReviewFixScopeApproveCriticalMajor
   2 all findings — fix all N+M findings including MINOR -> CONTINUE ReviewFixScopeApproveAll

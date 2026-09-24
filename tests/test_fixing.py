@@ -411,6 +411,22 @@ class TestConstraintPrompts:
         enrich_issues(issues, project_root=PROJECT_ROOT)
         assert "required but missing" in issues[0]["fixing_prompt"]
 
+    def test_heading_order_violation_says_where_to_move_the_section(self):
+        issues = [_make_issue(
+            "Section is out of order",
+            code=EC.HEADING_ORDER_VIOLATION,
+            expected_after={"id": "prd-context", "line": 42},
+        )]
+        enrich_issues(issues, project_root=PROJECT_ROOT)
+        prompt = issues[0]["fixing_prompt"]
+        assert "move this section after `prd-context` (line 42)" in prompt
+
+    def test_heading_order_violation_without_a_named_neighbour(self):
+        """Defensive: the prompt still tells the reader what to do."""
+        issues = [_make_issue("Section is out of order", code=EC.HEADING_ORDER_VIOLATION)]
+        enrich_issues(issues, project_root=PROJECT_ROOT)
+        assert "into the order the kit declares" in issues[0]["fixing_prompt"]
+
 
 # ---------------------------------------------------------------------------
 # Cross-reference errors — fixing prompts

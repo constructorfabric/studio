@@ -74,19 +74,19 @@ advisory verdict can never gate a build.
 - User runs `cfs eval` → every scenario under `<project>/eval` is scored, JSON report emitted, exit 0 (gating is off by default — eval reports, it does not fail the build)
 - User runs `cfs eval --scenarios-dir DIR` → scenarios discovered under `DIR`
 - User runs `cfs eval --baseline report.json` → same, plus a per-scenario regression diff; the exit code is unchanged unless `--check` is also given
-- User runs `cfs eval --check [--min N]` → exit 2 when structural compliance is below `--min`, **or** when `--baseline` shows a per-scenario compliance regression
+- User runs `cfs eval --check [--min N]` → exit 2 when structural compliance is below `--min`, **or** when a positive `--min` scored nothing (an empty or all-unscoreable suite — a failure to assess is not a pass), **or** when `--baseline` shows a per-scenario compliance regression, **or** when a scenario's declared `expect` definitely disagrees with what it scored (an UNKNOWN against a claim is reported but never gates)
 - User runs `cfs eval --calibrate` → the report gains a `judge_calibration` object (reference-stub accuracy/consistency over gold-backed scenarios); advisory only, the exit code is unchanged
 - User runs `cfs eval --save FILE` → the run's report JSON is written to `FILE` to serve as a later `--baseline`; the payload gains `saved` (the path, or `null` on failure) and, only on failure, `save_error`
 - The JSON report always carries a `gate` field (`pass`/`fail`) matching the exit code, so a CI step can cross-check from `--json` alone
 
 **Error Scenarios**:
 - Constructor Studio not initialized, or the scenarios directory does not exist → ERROR, exit 1
-- With `--check`: structural compliance below `--min`, or a baseline regression (a compliance drop, or a scenario that broke while still in the suite) → exit 2. A scenario removed from the suite entirely (`no_longer_scoreable`), or a `--baseline` that cannot be loaded (surfaced via the regression `error` field), is reported but does not by itself gate.
+- With `--check`: structural compliance below `--min`, a positive `--min` over a suite that scored nothing (empty or all-unscoreable — cannot assess is not a pass), or a baseline regression (a compliance drop, or a scenario that broke while still in the suite) → exit 2. A scenario removed from the suite entirely (`no_longer_scoreable`), or a `--baseline` that cannot be loaded (surfaced via the regression `error` field), is reported but does not by itself gate. A scenario whose declared `expect` disagrees **definitely** with what it scored — PASS against a `non_compliant` claim, or FAIL against a `compliant` one — also exits 2; an UNKNOWN against either claim is reported but never gates, because unscoreable is not a failure
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs eval [--scenarios-dir DIR] [--check] [--min N] [--baseline FILE] [--save FILE] [--calibrate]` - `inst-user-eval`
 2. [x] - `p1` - Load project context; if absent, emit ERROR and exit 1 - `inst-load-context`
-3. [x] - `p1` - Resolve the scenarios directory, run the suite through the deterministic structural scorer, attach an optional regression diff, emit the JSON report, and return the harness exit code - `inst-run-and-report`
+3. [x] - `p1` - Resolve the scenarios directory, run the suite through the deterministic structural scorer, attach an optional regression diff, emit the JSON report, fail `--check` on a definite declared-vs-actual disagreement (an UNKNOWN against a claim never gating), and return the harness exit code - `inst-run-and-report`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for the eval command - `inst-eval-imports`
@@ -94,8 +94,10 @@ advisory verdict can never gate a build.
 - [x] - `p1` - Load an optional baseline report JSON, degrading to no-diff on error - `inst-load-baseline`
 - [x] - `p1` - Save this run's report JSON to serve as a later baseline - `inst-save-report`
 - [x] - `p1` - Render a short human-readable summary when not in JSON mode - `inst-human-report`
+- [x] - `p1` - In the human summary, name each scenario's verdict and the checks it failed (findings prefixed by their scorer, failing scenarios first), rendering the per-scenario rows already in the payload — capped at `_SCENARIOS_CAP` with any remainder deferred to `--json` (its count, and how many are failing, named on the overflow line) — so a reader can act on the failures without the global `--json` flag - `inst-human-scenarios`
 - [x] - `p1` - In the human summary, explain advisory-only UNKNOWNs (unwired judge, never gates) - `inst-human-advisory`
 - [x] - `p1` - In the human summary, print the calibration metrics and note under `--calibrate`, tolerating a malformed payload - `inst-human-calibration`
+- [x] - `p1` - In the human summary, warn about scenarios whose declared oracle disagrees with what they scored, capped, tolerating a malformed payload - `inst-human-oracle`
 - [x] - `p1` - In the human summary, render a `--baseline` regression (regressed scenarios, no-longer-scoreable count) and any save failure - `inst-human-regression`
 - [x] - `p1` - Under `--calibrate`, measure the reference judge over the gold-backed scenarios - `inst-judge-calibration`
 
@@ -110,13 +112,15 @@ under the gate contract (only deterministic verdicts affect the exit code).
 
 **Steps**:
 1. [x] - `p1` - Discover scenarios by globbing `*/scenario.toml` under the root, skipping malformed, escaping, or duplicate-id descriptors (ids stay unique so calibration identities are unambiguous) - `inst-load-scenarios`
-2. [x] - `p1` - Load a completed run's `plan.toml` and phase files, returning `None` (UNKNOWN) instead of raising on a missing or malformed plan - `inst-load-run`
+2. [x] - `p1` - Load a completed run's `plan.toml` and phase files, returning `None` (UNKNOWN) instead of raising on a missing or malformed plan, and recording the phase-shaped files present in the run directory that the manifest does not declare — the one fact the structural scorer's lost-run finding rests on — gathered here because only the loader sees the directory, and the suite loads once so nothing re-reads a tree that may have moved - `inst-load-run`
 3. [x] - `p1` - Load one scenario's run and apply every scorer to it, isolating a raising scorer as UNKNOWN - `inst-run-scenario`
 4. [x] - `p1` - Run every scenario under the root through the scorers and aggregate into a report - `inst-run-suite`
 5. [x] - `p1` - Compute structural compliance (deterministic pass ratio) per scenario and in aggregate, `None` when nothing was scored - `inst-compliance`
-6. [x] - `p1` - Derive the exit code: gate only under `--check` when compliance is below the floor; advisory verdicts never gate - `inst-gate`
-7. [x] - `p1` - Serialise the report: per-scenario compliance, a failing-check histogram, and an UNKNOWN-aware coverage-stating summary - `inst-report-json`
-8. [x] - `p1` - Bucket per-scenario compliance changes against a baseline (regressed / improved / newly- and no-longer-scoreable) - `inst-diff-reports`
+6. [x] - `p1` - Compare each scenario's declared oracle (`expect`) against what the deterministic scorers said, naming every disagreement; `unknown` claims nothing and never disagrees, while an UNKNOWN verdict disagrees with either claim — a scenario written to demonstrate a failure that cannot be assessed is dropped from the denominator, so the suite reads smaller rather than worse - `inst-oracle`
+7. [x] - `p1` - Derive the exit code: under `--check`, gate (exit 2) when compliance is below the floor, or when a positive floor scored nothing (an empty or all-unscoreable suite — cannot assess is not a pass); a non-positive floor demands nothing and clears; advisory verdicts never gate - `inst-gate`
+8. [x] - `p1` - Serialise the report: per-scenario compliance, a failing-check histogram, and an UNKNOWN-aware coverage-stating summary - `inst-report-json`
+9. [x] - `p1` - Bucket per-scenario compliance changes against a baseline (regressed / improved / newly- and no-longer-scoreable) - `inst-diff-reports`
+10. [x] - `p1` - Recognise a Markdown fenced-code delimiter and decide whether one closes another (backtick or tilde, by character and run length, nothing but whitespace after) — shared, so the structural scorer and the judge cannot drift apart on what counts as a fence - `inst-fence-delim`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for the harness - `inst-harness-imports`
@@ -140,7 +144,7 @@ artifacts: it touches no filesystem.
 1. [x] - `p1` - Parse each phase file's `[phase]` frontmatter into a number-keyed table, recording files that re-declare a number as duplicates - `inst-structural-parse`
 2. [x] - `p1` - Run the phase-file validity and numbering-uniqueness checks over the parsed phases - `inst-structural-checks`
 3. [x] - `p1` - Run the manifest-agreement and numbering checks over the parsed phases - `inst-structural-checks-manifest`
-4. [x] - `p1` - Aggregate into a `ScorerResult`: compliance %, per-check findings, and the UNKNOWN discipline when nothing is scoreable - `inst-structural-scorer`
+4. [x] - `p1` - Aggregate into a `ScorerResult`: compliance %, per-check findings, and the UNKNOWN discipline when nothing is scoreable — except where the manifest names no phase file at all while phase files sit in the run directory beside it, which is a manifest that has lost its own run and scores FAIL. A plan naming any file is outside **this finding** whatever became of that file — its verdict is whatever the ordinary path makes it: PASS, FAIL, or UNKNOWN where no phase file carries a parseable block. The point is only that this finding does not fire. Naming none with none on disk is a different workflow shape and stays UNKNOWN, since a false 0% is the one thing this scorer must not produce - `inst-structural-scorer`
 
 **Supporting**:
 - [x] - `p1` - Module imports and the logger - `inst-structural-imports`
@@ -202,7 +206,6 @@ or unreadable gold file is *excluded* from calibration rather than counted as a 
 
 **Supporting**:
 - [x] - `p1` - Imports, the rules-section pattern, and the gold-label-to-verdict mapping - `inst-judge-imports`
-- [x] - `p1` - Recognise a Markdown fenced-code delimiter (backtick or tilde, by character and length) so a `## Rules` inside a fenced example is not read as a heading - `inst-judge-fence`
 - [x] - `p1` - Order phase texts by the run manifest so rules, evidence, and the run summary present the same sequence - `inst-judge-order`
 - [x] - `p1` - The judge data model: gold label, judge request/reply, and the `JudgeFn` seam - `inst-judge-datamodel`
 - [x] - `p1` - Detect when the harness cannot present real evidence (empty, or whole phases omitted) so the run is UNKNOWN and excluded from calibration - `inst-judge-gap`
@@ -271,8 +274,10 @@ yields a per-scenario regression diff without changing the exit code.
 
 ### Conditional JSON report fields
 
-Beyond the always-present `schema_version`, `summary`, `failing_checks`, `per_scenario`, and
-`gate`, three top-level keys appear only under specific flags — a consumer must presence-check
+Beyond the always-present `schema_version`, `summary`, `failing_checks`, `per_scenario`,
+`gate`, and `oracle_mismatches` — the last a list, empty when every scenario scored what
+it declared, and computed on every run rather than behind a flag — three top-level keys
+appear only under specific flags — a consumer must presence-check
 them (subscripting when the flag is absent raises `KeyError`):
 
 | Key | Present when | Shape |

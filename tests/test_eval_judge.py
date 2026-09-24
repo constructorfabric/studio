@@ -428,3 +428,142 @@ def test_calibration_excludes_unscoreable_evidence_runs() -> None:
     assert "e" in cal.excluded
     assert set(cal.covered) == {"g", "e"}
     assert cal.accuracy == 1.0            # measured only over the one scoreable run
+
+
+# --- a judge that never answers --------------------------------------------
+
+def test_a_judge_that_never_returns_is_unknown_not_a_stalled_suite(monkeypatch) -> None:
+    """`except Exception` catches a judge that *raises*. It cannot catch one that hangs.
+
+    The model call lives out-of-tree, so this is a bound on someone else's code: before
+    it, one unresponsive adapter stopped the whole suite with no verdict and no message.
+    """
+    import threading
+    import time
+
+    from studio.utils import eval_judge as ej
+
+    monkeypatch.setattr(ej, "_JUDGE_TIMEOUT_SECONDS", 0.2)
+    release = threading.Event()
+
+    def _hangs(_request):
+        release.wait(30)            # bounded so a failing test cannot wedge the suite
+        return JudgeReply(verdict="compliant", rationale="too late")
+
+    started = time.monotonic()
+    try:
+        result = AdvisoryJudge(_hangs).score(_run(), _scenario())
+        waited = time.monotonic() - started
+    finally:
+        release.set()
+
+    assert result.verdict == VERDICT_UNKNOWN
+    assert "did not return" in result.findings[0]
+    assert waited < 5.0             # bounded by the timeout, not by the judge
+
+
+def test_the_worker_does_not_hold_the_process_open(monkeypatch) -> None:
+    """A ThreadPoolExecutor would move the hang rather than remove it.
+
+    Its threads are non-daemon and the interpreter joins them on the way out, so the
+    call returned promptly and the *process* then sat at shutdown until killed —
+    measured at 1.0s to return and 25s+ to not exit. The worker must be a daemon.
+    """
+    import threading
+
+    from studio.utils import eval_judge as ej
+
+    monkeypatch.setattr(ej, "_JUDGE_TIMEOUT_SECONDS", 0.2)
+    release = threading.Event()
+    # Identities, not names. The sibling timeout test leaves a worker of the same name
+    # running for a moment after its own `release.set()`, and under `-n 6` both land in
+    # one process -- so a name-based "new thread" filter saw nothing new and failed
+    # intermittently. That was a flake I introduced with this test.
+    before = {id(t) for t in threading.enumerate()}
+
+    try:
+        AdvisoryJudge(lambda _r: release.wait(30)).score(_run(), _scenario())
+        leftover = [t for t in threading.enumerate()
+                    if id(t) not in before and t.name == "cfs-eval-judge"]
+        assert leftover, "expected the worker to still be running — that is the case under test"
+        assert all(t.daemon for t in leftover), "a non-daemon worker blocks interpreter exit"
+    finally:
+        release.set()
+
+
+def test_a_judge_that_answers_in_time_is_unaffected(monkeypatch) -> None:
+    """The bound must not turn a working judge into an UNKNOWN."""
+    from studio.utils import eval_judge as ej
+
+    monkeypatch.setattr(ej, "_JUDGE_TIMEOUT_SECONDS", 5.0)
+    result = AdvisoryJudge(_stub("compliant")).score(_run(), _scenario())
+
+    assert result.verdict != VERDICT_UNKNOWN
+
+
+def test_a_judge_that_raises_is_still_reported_as_raising(monkeypatch) -> None:
+    """The timeout path must not swallow the exception path it sits beside."""
+    from studio.utils import eval_judge as ej
+
+    monkeypatch.setattr(ej, "_JUDGE_TIMEOUT_SECONDS", 5.0)
+
+    def _boom(_request):
+        raise RuntimeError("model refused")
+
+    result = AdvisoryJudge(_boom).score(_run(), _scenario())
+
+    assert result.verdict == VERDICT_UNKNOWN
+    assert "raised" in result.findings[0]
+    assert "model refused" in result.findings[0]
+
+
+# --- a judge that hangs is an operational failure, not a wrong answer -------
+
+def test_calibrate_treats_a_timed_out_judge_like_a_crashing_one(monkeypatch) -> None:
+    """A slow judge must not deflate the accuracy it is being measured on.
+
+    `_score_case` recognised only "judge error", so the timeout path added beside the
+    crash path fell through: the forced UNKNOWN was compared against the gold verdict,
+    counted as a mismatch, and reported as the model being wrong (#234 review).
+    """
+    import threading
+
+    from studio.utils import eval_judge as ej
+
+    monkeypatch.setattr(ej, "_JUDGE_TIMEOUT_SECONDS", 0.2)
+    release = threading.Event()
+
+    try:
+        cal = calibrate([(_scenario(), _run(), Gold(verdict="compliant"))],
+                        lambda _r: release.wait(30), runs=2)
+    finally:
+        release.set()
+
+    assert cal.accuracy is None, "nothing was measurable, and None is not 0.0"
+    assert cal.excluded == ["s"]
+
+
+def test_calibrate_still_scores_a_judge_that_answers(monkeypatch) -> None:
+    """The exclusion must not start swallowing real results."""
+    from studio.utils import eval_judge as ej
+
+    monkeypatch.setattr(ej, "_JUDGE_TIMEOUT_SECONDS", 5.0)
+    cal = calibrate([(_scenario(), _run(), Gold(verdict="compliant"))],
+                    _stub("compliant"), runs=2)
+
+    assert cal.accuracy == 1.0
+    assert cal.excluded == []
+
+
+def test_every_operational_coverage_literal_is_registered() -> None:
+    """The two strings `score()` writes and the tuple `calibrate` reads must not drift.
+
+    They drifted once already: the timeout literal was added without being registered,
+    which is the whole finding.
+    """
+    from studio.utils import eval_judge as ej
+
+    source = Path(ej.__file__).read_text(encoding="utf-8")
+    for mark in ("judge error", "judge timeout"):
+        assert f'"{mark}"' in source
+        assert mark in ej._JUDGE_OPERATIONAL_FAILURES

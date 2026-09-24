@@ -211,17 +211,12 @@ armed_reversal  # noqa: B018
 ReversalCheck.mechanism  # noqa: B018
 ReversalCheck.refused  # noqa: B018
 
-# severity.VALIDATION_SEVERITIES — the declared severity vocabulary (error / warning /
-# off) for validation findings, declared by `cpt-studio-algo-traceability-validation-severity-policy`
-# in architecture/features/traceability-validation.md (### Finding Severity Policy).
-# Findings are stamped from DEFAULT_SEVERITY today; the vocabulary tuple has no reader
-# until the configuration layer validates user-supplied severities against it.
-# REMOVAL TRIGGER — delete this entry once the severity policy resolver imports
-# VALIDATION_SEVERITIES: grep `VALIDATION_SEVERITIES` under skills/studio/scripts/studio
-# and expect a hit outside utils/severity.py. That grep is the check, not a checkbox —
-# the algo above is already implemented, so its `[x]` cannot signal this entry's staleness;
-# the configuration layer extends it (public issue #174, "configurable severity per rule,
-# kind and entry"). Not to be confused with artifact_quality.SEVERITIES, which is the
-# advisory-finding vocabulary (info / warn).
-from studio.utils.severity import VALIDATION_SEVERITIES  # noqa: E402
-VALIDATION_SEVERITIES  # noqa: B018
+# plan_decisions.PhaseOutlook.will_run — the forecast a caller reads, with no caller yet.
+# `preflight` returns `blocked_on` and uses `PlanLookup.resolved` itself; `will_run` is the
+# shape the consumer wants and the consumer is the enforcement increment, which does not
+# import this module yet. REMOVAL TRIGGER — delete this entry once a dispatch module's
+# Python reads it (grep `will_run` outside plan_decisions.py and its tests). Deleting the
+# property instead would have the first consumer reinvent `not blocked_on` under a name
+# that reads as permission, which this one deliberately is not.
+from studio.utils.plan_decisions import PhaseOutlook  # noqa: E402
+PhaseOutlook.will_run  # noqa: B018

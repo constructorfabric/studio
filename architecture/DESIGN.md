@@ -1,6 +1,9 @@
 ---
-version: 1.2.0
+version: 1.3.0
 significant_changes:
+  - version: 1.3.0
+    date: 2026-09-16
+    summary: Recorded ADR-0024 and narrowed No-Weakening to no silent or runtime weakening — severity is declared policy, lowerable only where the kit has not locked it, and reported on every run.
   - version: 1.2.0
     date: 2026-09-08
     summary: Recorded ADR-0023, the autonomous interaction default with statically declared gate risk types.
@@ -330,6 +333,7 @@ The following architecture decision records (ADRs) drive the design:
 - `cpt-studio-adr-github-release-version-authority` — GitHub Release/tag provenance as the version authority for GitHub-backed proxy and kit state
 - `cpt-studio-adr-thin-skills-module-first` — thin standalone skills, shared runtime modules, canonical artifacts, and unified result envelopes for the AI runtime
 - `cpt-studio-adr-autonomous-default-and-gate-risk` — autonomous interaction mode as the default, with each gate declaring a static risk type (`confirmation`/`decision`/`blocking`); undeclared gates are treated as `blocking`; a `decision` gate resolves only against an explicitly keyed source by exact match, never by inferring intent, and a `blocking` gate is passable only by a fresh explicit authorisation satisfying that gate; a mode selects how already-declared authority is exercised rather than granting any new authority
+- `cpt-studio-adr-validation-severity-policy` — validation severity declared in kit and project configuration; a kit's own opinion settles first (entry, per-kind, whole-kit, built-in default) and the project layer is then admitted under a raise/lower rule; a project may raise freely and may lower only what the kit has not marked `locked`, no CLI flag may lower anything, and every lowering and every refusal is named in the report; an unrecognised severity value fails the load because it would disable checking; an unrecognised key or rule code is a `constraints-unknown-key` warning in a kit's `constraints.toml`, so a kit written for a newer engine stays installable, and a hard error in the project's own `core.toml`, where no forward-compatibility case exists
 
 ### 1.3 Architecture Layers
 
@@ -461,7 +465,9 @@ CLI proxy and skill engine must work natively on Linux, Windows, and macOS witho
 
 - [x] `p1` - **ID**: `cpt-studio-constraint-no-weakening`
 
-Validation rules cannot be bypassed or weakened in STRICT mode. The deterministic gate must pass before semantic review proceeds. This constraint ensures that the quality floor is maintained — agents cannot skip validation steps or downgrade severity of issues.
+Validation rules cannot be bypassed or **silently or at runtime** weakened. The deterministic gate must pass before semantic review proceeds. Agents cannot skip validation steps or downgrade the severity of issues, and no CLI flag may lower a rule.
+
+Severity itself is configurable, which does not contradict the above: a project's posture is declared in reviewable configuration (`constraints.toml`, `core.toml`), a kit may mark an entry `locked` to refuse any lowering of it, and every lowered rule is named in the output of every run it affects. The quality floor is maintained by making each relaxation a recorded, reviewed decision rather than by pretending none are ever needed. See `cpt-studio-adr-validation-severity-policy` for decision rationale.
 
 #### OpenCode Generated-Output Ownership
 
@@ -1575,6 +1581,7 @@ The following design domains do not require dedicated architecture sections. Eac
   - `cpt-studio-adr-ralphex-delegation-skill` — dedicated `cf-ralphex` skill with bounded delegation contract for autonomous plan execution via ralphex
   - `cpt-studio-adr-thin-skills-module-first` — thin standalone skills with a module-first runtime and canonical artifact/result contracts
   - `cpt-studio-adr-autonomous-default-and-gate-risk` — autonomous interaction mode as the default, with each gate declaring a static risk type
+  - `cpt-studio-adr-validation-severity-policy` — validation severity as declared, reviewable policy, lowerable only where the kit has not locked it and always reported
 - **Features**: [features/](./features/) — `core-infra.md`, `kit-management.md`, `traceability-validation.md`, `agent-integration.md`, `version-config.md`, `developer-experience.md`, `spec-coverage.md`, `v2-v3-migration.md`, `workspace.md`, `ralphex-delegation.md`, `subagent-registration.md`
 
 ### Specifications

@@ -1,11 +1,106 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import sys
+import textwrap
 import types
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import ModuleType
 from typing import Any
+
+#: The real ``$HOME``, read at import time -- which is collection, before the autouse
+#: fixture in ``conftest.py`` moves ``$HOME`` to a temp directory for each test.
+#:
+#: That fixture is right to move it: the brand directory hangs off ``Path.home()``, and
+#: tests that make ``Path.home()`` itself raise need the real seam intact. But Python also
+#: derives the *user* site-packages directory from ``$HOME``, so a subprocess started under
+#: the moved one cannot import anything installed with ``pip install --user`` -- including
+#: ``pipx``, which every test in this family shells out through. The failure has no
+#: fingerprints: ``pipx`` dies on ``ModuleNotFoundError``, the subprocess yields empty
+#: output, and 21 assertions fail claiming a checker never emitted its message.
+_REAL_HOME = os.environ.get("HOME")
+
+#: The other two variables that decide where a child resolves user-installed packages, and
+#: whether it resolves them at all. Restoring ``$HOME`` alone is not enough: ``PYTHONUSERBASE``
+#: redirects the user-site base to any path regardless of ``$HOME``, and ``PYTHONNOUSERSITE``
+#: switches user-site off entirely. Either one reproduces the same unimportable-``pipx``
+#: failure with ``$HOME`` perfectly correct, so they are removed rather than passed through.
+#: Raised in review, and the reason the first test here was weak: ``site.getusersitepackages()``
+#: computes its answer whether or not user-site is enabled, so asserting on that path alone
+#: passes under ``PYTHONNOUSERSITE=1`` while a real ``pipx`` would still fail.
+_USER_SITE_REDIRECTS = ("PYTHONNOUSERSITE", "PYTHONUSERBASE")
+
+
+def subprocess_env(**extra: str) -> dict:
+    """The environment for a subprocess that resolves its own imports.
+
+    Restores the real ``$HOME``, drops the two other variables that steer user-site
+    resolution, and applies ``extra`` on top. Use this rather than ``dict(os.environ)`` for
+    any child process that has to find an installed program.
+
+    ``HOME`` in ``extra`` raises rather than winning. No caller needs it, and a silent
+    override would undo the one thing this function exists to do -- the failure it produces
+    is the fingerprint-free one described above, so it is refused where it is visible rather
+    than debugged later. Raised in review.
+
+    When ``$HOME`` was unset at import there is nothing to restore, so it is *removed* from
+    the child's environment rather than left carrying the moved value. The previous version
+    skipped the assignment and passed the temp ``$HOME`` straight through, which is the
+    opposite of what its docstring promised. Also raised in review.
+    """
+    if "HOME" in extra:
+        raise ValueError(
+            "subprocess_env restores HOME; passing it as an extra would silently undo that. "
+            "Set it on the returned dict if you really mean to override it."
+        )
+    env = dict(os.environ)
+    if _REAL_HOME is None:
+        env.pop("HOME", None)
+    else:
+        env["HOME"] = _REAL_HOME
+    for name in _USER_SITE_REDIRECTS:
+        env.pop(name, None)
+    env.update(extra)
+    return env
+
+
+#: The repository root, and the import path every pylint-family test needs on it.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PLUGIN_PYTHONPATH = os.pathsep.join([
+    str(REPO_ROOT / "src"),
+    str(REPO_ROOT / "skills" / "studio" / "scripts"),
+])
+
+
+def run_pylint(code: str, *, enable: str,
+               relative_path: str = "sample.py") -> subprocess.CompletedProcess:
+    """Run the local checkers over ``code`` in a throwaway file.
+
+    One launcher instead of four. The four pylint-family test modules each carried an
+    identical copy of this -- the same `pipx` argument list, the same `PYTHONPATH`, the same
+    temp-file handling -- differing only in `--enable=` and the target path. The `$HOME` bug
+    those four shared is the argument: a fix applied to a launcher has to be applied four
+    times, and this family has already lost one repair that way. Raised in review.
+    """
+    with TemporaryDirectory() as td:
+        target = Path(td) / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(textwrap.dedent(code), encoding="utf-8")
+        return subprocess.run(
+            ["pipx", "run", "--spec", "pylint", "pylint",
+             "--score=n", "--disable=all", f"--enable={enable}", str(target)],
+            cwd=REPO_ROOT, env=subprocess_env(PYTHONPATH=PLUGIN_PYTHONPATH),
+            text=True, capture_output=True, check=False,
+            # Bounded. None of the four copies this replaces passed a timeout, so a `pipx`
+            # that hung -- fetching a spec on a cold cache, say -- stopped the whole suite
+            # rather than failing one test, which reads as CI being broken. Generous enough
+            # for a first-run download and still finite. One launcher means one bound; that
+            # is the argument for the consolidation, made by the first thing it fixed.
+            timeout=600,
+        )
 
 
 class NodeNG:

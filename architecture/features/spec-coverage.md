@@ -184,6 +184,7 @@ A file with good granularity has approximately 1 CDSL instruction (`@cpt-begin`/
 2. [x] - `p1` - Build one pairing per marked block: code = the block's lines, requirement = the algo declaration resolved from the block's id (unjudgeable when unresolved) - `inst-scov-pairings`
 3. [x] - `p1` - Run the advisory engine (`assess`) over the pairings, passing the coverage report for scope, and serialise the result as the `semantic` section (`advisory: true`) - `inst-scov-run`
 4. [x] - `p1` - Render a one-line advisory human summary (counts + weak/wrong tally) - `inst-scov-summary`
+5. [x] - `p1` - Name the weak/wrong requirements beneath that summary (findings whose verdict is `wrong`/`partial`, by `block_id` + `path:line`, `wrong` before `partial` so a cap keeps the most severe; presumed-covered and unjudgeable omitted — unjudgeable is dominated by no-judge noise but also holds permanent pre-filter gaps, neither actionable here), capped with a `+N more` continuation, so a reader need not open `--json` - `inst-scov-flagged`
 
 **Supporting**:
 - [x] - `p1` - Module imports and setup for the semantic-coverage pass - `inst-scov-imports`

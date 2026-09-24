@@ -43,13 +43,20 @@ def _definition_map(ctx: object) -> Dict[str, Path]:
     """
     out: Dict[str, Path] = {}
     artifacts, _sources = collect_artifacts_to_scan(ctx)
+    # Only for the warning below: the map itself keeps absolute paths, which is what
+    # callers resolve against. Log records are the thing that travels.
+    root = getattr(ctx, "project_root", None)
     for artifact_path, _kind in artifacts:
         for hit in scan_cpt_ids(artifact_path):
             if hit.get("type") == "definition" and isinstance(hit.get("id"), str):
                 existing = out.get(hit["id"])
                 if existing is not None and existing != artifact_path:
+                    # Project-relative, like every other path this module emits: an
+                    # absolute one here discloses the username and directory layout for
+                    # no benefit, and is harder to read besides.
                     logger.warning("semantic: cpt id %s defined in both %s and %s; keeping the first",
-                                   hit["id"], existing, artifact_path)
+                                   hit["id"], _relative_posix(existing, root),
+                                   _relative_posix(artifact_path, root))
                 out.setdefault(hit["id"], artifact_path)
     return out
 # @cpt-end:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-defmap
@@ -74,7 +81,12 @@ def _relative_posix(path: Path, project_root: Optional[Path]) -> str:
     try:
         return resolved.relative_to(root).as_posix()
     except ValueError:
-        logger.debug("semantic: %s is outside project_root; using a relative path", path)
+        # The *name*, not the path. The function's first sentence promises no local path
+        # leaks, and #200 made the return value keep that promise -- this line still
+        # interpolated the raw absolute path, so the username and directory layout went
+        # into the log instead of the report. A debug record is a narrower audience than
+        # a judge prompt, not a different rule.
+        logger.debug("semantic: %s is outside project_root; using a relative path", path.name)
     try:
         return Path(os.path.relpath(resolved, root)).as_posix()
     except ValueError:
@@ -95,7 +107,12 @@ def _pairings_for_files(files: Sequence[Path], definitions: Dict[str, Path],
     for code_path in dict.fromkeys(files):        # dedup duplicate registrations, keep order
         code_file, errs = CodeFile.from_path(code_path)
         if code_file is None:
-            logger.warning("semantic: skipping unparseable file %s: %s", code_path, errs)
+            # The error *codes*, not the raw finding dicts: each one carries its own
+            # absolute `path` and `location`, so interpolating them put back the path
+            # this line had just been made to drop. The file is already named.
+            codes = sorted({str(err.get("code")) for err in errs if isinstance(err, dict)})
+            logger.warning("semantic: skipping unparseable file %s: %s",
+                           _relative_posix(code_path, project_root), ", ".join(codes) or errs)
             continue
         path_posix = _relative_posix(code_file.path, project_root)
         for block in code_file.block_markers:
@@ -155,3 +172,40 @@ def summary_line(semantic: Dict[str, object]) -> str:
             f"{semantic.get('presumed_covered', 0)} presumed-covered, "
             f"{len(semantic.get('unjudgeable') or [])} unjudgeable, {weak} weak/wrong")
 # @cpt-end:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-summary
+
+
+#: Cap on named requirement rows in the human report; the rest are summarised as "+N more".
+_SEMANTIC_CAP = 20
+
+
+# @cpt-begin:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-flagged
+def flagged_lines(semantic: Dict[str, object]) -> List[str]:
+    """The weak/wrong requirements, named one per line for the human report, so a reader can act on
+    the result without opening ``--json``: a finding whose ``verdict`` is ``wrong`` or ``partial``
+    (the set ``summary_line`` counts as "weak/wrong") named by ``block_id`` + ``path:line``. The
+    more severe ``wrong`` findings are listed before ``partial`` ones, so when the list is capped
+    the rows that survive are the worst, not merely the first the engine happened to emit.
+    Presumed-covered blocks are the passing majority and are not listed; *unjudgeable* blocks are
+    not listed either — that category is dominated by no-judge-wired noise (with no judge wired
+    every block is unjudgeable) but also holds permanent pre-filter gaps; neither is an actionable
+    requirement here, and their combined count stays on the summary line above. Capped, with a
+    "+N more — see --json" continuation. Advisory: rendering only, never gates. A malformed/absent
+    shape yields no lines, never raises — including a single wrong/partial record missing or
+    mistyping any of ``block_id``/``path``/``start_line`` (a boolean ``start_line`` is rejected too,
+    since ``bool`` subclasses ``int``), which is skipped rather than rendered as ``None:None``."""
+    if not isinstance(semantic, dict) or semantic.get("error"):
+        return []
+    findings = semantic.get("findings")
+    findings = findings if isinstance(findings, list) else []
+    valid = [f for f in findings if isinstance(f, dict)
+             and f.get("verdict") in (eval_semantic.SEM_WRONG, eval_semantic.SEM_PARTIAL)
+             and isinstance(f.get("block_id"), str) and f["block_id"]
+             and isinstance(f.get("path"), str) and f["path"]
+             and isinstance(f.get("start_line"), int) and not isinstance(f.get("start_line"), bool)]
+    # wrong before partial, stable within each — so a cap keeps the most severe rows, not the first.
+    valid.sort(key=lambda f: 0 if f.get("verdict") == eval_semantic.SEM_WRONG else 1)
+    out = [f"  {f['block_id']}  {f['verdict']}  {f['path']}:{f['start_line']}" for f in valid]
+    if len(out) > _SEMANTIC_CAP:
+        return out[:_SEMANTIC_CAP] + [f"  (+{len(out) - _SEMANTIC_CAP} more — see --json)"]
+    return out
+# @cpt-end:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-flagged

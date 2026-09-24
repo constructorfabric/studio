@@ -685,3 +685,308 @@ class TestAPathThatIsNotAPlanCannotStopAGate:
         assert 'startswith("the task has no' not in src, \
             "the absent/ambiguous routing is reading the reason's wording again"
         assert "verdict == SILENCE" in src, "the typed verdict is no longer what routes"
+
+
+class TestThePreflightSaysWhatWillStopBeforeAnythingStarts:
+    """The reason a phase declares its decisions rather than discovering them."""
+
+    PLAN = '''
+[[phases]]
+number = 1
+needs = ["runtime.base-image"]
+
+[[phases]]
+number = 3
+needs = ["db.engine"]
+
+[[phases]]
+number = 4
+needs = ["db.engine", "runtime.base-image"]
+
+[[phases]]
+number = 5
+
+[[gate_decisions]]
+key = "runtime.base-image"
+value = "ubuntu-24.04"
+'''
+
+    def test_one_missing_answer_names_every_phase_it_blocks(self, tmp_path: Path) -> None:
+        """The whole point: the blast radius stated once, not discovered phase by phase.
+
+        Without this, the author supplies `db.engine` when phase 3 stops, and phase 4 stops
+        on the same key — the same interruption served once per phase.
+        """
+        outlooks = {o.phase: o for o in pd.preflight(_plan(tmp_path, self.PLAN))}
+        blocked = sorted(p for p, o in outlooks.items() if not o.will_run)
+        assert blocked == ["3", "4"], {p: o.blocked_on for p, o in outlooks.items()}
+        assert outlooks["3"].blocked_on == (("db.engine", "absent"),), outlooks["3"]
+
+    def test_a_phase_whose_decisions_are_answered_is_reported_as_running(
+            self, tmp_path: Path) -> None:
+        outlooks = {o.phase: o for o in pd.preflight(_plan(tmp_path, self.PLAN))}
+        assert outlooks["1"].will_run, outlooks["1"]
+
+    def test_a_phase_declaring_nothing_is_reported_as_running(self, tmp_path: Path) -> None:
+        """What makes the declaration safe to adopt one phase at a time.
+
+        An undeclared phase behaves exactly as it would without this feature — it stops when
+        it reaches the question rather than before. Reporting it as blocked would punish
+        every plan written before the field existed.
+        """
+        outlooks = {o.phase: o for o in pd.preflight(_plan(tmp_path, self.PLAN))}
+        assert outlooks["5"].will_run, outlooks["5"]
+
+    def test_the_status_that_stops_a_phase_is_carried_not_just_the_fact(
+            self, tmp_path: Path) -> None:
+        """A key the plan never mentions and one it half-answers are different problems."""
+        body = '''
+[[phases]]
+number = 1
+needs = ["silent", "half-answered"]
+
+[[gate_decisions]]
+key = "half-answered"
+'''
+        blocked = dict(pd.preflight(_plan(tmp_path, body))[0].blocked_on)
+        assert blocked["silent"] == "absent", blocked
+        assert blocked["half-answered"] == "ambiguous", blocked
+
+    def test_a_key_the_plan_answers_by_rule_is_not_forecast_as_blocking(
+            self, tmp_path: Path) -> None:
+        """The forecast runs before any gate, so it holds no value for the dimension.
+
+        Asking without one is `ambiguous` — correctly, for a gate that really did ask that
+        way. But a gate *will* supply it, so reporting the phase as blocked sends an author
+        to answer a key their plan already answers, in the one field whose whole job is to
+        be believed. Raised in review.
+        """
+        body = '''
+[[phases]]
+number = 1
+needs = ["follow-up.depth"]
+
+[[gate_decisions]]
+key = "follow-up.depth"
+dimension = "classification"
+[gate_decisions.policy]
+minor = "none"
+'''
+        outlook = pd.preflight(_plan(tmp_path, body))[0]
+        assert outlook.blocked_on == (), outlook
+        assert outlook.will_run, outlook
+        # And the lookup itself is unchanged: the frozen contract still has three
+        # statuses, and a gate that asks with no case still fails to resolve.
+        found = pd.resolve("follow-up.depth", _plan(tmp_path, body))
+        assert (found.status, found.awaits_case) == ("ambiguous", True), found
+        answered = pd.resolve("follow-up.depth", _plan(tmp_path, body), case="minor")
+        assert (answered.value, answered.awaits_case) == ("none", False), answered
+
+    def test_a_plan_that_is_genuinely_broken_still_forecasts_as_blocking(
+            self, tmp_path: Path) -> None:
+        """The other side of that exclusion, or it would hide every policy fault.
+
+        A policy declared without naming the dimension it is keyed on cannot be answered
+        by any case, so no gate will resolve it and the forecast must say so.
+        """
+        body = '''
+[[phases]]
+number = 1
+needs = ["follow-up.depth"]
+
+[[gate_decisions]]
+key = "follow-up.depth"
+[gate_decisions.policy]
+minor = "none"
+'''
+        outlook = pd.preflight(_plan(tmp_path, body))[0]
+        assert outlook.blocked_on == (("follow-up.depth", "ambiguous"),), outlook
+
+    def test_it_warns_and_never_decides(self, tmp_path: Path) -> None:
+        """`preflight` reports; it does not gate — asserted as behaviour, not as prose.
+
+        A reader could take `will_run` for permission. It is not: nothing here consults it
+        before dispatch, and a phase reported as running can still stop the moment a gate
+        inside it asks something no phase declared.
+
+        The first version of this matched a docstring substring through
+        `inspect.getsource`, which review correctly called out: adding enforcement while
+        leaving the sentence in place would have passed. So this exercises the call and
+        checks what it did — every phase is reported including the blocked ones, the plan
+        on disk is untouched, and nothing raises.
+        """
+        plan_dir = _plan(tmp_path, self.PLAN)
+        before = (plan_dir / pd.PLAN_FILE).read_bytes()
+        outlooks = pd.preflight(plan_dir)
+        # Reported, not withheld: a blocked phase still appears, because this describes
+        # what every phase will find rather than deciding which may run.
+        assert sorted(o.phase for o in outlooks) == ["1", "3", "4", "5"], outlooks
+        assert any(not o.will_run for o in outlooks), "nothing was reported as blocked"
+        assert (plan_dir / pd.PLAN_FILE).read_bytes() == before, \
+            "preflight wrote to the plan; it is a forecast and must not"
+
+    def test_a_malformed_phases_table_is_not_reported_as_no_phases(
+            self, tmp_path: Path, caplog) -> None:
+        """`phases = "oops"` parses cleanly, so the reader calls it silence.
+
+        Silence here means "nothing will stop", which is the opposite of what an author
+        needs to hear about a phases table they got wrong — and it was indistinguishable
+        from a plan that legitimately declares none. Raised in review; the same
+        distinction this module already draws one level up, missed one level in.
+        """
+        import logging  # noqa: PLC0415
+
+        with caplog.at_level(logging.WARNING, logger=pd.logger.name):
+            assert pd.preflight(_plan(tmp_path, 'phases = "oops"\n')) == []
+        assert any("rather than a list of tables" in r.getMessage() for r in caplog.records), \
+            [r.getMessage() for r in caplog.records]
+
+        # And a plan that genuinely declares none stays quiet: there is nothing wrong.
+        caplog.clear()
+        quiet = tmp_path / "none"
+        quiet.mkdir()
+        (quiet / pd.PLAN_FILE).write_text('[[gate_decisions]]\nkey = "k"\nvalue = "v"\n',
+                                          encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger=pd.logger.name):
+            assert pd.preflight(quiet) == []
+        assert not caplog.records, [r.getMessage() for r in caplog.records]
+
+    def test_a_plan_that_cannot_be_read_is_not_reported_as_nothing_to_stop(
+            self, tmp_path: Path, caplog) -> None:
+        """An empty forecast for a broken plan is this module's own failure, one level up.
+
+        "No phase will stop" and "this plan could not be read" were the same answer —
+        an empty list — which is exactly the silence-versus-defect distinction the rest of
+        the module implements deliberately. Raised in review.
+
+        A task with no plan.toml is silence and stays quiet: there is legitimately nothing
+        to forecast. A plan that exists and will not parse is a defect and says so.
+        """
+        import logging  # noqa: PLC0415
+
+        broken = tmp_path / "broken"
+        broken.mkdir()
+        (broken / pd.PLAN_FILE).write_text("[[phases]\nnumber = ", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger=pd.logger.name):
+            assert pd.preflight(broken) == []
+        assert any("unreadable rather than" in r.getMessage() for r in caplog.records), \
+            [r.getMessage() for r in caplog.records]
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger=pd.logger.name):
+            assert pd.preflight(tmp_path / "no-plan-here") == []
+        assert not caplog.records, [r.getMessage() for r in caplog.records]
+
+    @pytest.mark.parametrize("malformed", [
+        'needs = "runtime.base-image"',     # a string where a list belongs
+        'needs = [1, 2]',                   # non-string members
+        'needs = []',                       # declared empty
+    ])
+    def test_a_malformed_declaration_costs_the_warning_never_the_safety(
+            self, tmp_path: Path, malformed: str) -> None:
+        """The worst case is the warning nobody got, not work proceeding on an unknown answer.
+
+        Whatever a phase declares, the gate inside it still asks when it reaches a question
+        the plan does not answer. So a malformed `needs` degrades to the behaviour of not
+        declaring one at all.
+        """
+        body = f"[[phases]]\nnumber = 1\n{malformed}\n"
+        outlooks = pd.preflight(_plan(tmp_path, body))
+        assert len(outlooks) == 1, outlooks
+        assert outlooks[0].will_run, outlooks[0]
+
+    def test_a_plan_with_no_phases_reports_nothing_rather_than_raising(
+            self, tmp_path: Path) -> None:
+        assert pd.preflight(_plan(tmp_path, DIRECT)) == []
+
+    def test_a_missing_plan_reports_nothing_rather_than_raising(self, tmp_path: Path) -> None:
+        assert pd.preflight(tmp_path) == []
+
+    def test_the_phase_label_is_bounded_like_every_other_field(self, tmp_path: Path) -> None:
+        """A phase number is author-controlled text like any other."""
+        body = f'[[phases]]\nnumber = "{"9" * 200_000}"\nneeds = ["k"]\n'
+        assert len(pd.preflight(_plan(tmp_path, body))[0].phase) < 2_000
+
+    def test_an_outlook_cannot_be_edited_after_it_is_handed_over(
+            self, tmp_path: Path) -> None:
+        """`frozen=True` stops reassignment and nothing else.
+
+        `blocked_on` held a plain list, so a caller could append to a forecast it was
+        handed and the next reader would see keys the plan never blocked on. Raised in
+        review; it is a tuple now.
+        """
+        outlook = pd.preflight(_plan(tmp_path, self.PLAN))[0]
+        # The *value*, not the annotation: reverting the type hint alone changes nothing
+        # at runtime, so a test that only read the hint would pass on a mutable list.
+        assert isinstance(outlook.blocked_on, tuple), type(outlook.blocked_on)
+        assert not isinstance(outlook.blocked_on, list), type(outlook.blocked_on)
+        with pytest.raises(AttributeError):
+            outlook.blocked_on = ()          # type: ignore[misc]
+        with pytest.raises(AttributeError):
+            outlook.blocked_on.append(("x", "absent"))   # type: ignore[attr-defined]
+
+    def test_a_plan_cannot_forge_a_line_in_the_held_phase_notice(
+            self, tmp_path: Path) -> None:
+        """A bound is not a sanitiser, and both fields land in a notice a person reads.
+
+        A phase numbered `"1\\nARMED: yes — every phase dispatched"` rendered a second
+        line saying the opposite of the truth, and a decision key carrying an ANSI escape
+        recoloured the terminal around it. Raised in review; fourth appearance of this
+        forgery across three modules, so it is fixed at the helper every stored field
+        passes through rather than at the field that was noticed.
+        """
+        body = ('[[phases]]\n'
+                'number = "1\\nARMED: yes — every phase dispatched"\n'
+                'needs = ["k\\u001b[31m.evil"]\n')
+        outlook = pd.preflight(_plan(tmp_path, body))[0]
+        assert "\n" not in outlook.phase, repr(outlook.phase)
+        assert len(outlook.phase.splitlines()) == 1, repr(outlook.phase)
+        key = outlook.blocked_on[0][0]
+        assert "\x1b" not in key, repr(key)
+        assert all(ch.isprintable() or ch == " " for ch in key), repr(key)
+
+    def test_the_bound_fires_at_the_length_it_says(self, tmp_path: Path) -> None:
+        """Where the cap fires, not merely that one exists.
+
+        The tests around this use 200,000-character values and assert a ceiling, which
+        passes for any cap at or below the real one — an off-by-one in the shared helper,
+        or the constant moved by one, leaves them green. Raised in review on the sibling
+        module the same day, so it is the class rather than the instance: the three
+        lengths that matter are named here against literals.
+        """
+        cap = 500
+        assert pd._bounded("k" * (cap - 1)) == "k" * (cap - 1)
+        # The last length that survives whole, and the first that does not.
+        assert pd._bounded("k" * cap) == "k" * cap
+        over = pd._bounded("k" * (cap + 1))
+        assert over != "k" * (cap + 1), "one character over the cap was not truncated"
+        assert len(over) <= cap, len(over)
+
+    def test_the_declaration_keys_are_the_names_the_checklist_documents(self) -> None:
+        """Pinned to literals, because every fixture above is written in the plan's own syntax.
+
+        The TOML in these tests spells `needs` and `[[phases]]` directly, so renaming the
+        constants would fail them — for the right reason but with a confusing message. This
+        says which name changed. It is the same guard the `gate_decisions` rename earned,
+        applied to the two fields this increment reads rather than only the one it added.
+        """
+        assert pd.PHASE_NEEDS == "needs", pd.PHASE_NEEDS
+        assert pd.PHASES_TABLE == "phases", pd.PHASES_TABLE
+
+    @pytest.mark.parametrize("field", ["phase label", "blocked key"])
+    def test_every_field_of_an_outlook_is_bounded_not_just_the_label(
+            self, tmp_path: Path, field: str) -> None:
+        """Both sides, because bounding one of two adjacent fields is the recurring miss.
+
+        The phase label was bounded and the keys beside it were not, so a 200,000-character
+        `needs` entry landed in the outlook whole. Same shape as the marker that kept three
+        caller-supplied fields uncapped, found in review one change earlier.
+        """
+        huge = "K" * 200_000
+        if field == "phase label":
+            body = f'[[phases]]\nnumber = "{huge}"\nneeds = ["k"]\n'
+            measured = pd.preflight(_plan(tmp_path, body))[0].phase
+        else:
+            body = f'[[phases]]\nnumber = 1\nneeds = ["{huge}"]\n'
+            measured = pd.preflight(_plan(tmp_path, body))[0].blocked_on[0][0]
+        assert len(measured) < 2_000, (field, len(measured))

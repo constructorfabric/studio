@@ -18,26 +18,24 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/studio/scripts"))
 
 from studio.utils import armed_reversal as ar  # noqa: E402
-
-
-#: The environment the fixture's git runs in: the caller's, minus the variables that
-#: redirect git somewhere else. `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and
-#: `GIT_COMMON_DIR` are honoured even when `cwd` is an isolated tmp_path, so a developer
-#: with one of them exported would have these fixtures initialising, committing to and
-#: creating worktrees in whatever repository it names. Raised in review.
-_REDIRECTS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
-              "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-              "GIT_CEILING_DIRECTORIES", "GIT_NAMESPACE")
-
-
-def _clean_env() -> dict:
-    """The ambient environment with git's redirect variables removed."""
-    return {k: v for k, v in os.environ.items() if k not in _REDIRECTS}
+from studio.utils import change_summary  # noqa: E402
 
 
 def _git(cwd: Path, *args: str) -> None:
+    """Run git for a fixture, in the environment the production module already defines.
+
+    `_git_env` rather than a list written here. The first version of this hardcoded eight
+    redirect variables, which covered the ones I thought of and omitted every
+    *configuration* channel the shipped helper carries — `GIT_CONFIG_PARAMETERS`,
+    `GIT_CONFIG_COUNT` and the indexed `KEY_n`/`VALUE_n` pairs it gates,
+    `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` and
+    `GIT_DISCOVERY_ACROSS_FILESYSTEM`. Those were added to the production list by
+    measurement, in response to real failures, and a second copy is exactly how that work
+    gets lost: the copy is the one that stops being updated. Raised in review, twice —
+    the first fix wrote the duplicate, the second removed it.
+    """
     subprocess.run(["git", *args], cwd=str(cwd), check=True,
-                   capture_output=True, text=True, env=_clean_env())
+                   capture_output=True, text=True, env=change_summary._git_env())
 
 
 @pytest.fixture
@@ -487,6 +485,77 @@ class TestWhatReviewFoundOnTheFirstPush:
         monkeypatch.setattr(builtins, "__import__", _broken)
         answer, failed = ar._git(Path("."), ["rev-parse", "--is-inside-work-tree"])
         assert (answer, failed) == (None, True), (answer, failed)
+
+
+class TestTheFixtureGitCannotBeRedirected:
+    """The fixtures run real git, so an exported redirect variable is a real hazard.
+
+    Moved out of the removal-trigger class, whose subject is the dead-code whitelist:
+    someone looking for environment sanitisation would not have found it there. Raised in
+    review.
+    """
+
+    def test_the_fixture_git_uses_the_shared_sanitised_environment(
+            self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One list, not two. A second copy is the one that stops being updated.
+
+        The first fix for this wrote its own eight-variable list, which covered the
+        redirect channels and omitted every *configuration* one the shipped helper
+        carries — the `GIT_CONFIG_*` family and `GIT_DISCOVERY_ACROSS_FILESYSTEM`, each
+        added to the production list by measurement after a real failure. Raised in
+        review twice: once for inheriting the ambient environment, and again for
+        duplicating an incomplete list instead of reusing what exists.
+        """
+        source = inspect.getsource(_git)
+        assert "change_summary._git_env()" in source, source
+        # And the helper still removes the config channels a local list forgot.
+        for channel in ("GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CONFIG_GLOBAL",
+                        "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM",
+                        "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+                        # Named because adopting the shared tuple dropped it: the local
+                        # list had it and the shared one did not. It is in the shared tuple
+                        # now so one list holds the union -- though measurement says it
+                        # changes none of the local queries here, and the claim that it did
+                        # was mine and wrong. Raised in review.
+                        "GIT_NAMESPACE"):
+            assert channel in change_summary._GIT_REDIRECT_VARS, channel
+        # Seeded first. Without this the behavioural half was vacuous: no redirect
+        # variable is set in a normal shell or under pytest, so the intersection was
+        # empty whether or not `_git_env` removed anything — removing the sanitisation
+        # entirely left this green. Raised in review, and confirmed by mutation before
+        # the fix. Every name is set, so a helper that drops some and keeps others fails
+        # here rather than passing on the subset that happened to be tried.
+        for name in change_summary._GIT_REDIRECT_VARS:
+            monkeypatch.setenv(name, "/somewhere/else")
+        sanitised = change_summary._git_env()
+        left = sorted(set(sanitised) & set(change_summary._GIT_REDIRECT_VARS))
+        assert not left, f"the shared helper let these through: {left}"
+        # And it is a sanitised copy rather than an empty one: the rest of the
+        # environment still reaches git, or the fixtures would run without a PATH.
+        assert "PATH" in sanitised or not os.environ.get("PATH"), sorted(sanitised)[:5]
+
+    def test_an_exported_git_dir_does_not_move_the_fixture_repository(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Behaviour, not list membership — which is what the list comparison missed.
+
+        Everything else here asserts that the helper's tuple contains certain names and
+        that its output does not. None of that proves the fixture's **real** git actually
+        stays in `tmp_path`. `GIT_DIR` is the bluntest of the redirects: exported, it makes
+        every command operate on the repository it names, wherever `cwd` points.
+        """
+        decoy = tmp_path / "decoy.git"
+        decoy.mkdir()
+        monkeypatch.setenv("GIT_DIR", str(decoy))
+
+        root = tmp_path / "project"
+        root.mkdir()
+        _git(root, "init", "--quiet")
+        _git(root, "checkout", "--quiet", "-B", "main")
+
+        assert (root / ".git").is_dir(), "the fixture repository did not land in tmp_path"
+        assert not (decoy / "refs").exists(), (
+            f"git wrote into the exported GIT_DIR: {sorted(p.name for p in decoy.iterdir())}"
+        )
 
 
 class TestTheRemovalTriggerIsCheckedRatherThanWritten:
