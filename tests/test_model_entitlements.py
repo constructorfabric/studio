@@ -422,15 +422,18 @@ class TestEveryEmitterCarriesTheFinding:
                             "cf:tier:balanced", "gone-model")
         agents._resolve_model_id("codex", "openai", "cf:tier:balanced", "generate", "codebase")
 
-    def test_the_v2_emitter_attaches_it(self, tmp_path, monkeypatch):
+    def test_the_v2_emitter_carries_it(self, tmp_path, monkeypatch):
+        """Given what the v2 path really hands it -- a `_build_result` result, which is
+        where the finding is attached now."""
         from studio.commands import agents
         self._collect_one(tmp_path, monkeypatch)
         emitted = {}
         monkeypatch.setattr(agents.ui, "result",
                             lambda payload, **_kw: emitted.update(payload))
+        built = agents._build_result({}, [], tmp_path, tmp_path, None, {}, dry_run=True)
 
         agents._emit_v2_generation_result(
-            agents_result={"status": "OK"}, agents_to_process=[], results={}, dry_run=True)
+            agents_result=built, agents_to_process=[], results={}, dry_run=True)
 
         assert [w["kind"] for w in emitted["warnings"]] == ["model-not-entitled"]
 
@@ -446,7 +449,7 @@ class TestEveryEmitterCarriesTheFinding:
         assert "warnings" not in emitted
 
     def test_draining_means_one_emitter_does_not_repeat_another(self, tmp_path, monkeypatch):
-        """Both emitters call the same drain, so a run passing through two of them
+        """Every result is attached through the same drain, so a run passing through two of them
         reports the finding once, not twice."""
         from studio.commands import agents
         self._collect_one(tmp_path, monkeypatch)
@@ -568,46 +571,29 @@ class TestTheLegacyEmittersCarryTheFinding:
         assert "warnings" not in emitted
         capsys.readouterr()
 
-    def test_every_emitter_that_builds_a_result_also_attaches_the_finding(self):
-        """The third call site writes files, so it is pinned structurally instead.
+    def test_the_result_constructor_attaches_the_finding_itself(self, tmp_path, monkeypatch):
+        """The invariant is structural now: every emitter's result comes from
+        `_build_result`, and `_build_result` attaches. This replaced an AST walk
+        over `agents.py` that checked each emitter remembered to (#245 review)."""
+        from studio.commands import agents
+        self._queue_a_finding(tmp_path, monkeypatch)
 
-        `_run_legacy_generate_path` completes a real write and is not worth
-        driving from here, but a fourth emitter added later without the call is
-        exactly the regression this class exists for. Every function that calls
-        `_build_result` must also call `_attach_entitlement_warnings`.
-        """
-        import ast
+        result = agents._build_result({}, ["codex"], tmp_path, tmp_path, None, {}, dry_run=True)
+
+        assert [w["model"] for w in result.get("warnings", [])
+                if isinstance(w, dict) and w.get("kind") == "model-not-entitled"]
+        assert agents.drain_entitlement_warnings() == [], "drained, so nothing repeats"
+
+    def test_no_emitter_attaches_a_second_time(self):
+        """One place, so a later emitter cannot re-add what the constructor drained."""
         import inspect
-
         from studio.commands import agents
 
-        tree = ast.parse(inspect.getsource(agents))
-        calls = {}
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                calls[node.name] = {
-                    sub.func.id for sub in ast.walk(node)
-                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
-                }
-
-        # Delegation counts: `_run_v2_generate_path` builds the dict and hands it
-        # to `_emit_v2_generation_result`, which attaches. What must not exist is
-        # a function that builds a result and reaches no attaching function at all.
-        attaching = {name for name, called in calls.items()
-                     if "_attach_entitlement_warnings" in called}
-        for _ in range(len(calls)):                       # close over delegation
-            grown = {name for name, called in calls.items() if called & attaching}
-            if grown <= attaching:
-                break
-            attaching |= grown
-
-        missing = sorted(
-            name for name, called in calls.items()
-            if "_build_result" in called and name not in attaching
-        )
-
-        assert not missing, (
-            f"these build a result and never attach entitlement findings: {missing}")
+        callers = [name for name, fn in vars(agents).items()
+                   if inspect.isfunction(fn)
+                   and name not in ("_build_result", "_attach_entitlement_warnings")
+                   and "_attach_entitlement_warnings(" in inspect.getsource(fn)]
+        assert callers == [], callers
 
 
 class TestWhatTheCacheFailuresAreReportedAs:
@@ -861,3 +847,97 @@ class TestTheOrdinaryMissIsNotAnException:
 
         assert "withdrawn-model check is skipped" in caplog.text
         assert "CODEX_HOME" in caplog.text, "and names the way to point it somewhere"
+
+
+class TestEachGenerateStartsWithNoCarriedFindings:
+    """The notices and the warned-once set were module-level and lived for the
+    process. A generate that ended any way but a completed emit -- `n` at the
+    preview, an early error -- left both filled: the next generate in the same
+    process drained the stale notices into its own result, and said nothing about
+    models the earlier one had already warned for (#245 review)."""
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from studio.commands import agents
+        agents._ENTITLEMENT_NOTICES.clear()
+        agents._ENTITLEMENT_WARNED.clear()
+        yield
+        agents._ENTITLEMENT_NOTICES.clear()
+        agents._ENTITLEMENT_WARNED.clear()
+
+    @staticmethod
+    def _an_earlier_run_that_did_not_finish(tmp_path, monkeypatch):
+        from studio.commands import agents
+        monkeypatch.delenv(agents._ENTITLEMENT_OPT_OUT, raising=False)
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        agents._checked("codex", "openai", "gpt-withdrawn")
+        assert agents._ENTITLEMENT_NOTICES and agents._ENTITLEMENT_WARNED, "precondition"
+
+    def test_the_entry_point_clears_what_an_earlier_run_left(self, tmp_path, monkeypatch):
+        """Driven through `cmd_generate_agents` itself, stopped at its first step: the
+        reset has to happen before anything else can run, or an early exit would
+        still leave the state behind."""
+        from studio.commands import agents
+        self._an_earlier_run_that_did_not_finish(tmp_path, monkeypatch)
+        monkeypatch.setattr(agents, "_resolve_agents_context", lambda *_a, **_k: None)
+
+        assert agents.cmd_generate_agents([]) == 1
+
+        assert agents._ENTITLEMENT_NOTICES == [], "stale notices would reach the next result"
+        assert agents._ENTITLEMENT_WARNED == set(), "and the next run would stay silent"
+
+    def test_a_second_run_reports_the_same_model_again(self, tmp_path, monkeypatch, caplog):
+        from studio.commands import agents
+        self._an_earlier_run_that_did_not_finish(tmp_path, monkeypatch)
+        agents._begin_entitlement_run()
+
+        with caplog.at_level(logging.WARNING):
+            agents._checked("codex", "openai", "gpt-withdrawn")
+
+        assert [n["model"] for n in agents.drain_entitlement_warnings()] == ["gpt-withdrawn"]
+
+
+class TestTheCacheIsOnlyEvidenceForTheLoginItDescribes:
+    """The cache lists a ChatGPT plan's models. Under an API-key login the same
+    file is no evidence about the account, and reading it as evidence produced a
+    confident false "withdrawn" -- left to the person to diagnose and opt out of
+    (#245 review). codex records the login type in `auth.json` beside the cache.
+
+    Only the API-key test fails without the change; the rest pin that the new
+    condition does not reach past it -- an unknown login keeps the check running."""
+
+    @staticmethod
+    def _login(tmp_path, content):
+        (tmp_path / "codex_home").mkdir(exist_ok=True)
+        (tmp_path / "codex_home" / "auth.json").write_text(content, encoding="utf-8")
+
+    def test_an_api_key_login_is_unknown_not_withdrawn(self, tmp_path, monkeypatch):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        self._login(tmp_path, json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": "sk-x"}))
+
+        assert model_entitlements.entitled_codex_models() is None
+        assert model_entitlements.codex_model_is_withdrawn("gpt-something-else") is False
+
+    def test_a_chatgpt_login_is_checked_as_before(self, tmp_path, monkeypatch):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        self._login(tmp_path, json.dumps({"auth_mode": "chatgpt", "tokens": {}}))
+
+        assert model_entitlements.codex_model_is_withdrawn("gpt-something-else") is True
+
+    @pytest.mark.parametrize("content", [None, "{not json", "[]", '{"no_mode": 1}', '{"auth_mode": 7}'])
+    def test_not_knowing_the_login_type_keeps_the_check(self, tmp_path, monkeypatch, content):
+        """Unknown is not evidence of a different account: the check stays as it was."""
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        if content is not None:
+            self._login(tmp_path, content)
+
+        assert model_entitlements.codex_model_is_withdrawn("gpt-something-else") is True
+
+    def test_what_it_read_is_never_logged(self, tmp_path, monkeypatch, caplog):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        self._login(tmp_path, json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": "sk-SECRETVALUE"}))
+
+        with caplog.at_level(logging.DEBUG):
+            model_entitlements.entitled_codex_models()
+
+        assert "sk-SECRETVALUE" not in caplog.text

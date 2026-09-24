@@ -413,7 +413,9 @@ Recovery from `Partial` to `Generated` occurs only after the user resolves or re
   an account whose entitlements this cache does not describe. Generation is never
   altered or blocked by it, it reaches preview, dry-run and no-change responses
   as well as a completed write. It stays silent when there is no cache file,
-  which only means `codex` has not run on this machine; a cache that exists but
+  which only means `codex` has not run on this machine, and when `codex` is logged
+  in some other way than a ChatGPT plan, whose models the cache does not
+  describe; a cache that exists but
   cannot be read or has an unfamiliar shape, and a machine with no resolvable home
   and no `CODEX_HOME`, each produce one warning that the check is off for the run
 - [x] `cfs agents --agent opencode` read-only reports selected, generated, partial, and collision state

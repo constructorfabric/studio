@@ -37,6 +37,14 @@ _CODEX_HOME_ENV = "CODEX_HOME"
 _MAX_LISTED_IN_MESSAGE = 12
 _CODEX_CACHE_NAME = "models_cache.json"
 
+#: Where `codex` records how it is logged in, beside the cache, and the one value
+#: of its `auth_mode` the cache is known to describe. Measured on codex-cli
+#: 0.154.0: a ChatGPT login writes `"auth_mode": "chatgpt"`, and the cache it
+#: writes lists that plan's models. An API-key login is billed and entitled
+#: differently, so the same cache is not evidence about it (#245 review).
+_CODEX_AUTH_NAME = "auth.json"
+_CACHE_DESCRIBES_AUTH_MODE = "chatgpt"
+
 #: The CLI's own word for a model it offers a person. The cache also carries
 #: internal entries, and treating one of those as entitled would make a
 #: withdrawn slug look fine.
@@ -49,10 +57,69 @@ def codex_cache_path() -> Path:
     return Path(os.environ.get(_CODEX_HOME_ENV) or Path.home() / ".codex") / _CODEX_CACHE_NAME
 
 
+def _cache_describes_this_login(codex_home: Path) -> bool:
+    """False only when codex says it is logged in some other way than the cache covers.
+
+    Reads one field and nothing else from a file that also holds tokens, and
+    never logs what it read. Anything short of a positive answer -- no file, an
+    unreadable one, no `auth_mode`, an unfamiliar shape -- keeps the check as it
+    was, because not knowing the login type is not evidence that it differs.
+    """
+    try:
+        data = json.loads((codex_home / _CODEX_AUTH_NAME).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return True     # a condition, not a failure: the check simply keeps running
+    mode = data.get("auth_mode") if isinstance(data, dict) else None
+    return not isinstance(mode, str) or mode == _CACHE_DESCRIBES_AUTH_MODE
+
+
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-cache-path
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-read-cache
+def _cache_worth_reading() -> Optional[Path]:
+    """The cache path, or None when there is nothing to read -- each reason said once.
+
+    Split out of `entitled_codex_models` so each of the three ways of having
+    nothing to check stays its own short branch with its own reason.
+    """
+    # `Path.home()` raises RuntimeError where no home can be determined -- a
+    # container with no `$HOME` and no passwd entry, and no `CODEX_HOME` either.
+    # Warned, not debug-logged: "codex cannot have run here" was an assumption,
+    # not a measurement, and what is certain is only that the check is off for
+    # this run. `debug` is not a visible signal by this repository's own contract
+    # (`scripts/pylint_plugins/silent_exceptions.py`), and the answer is cached,
+    # so this is said once per process (#245 review).
+    try:
+        path = codex_cache_path()
+    except RuntimeError as exc:
+        logger.warning("model entitlements: no home directory and no %s, so the "
+                       "withdrawn-model check is skipped for this run: %s",
+                       _CODEX_HOME_ENV, exc)
+        return None
+
+    # A plain condition rather than a caught `FileNotFoundError`, because that is
+    # what it is: no cache file means codex has not run on this machine, which is
+    # the ordinary state of most machines and not a failure to absorb. Asking
+    # first also takes this branch out of the silent-swallowing question entirely
+    # -- there is no handler here to route anywhere (#245 review).
+    if not path.is_file():
+        logger.debug("model entitlements: no codex cache at %s", path)
+        return None
+
+    # The cache describes a ChatGPT-plan login. Under an API key it is not
+    # evidence about the account, and reading it as evidence was a confident false
+    # "withdrawn" for a model that account may well be served -- which the opt-out
+    # left to the person to diagnose (#245 review). Quiet for the same reason a
+    # missing cache is: nothing has gone wrong, the check just has nothing to say.
+    if not _cache_describes_this_login(path.parent):
+        logger.debug("model entitlements: codex is not on a ChatGPT login; its cache "
+                     "does not describe this account")
+        return None
+
+    return path
+
+
 @lru_cache(maxsize=1)
 def entitled_codex_models() -> Optional[FrozenSet[str]]:
     """The slugs `codex` lists for this account, or None when that is unknown.
@@ -68,28 +135,8 @@ def entitled_codex_models() -> Optional[FrozenSet[str]]:
     changed underneath -- there is no wrapper for it, because nothing in
     production has a reason to.
     """
-    # `Path.home()` raises RuntimeError where no home can be determined -- a
-    # container with no `$HOME` and no passwd entry, and no `CODEX_HOME` either.
-    # Warned, not debug-logged: "codex cannot have run here" was an assumption,
-    # not a measurement, and what is certain is only that the check is off for
-    # this run. `debug` is not a visible signal by this repository's own contract
-    # (`scripts/pylint_plugins/silent_exceptions.py`), and the answer is cached,
-    # so this is said once per process (#245 review).
-    try:
-        path: object = codex_cache_path()
-    except RuntimeError as exc:
-        logger.warning("model entitlements: no home directory and no %s, so the "
-                       "withdrawn-model check is skipped for this run: %s",
-                       _CODEX_HOME_ENV, exc)
-        return None
-
-    # A plain condition rather than a caught `FileNotFoundError`, because that is
-    # what it is: no cache file means codex has not run on this machine, which is
-    # the ordinary state of most machines and not a failure to absorb. Asking
-    # first also takes this branch out of the silent-swallowing question entirely
-    # -- there is no handler here to route anywhere (#245 review).
-    if not path.is_file():
-        logger.debug("model entitlements: no codex cache at %s", path)
+    path = _cache_worth_reading()
+    if path is None:
         return None
 
     try:

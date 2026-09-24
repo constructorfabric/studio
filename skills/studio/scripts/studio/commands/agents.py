@@ -124,10 +124,13 @@ def _warn_agents(message: str) -> None:
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-model-entitlement-warning
-#: Said once per (tool, provider, model) per process. `_resolve_model_id` runs
+#: Said once per (tool, provider, model) per generate. `_resolve_model_id` runs
 #: for every agent -- 44 of them in the shipped manifest -- and the same
 #: withdrawn slug answers most of them, so warning per call would bury the one
-#: line that matters under forty repetitions of itself.
+#: line that matters under forty repetitions of itself. Reset by
+#: `_begin_entitlement_run` when a generate starts: it was once per *process*,
+#: so a second generate in the same process never reported a model the first had
+#: already warned about, on stderr or in its JSON (#245 review).
 _ENTITLEMENT_WARNED: set = set()
 
 #: Collected alongside the log line, because `--json` consumers see this dict
@@ -160,6 +163,21 @@ _LOG_ENTITLEMENT_BROKE = (
 )
 
 
+def _begin_entitlement_run() -> None:
+    """Start a generate with no findings carried over from an earlier one.
+
+    Both structures are module-level, and every way out of a generate that is not
+    a completed emit -- the user answering `n` at the preview, an early error --
+    left them as that run filled them. The next generate in the same process then
+    drained the stale notices into its own result, and stayed silent about models
+    the earlier run had already warned for (#245 review). Clearing at the start
+    covers every exit at once, including ones added later, which clearing on each
+    exit path would not.
+    """
+    _ENTITLEMENT_NOTICES.clear()
+    _ENTITLEMENT_WARNED.clear()
+
+
 def drain_entitlement_warnings() -> List[Dict[str, Any]]:
     """Take the notices collected during this generate, clearing them.
 
@@ -179,12 +197,12 @@ def _attach_entitlement_warnings(result: Dict[str, Any]) -> None:
     account cannot use this model" is exactly what an automated caller should be
     able to act on.
 
-    Called from every emitter, not only the one that writes files: a preview, a
-    dry run and a no-change JSON response each resolve models, so each can have
-    collected a notice -- and a dry run is the natural way to ask what a generate
-    would do, which makes it the worst place for the answer to be missing.
-    Draining is what keeps that safe: whichever emitter runs first takes the
-    notices, and a later one finds nothing to repeat.
+    Called by `_build_result`, the constructor of every generate result -- a
+    preview, a dry run and a no-change JSON response as much as a completed write.
+    Each of those resolves models, so each can have collected a notice, and a dry
+    run is the natural way to ask what a generate would do, which makes it the
+    worst place for the answer to be missing. Draining keeps it to one report:
+    whichever result is built first takes the notices.
 
     The key is created only when there is something to put in it, so a clean run
     keeps the output shape it has always had.
@@ -7499,7 +7517,6 @@ def _emit_v2_generation_result(
     results: Dict[str, Any],
     dry_run: bool,
 ) -> None:
-    _attach_entitlement_warnings(agents_result)
     ui.result(
         agents_result,
         human_fn=lambda d: _human_generate_agents_ok(
@@ -7749,7 +7766,6 @@ def _emit_legacy_preview_result(
         dry_run=dry_run,
         gitignore_action=preview_gitignore_action,
     )
-    _attach_entitlement_warnings(agents_result)
     ui.result(
         agents_result,
         human_fn=lambda d: _human_generate_agents_ok(
@@ -7942,7 +7958,6 @@ def _run_legacy_generate_path(
         dry_run=False,
         gitignore_action=gitignore_action,
     )
-    _attach_entitlement_warnings(agents_result)
     ui.result(
         agents_result,
         human_fn=lambda d: _human_generate_agents_ok(
@@ -7959,6 +7974,7 @@ def _run_legacy_generate_path(
 
 def cmd_generate_agents(argv: List[str]) -> int:
     """Generate/update agent-specific workflow proxies and skill outputs."""
+    _begin_entitlement_run()
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-user-agents-entry
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-user-agents
     ctx = _resolve_agents_context(
@@ -8194,6 +8210,11 @@ def _build_result(
         result["gitignore"] = gitignore_action
     if partial_reasons:
         result["partial_reasons"] = partial_reasons
+    # Here, in the one constructor every emitted generate result comes from,
+    # rather than in each emitter. Wiring it per emitter needed an AST-walking
+    # test to catch the emitter somebody forgot; attaching where the result is
+    # made leaves no emitter to forget (#245 review).
+    _attach_entitlement_warnings(result)
     return result
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
