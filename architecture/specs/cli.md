@@ -664,6 +664,12 @@ Legacy per-tool manifest skill files are migrated away only when they match gene
   `subagents`
 - unsupported provider capabilities are reported through skip metadata instead of
   silent omission
+- a routing state-file persistence failure (per-harness `.cf-studio-routing-state.json`
+  write fails after the harness's routing mode was otherwise resolved cleanly) also
+  triggers `PARTIAL`, reported as a `level: error` entry in that harness's routing
+  `warnings` array rather than a downgrade of `routing_mode` — see
+  `cpt-studio-feature-hook-based-session-routing`'s algorithm step
+  `inst-persist-failure-partial`
 
 **Exit**: 0.
 
