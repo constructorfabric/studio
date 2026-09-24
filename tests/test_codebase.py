@@ -1285,5 +1285,36 @@ class TestAnUnresolvableEntryIsOneExclusion:
             entry.mkdir()
             (entry / "one.py").write_text("x = 1\n", encoding="utf-8")
         self._entry_cannot_resolve(monkeypatch, entry, exc)
+        # The module's own warning helper, not caplog: whether the `studio` logger
+        # propagates depends on which CLI test ran first in the process.
+        from studio.utils import codebase
+        warned: list[str] = []
+        monkeypatch.setattr(codebase, "_warn_codebase", warned.append)
 
         assert resolve_entry_code_files(entry, [".py"], project_root=tmp_path) == ([], 1)
+        assert len(warned) == 1 and str(entry) in warned[0], (
+            "an excluded entry with nothing said is indistinguishable from an empty one")
+
+
+class TestADirectoryAliasDoesNotDoubleCountALink:
+    """A link reached through a directory symlink aliasing its own directory is one
+    excluded candidate, not two (#236 review). Measured on 3.11.15, 3.12.3 and
+    3.14.4: `rglob` does not descend into a symlinked directory, so the alias
+    route is never walked and `candidate.absolute()` never sees two spellings of
+    one link. Pinned rather than canonicalised: resolving each link's parent would
+    be a second resolve per candidate, the cost #236 removed. If a Python release
+    starts following directory links in `rglob`, this is the test that says so."""
+
+    def test_the_link_is_excluded_once(self, tmp_path: Path) -> None:
+        from studio.utils.codebase import resolve_entry_code_files
+
+        real = tmp_path / "real"
+        real.mkdir()
+        (real / "ok.py").write_text("x = 1\n", encoding="utf-8")
+        (real / "target.py").symlink_to("ok.py")
+        (tmp_path / "alias").symlink_to("real", target_is_directory=True)
+
+        files, excluded = resolve_entry_code_files(tmp_path, [".py"], project_root=tmp_path)
+
+        assert [f.name for f in files] == ["ok.py"]
+        assert excluded == 1
