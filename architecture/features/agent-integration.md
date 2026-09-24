@@ -412,8 +412,10 @@ Recovery from `Partial` to `Generated` occurs only after the user resolves or re
   silence the check -- `CF_SKIP_MODEL_ENTITLEMENT_CHECK=1` skips it outright, for
   an account whose entitlements this cache does not describe. Generation is never
   altered or blocked by it, it reaches preview, dry-run and no-change responses
-  as well as a completed write, and it stays silent whenever the cache is absent,
-  unreadable or of an unfamiliar shape
+  as well as a completed write. It stays silent when there is no cache file,
+  which only means `codex` has not run on this machine; a cache that exists but
+  cannot be read or has an unfamiliar shape, and a machine with no resolvable home
+  and no `CODEX_HOME`, each produce one warning that the check is off for the run
 - [x] `cfs agents --agent opencode` read-only reports selected, generated, partial, and collision state
 - [x] OpenCode generation reuses `.agents/skills`, writes only marker-owned `.opencode/agents/cf-*.md` and `.opencode/.cf-studio-installed`, and preserves all other `.opencode/` content as user-owned
 - [x] An ownership-unproven `cf-*` collision returns an explicit partial result without overwrite or deletion and records only its path for rerun-safe exclusion

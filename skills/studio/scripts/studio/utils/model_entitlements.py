@@ -69,12 +69,18 @@ def entitled_codex_models() -> Optional[FrozenSet[str]]:
     production has a reason to.
     """
     # `Path.home()` raises RuntimeError where no home can be determined -- a
-    # container with no `$HOME` and no passwd entry. That means codex cannot have
-    # run here, so there is nothing to check against and nothing has gone wrong.
+    # container with no `$HOME` and no passwd entry, and no `CODEX_HOME` either.
+    # Warned, not debug-logged: "codex cannot have run here" was an assumption,
+    # not a measurement, and what is certain is only that the check is off for
+    # this run. `debug` is not a visible signal by this repository's own contract
+    # (`scripts/pylint_plugins/silent_exceptions.py`), and the answer is cached,
+    # so this is said once per process (#245 review).
     try:
         path: object = codex_cache_path()
     except RuntimeError as exc:
-        logger.debug("model entitlements: no home, so no codex cache: %s", exc)
+        logger.warning("model entitlements: no home directory and no %s, so the "
+                       "withdrawn-model check is skipped for this run: %s",
+                       _CODEX_HOME_ENV, exc)
         return None
 
     # A plain condition rather than a caught `FileNotFoundError`, because that is

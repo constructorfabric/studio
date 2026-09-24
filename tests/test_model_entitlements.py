@@ -844,8 +844,10 @@ class TestTheOrdinaryMissIsNotAnException:
 
         assert caplog.text == ""
 
-    def test_no_resolvable_home_is_a_miss_rather_than_a_crash(self, monkeypatch, caplog):
-        """A container with no `$HOME` and no passwd entry: codex cannot have run."""
+    def test_no_resolvable_home_is_a_warned_miss_rather_than_a_crash(self, monkeypatch, caplog):
+        """A container with no `$HOME`, no passwd entry and no `CODEX_HOME`. Still an
+        answer, not an exception -- but said at WARNING, because the check is off for
+        the run and "codex cannot have run here" is an assumption (#245 review)."""
         from studio.utils import model_entitlements
 
         def _no_home():
@@ -857,4 +859,5 @@ class TestTheOrdinaryMissIsNotAnException:
         with caplog.at_level(logging.WARNING):
             assert self._entitled() is None
 
-        assert caplog.text == ""
+        assert "withdrawn-model check is skipped" in caplog.text
+        assert "CODEX_HOME" in caplog.text, "and names the way to point it somewhere"
