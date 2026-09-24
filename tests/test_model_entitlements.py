@@ -969,3 +969,28 @@ class TestAnUnfamiliarLoginTypeIsSaidOutLoud:
 
         assert "cannot read codex's login record" in caplog.text
         assert "sk-NOTLOGGED" not in caplog.text
+
+
+class TestAnOversizedLoginTypeIsQuotedShort:
+    """The value comes from a file this module does not own and lands in a warning
+    a person reads, where the model list beside it is already capped (#245 review)."""
+
+    def test_the_quote_is_bounded_and_says_it_was_cut(self, tmp_path, monkeypatch, caplog):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        mode = "x" * 5000
+        (tmp_path / "codex_home" / "auth.json").write_text(
+            json.dumps({"auth_mode": mode}), encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING):
+            assert model_entitlements.entitled_codex_models() is None
+
+        assert "x" * (model_entitlements._MAX_MODE_IN_MESSAGE + 1) not in caplog.text
+        assert "(5000 characters)" in caplog.text
+
+    def test_at_the_cap_it_is_quoted_whole(self):
+        mode = "y" * model_entitlements._MAX_MODE_IN_MESSAGE
+        assert model_entitlements._quoted_mode(mode) == mode
+
+    def test_one_past_the_cap_is_cut(self):
+        mode = "z" * (model_entitlements._MAX_MODE_IN_MESSAGE + 1)
+        assert model_entitlements._quoted_mode(mode).endswith(f"({len(mode)} characters)")

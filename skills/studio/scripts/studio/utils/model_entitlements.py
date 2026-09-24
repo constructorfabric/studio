@@ -43,6 +43,11 @@ _CODEX_CACHE_NAME = "models_cache.json"
 #: writes lists that plan's models. An API-key login is billed and entitled
 #: differently, so the same cache is not evidence about it (#245 review).
 _CODEX_AUTH_NAME = "auth.json"
+#: How much of an unfamiliar `auth_mode` a warning quotes. The value comes from a
+#: file this module does not own, and it lands in a line a person reads; a login
+#: type is a short word, so anything past this is a corrupt file, not a name
+#: (#245 review).
+_MAX_MODE_IN_MESSAGE = 40
 _CACHE_DESCRIBES_AUTH_MODE = "chatgpt"
 
 #: The CLI's own word for a model it offers a person. The cache also carries
@@ -61,6 +66,13 @@ def codex_cache_path() -> Path:
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-login-type
+def _quoted_mode(mode: str) -> str:
+    """The login type as a warning quotes it: bounded, with the cut said."""
+    if len(mode) <= _MAX_MODE_IN_MESSAGE:
+        return mode
+    return f"{mode[:_MAX_MODE_IN_MESSAGE]}... ({len(mode)} characters)"
+
+
 def _login_mode(codex_home: Path) -> Optional[str]:
     """codex's recorded `auth_mode`, or None when it cannot be read.
 
@@ -136,7 +148,7 @@ def _cache_worth_reading() -> Optional[Path]:
                        "model cache describes a ChatGPT plan, so the withdrawn-model "
                        "check is off for this run. If that is a ChatGPT login under a "
                        "new name, the check needs updating.",
-                       mode, _CACHE_DESCRIBES_AUTH_MODE)
+                       _quoted_mode(mode), _CACHE_DESCRIBES_AUTH_MODE)
         return None
 
     return path
