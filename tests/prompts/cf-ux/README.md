@@ -97,9 +97,12 @@ three narrower things:
 - **Deny rules**, passed inline with `--settings`, close the runner's home
   (`Read(//<home>/**)`, `Edit(//<home>/**)`, and the `~` spellings) to the child's
   tools. Deny rules hold in every permission mode, `bypassPermissions` included; this
-  was measured on claude 2.1.281 for `Read`, `Write`, and a `cat`/`head` of the path in
-  `Bash`. They match on what a call *names*, so a path reached through indirection is
-  not caught. Every refusal comes back as `permission_denials` in the metadata and as a
+  was measured on claude 2.1.281 for `Read`, `Write`, and `cat`, `head`, `find`,
+  `grep -r` and `ls` of the path in `Bash`. That release has no separate `Glob` or
+  `Grep` tool -- the model is offered `Bash` for both -- so those two are covered by
+  the `Bash` measurement. `preflight.py` refuses a CLI older than that release. The
+  rules match on what a call *names*, so a path reached through indirection is not
+  caught. Every refusal comes back as `permission_denials` in the metadata and as a
   `WARNING` in the log — a run in which the model reached for the runner's home is a
   finding for this suite, not noise.
 - **`CF_UX_ISOLATED_HOME=1`** points the child's `HOME` at a directory inside the

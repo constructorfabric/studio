@@ -128,7 +128,17 @@ def _sweep_stale_sandboxes() -> None:
 #: A denylist would need an edit every time CI gains a secret and would be silently
 #: wrong in between. This fails closed: a variable a CLI turns out to need is a visible
 #: one-line addition here, while a leak is not visible anywhere.
-ENV_NAMES = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "SHELL")
+ENV_NAMES = (
+    "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "SHELL",
+    # Connectivity, not credentials. On a runner that reaches the API only through a
+    # proxy or a corporate CA, leaving these out made both CLIs fail to connect,
+    # looking like a flake rather than a configuration gap (#229 review). A proxy
+    # URL can carry `user:password@`, so `redact_secrets` treats PROXY names as
+    # credentials too.
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",
+)
 
 
 #: Prefixed variables that do not carry credentials or configuration but decide
@@ -274,6 +284,16 @@ BACKEND_ROUTING_NAMES = frozenset({
     "CLAUDE_CODE_USE_VERTEX",
     "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
     "CLAUDE_CODE_SKIP_VERTEX_AUTH",
+    # The codex family, which the list covered not at all while the provider
+    # forwards `OPENAI_`/`CODEX_` wholesale (#229 review). `CODEX_URL` and
+    # `CODEX_EXEC_SERVER_URL` are names found in the codex-cli 0.156.1 binary;
+    # `OPENAI_BASE_URL` and `OPENAI_API_BASE` are the OpenAI SDK's own endpoint
+    # overrides -- not found in that binary, dropped because forwarding an
+    # endpoint override is the one mistake this list exists to prevent.
+    "OPENAI_BASE_URL",
+    "OPENAI_API_BASE",
+    "CODEX_URL",
+    "CODEX_EXEC_SERVER_URL",
 })
 
 
@@ -350,7 +370,8 @@ def redact_secrets(text: str, env: dict) -> str:
     secrets = sorted(
         (value for name, value in env.items()
          if len(value) >= _REDACT_MIN_LENGTH
-         and any(mark in name.upper() for mark in ("KEY", "TOKEN", "SECRET", "PASSWORD"))),
+         and any(mark in name.upper()
+                 for mark in ("KEY", "TOKEN", "SECRET", "PASSWORD", "PROXY"))),
         key=len, reverse=True,
     )
     for secret in secrets:

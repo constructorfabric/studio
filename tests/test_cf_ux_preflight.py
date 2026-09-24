@@ -341,9 +341,21 @@ class TestTheClaudeVersionFloor:
         monkeypatch.setattr(preflight.subprocess, "run", _fake_run)
 
     def test_the_measured_version_passes(self, monkeypatch):
-        self._claude_says(monkeypatch, "2.1.276 (Claude Code)")
+        floor = ".".join(map(str, preflight.CLAUDE_MIN))
+        self._claude_says(monkeypatch, f"{floor} (Claude Code)")
 
         assert preflight.check_claude() == []
+
+    def test_the_floor_covers_the_deny_rule_measurement_too(self, monkeypatch):
+        """The deny rules were measured on a later release than the grading shape, and
+        they are the security claim; a CLI between the two used to pass (#229 review)."""
+        assert preflight.CLAUDE_MIN >= preflight.CLAUDE_DENY_RULES_MEASURED
+        assert preflight.CLAUDE_MIN >= preflight.CLAUDE_SHAPE_MEASURED
+        self._claude_says(monkeypatch, "2.1.276 (Claude Code)")
+
+        problem = "\n".join(preflight.check_claude())
+
+        assert "2.1.281" in problem and "deny rules" in problem
 
     def test_a_newer_version_passes(self, monkeypatch):
         """A floor, not a pin: refusing anything newer would be the thing that breaks."""
@@ -357,7 +369,7 @@ class TestTheClaudeVersionFloor:
         problem = "\n".join(preflight.check_claude())
 
         assert "2.1.100" in problem
-        assert "2.1.276" in problem
+        assert ".".join(map(str, preflight.CLAUDE_MIN)) in problem
         assert "is_error" in problem, "the reason has to name the shape it depends on"
         assert f"{preflight.SKIP_CLAUDE_CHECK_ENV}=1" in problem, (
             "and the way to run anyway, since the message is the only place a person meets it")

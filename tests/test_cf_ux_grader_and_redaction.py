@@ -478,6 +478,7 @@ class TestTheGraderDiagnosticIsRedactedBeforeItIsCut:
         assert grader_claude._STDERR_CHARS < _sandbox.MAX_DIAGNOSTIC_CHARS
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits and unprivileged symlinks (#229 review)")
 class TestAnIsolatedHomeHoldsOnlyALinkToTheCredential:
     """`CF_UX_ISOLATED_HOME=1` gives the child a home inside the sandbox. It holds
     one thing, a link to the CLI's credential: linked rather than copied so a
@@ -716,3 +717,51 @@ class TestCleanupSaysWhenItCouldNotClean:
 
         source = inspect.getsource(_sandbox)
         assert "ignore_errors=True)" not in source.replace("`rmtree(ignore_errors=True)`", "")
+
+
+class TestTheCodexChildIsNotRepointedEither:
+    """The routing list held only ANTHROPIC_/CLAUDE_ names while the codex provider
+    forwards OPENAI_/CODEX_ wholesale (#229 review). Driven through the codex
+    provider, not `child_env` with the claude prefixes: that sibling test passes for
+    an OPENAI_ name whatever the list says, since its prefixes never admit one."""
+
+    _CODEX_ROUTING = sorted(n for n in _sandbox.BACKEND_ROUTING_NAMES
+                            if n.startswith(("OPENAI_", "CODEX_")))
+
+    def test_the_list_names_the_codex_family_at_all(self):
+        assert {"OPENAI_BASE_URL", "CODEX_URL"} <= set(self._CODEX_ROUTING)
+
+    @pytest.mark.parametrize("name", _CODEX_ROUTING)
+    def test_a_codex_routing_variable_is_not_forwarded(self, run_codex, monkeypatch, name):
+        monkeypatch.setenv(name, "https://somewhere.else")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-value")
+        monkeypatch.setenv("CODEX_HOME", "/runner/.codex")
+
+        _out, seen = run_codex()
+
+        env = seen["kwargs"]["env"]
+        assert name not in env
+        assert env["OPENAI_API_KEY"] == "sk-test-value" and env["CODEX_HOME"] == "/runner/.codex"
+
+
+class TestProxyAndCaSettingsTravel:
+    """Connectivity settings were outside the allowlist, so on a runner that reaches
+    the API only through a proxy or a corporate CA both CLIs failed to connect
+    (#229 review). A proxy URL can carry credentials, so its value is redacted."""
+
+    @pytest.mark.parametrize("name", ["HTTPS_PROXY", "https_proxy", "NO_PROXY", "SSL_CERT_FILE",
+                                      "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"])
+    def test_it_reaches_the_child(self, run_codex, monkeypatch, name):
+        monkeypatch.setenv(name, "/some/value")
+
+        _out, seen = run_codex()
+
+        assert seen["kwargs"]["env"][name] == "/some/value"
+
+    def test_a_proxy_with_credentials_is_redacted_from_diagnostics(self, run_codex, monkeypatch):
+        proxy = "http://ci-user:Pr0xyPassw0rd@proxy.internal:3128"
+        monkeypatch.setenv("HTTPS_PROXY", proxy)
+
+        out, _seen = run_codex(stderr=f"connect failed via {proxy}", returncode=1)
+
+        assert "Pr0xyPassw0rd" not in out["error"]

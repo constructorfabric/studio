@@ -49,7 +49,18 @@ NVM_PROBE_LIMIT = 8
 #: A floor, not a pin: the shape has held since this version, and refusing to run on
 #: anything newer would make the check the thing that breaks the suite. What it
 #: catches is a CLI older than the measurement, where the shape is simply unknown.
-CLAUDE_MIN = (2, 1, 276)
+CLAUDE_SHAPE_MEASURED = (2, 1, 276)
+
+#: The release the deny rules were measured on: `--settings` deny rules holding
+#: under `bypassPermissions` for Read, Write, and `cat`/`head`/`find`/`grep -r`/`ls`
+#: of the runner's home in Bash. That is the security claim of the claude
+#: provider, and it was guarded by nothing while the grading shape had a floor
+#: (#229 review). Same reasoning as above: a CLI older than this is unmeasured.
+CLAUDE_DENY_RULES_MEASURED = (2, 1, 281)
+
+#: The floor preflight enforces: the higher of the two, so neither claim runs on a
+#: CLI it was never measured on.
+CLAUDE_MIN = max(CLAUDE_SHAPE_MEASURED, CLAUDE_DENY_RULES_MEASURED)
 
 #: Runs the pilot on a CLI below :data:`CLAUDE_MIN` anyway. Only the exact value
 #: ``1`` counts, as for every other CF_UX_* switch: a bare truthiness test read
@@ -184,11 +195,12 @@ def check_claude() -> list[str]:
     want = ".".join(str(part) for part in CLAUDE_MIN)
     got = ".".join(str(part) for part in have)
     return [
-        f"claude {got} is older than {want}, which the grading was measured against.",
-        "  A successful `Skill` call is recognised by its result carrying no",
-        "  `is_error` key. That shape was measured on the version above; on an",
-        "  older CLI it is unknown, and every verdict in the run would be wrong",
-        "  the same way.",
+        f"claude {got} is older than {want}, the release this suite was measured on.",
+        "  Two things rest on that measurement. A successful `Skill` call is",
+        "  recognised by its result carrying no `is_error` key; on an older CLI that",
+        "  shape is unknown, and every verdict in the run would be wrong the same",
+        "  way. And the deny rules that keep the unattended child out of your home",
+        "  directory were measured on it too.",
         f"  Upgrade, or set {SKIP_CLAUDE_CHECK_ENV}=1 to run anyway.",
     ]
 
