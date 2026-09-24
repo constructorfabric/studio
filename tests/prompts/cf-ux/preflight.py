@@ -192,15 +192,22 @@ def check_claude() -> list[str]:
     if have is None or have >= CLAUDE_MIN:
         return []
 
-    want = ".".join(str(part) for part in CLAUDE_MIN)
-    got = ".".join(str(part) for part in have)
+    def _dotted(version: tuple[int, int, int]) -> str:
+        return ".".join(str(part) for part in version)
+
+    # Each claim named with the release it was measured on. Naming only the floor
+    # attributed both to it, and the grading shape was measured on an older one
+    # (#229 review).
+    got = _dotted(have)
     return [
-        f"claude {got} is older than {want}, the release this suite was measured on.",
-        "  Two things rest on that measurement. A successful `Skill` call is",
-        "  recognised by its result carrying no `is_error` key; on an older CLI that",
-        "  shape is unknown, and every verdict in the run would be wrong the same",
-        "  way. And the deny rules that keep the unattended child out of your home",
-        "  directory were measured on it too.",
+        f"claude {got} is older than {_dotted(CLAUDE_MIN)}, the newest of the releases "
+        "this suite's two measurements were taken on:",
+        "  * a successful `Skill` call is recognised by its result carrying no",
+        f"    `is_error` key -- measured on {_dotted(CLAUDE_SHAPE_MEASURED)}; on an older CLI",
+        "    that shape is unknown, and every verdict in the run would be wrong the",
+        "    same way;",
+        "  * the deny rules that keep the unattended child out of your home directory",
+        f"    -- measured on {_dotted(CLAUDE_DENY_RULES_MEASURED)}.",
         f"  Upgrade, or set {SKIP_CLAUDE_CHECK_ENV}=1 to run anyway.",
     ]
 

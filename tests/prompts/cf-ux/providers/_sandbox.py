@@ -290,6 +290,12 @@ BACKEND_ROUTING_NAMES = frozenset({
     # `OPENAI_BASE_URL` and `OPENAI_API_BASE` are the OpenAI SDK's own endpoint
     # overrides -- not found in that binary, dropped because forwarding an
     # endpoint override is the one mistake this list exists to prevent.
+    #
+    # Unguarded by version, and knowingly. The drift that would make this list
+    # incomplete comes from a *newer* codex adding a variable, which a minimum-version
+    # check admits by design; and codex updates itself (0.154.0 to 0.156.1 on the day
+    # this was written). Re-read the binary's `CODEX_`/`OPENAI_` names when the pilot
+    # starts grading a different backend than it reports (#229 review).
     "OPENAI_BASE_URL",
     "OPENAI_API_BASE",
     "CODEX_URL",

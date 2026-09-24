@@ -349,13 +349,30 @@ class TestTheClaudeVersionFloor:
     def test_the_floor_covers_the_deny_rule_measurement_too(self, monkeypatch):
         """The deny rules were measured on a later release than the grading shape, and
         they are the security claim; a CLI between the two used to pass (#229 review)."""
-        assert preflight.CLAUDE_MIN >= preflight.CLAUDE_DENY_RULES_MEASURED
-        assert preflight.CLAUDE_MIN >= preflight.CLAUDE_SHAPE_MEASURED
-        self._claude_says(monkeypatch, "2.1.276 (Claude Code)")
+        assert preflight.CLAUDE_MIN == max(preflight.CLAUDE_DENY_RULES_MEASURED,
+                                           preflight.CLAUDE_SHAPE_MEASURED)
+        below = min(preflight.CLAUDE_DENY_RULES_MEASURED, preflight.CLAUDE_SHAPE_MEASURED)
+        self._claude_says(monkeypatch, f"{self._dotted(below)} (Claude Code)")
 
         problem = "\n".join(preflight.check_claude())
 
-        assert "2.1.281" in problem and "deny rules" in problem
+        assert self._dotted(preflight.CLAUDE_MIN) in problem and "deny rules" in problem
+
+    @staticmethod
+    def _dotted(version) -> str:
+        return ".".join(map(str, version))
+
+    def test_each_claim_is_named_with_its_own_release(self, monkeypatch):
+        """Naming only the floor attributed both claims to it, and the grading shape
+        was measured on an older release (#229 review). Read from the constants, so
+        moving either one cannot leave this checking yesterday's numbers."""
+        self._claude_says(monkeypatch, "2.1.100 (Claude Code)")
+        lines = preflight.check_claude()
+
+        shape = next(i for i, line in enumerate(lines) if "is_error" in line)
+        deny = next(i for i, line in enumerate(lines) if "deny rules" in line)
+        assert self._dotted(preflight.CLAUDE_SHAPE_MEASURED) in " ".join(lines[shape:shape + 2])
+        assert self._dotted(preflight.CLAUDE_DENY_RULES_MEASURED) in " ".join(lines[deny:deny + 2])
 
     def test_a_newer_version_passes(self, monkeypatch):
         """A floor, not a pin: refusing anything newer would be the thing that breaks."""
