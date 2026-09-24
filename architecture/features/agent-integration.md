@@ -264,6 +264,8 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - `_resolve_model_id` translating (tool, provider, tier, role, target) to concrete model id - `inst-resolve-model-id`
 - [x] - `p1` - Advisory warning when the local `codex` cache does not list a resolved (codex, openai) model, suppressed by `CF_SKIP_MODEL_ENTITLEMENT_CHECK` - `inst-model-entitlement-warning`
 - [x] - `p1` - Locate `codex`'s model cache, honouring `CODEX_HOME` - `inst-entitlement-cache-path`
+- [x] - `p1` - Read the login type `codex` recorded beside its cache, one field only and never logged, or `None` when it cannot be read - `inst-entitlement-login-type`
+- [x] - `p1` - Decide whether there is a cache worth reading: a resolvable home, a cache file, and a ChatGPT login, each missing case said once - `inst-entitlement-worth-reading`
 - [x] - `p1` - Read the cache into the set of listed slugs, or `None` when it says nothing usable - `inst-entitlement-read-cache`
 - [x] - `p1` - Decide whether the cache positively contradicts a model id, silent on every uncertainty - `inst-entitlement-verdict`
 - [x] - `p1` - Codex `context_window` → token-count map for `model_context_window` lines - `inst-codex-context-tokens`

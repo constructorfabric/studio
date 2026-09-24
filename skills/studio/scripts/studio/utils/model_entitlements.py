@@ -57,26 +57,39 @@ def codex_cache_path() -> Path:
     return Path(os.environ.get(_CODEX_HOME_ENV) or Path.home() / ".codex") / _CODEX_CACHE_NAME
 
 
-def _cache_describes_this_login(codex_home: Path) -> bool:
-    """False only when codex says it is logged in some other way than the cache covers.
-
-    Reads one field and nothing else from a file that also holds tokens, and
-    never logs what it read. Anything short of a positive answer -- no file, an
-    unreadable one, no `auth_mode`, an unfamiliar shape -- keeps the check as it
-    was, because not knowing the login type is not evidence that it differs.
-    """
-    try:
-        data = json.loads((codex_home / _CODEX_AUTH_NAME).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return True     # a condition, not a failure: the check simply keeps running
-    mode = data.get("auth_mode") if isinstance(data, dict) else None
-    return not isinstance(mode, str) or mode == _CACHE_DESCRIBES_AUTH_MODE
-
-
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-cache-path
 
 
-# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-read-cache
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-login-type
+def _login_mode(codex_home: Path) -> Optional[str]:
+    """codex's recorded `auth_mode`, or None when it cannot be read.
+
+    Reads one field and nothing else from a file that also holds tokens, and returns
+    only that field. Anything short of a string -- no file, an unreadable one, no
+    `auth_mode`, an unfamiliar shape -- is None, and None keeps the check running:
+    not knowing the login type is not evidence that it differs.
+    """
+    auth = codex_home / _CODEX_AUTH_NAME
+    if not auth.is_file():
+        return None     # not logged in through a file, or not at all: a condition
+    try:
+        data = json.loads(auth.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        # A file codex wrote and this cannot read is worth a line: the check keeps
+        # running, but on an assumption about the login it could not confirm. The
+        # exception's text only -- never the file's content, which holds tokens.
+        logger.warning("model entitlements: cannot read codex's login record at %s "
+                       "(%s); checking as if it were a ChatGPT login",
+                       auth, type(exc).__name__)
+        return None
+    mode = data.get("auth_mode") if isinstance(data, dict) else None
+    return mode if isinstance(mode, str) else None
+
+
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-login-type
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-worth-reading
 def _cache_worth_reading() -> Optional[Path]:
     """The cache path, or None when there is nothing to read -- each reason said once.
 
@@ -110,16 +123,29 @@ def _cache_worth_reading() -> Optional[Path]:
     # The cache describes a ChatGPT-plan login. Under an API key it is not
     # evidence about the account, and reading it as evidence was a confident false
     # "withdrawn" for a model that account may well be served -- which the opt-out
-    # left to the person to diagnose (#245 review). Quiet for the same reason a
-    # missing cache is: nothing has gone wrong, the check just has nothing to say.
-    if not _cache_describes_this_login(path.parent):
-        logger.debug("model entitlements: codex is not on a ChatGPT login; its cache "
-                     "does not describe this account")
+    # left to the person to diagnose (#245 review).
+    #
+    # Warned, not debug-logged, and the value named. `"chatgpt"` is the one spelling
+    # measured, and a codex release that renamed it would otherwise switch the check
+    # off for every ChatGPT user in silence, indistinguishable from an API-key login
+    # (#245 review). Said once per process, since the answer is cached; the opt-out
+    # silences it, because `_checked` returns before anything is read.
+    mode = _login_mode(path.parent)
+    if mode is not None and mode != _CACHE_DESCRIBES_AUTH_MODE:
+        logger.warning("model entitlements: codex reports login type %r, not %r; its "
+                       "model cache describes a ChatGPT plan, so the withdrawn-model "
+                       "check is off for this run. If that is a ChatGPT login under a "
+                       "new name, the check needs updating.",
+                       mode, _CACHE_DESCRIBES_AUTH_MODE)
         return None
 
     return path
 
 
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-worth-reading
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-read-cache
 @lru_cache(maxsize=1)
 def entitled_codex_models() -> Optional[FrozenSet[str]]:
     """The slugs `codex` lists for this account, or None when that is unknown.

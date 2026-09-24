@@ -30,11 +30,20 @@ def _forget_the_cached_read(monkeypatch):
     a developer or runner can have it exported, and with it set 18 of these tests
     failed for a reason that had nothing to do with the code (CodeRabbit, #245).
     Tests that exercise the opt-out set it themselves.
+
+    `CODEX_HOME` is cleared for the whole suite in `conftest.py`, not here: every
+    agent-generation test resolves codex models, not only these.
     """
     monkeypatch.delenv("CF_SKIP_MODEL_ENTITLEMENT_CHECK", raising=False)
+    # And the findings `agents` keeps between calls, reset the way production resets
+    # them: once here, for every test, instead of six hand-copied class fixtures of
+    # which one cleared a different pair and one class had none (#245 review).
+    from studio.commands import agents
+    agents._begin_entitlement_run()
     model_entitlements.entitled_codex_models.cache_clear()
     yield
     model_entitlements.entitled_codex_models.cache_clear()
+    agents._begin_entitlement_run()
 
 
 def _cache(tmp_path: Path, monkeypatch, models) -> Path:
@@ -142,15 +151,6 @@ class TestEveryUncertaintyIsSilence:
 
 
 class TestTheWarningInGenerate:
-    @pytest.fixture(autouse=True)
-    def _forget_what_was_warned(self):
-        from studio.commands import agents
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
-        yield
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
-
     @staticmethod
     def _resolve(*args):
         from studio.commands.agents import _resolve_model_id
@@ -376,15 +376,6 @@ class TestTheResultDictGetsTheFinding:
     consumers look. Tested directly, because the command that calls it needs a
     whole generate to run."""
 
-    @pytest.fixture(autouse=True)
-    def _clean(self):
-        from studio.commands import agents
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
-        yield
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
-
     def test_a_clean_run_keeps_the_output_shape_it_had(self):
         from studio.commands import agents
         result = {"status": "OK"}
@@ -411,15 +402,6 @@ class TestEveryEmitterCarriesTheFinding:
     is actually emitted. Attaching it only to the successful legacy write meant a
     `--dry-run` — the natural way to ask what a generate would do — answered
     without it."""
-
-    @pytest.fixture(autouse=True)
-    def _clean(self):
-        from studio.commands import agents
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
-        yield
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
 
     @staticmethod
     def _collect_one(tmp_path, monkeypatch):
@@ -511,16 +493,11 @@ class TestTheLegacyEmittersCarryTheFinding:
     """
 
     @pytest.fixture(autouse=True)
-    def _clean(self):
-        from studio.commands import agents
+    def _json_mode(self):
         from studio.utils.ui import set_json_mode
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
         set_json_mode(True)
         yield
         set_json_mode(False)
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
 
     @staticmethod
     def _queue_a_finding(tmp_path, monkeypatch):
@@ -698,8 +675,6 @@ class TestABlankSlugNamesNoModel:
         """The consequence, stated where it would have been seen."""
         from studio.commands import agents
         _cache(tmp_path, monkeypatch, [{"slug": "", "visibility": "list"}])
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
 
         with caplog.at_level(logging.WARNING):
             agents._resolve_model_id("codex", "openai", "cf:tier:balanced",
@@ -742,15 +717,6 @@ class TestTheCheckCannotStopGeneration:
     outright. A check that can break the thing it advises on is worse than no
     check (#245 review).
     """
-
-    @pytest.fixture(autouse=True)
-    def _clean(self):
-        from studio.commands import agents
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
-        yield
-        agents._ENTITLEMENT_WARNED.clear()
-        agents.drain_entitlement_warnings()
 
     def test_an_ambiguous_provider_table_does_not_raise_out_of_resolution(
             self, monkeypatch, caplog):
@@ -863,15 +829,6 @@ class TestEachGenerateStartsWithNoCarriedFindings:
     process drained the stale notices into its own result, and said nothing about
     models the earlier one had already warned for (#245 review)."""
 
-    @pytest.fixture(autouse=True)
-    def _clean(self):
-        from studio.commands import agents
-        agents._ENTITLEMENT_NOTICES.clear()
-        agents._ENTITLEMENT_WARNED.clear()
-        yield
-        agents._ENTITLEMENT_NOTICES.clear()
-        agents._ENTITLEMENT_WARNED.clear()
-
     @staticmethod
     def _an_earlier_run_that_did_not_finish(tmp_path, monkeypatch):
         from studio.commands import agents
@@ -948,3 +905,67 @@ class TestTheCacheIsOnlyEvidenceForTheLoginItDescribes:
             model_entitlements.entitled_codex_models()
 
         assert "sk-SECRETVALUE" not in caplog.text
+
+
+class TestTheSuiteNeverSeesTheRunnersCodexHome:
+    """`conftest.py` clears `CODEX_HOME` for every test. Meaningful where the runner
+    has one exported -- a developer who uses codex -- which is exactly where the
+    leak was measured (#245 review)."""
+
+    def test_codex_home_is_unset_inside_a_test(self):
+        import os
+
+        assert "CODEX_HOME" not in os.environ
+
+    def test_so_the_default_cache_is_under_the_isolated_home(self):
+        from pathlib import Path
+
+        assert model_entitlements.codex_cache_path() == Path.home() / ".codex" / "models_cache.json"
+        assert not model_entitlements.codex_cache_path().exists()
+
+
+class TestAnUnfamiliarLoginTypeIsSaidOutLoud:
+    """`"chatgpt"` is the one spelling measured. Any other value switched the check
+    off with only a debug line, so a codex release renaming it would have disabled
+    the check for every ChatGPT user in silence (#245 review)."""
+
+    @staticmethod
+    def _login(tmp_path, mode):
+        (tmp_path / "codex_home").mkdir(exist_ok=True)
+        (tmp_path / "codex_home" / "auth.json").write_text(
+            json.dumps({"auth_mode": mode, "OPENAI_API_KEY": "sk-NOTLOGGED-0123456789"}),
+            encoding="utf-8")
+
+    @pytest.mark.parametrize("mode", ["apikey", "chatgpt-v2", "oauth"])
+    def test_it_is_named_at_warning_and_the_check_is_off(self, tmp_path, monkeypatch, caplog, mode):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        self._login(tmp_path, mode)
+
+        with caplog.at_level(logging.WARNING):
+            assert model_entitlements.entitled_codex_models() is None
+
+        assert repr(mode) in caplog.text and "check is off" in caplog.text
+        assert "sk-NOTLOGGED" not in caplog.text
+
+    def test_the_measured_spelling_says_nothing(self, tmp_path, monkeypatch, caplog):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        self._login(tmp_path, "chatgpt")
+
+        with caplog.at_level(logging.WARNING):
+            assert model_entitlements.entitled_codex_models() == frozenset({"gpt-5.6-sol"})
+
+        assert caplog.text == ""
+
+    def test_an_unreadable_login_record_is_said_without_its_content(
+            self, tmp_path, monkeypatch, caplog):
+        """The check keeps running, on an assumption it could not confirm -- worth a
+        line. Only the exception's type is named: the file holds tokens."""
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        (tmp_path / "codex_home" / "auth.json").write_text(
+            '{"tokens": "sk-NOTLOGGED-0123456789", broken', encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING):
+            assert model_entitlements.codex_model_is_withdrawn("gpt-other") is True
+
+        assert "cannot read codex's login record" in caplog.text
+        assert "sk-NOTLOGGED" not in caplog.text
