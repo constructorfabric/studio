@@ -122,6 +122,10 @@ What none of this covers, and what a person running `make test-prompts` is accep
 the child runs as you, with your plugins loaded, and without asking. A change to a
 scenario in this directory, or to the skill text it invokes, is code that runs on the
 machine of whoever runs the suite next. Review such changes as you would a script.
+Nor are the child's descendants reaped: a process the CLI detaches outlives it and
+can still be running while the sandbox is removed. Teardown refuses to follow a
+symlink it finds, but a directory swapped for one *during* the removal is a race it
+does not win.
 The OS-level boundary that would change this — Claude Code's own sandbox (Seatbelt
 on macOS, bubblewrap + socat on Linux, and it *disables itself* when those are
 missing) or a container — is tracked as a follow-up, not shipped here.
