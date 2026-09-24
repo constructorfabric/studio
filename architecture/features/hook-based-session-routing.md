@@ -1,6 +1,9 @@
 ---
-version: 0.5.0
+version: 0.6.0
 significant_changes:
+  - version: 0.6.0
+    date: 2026-09-24
+    summary: Fourth-round PR review fixes — cross-reference `DESIGN.md`'s new `HarnessRoutingOutcome` field-level schema (type and presence rule per `routing_mode` value, including a unified `warnings` array shape with `level`/`reason`) instead of leaving it implicit, and add the same `errored`-outcome pattern already used for shared-marker failures to the two disablement-time removals that previously had no failure branch (own hook-entry removal, own execution-receipt removal) plus a distinct report-only pattern for the final per-harness state-file persistence step, whose own write failure cannot be persisted into itself.
   - version: 0.5.0
     date: 2026-09-23
     summary: Third-round PR review fixes — register the Codex hook with no `SessionStart` matcher restriction (covering `startup`, `resume`, `clear`, and `compact`) so no restart source is silently left without routing delivery once the harness is promoted to `HookInstalled`, and add a read-state rule that reports the persisted `file` value (not `unknown`) during the expected receipt-only pending-first-run window instead of treating it as drift.
@@ -81,6 +84,8 @@ This feature moves delivery of Studio's routing precondition from unconditional 
 | `Errored` | `errored` | Studio could not establish either channel for this harness on the last run; delivery is not guaranteed. |
 
 `unknown` is a fifth **report-only** `routing_mode` value with no corresponding lifecycle state: inspection emits it when the persisted state and the state derived from installed resources disagree (`cpt-studio-algo-hook-based-session-routing-read-state`). It is never persisted and a harness is never *in* `unknown`; it describes the reader's confidence, not the harness. `DESIGN.md`'s `HarnessRoutingOutcome.routing_mode` enum therefore carries five values (`off`, `file`, `hook`, `errored`, `unknown`) while `HarnessRoutingState` carries four.
+
+**Outcome record schema**: `HarnessRoutingOutcome` is a `DESIGN.md` entity, not redefined here. The field-level presence, type, and cardinality rules referenced throughout Sections 2–6 below — for example, when `hook_path`, `file_marker_paths`, and `warnings` are present versus omitted for a given `routing_mode`, and how the `warnings` array is shaped (`level` + `reason`) — are the single, authoritative definition in `DESIGN.md`'s `HarnessRoutingOutcome` field schema; this document only describes the behavior that produces each field's value.
 
 ### 1.2 Purpose
 
@@ -218,12 +223,18 @@ In every shape the command invokes one Studio-owned hook script rather than an i
 
 **Two-pass contract**: this algorithm is **pass 1** and is deliberately confined to resources owned by the single harness it is given — that harness's hook entry, that harness's state file. It never creates or removes the shared `AGENTS.md`/`CLAUDE.md` marker, and it never inspects other harnesses' target modes. All shared-resource decisions are deferred to pass 2 (`cpt-studio-algo-hook-based-session-routing-reconcile-marker`), which runs once per `generate-agents` invocation against the complete target-mode set. This is what makes the run's result independent of the order harnesses are processed in.
 
+**Failures pass 1 can independently produce**: because this pass owns the harness's own hook entry and execution receipt, a filesystem failure removing either of those during disablement is this pass's failure to report, not pass 2's — it is not a shared-resource failure. Pass 1 therefore returns `target_mode = errored` for those failures itself (see the disablement branch below), distinct from the shared-marker `errored` outcomes pass 2 produces (`cpt-studio-dod-hook-based-session-routing-write-failure`).
+
 **Shared-resource note (file-fallback marker)**: the file-fallback marker is **not** a per-harness resource. `_inject_root_agents()`/`_inject_root_claude()` (`skills/studio/scripts/studio/commands/init.py`) write one managed block into exactly two shared, project-wide files — root `AGENTS.md` and root `CLAUDE.md` — which multiple harnesses read by convention. There is no per-harness marker file, and the two files are treated as one logical resource. Hook entries, by contrast, are genuinely per-harness and are always added and removed with their own harness.
 
 **Steps**:
 1. [ ] - `p1` - **IF** disablement switch for this harness is "routing off" - `inst-check-disabled`
-   1. [ ] - `p1` - Remove this harness's Studio-owned hook entry, matched by the stable identifier from `cpt-studio-dod-hook-based-session-routing-hook-ownership`, leaving any user-authored entries in the same config untouched - `inst-remove-hook-entry`
-   2. [ ] - `p1` - Remove this harness's execution receipt, so no residual delivery state remains; the harness's own state file is **retained** and is rewritten to record `routing_mode: off` by pass 2, since it is bookkeeping rather than a delivery channel - `inst-remove-receipt`
+   1. [ ] - `p1` - **TRY** remove this harness's Studio-owned hook entry, matched by the stable identifier from `cpt-studio-dod-hook-based-session-routing-hook-ownership`, leaving any user-authored entries in the same config untouched - `inst-remove-hook-entry`
+      1. [ ] - `p1` - **IF** the removal fails (permission denied, read-only tree, or any other filesystem error) - `inst-if-remove-hook-entry-failed`
+         1. [ ] - `p1` - Record the underlying OS error and **RETURN** target_mode = `errored` — not `off` — since a hook entry that could not be removed is still on disk and this harness's disablement did not actually take effect - `inst-return-errored-hook-removal-failed`
+   2. [ ] - `p1` - **TRY** remove this harness's execution receipt, so no residual delivery state remains; the harness's own state file is **retained** and is rewritten to record `routing_mode: off` by pass 2, since it is bookkeeping rather than a delivery channel - `inst-remove-receipt`
+      1. [ ] - `p1` - **IF** the removal fails (permission denied, read-only tree, or any other filesystem error) - `inst-if-remove-receipt-failed`
+         1. [ ] - `p1` - Record the underlying OS error and **RETURN** target_mode = `errored` — not `off` — since a residual receipt that could not be removed means the prior hook install cannot be treated as cleanly retracted - `inst-return-errored-receipt-removal-failed`
    3. [ ] - `p1` - **RETURN** target_mode = `off` (the shared marker is not touched here; pass 2 decides it) - `inst-return-off`
 2. [ ] - `p1` - **IF** the harness's capability row reports no usable session-start hook — either no hook event at all, or an installed client whose hook API is unavailable (e.g. a pre-promotion Codex client, or a project that has explicitly disabled hooks) - `inst-check-hook-support`
    1. [ ] - `p1` - Record the matching fixed-enum reason and **RETURN** target_mode = `file` - `inst-return-file-no-hook`
@@ -247,7 +258,7 @@ In every shape the command invokes one Studio-owned hook script rather than an i
 
 **Input**: the complete set of target modes produced by pass 1 for the harnesses this run touched, plus the last known mode of every in-scope harness this run did **not** touch (from `cpt-studio-algo-hook-based-session-routing-read-state`)
 
-**Output**: final per-harness outcome records (routing_mode, hook_path or the pair of file_marker_paths, warnings and errors), with state persisted for every harness
+**Output**: final per-harness outcome records (routing_mode, hook_path or the pair of file_marker_paths, warnings and errors — field schema in `DESIGN.md`'s `HarnessRoutingOutcome`), with state persisted for every harness where the persistence write itself succeeds, and a `level: error` `warnings` entry reported (without downgrading `routing_mode`) where it does not
 
 **Order independence**: this algorithm runs exactly once per `generate-agents` invocation, after every selected harness has been through pass 1. It reads the complete target-mode set rather than a partially-processed one, so the outcome does not depend on the order harnesses were iterated in.
 
@@ -269,9 +280,14 @@ In every shape the command invokes one Studio-owned hook script rather than an i
       1. [ ] - `p1` - Roll the pair back to its pre-run content where possible, and set routing_mode = `errored` for every harness in the dependency set, attaching the underlying OS error text so the maintainer sees the real cause rather than a bare `off` or `file` - `inst-mark-write-error`
 5. [ ] - `p1` - **FOR EACH** harness affected by this run — every harness the run touched, **plus** every in-scope harness the run did not select whose state this run's shared-marker outcome changed (e.g. an unselected dependent marked `errored` by a failed shared-marker write on an `--agent`-scoped run) - `inst-for-each-finalize`
    1. [ ] - `p1` - Resolve its final routing_mode from its target mode and the marker outcome above - `inst-resolve-final-mode`
-   2. [ ] - `p1` - Persist that final state to the harness's own state file for **every** mode — `off`, `file`, `hook`, and `errored` alike — so a later inspection never has to guess from a missing file - `inst-persist-state-all-modes`
+   2. [ ] - `p1` - **TRY** persist that final state to the harness's own state file for **every** mode — `off`, `file`, `hook`, and `errored` alike — so a later inspection never has to guess from a missing file - `inst-persist-state-all-modes`
+      1. [ ] - `p1` - **IF** the state-file write itself fails (permission denied, read-only tree, or any other filesystem error) - `inst-if-persist-failed`
+         1. [ ] - `p1` - Do **NOT** attempt to persist an `errored` state into the file that just proved it cannot be written — there is no on-disk state to persist that failure into - `inst-persist-no-recursive-error`
+         2. [ ] - `p1` - Keep this run's already-resolved `routing_mode` for the harness unchanged (the channel-establishment outcome is unaffected by a bookkeeping write failure) and append a `level: error` entry to the outcome record's `warnings` array, reusing the same array shape as the fallback warning, with `reason` carrying the underlying OS error text, so the failure is surfaced directly to the caller in this run's summary and `--json` output rather than silently dropped - `inst-report-persist-failure`
+         3. [ ] - `p1` - Contribute this failure to the command's existing `PARTIAL` result contract, exactly as other `errored`-class failures do, even though `routing_mode` itself is not downgraded - `inst-persist-failure-partial`
+         4. [ ] - `p1` - Because the file could not be rewritten, `cpt-studio-algo-hook-based-session-routing-read-state` still re-derives this harness's state from installed resources on the next `cfs agents` read rather than trusting the stale on-disk file, so the unwritten state file self-corrects on the next successful write instead of requiring separate recovery - `inst-persist-failure-selfcorrects`
    3. [ ] - `p1` - **IF** routing_mode = `file` - `inst-if-final-file`
-      1. [ ] - `p1` - Append a warning-level entry to the outcome record, reusing the CLI's existing `warnings` array shape (as in `cfs info --json`), with a one-clause reason drawn from the fixed limitation-reason enum (see Section 7, item c) - `inst-append-fallback-warning`
+      1. [ ] - `p1` - Append a `level: warning` entry to the outcome record's `warnings` array, reusing the CLI's existing `warnings` array shape (as in `cfs info --json`), with a one-clause `reason` drawn from the fixed limitation-reason enum (see Section 7, item c) - `inst-append-fallback-warning`
 6. [ ] - `p1` - **RETURN** the finalized outcome records - `inst-return-final-outcomes`
 
 ### Verify Hook Install
@@ -360,10 +376,12 @@ In every shape the command invokes one Studio-owned hook script rather than an i
 4. [ ] - `p1` - **FROM** HookInstalled **TO** FileFallback **WHEN** a later run finds the previously-verified hook entry missing, unverifiable, or no longer carrying the intact payload - `inst-transition-hook-to-file`
 5. [ ] - `p1` - **FROM** FileFallback **TO** Off **WHEN** disablement switch is set to "routing off"; the shared `AGENTS.md`/`CLAUDE.md` marker is removed by the reconciliation pass only if no in-scope harness still depends on it, and is otherwise left in place - `inst-transition-file-to-off`
 6. [ ] - `p1` - **FROM** HookInstalled **TO** Off **WHEN** disablement switch is set to "routing off"; this harness's hook entry and receipt are removed while its state file is retained and rewritten to record `off`, and the shared marker is removed by the reconciliation pass only if no in-scope harness still depends on it - `inst-transition-hook-to-off`
-7. [ ] - `p1` - **FROM** any state **TO** Errored **WHEN** the shared-marker write or removal this harness depends on fails with a filesystem error, so neither channel is known to be delivering — or, for a harness being disabled, so the marker Studio meant to remove is still on disk - `inst-transition-any-to-errored`
+7. [ ] - `p1` - **FROM** any state **TO** Errored **WHEN** the shared-marker write or removal this harness depends on fails with a filesystem error, so neither channel is known to be delivering — or, for a harness being disabled, so the marker Studio meant to remove is still on disk, or removing this harness's own hook entry or execution receipt fails, so residual delivery state cannot be confirmed removed - `inst-transition-any-to-errored`
 8. [ ] - `p1` - **FROM** Errored **TO** FileFallback, HookInstalled, or Off **WHEN** a later run succeeds in establishing the corresponding channel, or when a later inspection re-tests the recorded error and finds the installed resources now resolving cleanly - `inst-transition-errored-to-delivering`
 
 No partial-downgrade state exists: a harness is always in exactly one of Off, FileFallback, HookInstalled, or Errored; the disablement switch (`cpt-studio-dod-hook-based-session-routing-disablement`) flips this harness's hook state and its dependence on the file marker atomically. `Errored` is distinct from `Off`: `Off` is an intentional, successful outcome, while `Errored` records that Studio tried and could not establish delivery, and is surfaced as an error-level line.
+
+**Persistence failure is not a transition**: a failure to write the final state file for an otherwise cleanly resolved mode (`cpt-studio-algo-hook-based-session-routing-reconcile-marker` step `inst-if-persist-failed`) does **not** by itself drive a transition to Errored. The channel-establishment outcome (what state the harness is actually *in*) and the state-file persistence outcome (whether that fact got written to disk) are tracked independently; the run reports the persistence failure directly as a `level: error` `warnings` entry rather than reclassifying the harness's resolved state.
 
 **Shared marker, not per-harness state**: Off means "this harness receives no routing precondition from the hook or file channel". Because the file marker lives in two shared, project-wide files (root `AGENTS.md`/`CLAUDE.md`) rather than one file per harness, an Off harness may coexist with a marker that is still on disk for another harness's sake. That is not residual state for the Off harness — it is another harness's live state — but it does mean disabling one harness does not necessarily empty the shared files.
 
@@ -440,6 +458,8 @@ The state file **MUST** carry a `schema_version` field. A state file that is unp
 
 The persisted state **MUST** be treated as a cross-check against installed resources, never as the sole source of truth; the derivation and disagreement rules are `cpt-studio-algo-hook-based-session-routing-read-state`.
 
+**Persistence-write failure**: if the final per-harness state-file write itself fails (permission denied, read-only tree, or any other filesystem error), the system **MUST NOT** attempt to persist an `errored` state into the file that just proved unwritable — there is no on-disk state to persist that failure into. Instead the system **MUST** report the failure directly in that run's outcome record — a `level: error` entry in the `warnings` array, per `DESIGN.md`'s `HarnessRoutingOutcome` field schema — and **MUST** feed the command's existing `PARTIAL` result contract, without changing the harness's already-resolved `routing_mode`: the channel-establishment outcome and the state-file persistence outcome are reported independently, since the channel itself may have been established successfully even though bookkeeping the fact of it failed. Because `cpt-studio-algo-hook-based-session-routing-read-state` always re-derives from installed resources rather than trusting the file, an unwritten state file does not cause a wrong report on the next `cfs agents` read; it only means that read falls back to derivation for this harness until a later run's write succeeds.
+
 **Implements**:
 - `cpt-studio-algo-hook-based-session-routing-reconcile-marker`
 - `cpt-studio-algo-hook-based-session-routing-read-state`
@@ -470,11 +490,16 @@ The system **MUST** treat a failure to write the shared `AGENTS.md`/`CLAUDE.md` 
 
 The same treatment **MUST** apply to the mirror-image operation: when the dependency set is empty and the shared managed block is therefore **removed**, a failure of that removal **MUST** mark every harness this run resolved to `off` as `errored` rather than finalizing it as `off`. A disablement that did not actually take effect on disk **MUST NOT** be reported as a clean success; the underlying OS error is surfaced exactly as for the write path.
 
+The same `errored`-not-`off` treatment **MUST** also apply to a harness's own disablement-time removals, which are pass 1's failures to report rather than pass 2's: if removing that harness's Studio-owned hook entry (`cpt-studio-dod-hook-based-session-routing-hook-ownership`) or its execution receipt fails with a filesystem error, the system **MUST** report that harness as `errored` — not `off` — since a hook entry or receipt that could not be removed means the harness's disablement did not actually take effect on disk.
+
 The `errored` outcome **MUST** carry the underlying OS error text, **MUST** be rendered as an error-level line in the summary, and **MUST** feed the command's existing `PARTIAL` result contract so the run is not reported as a clean success.
 
 Hook-side failures are deliberately treated differently: an unwritable or unverifiable hook entry degrades to the fallback with a warning and is not an error, because delivery is preserved. `errored` is reserved for the case where no channel is known to be delivering.
 
+A failure to persist an otherwise cleanly resolved mode to the harness's own state file is a **different** failure and is **not** governed by this DoD's `errored`-outcome rule: `routing_mode` is not downgraded for a persistence-only failure, since the channel itself was established. That case is a `level: error` `warnings` entry reported independently — see `cpt-studio-dod-hook-based-session-routing-state-file`.
+
 **Implements**:
+- `cpt-studio-algo-hook-based-session-routing-compile-harness`
 - `cpt-studio-algo-hook-based-session-routing-reconcile-marker`
 - `cpt-studio-algo-hook-based-session-routing-render-summary`
 
@@ -572,6 +597,8 @@ The system **MUST** attach a one-clause fallback reason to each fallback warning
 - [ ] On an `--agent`-scoped run whose shared-marker write fails, an unselected but affected dependent gets its own state file rewritten to `errored`, so a later `cfs agents` reports the fresh error rather than that harness's stale mode.
 - [ ] Every resolved mode is persisted: after a run, each affected harness has a state file recording `off`, `file`, `hook`, or `errored`, and `cfs agents` on a fresh untouched project reports `off` rather than `unknown`.
 - [ ] A harness whose state file records `errored` is re-tested on the next `cfs agents` read: if its installed resources now resolve cleanly it is reported with the freshly derived `off`/`file`/`hook` mode, and if they still do not it is reported as `errored` with the reason recorded in the state file.
+- [ ] If removing a harness's own Studio-owned hook entry or execution receipt fails during disablement, that harness is reported as `errored` — carrying the underlying OS error — rather than `off`, and a disablement that did not actually take effect on disk is never finalized as a clean success.
+- [ ] If the final per-harness state-file write fails after a mode was otherwise cleanly resolved, the run reports that failure directly as a `level: error` `warnings` entry (contributing to `PARTIAL`) without downgrading the harness's `routing_mode`, and the next `cfs agents` read still derives the harness's state correctly from installed resources despite the unwritten file.
 - [ ] `cfs agents` derives state from installed resources: removing a Studio-owned hook entry or the shared marker outside Studio makes the affected harness report `unknown` with both the persisted and derived values named, rather than the stale persisted value.
 - [ ] A state file that is corrupt or carries an unrecognised `schema_version` is treated as absent: state is re-derived from installed resources and the file is rewritten, without failing the run.
 - [ ] A project that already has the pre-existing file-injected marker in either or both root files is read as starting in FileFallback (not Off) on its first post-upgrade `cfs generate-agents` run, is not re-injected or duplicated, has both files reconciled to match, and then transitions normally to HookInstalled for each harness whose hook is usable and confirmed.
@@ -680,3 +707,5 @@ PASS 2 — once per run, shared resources
 This flow is not applicable to harnesses outside the 4 in scope (claude, codex, cursor, copilot) — notably Windsurf, which stays on unconditional file injection (Section 1.4); adding a new harness means adding a row to the capability table and to the in-scope set, not changing this flow.
 
 In the diagram, every pass-2 box acts on the two shared, project-wide files as one resource: the ensure step is idempotent across harnesses and writes both files, and the clear step empties both, only when no in-scope harness still depends on the marker.
+
+**Failure branches omitted from the boxes above, for diagram legibility**: the "Remove H's owned hook entry + receipt" box also has a failure edge — if either removal fails (filesystem error), the outcome is `target: errored` for H, not `target: off` (`cpt-studio-dod-hook-based-session-routing-write-failure`). The "Persist final state" box also has a failure edge, per harness — if that harness's state-file write itself fails, its already-resolved mode is reported unchanged plus a `level: error` `warnings` entry, rather than an attempt to write `errored` into the file that just failed to write (`cpt-studio-dod-hook-based-session-routing-state-file`). Both are spelled out in full in the corresponding algorithm steps and DoDs; they are omitted here only to keep the flow diagram at the granularity of its two passes.
