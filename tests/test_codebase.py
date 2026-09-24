@@ -1198,3 +1198,55 @@ class TestASymlinkNeverClaimsItsTargetsIdentity:
 
         assert files == [real]
         assert excluded == 1, "two candidates, one file and one link: the link is the skip"
+
+
+class TestASymlinkLoopIsAnOrdinaryExclusion:
+    """A loop in a registered tree is one unreadable candidate, not a failed scan.
+
+    `Path.resolve()` raises `RuntimeError` on a loop up to Python 3.12 and `OSError`
+    from 3.13; the handlers caught only the second, so on 3.11 and 3.12 one loop
+    aborted the whole scan (#236 review). Built from real links rather than a
+    patched `resolve`, because the defect *was* which exception the real call
+    raises -- a fake that raises `OSError` is exactly the test that passed while
+    the scan crashed. On 3.13+ this passes with or without the fix.
+    """
+
+    @staticmethod
+    def _looped_tree(tmp_path: Path) -> Path:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "ok.py").write_text("x = 1\n", encoding="utf-8")
+        (src / "a.py").symlink_to("b.py")
+        (src / "b.py").symlink_to("a.py")
+        return src
+
+    def test_the_scan_survives_and_counts_the_loop_as_excluded(self, tmp_path: Path) -> None:
+        from studio.utils.codebase import resolve_entry_code_files
+
+        src = self._looped_tree(tmp_path)
+
+        files, excluded = resolve_entry_code_files(src, [".py"], project_root=tmp_path)
+
+        assert [f.name for f in files] == ["ok.py"]
+        assert excluded == 2, "each link of the loop is one excluded candidate"
+
+    def test_a_shared_seen_set_does_not_change_that(self, tmp_path: Path) -> None:
+        from studio.utils.codebase import resolve_entry_code_files
+
+        src = self._looped_tree(tmp_path)
+        seen: set = set()
+
+        files, excluded = resolve_entry_code_files(src, [".py"], project_root=tmp_path, seen=seen)
+
+        assert [f.name for f in files] == ["ok.py"] and excluded == 2
+
+    def test_a_loop_as_the_entry_itself_is_not_an_error(self, tmp_path: Path) -> None:
+        """A guard, not a regression test: `exists()` is False on a loop, so the entry
+        is dropped before anything resolves it, with or without the fix. Pinned so
+        that reordering those two checks cannot bring the crash back."""
+        from studio.utils.codebase import resolve_entry_code_files
+
+        (tmp_path / "x.py").symlink_to("y.py")
+        (tmp_path / "y.py").symlink_to("x.py")
+
+        assert resolve_entry_code_files(tmp_path / "x.py", [".py"], project_root=tmp_path) == ([], 0)

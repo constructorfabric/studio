@@ -22,7 +22,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +70,17 @@ def _discard(tmp_path: Path) -> None:
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
 def read_json_tolerantly(
-        path: Path, *, on_unreadable: Callable[[Exception], None]) -> Any:
+        path: Path, *, on_unreadable: Callable[[Exception], None],
+        expected: Optional[type] = None) -> Any:
     """Read *path* as JSON, or return ``None`` once *on_unreadable* has been told why.
+
+    With *expected*, a document that parses to anything else is unreadable too,
+    reported the same way. ``None`` was both the failure sentinel and what JSON
+    ``null`` parses to, so a manifest holding ``null`` returned silently where a
+    corrupt one warned; and a cache holding a list or a string reached a caller's
+    ``cached.get(...)`` and raised ``AttributeError`` (#236 review, the second
+    measured on ``doc_index`` and present on ``main`` too). Both callers expect
+    an object, so both pass ``expected=dict``.
 
     The tolerant-read contract two caches need identically: a cache whose file
     exists but cannot be turned back into an object is a cache miss, not an
@@ -90,10 +99,19 @@ def read_json_tolerantly(
     extraction exists to buy (#236 review).
     """
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         on_unreadable(exc)
         return None
+    if expected is not None and not isinstance(data, expected):
+        on_unreadable(TypeError(
+            f"expected a JSON {_JSON_NAMES.get(expected, expected.__name__)}, "
+            f"got {'null' if data is None else type(data).__name__}"))
+        return None
+    return data
+
+
+_JSON_NAMES = {dict: "object", list: "array"}
 
 
 def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> None:

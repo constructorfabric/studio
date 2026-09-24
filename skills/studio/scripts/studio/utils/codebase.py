@@ -732,6 +732,12 @@ _DEFAULT_IGNORED_DIR_NAMES = frozenset(
     {"node_modules", ".git", ".venv", "venv", "build", "dist", "vendor", ".tox", "__pycache__"}
 )
 
+#: What `Path.resolve()` raises on a path it cannot follow. A symlink loop is a
+#: `RuntimeError` up to Python 3.12 and an `OSError` from 3.13 on; CI runs 3.11
+#: to 3.14, and catching `OSError` alone let one loop in a registered tree abort
+#: the whole scan on half of them (#236 review, measured on 3.12.3).
+_UNRESOLVABLE = (OSError, RuntimeError)
+
 # Files larger than this are skipped (with a warning) rather than fully read. A
 # consumer learns that a file was declined from `read_code_file`'s FILE_TOO_LARGE
 # error code, so no public alias of the number is needed.
@@ -811,7 +817,7 @@ def resolve_entry_code_files(
     # used to resolve the entry for itself (#236 review).
     try:
         resolved_entry = code_path.resolve()
-    except OSError as exc:
+    except _UNRESOLVABLE as exc:
         _warn_codebase(f"failed to resolve {code_path}: {exc}")
         return [], 1
     if _escapes_project(code_path, root, resolved=resolved_entry):
@@ -876,15 +882,16 @@ def _walk_directory_entry(
     # paid three walks and two of the results were thrown away.
     #
     # It also puts the failure in one place. The dedup's `candidate.resolve()`
-    # was the only unguarded one of the three, so an unresolvable candidate (a
-    # symlink loop raising ELOOP) propagated out of a function whose other two
-    # resolutions both treat that as an ordinary skip. Now it is a skip here
-    # too, warned once instead of twice (#236 review).
+    # was the only unguarded one of the three, so an unresolvable candidate -- a
+    # symlink loop, which is a `RuntimeError` up to Python 3.12 and an `OSError`
+    # after -- propagated out of a function whose other two resolutions both
+    # treat that as an ordinary skip. Now it is a skip here too, warned once
+    # instead of twice (#236 review).
     for candidate in candidates:
         try:
             is_link = candidate.is_symlink()
             resolved = candidate.resolve()
-        except OSError as exc:
+        except _UNRESOLVABLE as exc:
             _warn_codebase(f"failed to resolve {candidate}: {exc}")
             excluded += 1
             continue
@@ -927,7 +934,7 @@ def _escapes_project(candidate: Path, root: Path, *, resolved: Optional[Path] = 
             return True
         if resolved is None:
             resolved = candidate.resolve()
-    except OSError as exc:
+    except _UNRESOLVABLE as exc:
         _warn_codebase(f"failed to resolve {candidate}: {exc}")
         return True
     if resolved == root:
@@ -949,7 +956,7 @@ def _is_ignored_code_file(file_path: Path, ctx) -> bool:
     """
     try:
         rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
-    except (OSError, ValueError) as exc:
+    except (*_UNRESOLVABLE, ValueError) as exc:
         _warn_codebase(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
         return True
     return ctx.meta.is_ignored(rel)

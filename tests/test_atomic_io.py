@@ -407,6 +407,41 @@ class TestTheTolerantJsonRead:
         assert len(seen) == 1
         assert isinstance(seen[0], expected)
 
+    @pytest.mark.parametrize("content, got", [
+        ("null", "null"), ("[]", "list"), ('"x"', "str"), ("3", "int"),
+    ])
+    def test_a_document_of_the_wrong_type_is_unreadable_when_a_type_is_expected(
+            self, tmp_path: Path, content, got) -> None:
+        """`None` is both the failure sentinel and what `null` parses to, so without
+        this a `null` document returned silently, and a list reached a caller's
+        `.get()` and raised (#236 review)."""
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        path.write_text(content, encoding="utf-8")
+        seen: list[Exception] = []
+
+        assert read_json_tolerantly(path, on_unreadable=seen.append, expected=dict) is None
+        assert len(seen) == 1 and isinstance(seen[0], TypeError)
+        assert f"got {got}" in str(seen[0]) and "JSON object" in str(seen[0])
+
+    def test_the_expected_type_passes_through_untouched(self, tmp_path: Path) -> None:
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        path.write_text("[1, 2]", encoding="utf-8")
+
+        assert read_json_tolerantly(path, on_unreadable=_never, expected=list) == [1, 2]
+
+    def test_without_an_expected_type_any_document_is_returned(self, tmp_path: Path) -> None:
+        """A guard, passing with or without the change: the default stays as it was."""
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        path.write_text("[1, 2]", encoding="utf-8")
+
+        assert read_json_tolerantly(path, on_unreadable=_never) == [1, 2]
+
     def test_invalid_utf8_is_the_case_the_two_readers_disagreed_on(
             self, tmp_path: Path) -> None:
         """`UnicodeDecodeError` is a ValueError subclass, so neither sibling catches it.
@@ -425,3 +460,7 @@ class TestTheTolerantJsonRead:
 
         assert read_json_tolerantly(path, on_unreadable=seen.append) is None
         assert not isinstance(seen[0], (OSError, json.JSONDecodeError))
+
+
+def _never(exc: Exception) -> None:
+    raise AssertionError(f"a readable document must not report a failure: {exc}")

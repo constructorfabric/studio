@@ -522,6 +522,24 @@ class TestCachePersistence:
         # level (WARNING), not buried at debug.
         assert any(r.levelname == "WARNING" for r in caplog.records)
 
+    @pytest.mark.parametrize("content", ["[]", '"x"', "null"])
+    def test_a_cache_of_the_wrong_type_is_a_warned_miss_not_a_crash(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates, content
+    ):
+        """A list or a string reached `cached.get("etag")` and raised
+        `AttributeError`; `null` returned silently. Measured on `main` as well
+        (#236 review)."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        save_doc_index(f, build_doc_index(f))
+        for cache_file in (tmp_path / ".cache" / "doc-index").glob("*.json"):
+            cache_file.write_text(content, encoding="utf-8")
+
+        with caplog.at_level("WARNING"):
+            assert load_doc_index(f) is None
+        assert any("unreadable" in r.getMessage() and "JSON object" in r.getMessage()
+                   for r in caplog.records if r.levelname == "WARNING")
+
     def test_cmd_doc_index_rebuilds_cleanly_after_corrupt_cache(self, tmp_path: Path, capsys, monkeypatch):
         """CodeRabbit PR #108: prove the corrupt-cache fallback at the
         CLI/exit-code level, not just load_doc_index() in isolation."""

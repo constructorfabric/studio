@@ -175,6 +175,7 @@ def load_okf_manifest(path: Path) -> Optional[Dict[str, Any]]:
         manifest_path,
         on_unreadable=lambda exc: logger.warning(
             "okf manifest unreadable for %s: %s", path, exc),
+        expected=dict,
     )
     if manifest is None:
         return None

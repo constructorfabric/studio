@@ -600,6 +600,25 @@ class TestLoadOkfManifest:
         manifest_path.write_text("{not valid json", encoding="utf-8")
         assert load_okf_manifest(f) is None
 
+    def test_a_null_manifest_warns_like_any_other_bad_one(self, tmp_path: Path, monkeypatch):
+        """`json.loads("null")` is `None`, the same value the tolerant read returns on
+        failure, so a `null` manifest used to leave with no diagnostic at all while
+        every other malformed one warned (#236 review)."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        index = get_or_build_doc_index(f)
+        write_concept_file(f, index["retrieval_sections"][0]["line_start"], description="d", body="b")
+        manifest_path = Path(get_okf_status(f)["bundle_dir"]) / "manifest.json"
+        manifest_path.write_text("null", encoding="utf-8")
+        # The module's own logger, not caplog: whether `studio` propagates to the root
+        # depends on which CLI test ran first in the process.
+        from studio.utils import okf
+        warned: list[str] = []
+        monkeypatch.setattr(okf.logger, "warning", lambda msg, *args: warned.append(msg % args))
+
+        assert load_okf_manifest(f) is None
+        assert any("got null" in line for line in warned), warned
+
     def test_returns_none_when_top_level_is_not_a_dict(self, tmp_path: Path, monkeypatch):
         """CodeRabbit PR #110/#111 (both independently flagged this): a
         manifest that decodes to valid JSON but isn't the expected object

@@ -1743,6 +1743,7 @@ def test_the_do_cap_stays_per_unit() -> None:
     text = (f"UNIT Demo\n\nPURPOSE:\n  Too many actions.\n\nDO:\n{actions}\n\n"
             f"RULES:\n  - ALWAYS keep output stable\n")
 
-    _rc, ids = _cli_rule_ids(text)
+    rc, ids = _cli_rule_ids(text)
 
     assert "PDSL600" in ids
+    assert rc == 2, "a finding must map to 2, not 1"

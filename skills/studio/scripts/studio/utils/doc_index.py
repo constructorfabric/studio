@@ -412,6 +412,7 @@ def _read_cache_file(cache_path: Path) -> Optional[Dict[str, Any]]:
         cache_path,
         on_unreadable=lambda exc: logger.warning(
             "doc-index cache unreadable at %s: %s", cache_path, exc),
+        expected=dict,
     )
 
 
