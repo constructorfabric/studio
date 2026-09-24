@@ -605,9 +605,13 @@ cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-studio-root P
 | `--cf-studio-root PATH` | Explicit Constructor Studio core root (optional override) |
 | `--cf-constructor-root PATH` | Legacy alias for `--cf-studio-root` |
 | `--config PATH` | Path to agents config JSON (optional; built-in defaults used when omitted) |
-| `--dry-run` | Compute planned changes without writing files |
+| `--dry-run` | Compute planned changes without writing files (including all session-routing writes — see below) |
 
 **Without `--agent`**: regenerate for all agents.
+
+**`--agent` scoping exception — routing state**: `--agent` scopes which agent's files are generated, with one documented exception in the session-routing behavior described in `architecture/features/hook-based-session-routing.md`. The `AGENTS.md`/`CLAUDE.md` routing marker is a single project-wide resource shared by all agents, so a scoped run's marker outcome can change the routing state of in-scope harnesses the run did **not** name — most notably when a shared-marker write fails and every harness depending on that marker is marked `errored`. In that case the run also writes those harnesses' own routing state files (`<agent-config-dir>/.cf-studio-routing-state.json`), so a later `cfs agents` reports the fresh state rather than a stale one. The write set for routing state is therefore the run's *affected* set, not the `--agent` selection; see that feature's affected-dependent-set rule (`cpt-studio-algo-hook-based-session-routing-reconcile-marker`, step `inst-for-each-finalize`). No other surface is affected: an unselected agent's hook entry, execution receipt, and generated workflow/skill/subagent files are never touched by a scoped run.
+
+**`--dry-run` and routing**: routing participates in the write-free `--dry-run` contract with no exception. `--dry-run` computes and reports the `routing` summary that a real run would produce — per-agent `routing_mode`, paths, and warnings — while writing no hook entry, no execution receipt, no routing state file, and no change to the shared `AGENTS.md`/`CLAUDE.md` marker.
 
 **Behavior**:
 1. Collect `SKILL.md` extensions from all installed kits.
