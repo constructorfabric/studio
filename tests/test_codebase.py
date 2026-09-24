@@ -19,6 +19,13 @@ from studio.utils.codebase import (
 )
 
 
+#: For the tests that build real symlinks. On Windows, creating one needs Developer
+#: Mode or an elevated shell, and without either `symlink_to` raises WinError 1314 --
+#: a failure about the machine, not the code under test (#236 review).
+_NEEDS_SYMLINKS = pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs Developer Mode or elevation on Windows")
+
+
 class _FakeCodebaseEntry:
     def __init__(self, path, extensions):
         self.path = path
@@ -1127,6 +1134,7 @@ class TestASingleFileEntryIsDedupedToo:
         assert second == [target], "omitting `seen` must not start deduplicating"
 
 
+@_NEEDS_SYMLINKS
 class TestASymlinkNeverClaimsItsTargetsIdentity:
     """A link resolves to the file it points at, and `seen` is keyed on identity.
 
@@ -1200,6 +1208,7 @@ class TestASymlinkNeverClaimsItsTargetsIdentity:
         assert excluded == 1, "two candidates, one file and one link: the link is the skip"
 
 
+@_NEEDS_SYMLINKS
 class TestASymlinkLoopIsAnOrdinaryExclusion:
     """A loop in a registered tree is one unreadable candidate, not a failed scan.
 
@@ -1296,6 +1305,7 @@ class TestAnUnresolvableEntryIsOneExclusion:
             "an excluded entry with nothing said is indistinguishable from an empty one")
 
 
+@_NEEDS_SYMLINKS
 class TestADirectoryAliasDoesNotDoubleCountALink:
     """A link reached through a directory symlink aliasing its own directory is one
     excluded candidate, not two (#236 review). Measured on 3.11.15, 3.12.3 and
