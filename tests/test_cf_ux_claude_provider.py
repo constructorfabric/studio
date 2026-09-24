@@ -655,7 +655,7 @@ class TestAnUnreadableRunIsNeverScored:
         )
 
         assert f"timed out after {claude_provider.CALL_TIMEOUT_S}s" in out["error"]
-        assert set(out["metadata"]) == {"duration_s", "sandbox"}
+        assert set(out["metadata"]) == {"duration_s", "sandbox", "home"}
         assert out["metadata"]["sandbox"] == str(tmp_path)
 
     def test_a_setup_timeout_is_not_blamed_on_the_cli(self, monkeypatch):
@@ -1320,3 +1320,150 @@ class TestACutNeverLandsInsideASecret:
 
         for item in out["metadata"]["skill_call_inputs"]:
             assert self._SECRET[:12] not in item
+
+
+# ------------------------------------ the runner's home is closed to the tools
+
+class TestTheRunnersHomeIsClosedToTheChildsTools:
+    """`bypassPermissions` switches off the prompts, not the deny rules, and `cwd=`
+    is where the child works rather than a wall: an ungated Read or Write resolves
+    `~` and absolute paths against the runner's real home (#229 review). The
+    invocation therefore carries deny rules for that home, and every refusal comes
+    back as metadata -- a run in which the model reached for the runner's home is
+    a finding, not noise.
+
+    What these tests do not claim: that the CLI honours the rules. That was
+    measured on 2.1.281 for Read, Write and Bash, and belongs to whoever can run
+    one; what is pinned here is that the rules are passed, and what they name.
+    """
+
+    @staticmethod
+    def _settings(seen: dict) -> dict:
+        cmd = seen["cmd"]
+        return json.loads(cmd[cmd.index("--settings") + 1])
+
+    def test_the_invocation_carries_deny_rules_for_the_runners_home(self, run_provider):
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        deny = self._settings(seen)["permissions"]["deny"]
+        runner_home = str(Path.home()).lstrip("/")
+        assert f"Read(//{runner_home}/**)" in deny
+        assert f"Edit(//{runner_home}/**)" in deny, "Edit rules govern Write too"
+
+    def test_the_rules_name_the_home_both_ways(self):
+        """Under `CF_UX_ISOLATED_HOME` `~` is the sandbox's home and the runner's
+        is reachable only by absolute path, so both spellings are needed."""
+        rules = claude_provider.permission_deny_rules(Path("/home/someone"))
+
+        assert set(rules) == {
+            "Read(//home/someone/**)", "Edit(//home/someone/**)",
+            "Read(~/**)", "Edit(~/**)",
+        }
+
+    def test_the_settings_are_inline_not_a_file(self, run_provider, tmp_path):
+        """Nothing is written for the child to find, or for the sandbox wipe to miss."""
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        cmd = seen["cmd"]
+        argument = cmd[cmd.index("--settings") + 1]
+        assert argument.startswith("{"), "a JSON document, not a path"
+        assert not list(tmp_path.glob("*.json"))
+
+    def test_a_refusal_reaches_the_metadata_and_the_log(self, run_provider, caplog):
+        denials = [
+            {"tool_name": "Read", "tool_use_id": "t9",
+             "tool_input": {"file_path": "/home/someone/.ssh/id_rsa"}},
+            {"tool_name": "Bash", "tool_use_id": "t10",
+             "tool_input": {"command": "cat ~/.aws/credentials"}},
+        ]
+
+        with caplog.at_level("WARNING", logger=claude_provider.logger.name):
+            out, _seen = run_provider(_stream(
+                _skill_call(), _skill_result(), _result(permission_denials=denials)))
+
+        reported = out["metadata"]["permission_denials"]
+        assert [d["tool"] for d in reported] == ["Read", "Bash"]
+        assert ".ssh/id_rsa" in reported[0]["input"]
+        assert "refused 2 tool call(s)" in caplog.text
+        assert "Bash, Read" in caplog.text
+
+    def test_no_refusal_is_an_empty_list_and_silence(self, run_provider, caplog):
+        with caplog.at_level("WARNING", logger=claude_provider.logger.name):
+            out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["permission_denials"] == []
+        assert "refused" not in caplog.text
+
+    @pytest.mark.parametrize("shape", ["not-a-list", {"tool_name": "Read"}, None, 3])
+    def test_an_unfamiliar_shape_reads_as_no_refusals(self, run_provider, shape):
+        out, _seen = run_provider(_stream(
+            _skill_call(), _skill_result(), _result(permission_denials=shape)))
+
+        assert out["metadata"]["permission_denials"] == []
+
+    def test_a_refused_input_is_redacted_and_bounded(self, run_provider, monkeypatch):
+        """Model-authored, so it gets the same treatment as every other such field."""
+        secret = "sk-ant-" + "Z" * 40
+        monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+        denials = [{"tool_name": "Bash", "tool_use_id": "t1",
+                    "tool_input": {"command": "echo " + secret + "A" * 10_000}}]
+
+        out, _seen = run_provider(_stream(
+            _skill_call(), _skill_result(), _result(permission_denials=denials)))
+
+        item = out["metadata"]["permission_denials"][0]["input"]
+        assert secret not in item
+        assert len(item) <= claude_provider._MAX_DIAGNOSTIC_CHARS
+
+
+# ------------------------------------------------ whose home the child was given
+
+class TestTheReportSaysWhoseHomeTheChildHad:
+    """An isolated run has no competing plugins, so it is a different measurement,
+    and the report has to say which one it was (#229 review)."""
+
+    def test_by_default_it_is_the_runners(self, run_provider, monkeypatch):
+        monkeypatch.delenv("CF_UX_ISOLATED_HOME", raising=False)
+
+        out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["home"] == "runner"
+        assert seen["kwargs"]["env"].get("HOME") == str(Path.home())
+
+    def test_on_request_it_is_a_home_inside_the_sandbox(
+            self, run_provider, monkeypatch, tmp_path):
+        credential = tmp_path / "store" / ".credentials.json"
+        credential.parent.mkdir()
+        credential.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(claude_provider, "_claude_credential", lambda: credential)
+        monkeypatch.setenv("CF_UX_ISOLATED_HOME", "1")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/the/runners/config")
+
+        out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        env = seen["kwargs"]["env"]
+        assert out["metadata"]["home"] == "isolated"
+        assert Path(env["HOME"]).is_relative_to(tmp_path)
+        assert "CLAUDE_CONFIG_DIR" not in env, "it points back at the runner's configuration"
+
+    def test_the_credential_is_looked_for_under_claude_config_dir_when_set(
+            self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfg"))
+
+        assert claude_provider._claude_credential() == tmp_path / "cfg" / ".credentials.json"
+
+    def test_and_under_the_home_otherwise(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+        assert claude_provider._claude_credential() == Path.home() / ".claude" / ".credentials.json"
+
+    def test_a_timeout_says_so_too(self, run_provider, monkeypatch, tmp_path):
+        credential = tmp_path / ".credentials.json"
+        credential.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(claude_provider, "_claude_credential", lambda: credential)
+        monkeypatch.setenv("CF_UX_ISOLATED_HOME", "1")
+
+        out, _seen = run_provider(
+            "", raises=subprocess.TimeoutExpired(cmd=["claude"], timeout=850))
+
+        assert out["metadata"]["home"] == "isolated"

@@ -11,8 +11,8 @@ import time
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from _sandbox import (MAX_DIAGNOSTIC_CHARS, SandboxError, child_env, redact_secrets,
-                      safe_head, safe_tail, sandbox)
+from _sandbox import (MAX_DIAGNOSTIC_CHARS, SandboxError, child_env, isolated_home,
+                      redact_secrets, safe_head, safe_tail, sandbox)
 
 logger = logging.getLogger(__name__)
 
@@ -32,16 +32,58 @@ DEFAULT_EFFORT = os.environ.get("CF_UX_CLAUDE_EFFORT", "low")
 # Skill *execution* asks for permission, and `-p` has nobody to ask, so the
 # request is denied, the `cf` skill never runs, and the agent answers directly
 # instead — returning something plausible that the shared rubric then scores as
-# though Studio had behaved well. The codex provider has always passed the
-# equivalent pair (`--sandbox workspace-write`, `approval_policy="never"`); this
-# is the same decision for this CLI, and the asymmetry was the bug.
+# though Studio had behaved well. The codex provider has always passed
+# `approval_policy="never"`, which is this decision for that CLI.
 #
-# Scoped to a throwaway tree: `_sandbox.sandbox()` builds a fresh directory
-# under the system temp dir and wipes it in `finally`, on `atexit`, and on
-# SIGTERM/SIGINT/SIGHUP. The one exception is `CF_UX_SHARED_SANDBOX`, which
-# points a run at a directory the caller chose — noted in the README, because
-# there the agent writes where it is told to.
+# What codex passes beside it, `--sandbox workspace-write`, has no counterpart
+# here: that one is an OS boundary on writes, and this CLI's invocation has none.
+# `_sandbox.sandbox()` builds a fresh directory under the system temp dir and
+# wipes it in `finally`, on `atexit`, and on SIGTERM/SIGINT/SIGHUP — but `cwd=`
+# is where the child works, not a wall it cannot see past. What stands between
+# an ungated tool call and the runner's home is `PERMISSION_DENY_RULES` below,
+# and, on request, `CF_UX_ISOLATED_HOME`. The README says what neither covers.
 PERMISSION_MODE = "bypassPermissions"
+
+#: What `bypassPermissions` does not switch off. An ungated Read, Write or Bash
+#: resolves `~` and absolute paths against the runner's real home, so the mode
+#: alone left `~/.ssh`, `~/.aws` and the CLI's own settings one tool call away
+#: (#229 review). Deny rules hold in every mode -- the docs say so, and it was
+#: measured on 2.1.281 for Read, Write, and a `cat`/`head` of the path in Bash --
+#: so the runner's home is closed to the child's tools. Named by absolute path
+#: as well as by `~`, because under `CF_UX_ISOLATED_HOME` the two differ and it
+#: is the absolute one that matters. The CLI's own reads of its configuration
+#: are not tool calls and are unaffected.
+#:
+#: A check on what the call *names*, not an OS boundary: a path reached through
+#: indirection is not caught. Every refusal is reported in the metadata as
+#: `permission_denials` and warned about, because a run in which the model
+#: reached for the runner's home is itself a finding for this suite.
+_DENY_TOOLS = ("Read", "Edit")   # `Edit` rules govern Write and the other editors too
+_CLAUDE_CREDENTIAL = ".claude/.credentials.json"
+_LOG_TOOL_DENIED = (
+    "cf-ux: the deny rules refused %d tool call(s) that named the runner's home: %s"
+)
+
+
+def permission_deny_rules(runner_home: Path | None = None) -> tuple[str, ...]:
+    """The rules for this run, built from the runner's home (`Path.home()` by default)."""
+    runner_home = str(runner_home or Path.home()).lstrip("/")
+    return tuple(
+        f"{tool}({pattern})"
+        for tool in _DENY_TOOLS
+        for pattern in (f"//{runner_home}/**", "~/**")
+    )
+
+
+def _permission_settings() -> str:
+    """The `--settings` argument: inline JSON, so nothing is written for the child to find."""
+    return json.dumps({"permissions": {"deny": list(permission_deny_rules())}})
+
+
+def _claude_credential() -> Path:
+    """Where this runner keeps the CLI's credential: under `CLAUDE_CONFIG_DIR` when set."""
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(config_dir) if config_dir else Path.home() / ".claude") / ".credentials.json"
 
 #: Namespaces the `claude` CLI is entitled to: its own credential and configuration.
 #: `CF_UX_` is deliberately absent -- every CF_UX_* variable is read by this Python
@@ -432,9 +474,35 @@ def _bypassing_names(named: dict[Any, list[str]], results: dict[Any, bool]) -> l
 _GRADED_STATES = frozenset({"ran", "bypassed"})
 
 
-def _baseline(cwd: Path, started: float) -> dict[str, Any]:
-    """What every return carries, answer or error: how long it took, and where."""
-    return {"duration_s": round(time.monotonic() - started, 2), "sandbox": str(cwd)}
+def _baseline(cwd: Path, started: float, home: Path | None = None) -> dict[str, Any]:
+    """What every return carries, answer or error: how long it took, where, and
+    whose home the child had -- an isolated run is a different measurement."""
+    return {
+        "duration_s": round(time.monotonic() - started, 2),
+        "sandbox": str(cwd),
+        "home": "isolated" if home is not None else "runner",
+    }
+
+
+def _denials(payload: dict[str, Any], env: dict) -> list[dict[str, str]]:
+    """The tool calls the deny rules refused, as the result event reports them.
+
+    Each is reduced to the tool and its input: the input is model-authored, so it
+    goes through the same redact-then-cut as every other model-authored field.
+    An unfamiliar shape reads as no denials rather than as an error.
+    """
+    reported = payload.get("permission_denials")
+    if not isinstance(reported, list):
+        return []
+    denials = []
+    for entry in reported:
+        if not isinstance(entry, dict):
+            continue
+        denials.append({
+            "tool": str(entry.get("tool_name", "?")),
+            "input": safe_head(json.dumps(entry.get("tool_input"), sort_keys=True), env),
+        })
+    return denials
 
 
 def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
@@ -466,6 +534,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "--effort", DEFAULT_EFFORT,
         # Without this the skill is denied and the run scores the fallback path.
         "--permission-mode", PERMISSION_MODE,
+        # And with only this, the runner's home is one tool call away.
+        "--settings", _permission_settings(),
         # The transcript, not just the answer: tool-use events are the only place
         # the run says whether the skill was reached. `--verbose` is what makes
         # `-p` emit the intermediate events rather than the result alone.
@@ -477,7 +547,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # Built once: the same mapping spawns the child and defines what must not come back
     # out of it. A CLI that echoes its own key in an error -- an ordinary shape for one
     # -- would otherwise put it in a stored promptfoo report (#229 review).
-    env = child_env(*_CHILD_ENV_PREFIXES, tmpdir=cwd)
+    home = isolated_home(cwd, _claude_credential(), _CLAUDE_CREDENTIAL)
+    env = child_env(*_CHILD_ENV_PREFIXES, tmpdir=cwd, home=home)
     try:
         proc = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
@@ -489,9 +560,9 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         # run that burned 850s from one that failed at once, and can say where.
         return {
             "error": f"claude timed out after {CALL_TIMEOUT_S}s",
-            "metadata": _baseline(cwd, started),
+            "metadata": _baseline(cwd, started, home),
         }
-    base = _baseline(cwd, started)
+    base = _baseline(cwd, started, home)
 
     if proc.returncode != 0:
         return {
@@ -556,7 +627,11 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         # change away from not being bounded.
         "claude_code_version": _safe_head(_cli_version(events) or "", env) or None,
         "skill_match_other_candidates": list(trace.other_candidates),
+        "permission_denials": _denials(payload, env),
     }
+    if metadata["permission_denials"]:
+        logger.warning(_LOG_TOOL_DENIED, len(metadata["permission_denials"]),
+                       ", ".join(sorted({d["tool"] for d in metadata["permission_denials"]})))
     cost = payload.get("total_cost_usd")
 
     # A turn that stopped short is not an answer, even when the skill did load:

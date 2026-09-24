@@ -340,9 +340,12 @@ class TestTheChildsScratchStaysInTheSandbox:
 
         assert env["TMPDIR"] == "/somewhere/of/the/runners"
 
-    def test_home_is_left_alone(self, tmp_path):
-        """Remapping it does not sandbox the run, it ends it: these children
-        authenticate with credentials stored under the runner's home."""
+    def test_home_is_the_runners_unless_isolation_is_asked_for(self, tmp_path):
+        """Not because remapping it would break authentication -- an earlier
+        version of this docstring said so, and it was measured false -- but
+        because the runner's home is where the plugins live that the pilot
+        measures the skill against. Isolating it is a different measurement,
+        so it is a request, not a default (#229 review)."""
         env = _sandbox.child_env("ANTHROPIC_", tmpdir=tmp_path)
 
         assert env.get("HOME") == os.environ.get("HOME")
@@ -473,3 +476,165 @@ class TestTheGraderDiagnosticIsRedactedBeforeItIsCut:
     def test_that_ceiling_stays_below_the_shared_one(self):
         """Derived, so the inequality the comment claims cannot be inverted."""
         assert grader_claude._STDERR_CHARS < _sandbox.MAX_DIAGNOSTIC_CHARS
+
+
+class TestAnIsolatedHomeHoldsOnlyALinkToTheCredential:
+    """`CF_UX_ISOLATED_HOME=1` gives the child a home inside the sandbox. It holds
+    one thing, a link to the CLI's credential: linked rather than copied so a
+    token refreshed mid-run lands in the runner's store, and removed on every
+    teardown path, the kept sandbox included (#229 review).
+
+    Not claimed here: that a CLI authenticates against such a home. That was
+    measured on Linux for claude 2.1.281 and codex 0.154.0; macOS keeps claude's
+    credential in the Keychain, and the mode is expected to decline there.
+    """
+
+    @pytest.fixture
+    def credential(self, tmp_path):
+        store = tmp_path / "runner-store" / ".credentials.json"
+        store.parent.mkdir()
+        store.write_text('{"token": "real"}', encoding="utf-8")
+        return store
+
+    def test_off_by_default(self, tmp_path, credential, monkeypatch):
+        monkeypatch.delenv(_sandbox.ISOLATED_HOME_ENV, raising=False)
+
+        assert _sandbox.isolated_home(tmp_path, credential, ".claude/.credentials.json") is None
+        assert not (tmp_path / _sandbox.ISOLATED_HOME_DIR_NAME).exists()
+
+    def test_on_request_the_home_holds_the_link_and_nothing_else(
+            self, tmp_path, credential, monkeypatch):
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+        sandbox_dir = tmp_path / "sandbox"
+        sandbox_dir.mkdir()
+
+        home = _sandbox.isolated_home(sandbox_dir, credential, ".claude/.credentials.json")
+
+        assert home == sandbox_dir / _sandbox.ISOLATED_HOME_DIR_NAME
+        link = home / ".claude" / ".credentials.json"
+        assert link.is_symlink() and link.resolve() == credential.resolve()
+        assert link.read_text(encoding="utf-8") == '{"token": "real"}'
+        everything = sorted(p.relative_to(home) for p in home.rglob("*"))
+        assert everything == [Path(".claude"), Path(".claude/.credentials.json")]
+        assert oct(home.stat().st_mode & 0o777) == "0o700"
+        assert oct((home / ".claude").stat().st_mode & 0o777) == "0o700"
+
+    def test_a_missing_credential_declines_out_loud(self, tmp_path, monkeypatch, capsys):
+        """A run asked to isolate that quietly did not would report under the
+        wrong label. macOS is the ordinary way to get here."""
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+        absent = tmp_path / "nowhere" / ".credentials.json"
+
+        home = _sandbox.isolated_home(tmp_path, absent, ".claude/.credentials.json")
+
+        assert home is None
+        err = capsys.readouterr().err
+        assert _sandbox.ISOLATED_HOME_ENV in err and str(absent) in err
+        assert "runner's home" in err
+        assert not (tmp_path / _sandbox.ISOLATED_HOME_DIR_NAME).exists()
+
+    def test_the_child_env_points_at_it_and_drops_the_config_roots(
+            self, tmp_path, credential, monkeypatch):
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/runner/.claude")
+        monkeypatch.setenv("CODEX_HOME", "/runner/.codex")
+        monkeypatch.setenv("CLAUDE_SOMETHING_ELSE", "kept")
+        home = _sandbox.isolated_home(tmp_path, credential, ".claude/.credentials.json")
+
+        env = _sandbox.child_env("ANTHROPIC_", "CLAUDE_", "CODEX_", tmpdir=tmp_path, home=home)
+
+        assert env["HOME"] == str(home)
+        assert "CLAUDE_CONFIG_DIR" not in env and "CODEX_HOME" not in env
+        assert env["CLAUDE_SOMETHING_ELSE"] == "kept", "only the roots are dropped"
+
+    def test_without_an_isolated_home_the_config_roots_still_travel(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/runner/.claude")
+
+        env = _sandbox.child_env("CLAUDE_")
+
+        assert env["CLAUDE_CONFIG_DIR"] == "/runner/.claude"
+
+    def test_wiping_the_home_leaves_the_credential_itself_alone(
+            self, tmp_path, credential, monkeypatch):
+        """The one thing this must never do: follow the link."""
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+        home = _sandbox.isolated_home(tmp_path, credential, ".claude/.credentials.json")
+
+        _sandbox.wipe_isolated_home(tmp_path)
+
+        assert not home.exists()
+        assert credential.read_text(encoding="utf-8") == '{"token": "real"}'
+        assert home not in _sandbox._LIVE_HOMES
+
+    def test_a_shared_sandbox_loses_the_home_and_keeps_its_own_files(
+            self, tmp_path, credential, monkeypatch):
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        (shared / "a-real-file.txt").write_text("mine", encoding="utf-8")
+        monkeypatch.setenv("CF_UX_SHARED_SANDBOX", str(shared))
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+
+        with _sandbox.sandbox() as cwd:
+            home = _sandbox.isolated_home(cwd, credential, ".claude/.credentials.json")
+            assert home.is_dir()
+
+        assert not home.exists(), "a link to the credential store was left behind"
+        assert (shared / "a-real-file.txt").is_file()
+
+    def test_a_kept_sandbox_keeps_its_scratch_and_not_the_home(
+            self, tmp_path, credential, monkeypatch):
+        monkeypatch.setattr(_sandbox, "_SANDBOX_PARENT", tmp_path / "parent")
+        monkeypatch.setattr(_sandbox, "_init_sandbox", lambda root: None)
+        monkeypatch.setenv("CF_UX_KEEP_SANDBOX", "1")
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+
+        with _sandbox.sandbox() as cwd:
+            home = _sandbox.isolated_home(cwd, credential, ".claude/.credentials.json")
+            _sandbox.child_env("ANTHROPIC_", tmpdir=cwd, home=home)
+
+        assert cwd.is_dir(), "kept, as asked"
+        assert (cwd / _sandbox.SCRATCH_DIR_NAME).is_dir(), "scratch is what keeping is for"
+        assert not home.exists(), "the credential link is not"
+
+    def test_the_atexit_sweep_knows_about_homes_in_shared_sandboxes(
+            self, tmp_path, credential, monkeypatch):
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+        home = _sandbox.isolated_home(tmp_path, credential, ".claude/.credentials.json")
+        assert home in _sandbox._LIVE_HOMES
+
+        _sandbox._atexit_cleanup()
+
+        assert not home.exists()
+        assert credential.is_file()
+
+
+class TestTheCodexChildCanHaveAnIsolatedHomeToo:
+    def test_by_default_the_report_says_runner(self, run_codex, monkeypatch):
+        monkeypatch.delenv(_sandbox.ISOLATED_HOME_ENV, raising=False)
+
+        out, seen = run_codex()
+
+        assert out["metadata"]["home"] == "runner"
+        assert seen["kwargs"]["env"]["HOME"] == os.environ["HOME"]
+
+    def test_on_request_it_is_inside_the_sandbox_and_codex_home_is_dropped(
+            self, run_codex, monkeypatch, tmp_path):
+        credential = tmp_path / "store" / "auth.json"
+        credential.parent.mkdir()
+        credential.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(codex_provider, "_codex_credential", lambda: credential)
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+        monkeypatch.setenv("CODEX_HOME", "/the/runners/.codex")
+
+        out, seen = run_codex()
+
+        env = seen["kwargs"]["env"]
+        assert out["metadata"]["home"] == "isolated"
+        assert Path(env["HOME"]).is_relative_to(tmp_path)
+        assert (Path(env["HOME"]) / ".codex" / "auth.json").is_symlink()
+        assert "CODEX_HOME" not in env
+
+    def test_the_credential_follows_codex_home_when_set(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CODEX_HOME", str(tmp_path / "cx"))
+
+        assert codex_provider._codex_credential() == tmp_path / "cx" / "auth.json"

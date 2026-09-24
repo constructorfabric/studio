@@ -8,9 +8,17 @@ import time
 from pathlib import Path
 from typing import Any
 
-from _sandbox import SandboxError, child_env, redact_secrets, safe_head, safe_tail, sandbox
+from _sandbox import (SandboxError, child_env, isolated_home, redact_secrets, safe_head,
+                      safe_tail, sandbox)
 
 CODEX_BIN = "codex"
+#: Where this CLI keeps its credential, relative to its home -- or under `CODEX_HOME`.
+_CODEX_CREDENTIAL = ".codex/auth.json"
+
+
+def _codex_credential() -> Path:
+    codex_home = os.environ.get("CODEX_HOME")
+    return (Path(codex_home) if codex_home else Path.home() / ".codex") / "auth.json"
 
 #: Namespaces the `codex` CLI is entitled to. It runs with `approval_policy="never"`,
 #: so it acts without asking -- and inherited the whole runner environment until
@@ -66,7 +74,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # Built once: the same mapping spawns the child and defines what must not come back
     # out of it, exactly as in `claude_provider`. Applying the allowlist to all three
     # providers and the redaction to one of them was the same half-fix twice (#229).
-    env = child_env(*_CHILD_ENV_PREFIXES, tmpdir=cwd)
+    home = isolated_home(cwd, _codex_credential(), _CODEX_CREDENTIAL)
+    env = child_env(*_CHILD_ENV_PREFIXES, tmpdir=cwd, home=home)
     proc = subprocess.run(
         cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
         stdin=subprocess.DEVNULL, env=env,
@@ -85,6 +94,9 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     metadata: dict[str, Any] = {
         "duration_s": round(duration, 2),
         "sandbox": str(cwd),
+        # An isolated run is a different measurement (no competing plugins), so
+        # the report says which one this was.
+        "home": "isolated" if home is not None else "runner",
         "stderr_tail": (safe_tail(proc.stderr.strip(), env)
                         if proc.stderr else None),
     }

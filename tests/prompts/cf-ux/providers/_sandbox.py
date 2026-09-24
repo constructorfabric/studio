@@ -11,6 +11,8 @@ the parent dir is also swept.
 Env overrides:
   CF_UX_SHARED_SANDBOX  — reuse an already-initialized path (no setup/teardown).
   CF_UX_KEEP_SANDBOX=1  — skip teardown on success and print the path.
+  CF_UX_ISOLATED_HOME=1 — give each CLI child a home inside the sandbox that
+                          holds only its credential; see `isolated_home`.
 """
 
 from __future__ import annotations
@@ -36,6 +38,10 @@ _SANDBOX_PARENT = Path(tempfile.gettempdir()) / "cf-ux-sandboxes"
 _STALE_AFTER_SECONDS = 24 * 60 * 60  # 24h
 
 _LIVE_SANDBOXES: set[Path] = set()
+#: Isolated homes built inside a *shared* sandbox: that directory is the caller's
+#: and is never wiped as a whole, so the home inside it -- which links to a
+#: credential -- needs its own entry to be removed when the worker dies.
+_LIVE_HOMES: set[Path] = set()
 _HANDLERS_INSTALLED = False
 
 
@@ -49,6 +55,9 @@ def _wipe(path: Path) -> None:
 
 
 def _atexit_cleanup() -> None:
+    for p in list(_LIVE_HOMES):
+        _wipe(p)
+        _LIVE_HOMES.discard(p)
     for p in list(_LIVE_SANDBOXES):
         _wipe(p)
         _LIVE_SANDBOXES.discard(p)
@@ -152,6 +161,78 @@ def wipe_scratch(path: Path) -> None:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+#: `CF_UX_ISOLATED_HOME=1` gives each CLI child a home of its own inside the sandbox,
+#: holding one thing: a link to its credential. Off by default -- not because the mode
+#: is unsafe, but because it changes what the run measures; see :func:`isolated_home`.
+ISOLATED_HOME_ENV = "CF_UX_ISOLATED_HOME"
+ISOLATED_HOME_DIR_NAME = ".home"
+
+#: Variables that point a CLI at a configuration root *outside* its home. With the home
+#: isolated they would lead straight back to the runner's, so they are not forwarded
+#: in that mode. Forwarded as before when the home is the runner's.
+HOME_ROOTED_NAMES = frozenset({"CLAUDE_CONFIG_DIR", "CODEX_HOME"})
+
+
+def isolated_home_requested() -> bool:
+    return os.environ.get(ISOLATED_HOME_ENV) == "1"
+
+
+def isolated_home(sandbox_dir: Path, credential: Path, kept_as: str) -> Path | None:
+    """A home for one CLI child that holds one thing: a link to *credential*, at *kept_as*.
+
+    Returns None when the mode is off, or when *credential* is not a file -- and says so
+    on stderr in that second case, because the child then gets the runner's home, and a
+    run that was asked to isolate and quietly did not would be reported under the wrong
+    label. The providers record which home the child got as `home` in the metadata.
+
+    What the mode buys: the child's tools cannot reach the runner's keys by walking `~`,
+    and the programs that look for their own configuration there (`ssh`, `gh`, `aws`,
+    ...) find nothing. What it trades away: the runner's plugins, hooks and user-level
+    settings live under that home too, and the pilot measures the skill *against* them
+    (see the codex provider on competing plugins). An isolated run is therefore a
+    different measurement, not a stricter one, which is why it is not the default.
+
+    Linked rather than copied, so a token the CLI refreshes mid-run lands in the runner's
+    store and not in a directory that is wiped minutes later. Measured on Linux (claude
+    2.1.281, codex 0.154.0): a home holding only that link authenticates. macOS keeps
+    claude's credential in the Keychain, so there the file is usually absent and the
+    mode declines, out loud (#229 review).
+    """
+    if not isolated_home_requested():
+        return None
+    if not credential.is_file():
+        print(
+            f"cf-ux: {ISOLATED_HOME_ENV}=1 but {credential} is not a file, so the child "
+            "gets the runner's home (macOS keeps claude's credential in the Keychain, "
+            "where nothing here can link to it)",
+            file=sys.stderr,
+        )
+        return None
+    home = sandbox_dir / ISOLATED_HOME_DIR_NAME
+    target = home / kept_as
+    target.parent.mkdir(parents=True, exist_ok=True)
+    for directory in {home, target.parent}:
+        directory.chmod(0o700)
+    if target.is_symlink() or target.exists():
+        target.unlink()
+    target.symlink_to(credential)
+    _LIVE_HOMES.add(home)
+    return home
+
+
+def wipe_isolated_home(path: Path) -> None:
+    """Remove the isolated home this harness built inside *path*, if any.
+
+    Called on every teardown path, the kept sandbox included: the point of keeping a
+    sandbox is to look at what the run left behind, and a link to the runner's
+    credential store is not part of that.
+    """
+    home = path / ISOLATED_HOME_DIR_NAME
+    if home.is_dir():
+        shutil.rmtree(home, ignore_errors=True)
+    _LIVE_HOMES.discard(home)
+
+
 BACKEND_ROUTING_NAMES = frozenset({
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_API_URL",
@@ -167,7 +248,7 @@ BACKEND_ROUTING_NAMES = frozenset({
 })
 
 
-def child_env(*prefixes: str, tmpdir: Path | None = None) -> dict:
+def child_env(*prefixes: str, tmpdir: Path | None = None, home: Path | None = None) -> dict:
     """The environment for a CLI child: :data:`ENV_NAMES` plus the namespaces named in
     ``prefixes`` -- the credential and configuration that particular CLI is entitled to,
     and nothing else the runner happens to be carrying.
@@ -183,17 +264,22 @@ def child_env(*prefixes: str, tmpdir: Path | None = None) -> dict:
     so a child that writes scratch files leaves them in the sandbox that is wiped
     rather than in a directory that outlives the run.
 
-    ``HOME`` is deliberately **not** remapped. These children are real CLIs
-    authenticating with real credentials, and their credential store lives under the
-    runner's home; pointing it elsewhere does not sandbox the run, it ends it
-    (#229 review).
+    ``HOME`` stays the runner's unless *home* is given -- the directory
+    :func:`isolated_home` built, in which case the variables in
+    :data:`HOME_ROOTED_NAMES` are dropped too, since they point back at the runner's
+    configuration. Not remapped by default because the runner's home is also where the
+    plugins live that the pilot measures the skill against; an earlier version of this
+    docstring said remapping it "ends the run", which was measured false (#229 review).
     """
     env = {
         name: value
         for name, value in os.environ.items()
         if (name in ENV_NAMES or (prefixes and name.startswith(prefixes)))
         and name not in BACKEND_ROUTING_NAMES
+        and (home is None or name not in HOME_ROOTED_NAMES)
     }
+    if home is not None:
+        env["HOME"] = str(home)
     dropped = sorted(BACKEND_ROUTING_NAMES & set(os.environ))
     if dropped:
         print(
@@ -357,9 +443,10 @@ def sandbox() -> Iterator[Path]:
         try:
             yield path
         finally:
-            # The directory is the caller's and is left alone; the scratch inside it
-            # is this harness's and is not.
+            # The directory is the caller's and is left alone; the scratch and the
+            # isolated home inside it are this harness's and are not.
             wipe_scratch(path)
+            wipe_isolated_home(path)
         return
 
     path = _new_sandbox_path()
@@ -373,10 +460,13 @@ def sandbox() -> Iterator[Path]:
         if keep:
             # Scratch included, deliberately: the point of keeping a sandbox is to
             # look at what the run left behind, and what the child wrote to its
-            # `TMPDIR` is part of that.
+            # `TMPDIR` is part of that. The isolated home is not: it links to the
+            # runner's credential store.
+            wipe_isolated_home(path)
             print(f"[cf-ux] kept sandbox (including {SCRATCH_DIR_NAME}/): {path}",
                   file=sys.stderr)
             _LIVE_SANDBOXES.discard(path)  # do not wipe on atexit
         else:
+            wipe_isolated_home(path)  # forgets it, so atexit does not look for it
             _wipe(path)
             _LIVE_SANDBOXES.discard(path)
