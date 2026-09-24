@@ -113,11 +113,16 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 7. [x] - `p1` - **IF** per-artifact errors exist **RETURN** FAIL report (stop before cross-validation) - `inst-if-structure-fail`
 8. [x] - `p1` - Cross-validate references across all artifacts using `cpt-studio-algo-traceability-validation-cross-validate` - `inst-cross-validate`
 9. [x] - `p1` - **IF** `--skip-code` is not set, validate code traceability using `cpt-studio-algo-traceability-validation-cross-validate-code` - `inst-if-code`
-10. [x] - `p1` - Enrich errors with fixing prompts for LLM agents - `inst-enrich-errors`
-11. [x] - `p1` - **RETURN** JSON report (status, artifact count, error/warning counts, coverage stats, next step hint) - `inst-return-report`
+10. [x] - `p1` - Settle severity for every finding the per-artifact pass did not, using each finding's own artifact kind where it has one - `inst-apply-policy`
+11. [x] - `p1` - Enrich errors with fixing prompts for LLM agents - `inst-enrich-errors`
+12. [x] - `p1` - Emit both the errors list and the warnings list on every run, passing or failing - `inst-emit-warnings`
+13. [x] - `p1` - **RETURN** JSON report (status, artifact count, error/warning counts, suppressed count, severity overrides, coverage stats, next step hint) - `inst-return-report`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for validate command - `inst-validate-imports`
+- [x] - `p1` - Assemble the severity policy from the loaded kits and `core.toml`, refusing the run when a setting cannot be parsed - `inst-build-policy`
+- [x] - `p1` - Report each rule's effective severity and the layer that set it for `--explain-severity` - `inst-explain-severity`
+- [x] - `p1` - Name the suppressed count and the lowered rules in human output, so a silenced run does not read like a clean one - `inst-human-suppressed`
 - [x] - `p1` - Internal helpers: attach issue to artifact report, enrich target artifact paths, find artifact in system, suggest path from autodetect - `inst-validate-helpers`
 - [x] - `p1` - Human-friendly formatter: issue location, issue formatting, validate report display - `inst-validate-format`
 - [x] - `p1` - Parse validate CLI arguments and merge kit-defined known kinds into the active validation context - `inst-validate-cli-setup`
@@ -272,13 +277,16 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 
 - [x] `p1` - **ID**: `cpt-studio-algo-traceability-validation-severity-policy`
 
-**Input**: A finding's rule code, or no code at all
+**Input**: A finding's rule code, the artifact kind it was found in, the constraint entry it
+belongs to, and the severity tables declared by the kit and by the project
 
-**Output**: One of `error`, `warning`, `off` — the finding's severity, stamped as data on the finding itself
+**Output**: One of `error`, `warning`, `off` — the finding's severity, stamped as data on the
+finding itself — together with the layer that decided it
 
 Severity is a property of a finding, not of the list a call site happened to append it to. Every
-finding is stamped at build time from one declared table, so that severity can later be configured
-per rule, per artifact kind and per constraint entry without touching a single call site.
+finding is stamped at build time from one declared table, and the configured layers then settle
+the value per rule, per artifact kind and per constraint entry without touching a single call
+site.
 
 **Steps**:
 1. [x] - `p1` - Declare the severity vocabulary: `error`, `warning`, `off` - `inst-severity-vocabulary`
@@ -287,9 +295,19 @@ per rule, per artifact kind and per constraint entry without touching a single c
 4. [x] - `p1` - **IF** the code is absent or unknown to the table, **RETURN** `error` — an unrecognised rule must not be silently non-blocking - `inst-severity-unknown-is-error`
 5. [x] - `p1` - **IF** a caller supplied its own severity, refuse it — severity is derived from the code and no call site may override the declared default - `inst-severity-reject-override`
 6. [x] - `p1` - **IF** the table and the error-code registry disagree at import, refuse to load — a promise of exhaustiveness that only a test enforces is not kept in production - `inst-severity-exhaustive-guard`
+7. [x] - `p1` - Order the vocabulary by how much each level blocks, so a raise can be told from a lowering - `inst-severity-strictness`
+8. [x] - `p1` - Parse one configured severity value, and **IF** it is not one of the vocabulary, refuse the load — an unrecognised value here disables checking rather than merely describing an outcome - `inst-severity-parse-value`
+9. [x] - `p1` - Parse a `[validation]` table into per-code and per-kind severities, carrying forward any key this engine does not understand - `inst-severity-parse-tables`
+10. [x] - `p1` - Settle the kit's own opinion from the constraint entry, then the kit's per-kind table, then its whole-kit table, then the built-in default - `inst-severity-policy-resolve`
+11. [x] - `p1` - **IF** the project's value is stricter, take it; **ELSE IF** the governing entry is locked, refuse the lowering and keep the kit's value; **ELSE** take the project's value and record what it lowered from - `inst-severity-raise-lower`
+12. [x] - `p1` - List every project setting that lowers a rule, derived from the configuration rather than from what happened to be emitted - `inst-severity-declared-overrides`
+13. [x] - `p1` - Restamp a run's findings from the policy, drop the suppressed, count them, and repartition the rest into errors and warnings - `inst-severity-apply`
+14. [x] - `p1` - Decide status and exit code from the counts alone, so that unless the project asks warnings to fail the run, the exit code depends on the error count and nothing else - `inst-severity-exit-code`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for the severity policy - `inst-severity-imports`
+- [x] - `p1` - Data model for the policy layers, a resolved decision, and the outcome of applying one - `inst-severity-policy-model`
+- [x] - `p1` - Build a constraint entry's lookup key from its type and its case-folded id, so a heading and an ID kind sharing a name stay separate entries - `inst-severity-entry-key`
 
 ### Validate Artifact Structure
 
@@ -302,6 +320,7 @@ per rule, per artifact kind and per constraint entry without touching a single c
 **Steps**:
 1. [x] - `p1` - **IF** constraints have headings contract, validate heading patterns (required sections, levels, ordering) - `inst-check-headings`
 2. [x] - `p1` - **IF** headings errors exist **RETURN** early (IDs depend on correct structure) - `inst-if-headings-fail`
+   1. [x] - `p1` - Decide that gate on error-severity heading findings only, so a rule lowered to `warning` no longer hides the TOC and identifier phases behind it - `inst-gate-on-errors`
 3. [x] - `p1` - Scan IDs using `cpt-studio-algo-traceability-validation-scan-ids` - `inst-scan-ids`
 4. [x] - `p1` - Scan CDSL instructions using `cpt-studio-algo-traceability-validation-scan-cdsl` - `inst-scan-cdsl`
 5. [x] - `p1` - **FOR EACH** CDSL step where parent ID is checked but step is unchecked - `inst-foreach-cdsl-mismatch`
@@ -315,7 +334,8 @@ per rule, per artifact kind and per constraint entry without touching a single c
    2. [x] - `p1` - **IF** the step's description reads like code rather than plain English, emit the matching CDSL.md rule errors (S.6/CL.3, S.7, CL.2, CL.1/CL.4) - `inst-if-cdsl-prohibited-syntax`
    3. [x] - `p1` - **IF** an `inst-{id}` repeats under the same parent ID within a `**Steps**:`/`**Transitions**:` block, emit duplicate-instruction-id error (CO.5) - `inst-if-cdsl-duplicate-inst`
    4. [x] - `p1` - **IF** the step contains an unresolved placeholder marker, emit placeholder error (CO.6) - `inst-if-cdsl-placeholder`
-9. [x] - `p1` - **RETURN** accumulated errors and warnings - `inst-return-structure`
+9. [x] - `p1` - Record the artifact kind on every finding from this file, then settle severity for all of them at once - `inst-apply-artifact-policy`
+10. [x] - `p1` - **RETURN** accumulated errors and warnings - `inst-return-structure`
 
 **Supporting**:
 - [x] - `p1` - Imports, dataclasses (ReferenceRule, HeadingConstraint, IdConstraint, ArtifactKindConstraints, KitConstraints, ArtifactRecord, ParsedStudioId), error factory, and optional-bool parser - `inst-structure-datamodel`
@@ -451,18 +471,24 @@ per rule, per artifact kind and per constraint entry without touching a single c
 
 **Steps**:
 1. [x] - `p1` - Parse arguments: positional files or `--all` - `inst-toc-parse-args`
-2. [x] - `p1` - Resolve file list (explicit paths or all registered artifacts) - `inst-toc-resolve-files`
-3. [x] - `p1` - **FOR EACH** file - `inst-toc-foreach-file`
-   1. [x] - `p1` - Parse existing TOC block between `<!-- toc -->` markers - `inst-toc-parse-existing`
-   2. [x] - `p1` - Generate expected TOC from headings - `inst-toc-generate-expected`
-   3. [x] - `p1` - Compare existing vs expected: check anchor validity, heading coverage, staleness - `inst-toc-compare`
-   4. [x] - `p1` - **IF** mismatch, record error with diff details - `inst-toc-if-mismatch`
-4. [x] - `p1` - **RETURN** JSON: `{status, files_validated, error_count, warning_count, results}`, each `results[]` entry `{file, status, error_count, warning_count}` plus `errors`/`warnings` arrays when `--verbose` or non-empty - `inst-toc-return`
+2. [x] - `p1` - **IF** the command runs inside a Studio project, load its context: build the same severity policy the validate command builds, from every loaded kit plus the project configuration, and index each registered artifact by absolute path with its kind and that kind's TOC options. A policy that cannot be read stops the run instead of being skipped. Outside a project nothing is loaded and the remaining steps behave exactly as they always have - `inst-toc-load-project`
+3. [x] - `p1` - Resolve file list (explicit paths or all registered artifacts) - `inst-toc-resolve-files`
+4. [x] - `p1` - **FOR EACH** file - `inst-toc-foreach-file`
+   1. [x] - `p1` - **IF** the file is a registered artifact whose kind declares it has no table of contents, report it as passing but not applicable and check nothing, matching the phase the structure validator skips for the same declaration. Said out loud rather than passed in silence: a file reported clean and a file never examined are different answers - `inst-toc-not-applicable`
+   2. [x] - `p1` - Settle this file's heading-depth and section-size bounds: an explicit command-line flag first, else the value configured for its artifact kind, else the engine default - `inst-toc-resolve-options`
+   3. [x] - `p1` - Parse existing TOC block between `<!-- toc -->` markers - `inst-toc-parse-existing`
+   4. [x] - `p1` - Generate expected TOC from headings - `inst-toc-generate-expected`
+   5. [x] - `p1` - Compare existing vs expected: check anchor validity, heading coverage, staleness - `inst-toc-compare`
+   6. [x] - `p1` - **IF** mismatch, record error with diff details - `inst-toc-if-mismatch`
+   7. [x] - `p1` - Restamp this file's findings at the severity the policy resolves for them, dropping the suppressed and re-partitioning the rest between errors and warnings; record the artifact kind on each finding and collect any lowering the kit refused. The project's policy governs a registered artifact wherever on disk it resolves, since a workspace source lives outside the project root by design, but not an unregistered file outside the tree — judging another repository's document by whichever project the shell was in is an answer about the wrong configuration - `inst-toc-apply-policy`
+5. [x] - `p1` - **RETURN** JSON: `{status, files_validated, error_count, warning_count, results}`, each `results[]` entry `{file, status, error_count, warning_count}` plus its artifact kind and suppressed count when either applies, plus `errors`/`warnings` arrays when `--verbose` or non-empty; the run adds its own suppressed count and the list of severity overrides whenever either is non-empty - `inst-toc-return`
 
 **Supporting**:
 - [x] - `p1` - Imports and module setup for validate-toc command - `inst-toc-imports`
 - [x] - `p1` - Validate a single file, never raising: a missing file or a read failure (permission denied, binary/non-UTF-8 content, a TOCTOU race) is reported as its own ERROR result rather than aborting the whole batch and discarding results already collected for earlier files - `inst-toc-validate-one`
-- [x] - `p1` - Human-friendly formatter for validate-toc output: a WARN-only file prints its warnings the same way a FAIL file prints its errors, not just the bare status - `inst-toc-format`
+- [x] - `p1` - Decide whether warnings alone fail this run, asking the loaded policy when there is one so the command-line flag and the project setting cannot disagree, and the flag alone otherwise - `inst-toc-fail-on-warnings`
+- [x] - `p1` - Attach what the policy changed to the report whenever it changed anything: the count of suppressed findings, and the lowered or refused rules, emitted without being asked for - `inst-toc-policy-report`
+- [x] - `p1` - Human-friendly formatter for validate-toc output: a WARN-only file prints its warnings the same way a FAIL file prints its errors, not just the bare status, and a run that suppressed findings says so rather than reading like a run that found none - `inst-toc-format`
 
 ### TOC Utilities
 
@@ -714,6 +740,12 @@ Pure decision logic, no I/O: this is a deterministic CLI, not the caller that ac
 3. [x] - `p1` - Initialize validation context: load heading constraints, build helper lookups, scan document headings - `inst-validate-init`
 4. [x] - `p1` - Check numbering sequence: enforce that sibling sections under the same numeric parent progress consecutively - `inst-check-numbering`
 5. [x] - `p1` - Match headings against constraints: hierarchical scope matching, required/multiple/numbered enforcement, emit errors for missing/duplicate/misnumbered headings - `inst-match-headings`
+6. [x] - `p1` - Rescue a constraint the forward cursor left unmatched: re-search its parent range from the start for an unclaimed heading, **IF** one is found treat it as a match, **ELSE** report the section as missing - `inst-rescue-unmatched`
+7. [x] - `p1` - Claim the headings one constraint matched and record where it landed, so no two constraints stand on one section - `inst-claim-matches`
+8. [x] - `p1` - Apply the count and numbering rules, whether the constraint matched forward or was rescued: `multiple = false` over the consecutive run, `numbered` and "at least two" over every unclaimed match in the parent scope - `inst-check-match-rules`
+9. [x] - `p1` - Find the nearest already-matched section a rescued one now precedes, according to the kind's declared order - `inst-order-offender`
+10. [x] - `p1` - **IF** the kind declares an `order` and an offender was found, emit `heading-order-violation` naming it, suppressing the descendants of a section already reported - `inst-order-violation`
+11. [x] - `p1` - **IF** a constraint declares `multiple = true` and its parent scope holds fewer than two unclaimed matches, emit `heading-requires-multiple` (off by default) - `inst-requires-multiple`
 
 **Supporting**:
 - [x] - `p1` - Heading line regex, number prefix regex, and module exports - `inst-headings-datamodel`
@@ -742,6 +774,14 @@ Pure decision logic, no I/O: this is a deterministic CLI, not the caller that ac
 3. [x] - `p1` - Parse individual ID constraint: validate kind, required, name, template, examples, task, priority, to_code, headings, references - `inst-parse-id-constraint`
 4. [x] - `p1` - Parse heading constraint: validate level, pattern, description, required, multiple, numbered, id, prev/next, pointer - `inst-parse-heading`
 5. [x] - `p1` - Parse reference rule: validate coverage, task, priority, headings fields - `inst-parse-ref-rule`
+6. [x] - `p1` - Lift the top-level `[validation]` table out before the `artifacts` unwrap, or the legacy unwrapped layout would read it as an artifact kind named VALIDATION - `inst-lift-validation`
+7. [x] - `p1` - Parse `severity` and `locked` from one constraint entry, accepting a lock without a severity - `inst-parse-entry-severity`
+8. [x] - `p1` - Merge two entry severities by taking the stricter, and a lock by taking either - `inst-merge-entry-severity`
+9. [x] - `p1` - Assemble the severity policy from every loaded kit and the project's own table, indexing entries by heading id and by ID kind - `inst-build-policy`
+10. [x] - `p1` - Parse `order` for one kind: a list of declared heading ids, or `"declared"` meaning every heading in declaration order; an unknown or repeated id fails the load - `inst-parse-order`
+11. [x] - `p1` - Refuse an `order` that puts the declared headings in a different sequence, naming the pair — `order` chooses what is enforced, it does not re-sequence declarations - `inst-order-follows-declarations`
+12. [x] - `p1` - Merge two kits' orders for one kind by taking the union of the precedence pairs each states and closing it under transitivity, so a relation both kits imply is enforced and none they did not state is invented - `inst-merge-order`
+13. [x] - `p1` - Reject the merge when the closed pair set requires one pair in both directions, naming it; a cycle closing across three kits is one such pair once the relations are closed - `inst-order-conflict`
 
 **Supporting**:
 - [x] - `p1` - Examples parser, heading-constraint ID slugifier, and references map parser - `inst-constraints-helpers`

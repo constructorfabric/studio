@@ -34,6 +34,7 @@ When `back` is included, it occupies position N+1 and `done` occupies N+2. When 
 
 MENU NextActionsMenu
 TITLE: Next actions for this context — pick a number or reply done. (one action is marked suggested)
+TYPE: decision
 OPTIONS:
   1..N actions -> the menu enumerates 3 to 5 synthesized next actions, each on its own line as `N <action> — <why>`, with exactly one tagged (suggested); the agent synthesizes these from current context and available cf-* skills
   N+1 back -> CONTINUE [resolved-destination-unit] WHEN a concrete previous workflow-owned decision point can be resolved; ALWAYS resolve and name the destination before emitting this option (e.g. "back — returns to [unit name or step description]"); STOP_TURN WHEN no concrete previous decision point can be resolved

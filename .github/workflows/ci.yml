@@ -1,12 +1,44 @@
 # @cpt-algo:cpt-studio-spec-init-structure-change-infrastructure:p1
 name: CI
 
+# `release/**` alongside `main`: a release is stabilised on a branch and only then
+# tagged, so that branch is the last thing tested before a version goes out.
+# Filtering CI to `main` meant the one branch whose whole purpose is being tested
+# before a tag was the one branch this pipeline never ran on -- the v1.7.0 release
+# PR showed only the checks that come from apps (DCO, SonarCloud, code-ranker), and
+# no tests, lint, coverage or artifact validation.
+#
+# Deliberately says nothing about where the branch is cut from. CONTRIBUTING.md
+# says `main`; `release/v1.7.0` was in fact cut at the `v1.6.2` tag, which is why
+# it never reached `main`. #257 settles that in CONTRIBUTING's favour, and this
+# trigger is correct either way -- which is the reason not to restate the
+# procedure here and give it a second place to drift (#211, #254 review).
+#
+# Two patterns because the repository has two naming habits. CONTRIBUTING.md
+# documents `git checkout -b vX.Y.Z-beta`, which `v[0-9]*` covers; what was
+# actually cut for the last release was `release/v1.7.0` and
+# `release/v1.7.0-integration`, which `release/**` covers. Matching only one of
+# them would leave the other untested, which is the state this change exists to
+# end -- so both are matched until the convention is settled one way.
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**', 'v[0-9]*']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**', 'v[0-9]*']
 
+# Keyed on `github.ref`, which keeps a push run and a pull-request run in separate
+# groups -- deliberately, and after trying the opposite.
+#
+# Admitting release branches to `push` means a branch with an open PR into `main`
+# matches both events per commit, and a first attempt at this collapsed them into
+# one group so the second would cancel the first. That was wrong: the two runs do
+# not test the same commit. The push run tests the branch head; the pull-request
+# run tests `refs/pull/N/merge`, which is what `main` would become. Sharing a group
+# lets a push cancel the merge-result run, which is the more valuable of the two
+# and the one the release branch exists to earn (#254 review).
+#
+# So a release branch with an open PR does cost two runs per commit. That is the
+# price of testing both the branch and the merge result, not duplicated work.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

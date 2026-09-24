@@ -44,6 +44,7 @@ RULES:
   ALWAYS mark the first suggested_next_skills entry as (suggested) unless a higher-priority producer is identified from missing_artifacts context
 MENU BlockedNextActionsMenu
 TITLE: This skill is blocked. Choose the next step. Reply with a number.
+TYPE: blocking
 OPTIONS:
   1 provide-inputs -> WAIT for the user to provide the missing artifact references, paths, or descriptors called out in missing_artifacts, then STOP_TURN
   suggested-next-skills -> when suggested_next_skills is non-empty, render each entry as its own concrete decimal option starting at 2 in declaration order, mark the first entry as (suggested), and continue numbering sequentially before override, back, and stop

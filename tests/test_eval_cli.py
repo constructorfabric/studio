@@ -676,3 +676,134 @@ def test_calibrate_never_affects_the_gate(capsys, tmp_path: Path) -> None:
     with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
         rc = cmd_eval(["--scenarios-dir", str(scenarios), "--check", "--calibrate"])
     assert rc == 0                                      # compliant suite still passes with --calibrate
+
+
+def _write_empty_plan_beside_files(root: Path, sid: str, expect: str) -> None:
+    """A run whose manifest declares no phases while phase files sit next to it."""
+    run = root / sid / "run"
+    run.mkdir(parents=True)
+    (root / sid / "scenario.toml").write_text(
+        f'[scenario]\nid = "{sid}"\nworkflow = "w"\nrun_dir = "run"\nexpect = "{expect}"\n')
+    (run / "plan.toml").write_text('[plan]\ntask = "t"\ntotal_phases = 2\n')
+    for name in ("phase-01-a.md", "phase-02-b.md"):
+        (run / name).write_text("```toml\n[phase]\nnumber = 1\ntotal = 2\n```\n\n# P\n")
+
+
+def test_an_empty_plan_beside_phase_files_is_scored_not_skipped(
+        capsys, tmp_path: Path) -> None:
+    """End to end, through the real command: the case that used to leave no trace.
+
+    It scored UNKNOWN and was excluded from the denominator, so the worse the break, the less
+    it moved the headline. Reported by QA against a twelve-scenario suite that read
+    "11 scored ... across 12 scenario(s)" with the percentage taken over the eleven.
+    """
+    root = tmp_path / "eval"
+    _write_empty_plan_beside_files(root, "broken", "non_compliant")
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(root)])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0, payload
+    rows = payload["per_scenario"]
+    verdicts = [r["verdict"] for row in rows for r in row["results"]
+                if r["kind"] == "deterministic"]
+    assert verdicts == ["FAIL"], payload
+    assert payload["summary"]["structural_compliance"] == 0.0, payload
+
+
+def test_check_fails_when_a_scenario_does_not_score_what_it_declares(
+        capsys, tmp_path: Path) -> None:
+    """`--check` fails on the mismatch alone, with a floor that demands nothing.
+
+    `--min 0` clears the compliance gate by construction, so a non-zero exit here can only
+    come from the declared-vs-actual comparison — otherwise the assertion would pass for the
+    wrong reason and prove nothing about the new guard.
+    """
+    root = tmp_path / "eval"
+    _write_empty_plan_beside_files(root, "mislabelled", "compliant")   # declares PASS, scores FAIL
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(root), "--check", "--min", "0"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2, payload
+    assert payload["gate"] == "fail", payload
+    assert any("mislabelled" in m for m in payload["oracle_mismatches"]), payload
+
+
+def test_check_does_not_fail_on_an_unscoreable_scenario(capsys, tmp_path: Path) -> None:
+    """End to end: the contract inversion, which a unit test on the helper did not catch.
+
+    The first version gated on every oracle mismatch including UNKNOWN, so a suite of one
+    healthy scenario and one unreadable `plan.toml` printed "structural compliance: 100%" and
+    exited 2. Asserting on `gating_oracle_mismatches` alone left the command's wiring free to
+    reintroduce it — mutating the call back to the unfiltered list kept that test green. This
+    one goes through `cmd_eval`, which is where the defect lived.
+    """
+    root = tmp_path / "eval"
+    _write_compliant(root, "healthy")
+    broken = root / "unloadable" / "run"
+    broken.mkdir(parents=True)
+    (root / "unloadable" / "scenario.toml").write_text(
+        '[scenario]\nid = "unloadable"\nworkflow = "w"\nrun_dir = "run"\n'
+        'expect = "non_compliant"\n')          # no plan.toml at all -> UNKNOWN
+
+    with patch(_GET_CONTEXT, return_value=_ctx(tmp_path)):
+        rc = cmd_eval(["--scenarios-dir", str(root), "--check", "--min", "0"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0, payload
+    assert payload["gate"] == "pass", payload
+    # still reported, just not gating — the two are separate questions
+    assert any("unloadable" in m for m in payload["oracle_mismatches"]), payload
+
+
+def test_the_oracle_mismatch_report_caps_and_names_the_overflow(capsys) -> None:
+    """The cap has its own slicing logic, distinct from the already-tested scenario ledger.
+
+    Reusing `_SCENARIOS_CAP` is not the same as reusing the code that applies it: an off-by-one
+    here — `>=` for `>`, or a slice one short — would silently drop a row or print `+0 more`,
+    and no test supplied exactly the cap or one past it. Raised in review.
+    """
+    from studio.commands.eval import _SCENARIOS_CAP, _report_oracle_mismatches  # noqa: PLC0415
+    rows = [f"s{i}: declared 'compliant' (expects PASS) but scored FAIL" for i in range(60)]
+    ui_module.set_json_mode(False)
+    try:
+        _report_oracle_mismatches(rows[:_SCENARIOS_CAP])
+        at_cap = capsys.readouterr().out
+        _report_oracle_mismatches(rows[:_SCENARIOS_CAP + 1])
+        over = capsys.readouterr().out
+    finally:
+        ui_module.set_json_mode(True)
+
+    # Counting the row marker, not the word "declared" — the header line
+    # ("declared-vs-actual: N scenario(s) …") contains it too, which made the first version of
+    # this assertion off by one against correct output.
+    rows_at_cap = [l for l in at_cap.splitlines() if "expects PASS" in l]
+    rows_over = [l for l in over.splitlines() if "expects PASS" in l]
+    assert "more" not in at_cap, at_cap
+    assert len(rows_at_cap) == _SCENARIOS_CAP, at_cap
+    assert "+1 more" in over, over
+    assert len(rows_over) == _SCENARIOS_CAP, over
+
+
+def test_the_oracle_mismatch_report_renders_and_tolerates_a_malformed_payload(capsys) -> None:
+    """Its siblings each have one; this one had only end-to-end tests that never reach it.
+
+    Those run in JSON mode, so the human-report path — where the warning text and the
+    malformed-shape tolerance live — was never executed at all. Raised in review.
+    """
+    from studio.commands.eval import _report_oracle_mismatches  # noqa: PLC0415
+    ui_module.set_json_mode(False)
+    try:
+        _report_oracle_mismatches(["one: declared 'compliant' (expects PASS) but scored FAIL"])
+        rendered = capsys.readouterr().out
+        for malformed in (None, "a string", {"not": "a list"}, [], [None, 3]):
+            _report_oracle_mismatches(malformed)
+        quiet = capsys.readouterr().out
+    finally:
+        ui_module.set_json_mode(True)
+
+    assert "declared-vs-actual" in rendered, rendered
+    assert "1 scenario(s)" in rendered, rendered
+    assert "one:" in rendered, rendered
+    assert quiet == "", quiet

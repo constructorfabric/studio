@@ -1486,7 +1486,15 @@ class TestCmdTocValidation:
         md.write_text("# Title\n\n## Sub\n\nText.\n", encoding="utf-8")
 
         from unittest.mock import patch as _p
-        fake = {"errors": ["bad toc entry"], "warnings": []}
+        # Findings are dicts, as `validate_toc` builds them: they now travel
+        # through the severity policy, which resolves each one by its code.
+        fake = {
+            "errors": [{
+                "type": "toc", "message": "bad toc entry",
+                "code": "toc-anchor-broken", "severity": "error", "line": 3,
+            }],
+            "warnings": [],
+        }
         with _p("studio.commands.toc._validate_toc", return_value=fake):
             import io, json
             buf = io.StringIO()
@@ -1506,7 +1514,13 @@ class TestCmdTocValidation:
         md.write_text("# Title\n\n## Sub\n\nText.\n", encoding="utf-8")
 
         from unittest.mock import patch as _p
-        fake = {"errors": [], "warnings": ["minor issue"]}
+        fake = {
+            "errors": [],
+            "warnings": [{
+                "type": "toc", "message": "minor issue",
+                "code": "toc-section-too-long", "severity": "warning", "line": 3,
+            }],
+        }
         with _p("studio.commands.toc._validate_toc", return_value=fake):
             import io, json
             buf = io.StringIO()

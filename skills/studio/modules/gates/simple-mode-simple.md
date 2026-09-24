@@ -46,6 +46,7 @@ RULES:
   - NEVER bypass the menu until a saved Brave New World decision exists
 MENU SimpleModeBraveNewWorldChoice
 TITLE: Assistant mode is active. Also enable Brave New World for this session? Brave New World automatically chooses non-destructive, reversible workflow options when the current rules make that safe, or you can skip it and keep assistant mode only. Reply with a number.
+TYPE: blocking
 OPTIONS:
   1 enable Brave New World -> SET SIMPLE_MODE_BRAVE_NEW_WORLD_DECISION = enable; CONTINUE SimpleModeBraveNewWorldEnable
   2 skip -> SET SIMPLE_MODE_BRAVE_NEW_WORLD_DECISION = skip; CONTINUE SimpleModeBraveNewWorldSkip

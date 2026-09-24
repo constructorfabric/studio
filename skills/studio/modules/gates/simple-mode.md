@@ -26,6 +26,7 @@ RULES:
   NEVER run for `cf-debug-prompts` or `cf-help`
 MENU SimpleModeChoice
 TITLE: Choose interaction mode for this session — reply with a number. You can change mode any time by saying "change mode".
+TYPE: confirmation
 OPTIONS:
   1 assistant — explains each step, why it is happening, and which path is recommended -> SET SIMPLE_MODE = simple; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-simple.md; CONTINUE SimpleModeSimpleEntry
   2 normal — standard workflow behavior, no extra narration (suggested) -> SET SIMPLE_MODE = normal; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-normal.md; CONTINUE SimpleModeNormal

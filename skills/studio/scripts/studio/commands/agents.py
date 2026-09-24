@@ -352,8 +352,20 @@ def _strip_generated_frontmatter(
     return stripped[end + 4:]
 
 
-def _pure_generated_stub_matches(stripped: str) -> bool:
-    """Return True when stripped generated content matches an owned stub body."""
+def _pure_generated_stub_matches(  # pylint: disable=too-many-return-statements
+    stripped: str, *, tool: Optional[str] = None,
+) -> bool:
+    """Return True when stripped generated content matches an owned stub body.
+
+    When *tool* is known, only that tool's own current `_ASK_TOOL_BINDING`
+    value (plus `None`/"unset", for files predating that binding) is
+    checked (issue #185) — a hand-edited file that happens to match a
+    *different* tool's binding string is no longer misclassified as pure.
+    When *tool* is `None` (the caller genuinely can't resolve which tool
+    produced the file — e.g. a shared-bucket scan root that predates a
+    per-tool split), the full brute-force candidate loop remains as the
+    fallback it always was.
+    """
     nonblank = [line.strip() for line in stripped.splitlines() if line.strip()]
     if not nonblank:
         return True
@@ -386,28 +398,38 @@ def _pure_generated_stub_matches(stripped: str) -> bool:
     ]
     if nonblank == legacy_protocol:
         return True
-    # The content alone doesn't say which generation target produced it, so
-    # try every known `ask_tool_name` binding (issue #142) — a closed,
-    # bounded set — rather than threading tool identity through every caller.
+    # Issue #185: when the caller knows which tool produced this file, only
+    # try bindings that could legitimately be *that* tool's own -- its
+    # current binding (if any) plus `None`/"unset" (every tool's shape
+    # before it had a binding at all, or if it never gets one) -- instead of
+    # every other tool's binding too. `None` stays in the tool-known set
+    # deliberately: a file predating a *later-added* binding for this same
+    # tool must still match, or adding a first binding for e.g. windsurf
+    # would silently orphan every windsurf stub generated before that.
     #
-    # _ASK_TOOL_BINDING_BY_OUTPUT's values are deliberately NOT folded in
-    # here, unlike _ASK_TOOL_BINDING's. This candidate list is tool-agnostic
-    # -- it's tried against content from *any* tool's legacy path -- so
-    # adding a value here makes it a valid "pure generated" match everywhere,
-    # not just for the one dedicated output it's actually bound to. That's
-    # already the cross-tool collision risk tracked in
-    # constructorfabric/studio#185 for _ASK_TOOL_BINDING itself; widening the
-    # pool further here would let e.g. a Windsurf legacy file matching
-    # Cursor's "AskQuestion" content get misclassified as Windsurf's own pure
-    # stub and silently deleted by `_cleanup_legacy_skill_files`, even though
-    # Windsurf never emits that binding. `.cursor/commands/cf.md` itself
-    # never reaches this check in practice today (`_classify_generated_
-    # output_owner` short-circuits on `_extract_studio_owned_target` first,
-    # and its only writer, `_write_or_skip`, has no purity gate at all) --
-    # verified directly, not assumed. If that ever changes, fix it by
-    # threading tool/path identity through this function (#185's own
-    # direction), not by widening this already-risky global pool further.
-    candidate_bindings = [None] + [v for v in _ASK_TOOL_BINDING.values() if v]
+    # _ASK_TOOL_BINDING_BY_OUTPUT's values are deliberately NOT folded into
+    # either branch below. A per-output binding (e.g. Cursor's root `cf`
+    # skill -> AskQuestion) is scoped to one exact output path, not to
+    # "cursor" generally, so it is not a valid candidate for every
+    # Cursor-authored file the tool-known branch might be checking --
+    # `.cursor/commands/cf.md` itself never reaches this check in practice
+    # today (`_classify_generated_output_owner` short-circuits on
+    # `_extract_studio_owned_target` first, and its only writer,
+    # `_write_or_skip`, has no purity gate at all) -- verified directly, not
+    # assumed. Folding it into the tool-None fallback below would be worse:
+    # it would widen an already-risky global pool tried against *any* tool's
+    # legacy path, letting e.g. a Windsurf legacy file matching Cursor's
+    # "AskQuestion" content get misclassified as Windsurf's own pure stub and
+    # silently deleted by `_cleanup_legacy_skill_files`, even though Windsurf
+    # never emits that binding -- the exact cross-tool collision the
+    # tool-known branch above exists to close.
+    if tool is not None:
+        candidate_bindings = [None, _ASK_TOOL_BINDING.get(tool)]
+    else:
+        # *tool* is unresolvable here — try every known `ask_tool_name`
+        # binding (issue #142) — a closed, bounded set — as the fallback
+        # this always was.
+        candidate_bindings = [None] + [v for v in _ASK_TOOL_BINDING.values() if v]
     for binding in candidate_bindings:
         expected_protocol = [
             line.strip()
@@ -429,6 +451,7 @@ def _is_pure_studio_generated(
     *,
     expected_name: Optional[str] = None,
     expected_description: Optional[str] = None,
+    tool: Optional[str] = None,
 ) -> bool:
     """Return True only if *content* is a pure Constructor Studio-generated stub with no user content.
 
@@ -442,6 +465,12 @@ def _is_pure_studio_generated(
     indicates user customisation, so the file is not treated as pure.
     When *expected_name* or *expected_description* are provided the corresponding
     frontmatter values must match exactly; a mismatch means the user edited them.
+
+    *tool*, when known, scopes the ask-tool-binding check in
+    :func:`_pure_generated_stub_matches` to that tool only (issue #185) —
+    pass it whenever the caller knows which generation target produced the
+    file being checked, leaving it `None` only when that's genuinely
+    unresolvable.
     """
     if (
         _GENERATED_MARKER not in content
@@ -454,7 +483,7 @@ def _is_pure_studio_generated(
         expected_name=expected_name,
         expected_description=expected_description,
     )
-    return bool(stripped is not None and _pure_generated_stub_matches(stripped))
+    return bool(stripped is not None and _pure_generated_stub_matches(stripped, tool=tool))
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-is-pure-studio-generated
 
 
@@ -804,6 +833,26 @@ _TOOL_PROVIDER_DEFAULT: Dict[str, str] = {
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-tool-provider-tables
 
 
+# OpenAI slugs are dated, not permanent. As of 2026-09-18 a ChatGPT-plan Codex
+# account was entitled to gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-6-astra
+# and gpt-5.5 -- the whole set, not only the three used below, because the next
+# re-pick is a choice among them and the list is the thing that dates. Its
+# predecessors gpt-5.4 and gpt-5.4-mini had been withdrawn, and every agent on
+# the cheap and balanced tiers -- 43 of the 44 in skills/studio/agents.toml --
+# answered a 400 at the point of use.
+#
+# The tiers map onto OpenAI's own descriptions of each model (fast and
+# affordable / balanced everyday / most capable), so re-picking is a reading
+# rather than a judgement call. `codex` lists what an account currently has.
+#
+# Nothing here validates a resolved slug, and that gap is open rather than
+# fixed: `generate-agents` writes whatever the matrix says, so the next
+# withdrawal surfaces at the point of use again. The pilot has a preflight that
+# reads codex's own model cache (tests/prompts/cf-ux/preflight.py) and the same
+# check could run here -- but warning a user mid-generate about their account's
+# entitlements is a product decision, not a detail to settle while fixing a
+# stale literal.
+
 # (tool, provider) → {"base": {tier: model_id}, "overrides": {(tier, role, target): model_id}}
 # Tier keys use the `cf:tier:*` namespace to distinguish abstract tiers from
 # raw model identifiers a kit author might write as passthrough.
@@ -825,14 +874,14 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
     # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-matrix-codex-openai
     ("codex", "openai"): {
         "base": {
-            "cf:tier:cheap":     "gpt-5.4-mini",
-            "cf:tier:balanced":  "gpt-5.4",
-            "cf:tier:expensive": "gpt-5.5",
+            "cf:tier:cheap":     "gpt-5.6-luna",
+            "cf:tier:balanced":  "gpt-5.6-terra",
+            "cf:tier:expensive": "gpt-6-astra",
         },
         "overrides": {
-            ("cf:tier:cheap", "analyze",  "codebase"):  "gpt-5.4",
-            ("cf:tier:cheap", "planning", "codebase"):  "gpt-5.4",
-            ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.4",
+            ("cf:tier:cheap", "analyze",  "codebase"):  "gpt-5.6-terra",
+            ("cf:tier:cheap", "planning", "codebase"):  "gpt-5.6-terra",
+            ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.6-terra",
         },
     },
     # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-matrix-codex-openai
@@ -853,14 +902,14 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
     # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-matrix-cursor-openai
     ("cursor", "openai"): {
         "base": {
-            "cf:tier:cheap":     "gpt-5.4-mini",
-            "cf:tier:balanced":  "gpt-5.4",
-            "cf:tier:expensive": "gpt-5.5",
+            "cf:tier:cheap":     "gpt-5.6-luna",
+            "cf:tier:balanced":  "gpt-5.6-terra",
+            "cf:tier:expensive": "gpt-6-astra",
         },
         "overrides": {
-            ("cf:tier:cheap", "analyze",  "codebase"):  "gpt-5.4",
-            ("cf:tier:cheap", "planning", "codebase"):  "gpt-5.4",
-            ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.4",
+            ("cf:tier:cheap", "analyze",  "codebase"):  "gpt-5.6-terra",
+            ("cf:tier:cheap", "planning", "codebase"):  "gpt-5.6-terra",
+            ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.6-terra",
         },
     },
     # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-matrix-cursor-openai
@@ -3395,7 +3444,7 @@ def _cleanup_studio_legacy_subagents(
                 _warn_agents(f"failed to inspect legacy subagent file {entry}: {exc}")
                 continue
             stem = _strip_generated_output_suffix(entry.name)
-            if not _is_owned_legacy_subagent(content, stem, entry.suffix, name_prefix):
+            if not _is_owned_legacy_subagent(content, stem, entry.suffix, name_prefix, tool=agent):
                 continue
             rel = (parent_rel / entry.name).as_posix()
             if dry_run:
@@ -3443,12 +3492,14 @@ def _is_owned_legacy_subagent(
     stem: str,
     suffix: str,
     name_prefix: str,
+    *,
+    tool: Optional[str] = None,
 ) -> bool:
     if suffix == ".toml":
         return _is_legacy_generator_toml_stub(content)
     if name_prefix.startswith(("cypilot-", "cf-constructor-")):
         return _is_legacy_generator_stub(content)
-    return _is_pure_studio_generated(content, expected_name=stem)
+    return _is_pure_studio_generated(content, expected_name=stem, tool=tool)
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-legacy-marker-paths
@@ -3551,7 +3602,13 @@ def _iter_legacy_skill_dirs(project_root: Path, pattern_path: Path) -> List[Tupl
     ]
 
 
-def _legacy_skill_file_is_owned(path: Path, directory_name: str, content: str) -> bool:
+def _legacy_skill_file_is_owned(
+    path: Path,
+    directory_name: str,
+    content: str,
+    *,
+    tool: Optional[str] = None,
+) -> bool:
     expected_name = directory_name if path.name == "SKILL.md" else path.stem
     is_legacy = (
         directory_name.startswith("cypilot-")
@@ -3560,10 +3617,10 @@ def _legacy_skill_file_is_owned(path: Path, directory_name: str, content: str) -
     )
     if is_legacy:
         return _is_legacy_generator_stub(content)
-    return _is_pure_studio_generated(content, expected_name=expected_name)
+    return _is_pure_studio_generated(content, expected_name=expected_name, tool=tool)
 
 
-def _legacy_skill_dir_is_pure(entry: Path) -> bool:
+def _legacy_skill_dir_is_pure(entry: Path, *, tool: Optional[str] = None) -> bool:
     try:
         files = [path for path in entry.rglob("*") if path.is_file()]
     except OSError as exc:
@@ -3577,7 +3634,7 @@ def _legacy_skill_dir_is_pure(entry: Path) -> bool:
         except (OSError, UnicodeDecodeError) as exc:
             _warn_agents(f"failed to inspect legacy skill file {path}: {exc}")
             return False
-        if not _legacy_skill_file_is_owned(path, entry.name, content):
+        if not _legacy_skill_file_is_owned(path, entry.name, content, tool=tool):
             return False
     return True
 
@@ -3600,7 +3657,7 @@ def _cleanup_legacy_skill_dirs(
     for pattern in _legacy_cleanup_patterns_for_mode(_LEGACY_SKILL_DIR_GLOBS.get(agent, []), remove_cypilot):
         pattern_path = Path(pattern)
         for entry, rel in _iter_legacy_skill_dirs(project_root, pattern_path):
-            if not _legacy_skill_dir_is_pure(entry):
+            if not _legacy_skill_dir_is_pure(entry, tool=agent):
                 continue
             if dry_run:
                 deleted.append(rel)
@@ -5139,7 +5196,16 @@ def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
                     continue
                 # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-track-agent-results
                 rel = _safe_relpath(path, project_root)
-                owner_kind = _classify_generated_output_owner(rel, content)
+                # "studio" is the shared .agents/skills/ scan root (issue
+                # #185) -- a file found there could legitimately belong to
+                # any of several tools, so tool identity genuinely isn't
+                # resolvable here; every other provider key names exactly
+                # one tool. See _classify_generated_output_owner's own
+                # docstring for why this distinction doesn't currently
+                # change its outcome either way.
+                owner_kind = _classify_generated_output_owner(
+                    rel, content, tool=None if provider == "studio" else provider,
+                )
                 if owner_kind is None:
                     continue
                 outputs.append(
@@ -5162,12 +5228,48 @@ def _read_generated_output_text(path: Path) -> Optional[str]:
         return None
 
 
-def _classify_generated_output_owner(rel: str, content: str) -> Optional[str]:
+def _classify_generated_output_owner(
+    rel: str, content: str, *, tool: Optional[str] = None,
+) -> Optional[str]:
+    """Return this output's owner_kind, or None if nothing here owns it.
+
+    *tool* scopes `_is_pure_studio_generated`'s candidate bindings (issue
+    #185), but its exact *value* never currently changes this function's
+    outcome, for two different reasons depending on shape:
+
+    - The common control/follow-target shape: `_extract_studio_owned_target`
+      (a looser, tool-agnostic match on the same follow-link line, with no
+      purity requirement) is already true whenever `_is_pure_studio_generated`
+      could be, so the `or` below resolves on the first disjunct before the
+      second is ever consulted. `test_cursor_launcher_ownership_check_short_
+      circuits_before_purity_check` (tests/test_subagent_registration.py)
+      locks this in deliberately: ownership/gitignore classification is meant
+      to stay tool-agnostic even for a customized (non-pure) file -- relying
+      on the tool-scoped purity match alone would stop reporting a
+      Studio-originated file as managed the moment a user edits it, a real
+      regression, not a safety win.
+    - The legacy single-line "endpoint-only" proxy shape (`Constructor
+      Studio endpoint only. Prompt source: ...`): here the first disjunct
+      can be the one that's false instead. `_extract_studio_endpoint_target`
+      only accepts the canonical `{cf-studio-path}/` prefix, unlike
+      `_extract_studio_follow_target`'s legacy-prefix allowlist, so a
+      pre-rebrand stub using e.g. `{cypilot_path}/` makes
+      `_extract_studio_owned_target` return None -- it's
+      `_is_pure_studio_generated`'s own single-line branch that classifies
+      the file as owned here. Do NOT drop this disjunct, even when `tool` is
+      known: doing so would stop classifying every such legacy stub as
+      Studio-owned. `tool`'s value still doesn't matter for this shape
+      either, though, since that single-line branch never consults it.
+
+    Given both shapes are tool-blind by construction, `tool` is threaded
+    through for interface consistency with the other #185 call sites and in
+    case a future shape needs it, not because either shape reads it today.
+    """
     if rel.endswith(".toml"):
         return "agent" if _is_studio_managed_toml_output(content) else None
     if not (
         _extract_studio_owned_target(content)
-        or _is_pure_studio_generated(content)
+        or _is_pure_studio_generated(content, tool=tool)
     ):
         return None
     if "/agents/" in rel:
@@ -5313,7 +5415,7 @@ def _cleanup_claude_workflow_command(
         return
     if Path(follow_target).name != wf_filename:
         return
-    if not _is_pure_studio_generated(content, expected_name=cmd_name):
+    if not _is_pure_studio_generated(content, expected_name=cmd_name, tool="claude"):
         return
     if dry_run:
         skills_result["deleted"].append(rel_path)
@@ -5330,6 +5432,8 @@ def _cleanup_legacy_skill_files(
     project_root: Path,
     skills_result: Dict[str, Any],
     dry_run: bool,
+    *,
+    tool: Optional[str] = None,
 ) -> None:
     for legacy_rel in legacy_skill_paths:
         legacy_file = project_root / legacy_rel
@@ -5342,7 +5446,7 @@ def _cleanup_legacy_skill_files(
             if legacy_path.name == "SKILL.md"
             else legacy_path.stem
         )
-        if not _is_pure_studio_generated(content, expected_name=legacy_skill_name):
+        if not _is_pure_studio_generated(content, expected_name=legacy_skill_name, tool=tool):
             continue
         if dry_run:
             skills_result["deleted"].append(legacy_rel)
@@ -5434,6 +5538,7 @@ def _process_legacy_cleanup(
         project_root,
         skills_result,
         dry_run,
+        tool=agent,
     )
 
     # ── Clean up legacy studio-* sub-agent files (per-tool) ────────────────
@@ -8868,6 +8973,8 @@ def _cleanup_legacy_manifest_skill_output(
     dry_run: bool,
     generated_skill_contents: Dict[str, str],
     result: Dict[str, Any],
+    *,
+    tool: Optional[str] = None,
 ) -> None:
     legacy_rel = legacy_pattern.replace("{id}", skill_id)
     legacy_path = project_root / legacy_rel
@@ -8884,6 +8991,7 @@ def _cleanup_legacy_manifest_skill_output(
         content,
         expected_name=skill_id,
         expected_description=skill.description or None,
+        tool=tool,
     ) and not matches_generated_body:
         return
     if not dry_run:
@@ -8916,6 +9024,7 @@ def _cleanup_legacy_manifest_skill_outputs(
             dry_run,
             generated_skill_contents,
             result,
+            tool=target,
         )
 
 

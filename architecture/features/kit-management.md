@@ -613,7 +613,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 3. [x] - `p1` - **Phase 1b — Resource paths**: for manifest-driven kits, resolve paths to constraints resources, templates, and examples from resource bindings in `core.toml` via `cpt-studio-algo-kit-manifest-resolve` instead of assuming default kit directory structure - `inst-resolve-resource-paths`
 4. [x] - `p1` - **Phase 2 — Bound artifact map**: when a loaded kit exposes artifact-kind bindings on a `kind = "constraints"` resource, build self-check input only from those explicit resource IDs; if constraints declare artifact kinds but no template/example bindings are known, skip checking that kind and emit a warning rather than guessing from filenames or resource naming conventions - `inst-manifest-bound-artifact-map`
 5. [x] - `p1` - **Phase 2 — Templates**: load `artifacts_meta`, run `self_check` for template/example consistency - `inst-template-check`
-6. [x] - `p1` - Build result: aggregate errors, set overall PASS/FAIL status - `inst-build-result`
+6. [x] - `p1` - Warn for each key under a `[validation]` table this engine does not read, and — only when every kit the project composes is in view — for each artifact kind a severity is scoped to that no kit declares, so a misspelled setting is not mistaken for a policy in force - `inst-unknown-validation-keys`
+7. [x] - `p1` - Sum the per-kit warnings that previously appeared only nested inside the self-check results - `inst-count-warnings`
+8. [x] - `p1` - Build result: aggregate errors and warnings, set overall PASS/FAIL status - `inst-build-result`
 
 ### Kit Validate by Path
 
@@ -628,8 +630,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - **Phase 1 — Structural**: load and validate all `kind = "constraints"` resources in manifest order, falling back to legacy `constraints.toml` only for legacy path validation - `inst-structural-check`
 3. [x] - `p1` - **Phase 1b — Manifest resources**: **IF** manifest-driven kit, verify all registered resource paths exist on disk - `inst-verify-resource-paths`
 4. [x] - `p1` - Build synthetic `ArtifactsMeta` from explicit constraints artifact bindings for canonical/core KitModel inputs; use kit `artifacts/` directory only as the legacy layout fallback - `inst-build-artifacts-meta`
-5. [x] - `p1` - **Phase 2 — Templates**: run `self_check` for template/example validation - `inst-template-check`
-6. [x] - `p1` - Build result: aggregate errors, set PASS/FAIL - `inst-build-result`
+5. [x] - `p1` - **Phase 2 — Templates**: run `self_check` for template/example validation, applying the kit's own declared severity to its own examples - `inst-template-check`
+6. [x] - `p1` - Warn for each key under a `[validation]` table this engine does not read, on the same terms as registered-kit validation, since both converge on one result builder - `inst-unknown-validation-keys`
+7. [x] - `p1` - Build result: aggregate errors and warnings, set PASS/FAIL - `inst-build-result`
 
 ### Kit Config Helpers
 

@@ -75,7 +75,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Exit 2 when structural compliance is below --min, or when --baseline shows "
              "a per-scenario regression (gating is off by default). A positive --min also "
              "exits 2 if nothing was scored — a suite that is empty, or in which every "
-             "scenario was unscoreable, is a failure to assess, not a pass.")
+             "scenario was unscoreable, is a failure to assess, not a pass. Also exits 2 "
+             "when a scenario's declared `expect` definitely disagrees with what it "
+             "scored (PASS against a non_compliant claim, or FAIL against a compliant "
+             "one); an UNKNOWN against either claim is reported but never gates, "
+             "because unscoreable is not a failure.")
     parser.add_argument(
         "--min", type=_compliance_arg, default=1.0,
         help="Minimum structural compliance for --check (default 1.0).")
@@ -167,6 +171,7 @@ def _human_report(data: Dict[str, object]) -> None:
     ui.info(f"structural compliance: {compliance * 100:.0f}%" if compliance is not None
             else "structural compliance: n/a (nothing scored)")
     _report_scenarios(data.get("per_scenario"))
+    _report_oracle_mismatches(data.get("oracle_mismatches"))
     _report_regression(data.get("regression"))
     _report_calibration(data.get("judge_calibration"))
     save_error = data.get("save_error")
@@ -308,6 +313,29 @@ def _report_calibration(calibration: object) -> None:
 # @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-human-calibration
 
 
+# @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-human-oracle
+def _report_oracle_mismatches(mismatches: object) -> None:
+    """Scenarios that no longer demonstrate what they were written to demonstrate.
+
+    Printed as a warning rather than an info line: a fixture whose declared outcome and actual
+    outcome have parted company has stopped testing anything, and the suite reads healthier
+    for it -- the scenario simply contributes less. Tolerates any malformed shape.
+    """
+    if not isinstance(mismatches, list):
+        return
+    rows = [m for m in mismatches if isinstance(m, str)]
+    if not rows:
+        return
+    ui.warn(f"declared-vs-actual: {len(rows)} scenario(s) did not score what they declare")
+    for row in rows[:_SCENARIOS_CAP]:
+        ui.warn(f"  {row}")
+    if len(rows) > _SCENARIOS_CAP:
+        ui.warn(f"  (+{len(rows) - _SCENARIOS_CAP} more — see --json)")
+
+
+# @cpt-end:cpt-studio-flow-eval-harness-run:p1:inst-human-oracle
+
+
 # @cpt-begin:cpt-studio-flow-eval-harness-run:p1:inst-human-regression
 def _report_regression(regression: object) -> None:
     """Surface a ``--baseline`` regression in human mode; without this a regressed run exits 2 with
@@ -404,6 +432,16 @@ def cmd_eval(argv: List[str]) -> int:
                                  else {"error": f"baseline not usable: {args.baseline}"})
     compliance = payload["summary"]["structural_compliance"]
     exit_code = eval_harness.gate_exit_code(compliance, args.check, args.min)
+    # The suite's own statement of what should happen, finally compared against what did.
+    # Reported whether or not gating is on, because a fixture that no longer demonstrates what
+    # it was written to demonstrate is worth knowing about in an ungated run too.
+    mismatches = eval_harness.oracle_mismatches(report.scenarios)
+    payload["oracle_mismatches"] = mismatches
+    # Only a *definite* disagreement gates. An UNKNOWN against a claim is reported above but
+    # never fails a build: unscoreable is not a failure, and gating on it inverted the
+    # module's contract — a suite at 100% compliance with one unreadable plan exited 2.
+    if args.check and eval_harness.gating_oracle_mismatches(report.scenarios):
+        exit_code = 2
     regression = payload.get("regression")
     if args.check and isinstance(regression, dict) and regression.get("has_regression"):
         # A per-scenario compliance drop, or a scenario that broke, fails --check even above

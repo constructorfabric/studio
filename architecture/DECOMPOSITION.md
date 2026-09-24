@@ -201,11 +201,13 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - Validator: template structure compliance, ID format validation, priority markers, placeholder detection, cross-reference validation (covered_by, checked consistency), constraint enforcement from `constraints.toml`. For manifest-driven kits, resolves paths to constraints, templates, and examples from effective bindings or the registered canonical manifest instead of assuming default kit directory structure
   - Cross-artifact validation: load all registered artifacts, compare definitions vs references per constraints rules
   - CDSL: parse instruction markers for implementation tracking
+  - Severity policy: every finding carries `error` / `warning` / `off`, declared by the kit in `constraints.toml` (whole kit, per artifact kind, per constraint entry) and overridable by the project in `core.toml`; a project may raise freely and lower only what the kit has not marked `locked`, no CLI flag may lower, and every lowering, refusal and suppression is named in the report
   - Single-pass scanning for ≤3s performance
 
 - **Out of scope**:
   - Semantic validation (checklist review done by AI agents)
   - Modifying artifacts (read-only analysis)
+  - Formatting rules — spelling, grammar, line length, list markers, heading capitalisation and table alignment are a linter's job, not a Studio gate
   - Kit-specific validation hooks (planned p2)
 
 - **Requirements Covered**:

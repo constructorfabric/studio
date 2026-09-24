@@ -58,6 +58,10 @@
     "ui": {
       "$ref": "#/$defs/ui",
       "description": "Optional UI/output preferences for skill and workflow runs."
+    },
+    "validation": {
+      "$ref": "#/$defs/validation",
+      "description": "Optional project validation policy. A project may raise any rule's severity freely, and may lower any rule the kit has not marked `locked`; every lowering is listed under `severity_overrides` in the report. No CLI flag may lower a rule."
     }
   },
   "$defs": {
@@ -212,6 +216,38 @@
           "type": "boolean",
           "default": false,
           "description": "Whether to draw the decorative ASCII-art picture (plus label) at cf/cf-* skill and workflow entry. Default-off: the picture costs nothing unless explicitly enabled."
+        }
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["error", "warning", "off"],
+      "description": "error gates the run, warning is reported without gating, off suppresses the rule (and is counted in the report's suppressed_count). An unrecognised value fails the run rather than resolving to no opinion."
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fail_on_warnings": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, a run with warnings and no errors reports status FAIL, exit 2, and failed_on: \"warnings\"."
+        },
+        "severity": {
+          "type": "object",
+          "description": "Rule code to severity. A value that is itself a table names an artifact kind, and its keys are rule codes scoped to that kind — the more specific of the two wins.",
+          "propertyNames": { "type": "string", "minLength": 1 },
+          "additionalProperties": {
+            "oneOf": [
+              { "$ref": "#/$defs/severity" },
+              {
+                "type": "object",
+                "description": "Per-artifact-kind overrides: rule code to severity.",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": { "$ref": "#/$defs/severity" }
+              }
+            ]
+          }
         }
       }
     }

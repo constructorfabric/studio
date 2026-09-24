@@ -4778,6 +4778,60 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
             self.assertIn(".claude/agents/cypilot-codegen.md", deleted)
             self.assertTrue(target.exists())  # dry-run preserved on disk
 
+    def test_a_foreign_tools_bound_stub_is_not_deleted_as_claudes_own(self):
+        """Issue #185, end-to-end: the `cypilot-`/`cf-constructor-` prefixed
+        fixtures above route through `_is_legacy_generator_stub`, which never
+        even looks at `tool` -- so they can't prove `_cleanup_studio_legacy_subagents`
+        actually forwards its own `agent` argument down to the tool-scoped
+        `_pure_generated_stub_matches` check. A `studio-*.md` fixture routes
+        through `_is_pure_studio_generated(..., tool=tool)` instead, so this
+        pins the real call site: a body shaped for a *different* tool's own
+        bound ask-tool (mocked here, since only Claude has one today) must
+        not be misclassified -- and therefore deleted -- as Claude's own."""
+        from unittest.mock import patch as mock_patch
+
+        from studio.commands.agents import (
+            _ASK_TOOL_BINDING,
+            _GENERATED_MARKER,
+            _REQUIRED_BOOTSTRAP_PATH,
+            _cleanup_studio_legacy_subagents,
+            _follow_protocol_lines,
+        )
+
+        control_target = "{cf-studio-path}/.core/skills/cypilot/agents/studio-example.md"
+        with mock_patch.dict(_ASK_TOOL_BINDING, {"cursor": "SomeCursorTool"}):
+            foreign_body = _GENERATED_MARKER + "\n" + "\n".join(
+                _follow_protocol_lines(
+                    control_target,
+                    required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+                    ask_tool_name="SomeCursorTool",
+                )
+            )
+            with TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                target = root / ".claude" / "agents" / "studio-example.md"
+                target.parent.mkdir(parents=True)
+                target.write_text(foreign_body, encoding="utf-8")
+
+                deleted = _cleanup_studio_legacy_subagents("claude", root, dry_run=False)
+                self.assertEqual(deleted, [])
+                self.assertTrue(target.exists())
+
+                # Control: the same shape, bound to Claude's own tool, IS
+                # recognized and deleted -- proving the rejection above is
+                # about tool identity, not merely a malformed fixture.
+                own_body = _GENERATED_MARKER + "\n" + "\n".join(
+                    _follow_protocol_lines(
+                        control_target,
+                        required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH,
+                        ask_tool_name=_ASK_TOOL_BINDING.get("claude"),
+                    )
+                )
+                target.write_text(own_body, encoding="utf-8")
+                deleted = _cleanup_studio_legacy_subagents("claude", root, dry_run=False)
+                self.assertIn(".claude/agents/studio-example.md", deleted)
+                self.assertFalse(target.exists())
+
 
 class TestCleanupCypilotLegacyMarkers(unittest.TestCase):
     """Pin: .cypilot-installed marker files are deleted unconditionally when
@@ -5394,6 +5448,71 @@ class TestProcessWorkflowsRelativeContainment(unittest.TestCase):
             )
             # Should complete without exception; errors may or may not be present
             self.assertIn("errors", result)
+
+
+class TestScanOwnedGeneratedOutputs(unittest.TestCase):
+    """ainetx (PR #230, Major): _scan_owned_generated_outputs,
+    _classify_generated_output_owner, and ManagedOutput had zero direct test
+    coverage anywhere in the suite. Covers both the resolvable-tool branch
+    (a dedicated single-tool provider root) and the unresolvable-tool branch
+    (the shared studio/.agents/skills root), plus the negative case of a
+    file with no owned-target/purity signal at all."""
+
+    @staticmethod
+    def _intact_generated_content(name: str) -> str:
+        from studio.commands.agents import _GENERATED_MARKER, _REQUIRED_BOOTSTRAP_PATH, _follow_protocol_lines
+
+        target = f"{{cf-studio-path}}/.core/workflows/{name}.md"
+        return "\n".join([
+            "---", f"name: {name}", f"description: {name}", "---",
+            _GENERATED_MARKER, "",
+            *_follow_protocol_lines(target, required_bootstrap_path=_REQUIRED_BOOTSTRAP_PATH),
+        ]) + "\n"
+
+    def test_scan_finds_a_dedicated_single_tool_roots_output(self):
+        from studio.commands.agents import _scan_owned_generated_outputs
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            target = root / ".claude" / "agents" / "some-agent.md"
+            target.parent.mkdir(parents=True)
+            target.write_text(self._intact_generated_content("some-agent"), encoding="utf-8")
+
+            outputs = {o.path: o for o in _scan_owned_generated_outputs(root)}
+
+            self.assertIn(".claude/agents/some-agent.md", outputs)
+            output = outputs[".claude/agents/some-agent.md"]
+            self.assertEqual(output.provider, "claude")
+            self.assertEqual(output.owner_kind, "agent")
+
+    def test_scan_finds_the_shared_studio_roots_output(self):
+        from studio.commands.agents import _scan_owned_generated_outputs
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            target = root / ".agents" / "skills" / "some-skill" / "SKILL.md"
+            target.parent.mkdir(parents=True)
+            target.write_text(self._intact_generated_content("some-skill"), encoding="utf-8")
+
+            outputs = {o.path: o for o in _scan_owned_generated_outputs(root)}
+
+            self.assertIn(".agents/skills/some-skill/SKILL.md", outputs)
+            output = outputs[".agents/skills/some-skill/SKILL.md"]
+            self.assertEqual(output.provider, "studio")
+            self.assertEqual(output.owner_kind, "skill")
+
+    def test_scan_ignores_a_file_with_no_owned_or_pure_signal(self):
+        from studio.commands.agents import _scan_owned_generated_outputs
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            target = root / ".claude" / "agents" / "hand-written.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("# Just a hand-written note\nNo generated markers here.\n", encoding="utf-8")
+
+            outputs = {o.path: o for o in _scan_owned_generated_outputs(root)}
+
+            self.assertNotIn(".claude/agents/hand-written.md", outputs)
 
 
 class TestManagedGitignoreRefresh(unittest.TestCase):

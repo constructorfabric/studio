@@ -136,6 +136,21 @@ def _snapshot_tree(root: Path) -> dict[str, bytes]:
 
 @pytest.fixture
 def followup_update_ok(monkeypatch):
+    """Stub *both* follow-up calls the migration makes, not just the first.
+
+    `_run_followup_kit_update` was left live, and it is not a local operation:
+    `cmd_kit_update` queries `api.github.com` for each kit's latest tag and downloads
+    from `codeload.github.com`. Measured on this module alone, 48 real connections --
+    36 to the API, 12 downloads. When one of those failed or was throttled (60
+    requests/hour unauthenticated, shared across a CI runner's IP), the migration
+    recorded "follow-up kit update failed", `_build_migration_result` turned that into
+    `status: WARN`, and every test asserting PASS failed -- a different subset each
+    run, worse under `-n 6`. See constructorfabric/studio#214.
+
+    `test_run_followup_kit_update_passes_project_root` covers this function's own
+    contract directly, so stubbing it here costs no coverage; it only stops two dozen
+    unrelated tests from exercising it, and the network, by accident.
+    """
     import studio.commands.migrate_from_cypilot as migration
 
     monkeypatch.setattr(
@@ -143,6 +158,7 @@ def followup_update_ok(monkeypatch):
         "_run_followup_update",
         lambda project_root, *, yes: (0, {"status": "PASS", "project_root": project_root.as_posix()}),
     )
+    monkeypatch.setattr(migration, "_run_followup_kit_update", lambda *, project_root, yes: 0)
 
 
 def test_internal_migration_copies_config_and_rewrites_markers(tmp_path):
@@ -635,6 +651,10 @@ def test_internal_migration_preserves_partial_success_when_followup_update_fails
     _make_legacy_project(tmp_path)
     update_result = {"status": "ERROR", "message": "boom"}
     monkeypatch.setattr(migration, "_run_followup_update", lambda project_root, *, yes: (7, update_result))
+    # The kit update too: this test stubs the first follow-up and not the second, which
+    # is the same omission as the fixture above and put four GitHub requests behind an
+    # assertion about the *update* path (#214).
+    monkeypatch.setattr(migration, "_run_followup_kit_update", lambda *, project_root, yes: 0)
 
     rc, out = migrate_from_cypilot(project_root=tmp_path, from_dir="cypilot", skip_update=False, to_dir=".cf-constructor")
 

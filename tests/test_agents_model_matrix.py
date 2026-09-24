@@ -126,32 +126,32 @@ class TestResolveModelId(unittest.TestCase):
             "sonnet",
         )
 
-    def test_codex_balanced_generate_codebase_stays_gpt54(self):
+    def test_codex_balanced_generate_codebase_stays_on_the_base_tier(self):
         from studio.commands.agents import _resolve_model_id
         self.assertEqual(
             _resolve_model_id("codex", "openai", "balanced", "generate", "codebase"),
-            "gpt-5.4",
+            "gpt-5.6-terra",
         )
 
-    def test_codex_balanced_planning_codebase_stays_gpt54(self):
+    def test_codex_balanced_planning_codebase_stays_on_the_base_tier(self):
         from studio.commands.agents import _resolve_model_id
         self.assertEqual(
             _resolve_model_id("codex", "openai", "balanced", "planning", "codebase"),
-            "gpt-5.4",
+            "gpt-5.6-terra",
         )
 
-    def test_codex_cheap_generate_codebase_stays_mini(self):
+    def test_codex_cheap_generate_codebase_stays_cheap(self):
         from studio.commands.agents import _resolve_model_id
         self.assertEqual(
             _resolve_model_id("codex", "openai", "cheap", "generate", "codebase"),
-            "gpt-5.4-mini",
+            "gpt-5.6-luna",
         )
 
-    def test_codex_cheap_analyze_codebase_bumps_to_gpt54(self):
+    def test_codex_cheap_analyze_codebase_bumps_a_tier(self):
         from studio.commands.agents import _resolve_model_id
         self.assertEqual(
             _resolve_model_id("codex", "openai", "cheap", "analyze", "codebase"),
-            "gpt-5.4",
+            "gpt-5.6-terra",
         )
 
     def test_cursor_anthropic_balanced(self):
@@ -161,11 +161,11 @@ class TestResolveModelId(unittest.TestCase):
             "claude-sonnet-4-6",
         )
 
-    def test_cursor_openai_balanced_codebase_generate_stays_gpt54(self):
+    def test_cursor_openai_balanced_codebase_generate_stays_balanced(self):
         from studio.commands.agents import _resolve_model_id
         self.assertEqual(
             _resolve_model_id("cursor", "openai", "balanced", "generate", "codebase"),
-            "gpt-5.4",
+            "gpt-5.6-terra",
         )
 
     def test_copilot_anthropic_expensive(self):
@@ -177,7 +177,10 @@ class TestResolveModelId(unittest.TestCase):
 
     def test_copilot_openai_balanced_codebase_generate_stays_gpt54(self):
         from studio.commands.agents import _resolve_model_id
-        # Copilot picker does not expose gpt-5.3-codex → balanced stays on GPT-5.4
+        # Copilot's picker names models by display name, in its own catalogue --
+        # deliberately not the codex slugs, and not updated alongside them: what
+        # GitHub Copilot offers is not what a Codex account is entitled to, and
+        # nothing here has been measured against it.
         self.assertEqual(
             _resolve_model_id("copilot", "openai", "balanced", "generate", "codebase"),
             "GPT-5.4",
@@ -201,7 +204,7 @@ class TestResolveModelId(unittest.TestCase):
         # codex tool with anthropic provider → falls back to openai
         self.assertEqual(
             _resolve_model_id("codex", "anthropic", "balanced", "any", "any"),
-            "gpt-5.4",
+            "gpt-5.6-terra",
         )
 
     def test_copilot_anthropic_cheap(self):
@@ -215,7 +218,7 @@ class TestResolveModelId(unittest.TestCase):
         from studio.commands.agents import _resolve_model_id
         self.assertEqual(
             _resolve_model_id("cursor", "openai", "cheap", "any", "any"),
-            "gpt-5.4-mini",
+            "gpt-5.6-luna",
         )
 
     def test_cheap_analyze_or_planning_codebase_resolution(self):
@@ -321,13 +324,13 @@ class TestResolveModelIdCrossProduct(unittest.TestCase):
         # — override only applies to analyze+codebase, not artifact; base wins.
         self.assertEqual(
             _resolve_model_id("codex", "openai", "cf:tier:cheap", "analyze", "artifact"),
-            "gpt-5.4-mini",  # regression anchor for matrix edits
+            "gpt-5.6-luna",  # regression anchor for matrix edits
         )
         # Regression anchor 3: cursor/openai balanced with generate+codebase
         # — explicit override kicks in for this (tier, role, target) triple.
         self.assertEqual(
             _resolve_model_id("cursor", "openai", "cf:tier:balanced", "generate", "codebase"),
-            "gpt-5.4",  # regression anchor for matrix edits
+            "gpt-5.6-terra",  # regression anchor for matrix edits
         )
 
 
@@ -419,10 +422,10 @@ class TestCursorTemplateNewFields(unittest.TestCase):
         out = self._build(model="balanced")
         self.assertIn("model: claude-sonnet-4-6", out)
 
-    def test_balanced_openai_codebase_generate_emits_gpt54(self):
+    def test_balanced_openai_codebase_generate_emits_the_balanced_model(self):
         out = self._build(model="balanced", provider="openai",
                           role="generate", **{"target": "codebase"})
-        self.assertIn("model: gpt-5.4", out)
+        self.assertIn("model: gpt-5.6-terra", out)
 
     def test_auto_emits_auto(self):
         out = self._build(model="auto")
@@ -504,11 +507,11 @@ class TestCodexTomlRender(unittest.TestCase):
 
     def test_balanced_emits_model_line(self):
         out = self._render(model="cf:tier:balanced")
-        self.assertIn('model = "gpt-5.4"', out)
+        self.assertIn('model = "gpt-5.6-terra"', out)
 
-    def test_balanced_codebase_generate_emits_gpt54(self):
+    def test_balanced_codebase_generate_emits_the_balanced_model(self):
         out = self._render(model="cf:tier:balanced", role="generate", **{"target": "codebase"})
-        self.assertIn('model = "gpt-5.4"', out)
+        self.assertIn('model = "gpt-5.6-terra"', out)
 
     def test_reasoning_effort_emits_field(self):
         out = self._render(reasoning_effort="high")
@@ -533,8 +536,74 @@ class TestCodexTomlRender(unittest.TestCase):
     def test_codex_anthropic_provider_falls_back_to_openai_silently(self):
         # No explicit provider in `info` → silent fallback; model resolves on openai
         out = self._render(model="cf:tier:balanced", provider="anthropic")
-        self.assertIn('model = "gpt-5.4"', out)
+        self.assertIn('model = "gpt-5.6-terra"', out)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOpenAITierValuesArePinned(unittest.TestCase):
+    """Exact-value anchors for the tiers a vendor rotation invalidates.
+
+    The cheap and balanced tiers already had them; expensive did not, and the
+    cursor cell's overrides were pinned only for codex. A withdrawal there would
+    have gone out with a green suite.
+    """
+
+    def test_expensive_resolves_to_its_pinned_model(self):
+        from studio.commands.agents import _resolve_model_id
+        for tool in ("codex", "cursor"):
+            with self.subTest(tool=tool):
+                self.assertEqual(
+                    _resolve_model_id(tool, "openai", "cf:tier:expensive", "generate", "codebase"),
+                    "gpt-6-astra",
+                )
+
+    def test_codex_openai_cheap_overrides_bump_a_tier(self):
+        """All three, not only (cheap, analyze, codebase). The two planning
+        overrides were the ones no test named for codex, while the parallel
+        cursor cell had all three pinned — the asymmetry a rotation exploits."""
+        from studio.commands.agents import _resolve_model_id
+        for role, target in (("analyze", "codebase"), ("planning", "codebase"),
+                             ("planning", "artifacts")):
+            with self.subTest(role=role, target=target):
+                self.assertEqual(
+                    _resolve_model_id("codex", "openai", "cf:tier:cheap", role, target),
+                    "gpt-5.6-terra",
+                )
+
+    def test_codex_openai_cheap_without_an_override_stays_cheap(self):
+        from studio.commands.agents import _resolve_model_id
+        self.assertEqual(
+            _resolve_model_id("codex", "openai", "cf:tier:cheap", "generate", "codebase"),
+            "gpt-5.6-luna",
+        )
+
+    def test_cursor_openai_cheap_overrides_bump_a_tier(self):
+        from studio.commands.agents import _resolve_model_id
+        for role, target in (("analyze", "codebase"), ("planning", "codebase"),
+                             ("planning", "artifacts")):
+            with self.subTest(role=role, target=target):
+                self.assertEqual(
+                    _resolve_model_id("cursor", "openai", "cf:tier:cheap", role, target),
+                    "gpt-5.6-terra",
+                )
+
+    def test_cursor_openai_cheap_without_an_override_stays_cheap(self):
+        from studio.commands.agents import _resolve_model_id
+        self.assertEqual(
+            _resolve_model_id("cursor", "openai", "cf:tier:cheap", "generate", "codebase"),
+            "gpt-5.6-luna",
+        )
+
+    def test_no_openai_cell_names_a_withdrawn_slug(self):
+        """The two that caused the outage, kept out by name rather than by memory."""
+        from studio.commands.agents import _MODEL_MATRIX
+        withdrawn = {"gpt-5.4", "gpt-5.4-mini"}
+        for (tool, provider), cell in _MODEL_MATRIX.items():
+            if provider != "openai" or tool == "copilot":
+                continue  # copilot names Copilot's own catalogue, not codex slugs
+            used = set(cell["base"].values()) | set(cell["overrides"].values())
+            with self.subTest(tool=tool):
+                self.assertEqual(used & withdrawn, set())
