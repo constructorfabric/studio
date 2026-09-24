@@ -1250,3 +1250,40 @@ class TestASymlinkLoopIsAnOrdinaryExclusion:
         (tmp_path / "y.py").symlink_to("x.py")
 
         assert resolve_entry_code_files(tmp_path / "x.py", [".py"], project_root=tmp_path) == ([], 0)
+
+
+class TestAnUnresolvableEntryIsOneExclusion:
+    """The entry itself is resolved once, up front, and a failure there is one
+    excluded entry -- for a file entry and a directory entry alike. That guard had no
+    test of its own; the loop tests only reach the candidates inside an entry
+    (#236 review)."""
+
+    @staticmethod
+    def _entry_cannot_resolve(monkeypatch, entry: Path, exc: Exception) -> None:
+        real = Path.resolve
+
+        def _resolve(self, *args, **kwargs):
+            if self == entry:
+                raise exc
+            return real(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", _resolve)
+
+    @pytest.mark.parametrize("exc", [OSError(40, "Too many levels of symbolic links"),
+                                     RuntimeError("Symlink loop")],
+                             ids=["oserror", "runtimeerror"])
+    @pytest.mark.parametrize("kind", ["file", "directory"])
+    def test_the_entry_is_excluded_not_raised(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind, exc) -> None:
+        from studio.utils.codebase import resolve_entry_code_files
+
+        if kind == "file":
+            entry = tmp_path / "one.py"
+            entry.write_text("x = 1\n", encoding="utf-8")
+        else:
+            entry = tmp_path / "src"
+            entry.mkdir()
+            (entry / "one.py").write_text("x = 1\n", encoding="utf-8")
+        self._entry_cannot_resolve(monkeypatch, entry, exc)
+
+        assert resolve_entry_code_files(entry, [".py"], project_root=tmp_path) == ([], 1)
