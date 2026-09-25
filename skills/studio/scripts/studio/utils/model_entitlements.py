@@ -67,10 +67,18 @@ def codex_cache_path() -> Path:
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-login-type
 def _quoted_mode(mode: str) -> str:
-    """The login type as a warning quotes it: bounded, with the cut said."""
-    if len(mode) <= _MAX_MODE_IN_MESSAGE:
-        return mode
-    return f"{mode[:_MAX_MODE_IN_MESSAGE]}... ({len(mode)} characters)"
+    """The login type as a warning quotes it: escaped, bounded, with the cut said.
+
+    Escaped here, not left to the format string at the call site: a value from a
+    file this module does not own must not be able to put a raw newline into a
+    log line, and a later `%s` or f-string at some new call site should not be
+    what decides that (#245 review). Escaping happens before the cut, so the
+    bound is on what a person actually reads.
+    """
+    shown = "".join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in mode)
+    if len(shown) <= _MAX_MODE_IN_MESSAGE:
+        return shown
+    return f"{shown[:_MAX_MODE_IN_MESSAGE]}... ({len(mode)} characters)"
 
 
 def _login_mode(codex_home: Path) -> Optional[str]:
@@ -144,7 +152,7 @@ def _cache_worth_reading() -> Optional[Path]:
     # silences it, because `_checked` returns before anything is read.
     mode = _login_mode(path.parent)
     if mode is not None and mode != _CACHE_DESCRIBES_AUTH_MODE:
-        logger.warning("model entitlements: codex reports login type %r, not %r; its "
+        logger.warning("model entitlements: codex reports login type '%s', not %r; its "
                        "model cache describes a ChatGPT plan, so the withdrawn-model "
                        "check is off for this run. If that is a ChatGPT login under a "
                        "new name, the check needs updating.",
@@ -162,10 +170,14 @@ def _cache_worth_reading() -> Optional[Path]:
 def entitled_codex_models() -> Optional[FrozenSet[str]]:
     """The slugs `codex` lists for this account, or None when that is unknown.
 
-    None and an empty set mean different things, and the caller must not
-    conflate them: None is "the cache said nothing usable", an empty set is
-    "the cache was read and lists nothing". Only the latter is evidence, and
-    even it is thin -- which is why the caller warns rather than refuses.
+    None and an empty set mean different things to a reader of this function:
+    None is "the cache said nothing usable", an empty set is "the cache was read
+    and lists nothing". The verdict, `codex_model_is_withdrawn`, deliberately
+    treats both as no knowledge and warns about neither -- an empty list is far
+    likelier a CLI that has not populated its cache yet than an account entitled
+    to nothing. An earlier version of this docstring said the caller warns on an
+    empty set; it never did, and restoring that would warn on every fresh cache
+    (#245 review).
 
     Cached for the process. Reading a file once per run is the point; a warning
     that changes halfway through a generate would be worse than either answer.

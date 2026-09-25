@@ -944,7 +944,7 @@ class TestAnUnfamiliarLoginTypeIsSaidOutLoud:
         with caplog.at_level(logging.WARNING):
             assert model_entitlements.entitled_codex_models() is None
 
-        assert repr(mode) in caplog.text and "check is off" in caplog.text
+        assert f"'{mode}'" in caplog.text and "check is off" in caplog.text
         assert "sk-NOTLOGGED" not in caplog.text
 
     def test_the_measured_spelling_says_nothing(self, tmp_path, monkeypatch, caplog):
@@ -994,3 +994,35 @@ class TestAnOversizedLoginTypeIsQuotedShort:
     def test_one_past_the_cap_is_cut(self):
         mode = "z" * (model_entitlements._MAX_MODE_IN_MESSAGE + 1)
         assert model_entitlements._quoted_mode(mode).endswith(f"({len(mode)} characters)")
+
+
+class TestALoginTypeCannotSplitALogLine:
+    """The value comes from a file this module does not own. Its escaping lived only
+    in the `%r` at the one call site, so a later `%s` there -- or a new call site --
+    would have let a newline in it forge a second log line (#245 review). It is
+    escaped in `_quoted_mode` now, before anything formats it."""
+
+    @pytest.mark.parametrize("mode", ["chatgpt\nERROR: forged line", "x\r\ny", "a\tb\x1bc"])
+    def test_control_characters_come_out_escaped(self, mode):
+        shown = model_entitlements._quoted_mode(mode)
+
+        assert shown.isprintable(), repr(shown)
+        assert "\\n" in shown or "\\r" in shown or "\\t" in shown
+
+    def test_through_the_warning_there_is_one_line(self, tmp_path, monkeypatch, caplog):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        (tmp_path / "codex_home" / "auth.json").write_text(
+            json.dumps({"auth_mode": "chatgpt\nERROR: forged line"}), encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING):
+            model_entitlements.entitled_codex_models()
+
+        (record,) = [r for r in caplog.records if "login type" in r.getMessage()]
+        assert "\n" not in record.getMessage()
+        assert "chatgpt\\nERROR" in record.getMessage()
+
+    def test_the_cut_measures_what_is_shown(self):
+        """Escaping lengthens the value, so the bound is applied after it."""
+        shown = model_entitlements._quoted_mode("\n" * 30)
+
+        assert shown.startswith("\\n" * 13) and shown.endswith("(30 characters)")
