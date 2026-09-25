@@ -46,6 +46,28 @@ def test_references_filter_target_exclude_definitions_by_default():
                      "kind": None, "type": "reference", "checked": True}]
 
 
+def test_references_report_one_record_per_locus():
+    # The same id twice on one line — prose and a link, say — is one place to look.
+    hits = _hits(("cpt-x-req-1", "reference", 4, False),
+                 ("cpt-x-req-1", "reference", 4, False),
+                 ("cpt-x-req-1", "reference", 9, False))
+    with patch.object(scan, "scan_cpt_ids", return_value=hits):
+        refs = scan.references("cpt-x-req-1", _arts("a.md"), {}, include_definitions=False)
+    assert [r["line"] for r in refs] == [4, 9]
+
+
+def test_references_leave_out_a_link_form_definition():
+    # Neither a definition nor a use of the id: `cfs validate` reports the line, and
+    # counting it here is exactly the silent reclassification this code removed.
+    hits = _hits(("cpt-x-req-1", "definition-link-form", 2, False),
+                 ("cpt-x-req-1", "reference", 4, False))
+    with patch.object(scan, "scan_cpt_ids", return_value=hits):
+        refs = scan.references("cpt-x-req-1", _arts("a.md"), {}, include_definitions=True)
+        defs = scan.definitions("cpt-x-req-1", _arts("a.md"), {})
+    assert [r["line"] for r in refs] == [4]
+    assert defs == []
+
+
 def test_references_include_definitions_and_attach_source():
     hits = _hits(("cpt-x-req-1", "definition", 1, False), ("cpt-x-req-1", "reference", 4, False))
     with patch.object(scan, "scan_cpt_ids", return_value=hits):
@@ -142,7 +164,9 @@ def test_property_references_typed_and_count_matches_target_hits():
             refs = scan.references(target, _arts("a.md"), {}, include_definitions=True)
             recs = list(scan.scan_records(_arts("a.md")))
         assert all(r["type"] in ("definition", "reference") for r in refs)
-        assert len(refs) == sum(1 for h in hits if h["id"] == target)
+        # One record per locus, not per hit: a line naming the target twice is one
+        # place to go and look. The raw scan still yields every hit.
+        assert len(refs) == len({h["line"] for h in hits if h["id"] == target})
         assert len(recs) == len(hits)
 
 
@@ -158,11 +182,11 @@ def test_property_definitions_and_graph_partition_the_target_scan():
             defs = scan.definitions(target, _arts("a.md"), {})
             g = scan.graph_for(target, _arts("a.md"))
         n_defs = sum(1 for h in hits if h["id"] == target and h["type"] == "definition")
-        n_refs = sum(1 for h in hits if h["id"] == target and h["type"] == "reference")
+        ref_loci = {h["line"] for h in hits if h["id"] == target and h["type"] == "reference"}
         assert len(defs) == n_defs
         assert all("type" not in d for d in defs)
         assert len(g["defined_in"]) == n_defs
-        assert len(g["referenced_in"]) == n_refs
+        assert len(g["referenced_in"]) == len(ref_loci)
 
 
 @pytest.mark.parametrize("call", [

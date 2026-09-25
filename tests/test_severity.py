@@ -56,6 +56,7 @@ EXPECTED_DEFAULT_SEVERITY: Dict[str, str] = {
     "constraints-invalid": "error",
     "constraints-unknown-key": "warning",
     "def-done-ref-not-done": "error",
+    "def-link-form-not-allowed": "error",
     "def-missing-priority": "error",
     "def-missing-task": "error",
     "def-prohibited-priority": "error",

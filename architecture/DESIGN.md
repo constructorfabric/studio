@@ -707,7 +707,7 @@ Implements the ID system that links design elements to code. Without this compon
 
 ##### Responsibility scope
 
-- Scan artifacts for ID definitions (`**ID**: \`cpt-...\``) and references (backticked `cpt-...`)
+- Scan artifacts for ID definitions (`**ID**: \`cpt-...\``, bare only) and references (backticked `cpt-...`, bare or as the text of a markdown link)
 - Scan code for traceability tags (`@cpt-*`) with language-aware comment detection (`language_config.py`)
 - Resolve cross-references between definitions and references
 - Provide query commands: `list-ids`, `list-id-kinds`, `where-defined`, `where-used`, `get-content`

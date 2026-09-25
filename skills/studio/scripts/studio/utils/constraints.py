@@ -205,6 +205,7 @@ class ArtifactIdentifierPhaseContext:
 
     defs: List[Dict[str, object]]
     refs: List[Dict[str, object]]
+    link_form_defs: List[Dict[str, object]]
     defs_by_id: Dict[str, Dict[str, object]]
     heading_ctx_for_line: Callable[[int], Tuple[List[str], Optional[int]]]
     scope_end_for_heading_idx: Callable[[Optional[int]], int]
@@ -1251,13 +1252,17 @@ def _build_artifact_identifier_phase_context(
     registered_systems: Optional[Iterable[str]],
     scan_cpt_ids,
 ) -> ArtifactIdentifierPhaseContext:
+    from .document import LINK_FORM_DEFINITION
+
     hits = scan_cpt_ids(artifact_path)
     defs = [hit for hit in hits if str(hit.get("type")) == "definition"]
     refs = [hit for hit in hits if str(hit.get("type")) == "reference"]
+    link_form_defs = [hit for hit in hits if str(hit.get("type")) == LINK_FORM_DEFINITION]
     _, heading_ctx_for_line, scope_end_for_heading_idx = _build_heading_context_helpers(artifact_path)
     return ArtifactIdentifierPhaseContext(
         defs=defs,
         refs=refs,
+        link_form_defs=link_form_defs,
         defs_by_id=_build_defs_index(defs),
         heading_ctx_for_line=heading_ctx_for_line,
         scope_end_for_heading_idx=scope_end_for_heading_idx,
@@ -1546,11 +1551,11 @@ def _is_real_cdsl_item_start(stripped: str) -> bool:
     Excludes ID definitions/references, which use the same dash-prefixed
     shape but aren't CDSL steps.
     """
-    from .document import _ID_DEF_RE, _ID_REF_RE, _normalize_reference_candidate
+    from .document import is_scanned_id_line
 
     if not _CDSL_CANDIDATE_START_RE.match(stripped):
         return False
-    return not (_ID_DEF_RE.match(stripped) or _ID_REF_RE.match(_normalize_reference_candidate(stripped)))
+    return not is_scanned_id_line(stripped)
 
 
 def _section_starts_with_wellformed_cdsl_line(entries: List[Tuple[int, str, str]]) -> bool:
@@ -1681,7 +1686,7 @@ def _validate_cdsl_structure(
     warnings: List[Dict[str, object]],
 ) -> None:
     """Enforce CDSL.md's FAIL rules (S.3-7, CL.1-4, CO.4-6) across an artifact."""
-    from .document import _ID_DEF_RE, _ID_REF_RE, _normalize_reference_candidate, read_text_safe
+    from .document import is_scanned_id_line, read_text_safe
 
     lines = read_text_safe(artifact_path)
     if lines is None:
@@ -1692,7 +1697,7 @@ def _validate_cdsl_structure(
         # Task-tracked ID definitions/references use the same `pN` priority-token
         # shape as a CDSL phase token — exclude anything the ID scanner already
         # classifies as a definition or reference line.
-        if _ID_DEF_RE.match(joined_text) or _ID_REF_RE.match(_normalize_reference_candidate(joined_text)):
+        if is_scanned_id_line(joined_text):
             continue
         # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-if-cdsl-placeholder
         if _CDSL_PLACEHOLDER_RE.search(joined_text):
@@ -1776,6 +1781,37 @@ def _id_kind_hint(c: Optional[IdConstraint]) -> str:
     return (" (" + "; ".join(parts) + ")") if parts else ""
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-format
+# @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-link-form-def
+def _validate_link_form_definitions(
+    *,
+    link_form_defs: Sequence[Dict[str, object]],
+    artifact_path: Path,
+    kind: str,
+    errors: List[Dict[str, object]],
+) -> None:
+    """Report every definition written as a markdown link.
+
+    A reference may be spelled either way; a definition may not, so such a line
+    declares nothing. It used to be filed as a reference to the very id it meant to
+    declare, which raised a `ref-no-definition` naming the definition line as a
+    dangling reference — or, for an unregistered system, nothing at all.
+    """
+    for hit in link_form_defs:
+        hid = str(hit.get("id"))
+        errors.append(error(
+            "constraints",
+            f"`{hid}` is written as a markdown link on an `**ID**:` line, which defines "
+            f"nothing. To define it here, write it bare (**ID**: `{hid}`); if it is defined "
+            f"elsewhere and this line points there, drop `**ID**:` and keep the link",
+            code=EC.DEF_LINK_FORM_NOT_ALLOWED,
+            path=artifact_path,
+            line=int(hit.get("line", 1) or 1),
+            artifact_kind=kind,
+            id=hid,
+        ))
+# @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-link-form-def
+
+
 def _validate_definition_hits(
     *,
     defs: Sequence[Dict[str, object]],
@@ -1935,6 +1971,12 @@ def _validate_artifact_identifier_phase(
         errors=errors,
         heading_ctx_for_line=context.heading_ctx_for_line,
         scope_end_for_heading_idx=context.scope_end_for_heading_idx,
+    )
+    _validate_link_form_definitions(
+        link_form_defs=context.link_form_defs,
+        artifact_path=artifact_path,
+        kind=kind,
+        errors=errors,
     )
     defs_by_kind: Dict[str, List[Dict[str, object]]] = {}
     _validate_definition_hits(

@@ -11,31 +11,31 @@ drivers:
 
 # Identifiers & Traceability Specification
 
+
+<!-- toc -->
+
+- [Quick Reference](#quick-reference)
+- [Part I — Identifiers](#part-i--identifiers)
+  - [ID Format](#id-format)
+  - [ID Naming Convention](#id-naming-convention)
+  - [ID Definition](#id-definition)
+  - [ID Reference](#id-reference)
+  - [Task Marker Semantics](#task-marker-semantics)
+- [Part II — Code Traceability](#part-ii--code-traceability)
+  - [Code Traceability Overview](#code-traceability-overview)
+  - [Scope Markers](#scope-markers)
+  - [Block Markers](#block-markers)
+  - [Language-Specific Syntax](#language-specific-syntax)
+  - [Traceability Mode](#traceability-mode)
+  - [Code Validation Rules](#code-validation-rules)
+  - [Versioning](#versioning)
+  - [Common Errors](#common-errors)
+- [Acronym Glossary](#acronym-glossary)
+- [References](#references)
+
+<!-- /toc -->
+
 ---
-
-## Table of Contents
-
-- [Identifiers \& Traceability Specification](#identifiers--traceability-specification)
-  - [Table of Contents](#table-of-contents)
-  - [Quick Reference](#quick-reference)
-  - [Part I — Identifiers](#part-i--identifiers)
-    - [ID Format](#id-format)
-    - [ID Naming Convention](#id-naming-convention)
-    - [ID Definition](#id-definition)
-    - [ID Reference](#id-reference)
-    - [Task Marker Semantics](#task-marker-semantics)
-  - [Part II — Code Traceability](#part-ii--code-traceability)
-    - [Code Traceability Overview](#code-traceability-overview)
-    - [Scope Markers](#scope-markers)
-    - [Block Markers](#block-markers)
-    - [Language-Specific Syntax](#language-specific-syntax)
-    - [Traceability Mode](#traceability-mode)
-    - [Code Validation Rules](#code-validation-rules)
-    - [Versioning](#versioning)
-    - [Common Errors](#common-errors)
-  - [Acronym Glossary](#acronym-glossary)
-  - [References](#references)
-
 ---
 
 ## Quick Reference
@@ -151,20 +151,68 @@ Components:
 - `` `p1` `` – `` `p9` `` — optional priority marker
 - `` `cpt-{hierarchy-prefix}-{kind}-{slug}` `` — the ID in backticks (required)
 
+A definition is written **bare**. References may also be written as a markdown link
+(below); a definition may not, because a link points somewhere and a definition is the
+place being pointed at. The link-form spelling is recognized only so that it can be
+reported as `def-link-form-not-allowed` — it defines nothing, and it is not counted as
+a reference either. Recognition keys on the link *text* — the ID in square brackets —
+and so accepts **any** link syntax after it: an inline target of any content including
+none (`(...)`, `()`), a reference-style label (`[label]`), a collapsed reference
+(`[]`) or a shortcut link. That is deliberately wider than the reference pattern: a
+reference the narrow pattern rejects is still recorded as a reference, while a
+definition it rejected would be misclassified, which is the failure this code exists
+to remove. Text after the link is still scanned for inline references, so
+``**ID**: [`cpt-a`](spec.md) related: `cpt-b` `` reports the definition *and* records
+the reference to `cpt-b`. The linked ID itself never counts, and neither does
+anything inside the link construct — destination, title or reference label — even a
+backticked ID: ``**ID**: [`cpt-a`](spec-`cpt-b`.md)`` references nothing. The
+construct is recognised with one level of nested parentheses; a destination nested
+deeper still reports the definition, but a backticked ID buried in it is read as a
+reference.
+
+```
+**ID**: [`cpt-myapp-fr-must-authenticate`](../prd/PRD.md#auth)   ← error, defines nothing
+```
+
 ### ID Reference
 
 A reference to an existing ID:
 
 ```
 `cpt-myapp-fr-must-authenticate`
-[ ] `cpt-myapp-core-comp-api-gateway`
+[ ] - `cpt-myapp-core-comp-api-gateway`
 [x] `p1` - `cpt-myapp-core-auth-flow-login`
+[`cpt-myapp-fr-must-authenticate`](../prd/PRD.md#authentication)
+[x] `p1` - [`cpt-myapp-core-auth-flow-login`](../design/DESIGN.md#login)
 ```
 
-**Standalone pattern**:
+**Standalone pattern** (a leading `- ` or `* ` list marker is stripped before matching):
 ```regex
-^(?:(?:\[\s*[xX]?\s*\])\s*(?:`p\d+`\s*-\s*)?)?`cpt-[a-z0-9][a-z0-9-]+`\s*$
+^(?:(?:\[\s*[xX]?\s*\])\s*(?:`p\d+`\s*-\s*|\-\s*)|`p\d+`\s*-\s*)?(?:`cpt-[a-z0-9][a-z0-9-]+`|\[`cpt-[a-z0-9][a-z0-9-]+`\]\([^()]+\))\s*$
 ```
+
+A checkbox must be followed by a priority token or a `-` separator to be read as part
+of the reference. `[ ] ` + a bare backticked ID matches only the inline pattern below,
+which records the reference without its task marker; that is long-standing behaviour
+and the link form inherits it unchanged, so both spellings behave identically.
+
+**Link form**. The ID may be written as the *text* of a markdown link, so one line is
+both readable in a rendered document and traceable. The two spellings share the whole
+line grammar — task marker and priority are read identically — and resolve to one
+node, because the node is the ID string. The form is narrow on purpose: the ID must be
+marked up as an ID. `[the login flow](spec.md#cpt-myapp-core-auth-flow-login)` is
+prose, not a reference; inferring one from a link *target* would make every path that
+happens to name an ID a reference to it. A link target containing parentheses falls
+back to the inline pattern below, which still records the reference but not its task
+or priority.
+
+**The link destination is not validated.** Studio does not check that
+``[`cpt-x`](path.md#anchor)`` points to where `cpt-x` is defined, or anywhere at all.
+The node is the ID, so a reference with a broken link still traces correctly; the
+broken link is a documentation defect rather than a traceability one. It sits on the
+same side of the boundary as formatting: a markdown link checker covers it, and
+Studio does not. A team that wants the two kept in step runs one alongside
+`cfs validate`.
 
 **Inline pattern** (any backticked `cpt-*` in content):
 ```regex

@@ -53,6 +53,15 @@ drivers:
 - Kit-wide: one file per kit, with per-artifact constraints grouped under `[artifacts.<KIND>]`
 - Used by the Validator for deterministic structural checks
 
+**Not in scope: formatting.** These constraints govern *structure* — which sections
+exist, at which level, in which order, and which identifiers live under them. They say
+nothing about table alignment, bullet markers, heading capitalisation, line length or
+any other formatting convention, and no `[validation]` key turns such a check on. Use
+`markdownlint` or a formatter for those; they are not Studio gates. The boundary was
+implicit until teams discovered it by finding that a formatting problem passed
+validation, so it is written here and in the configuration guide's
+"What `cfs validate` does not check".
+
 ---
 
 ## Location
@@ -393,9 +402,25 @@ Studio extracts IDs, references, and CDSL instructions from artifacts using best
 
 Scanner emits: `type: definition`, `id`, `line`, `checked: true|false`, `priority: pN`
 
-**ID references** — recognized in two ways:
+A definition is written **bare**. The same line written as a markdown link
+(``**ID**: [`cpt-my-system-fr-login`](spec.md)``) defines nothing: the scanner emits
+`type: definition-link-form` for it, which is neither a definition nor a reference,
+and the validator reports `def-link-form-not-allowed`. Before that code existed such
+a line was filed as a reference to the very ID it meant to declare. With the ID's
+system registered, that self-reference raised `ref-no-definition` on the definition
+line itself — an error that misnamed the problem; with it unregistered, the reference
+was skipped as external and nothing was reported at all.
+
+**ID references** — recognized in three ways:
 - Standalone backticked IDs on list lines: `` - `cpt-my-system-fr-login` ``
+- Standalone link-form IDs: ``[`cpt-my-system-fr-login`](../prd/PRD.md#login)`` — same
+  line grammar as the bare form, so the task marker and priority are read the same way
 - Any inline backticked occurrence: `` ...`cpt-my-system-fr-login`... ``
+
+Both spellings resolve to one node, because the node is the ID string; the link only
+tells a reader where to go next. The accepted link form is narrow on purpose — the ID
+must be marked up as an ID. A link whose *target* merely contains an ID
+(`[the login flow](spec.md#cpt-my-system-fr-login)`) stays prose.
 
 Scanner emits: `type: reference`, `id`, `line`
 
@@ -433,6 +458,7 @@ default.
 | `def-missing-task` / `def-prohibited-task` | error | `task` is `true` and the definition has no checkbox, or `false` and it has one | Add or remove the `[ ]` / `[x]` checkbox |
 | `def-missing-priority` / `def-prohibited-priority` | error | `priority` is `true` and the definition has no priority token, or `false` and it has one | Add or remove the priority marker (e.g. `` `p1` ``) |
 | `def-wrong-headings` | error | An ID is defined outside the sections its `headings` list allows | Move the definition under an allowed heading |
+| `def-link-form-not-allowed` | error | An `**ID**:` line wraps the ID in a markdown link (``**ID**: [`cpt-x`](target)``), which defines nothing | To define the ID here, write it bare. If it is defined elsewhere and the line points there, delete `**ID**:` and keep the link — the line becomes a reference |
 | `ref-missing-from-kind` | error | `coverage = true` but the target artifact kind references the ID nowhere | Add the reference in the target artifact |
 | `ref-from-prohibited-kind` | error | `coverage = false` but the target artifact kind references the ID | Remove the reference |
 | `ref-done-def-not-done` / `def-done-ref-not-done` | error | A reference and its definition disagree about being done | Mark the definition done, or unmark the reference |

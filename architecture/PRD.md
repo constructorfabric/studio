@@ -202,6 +202,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 - Default all-agent generation that includes OpenCode in the initial release
 - A promise that OpenCode provides every capability available in other agent hosts
 - Automatic compatibility upgrades to later OpenCode versions
+- Formatting rules in validation: `cfs validate` governs structure (sections, levels, order, identifiers), not table alignment, bullet markers, heading capitalisation or line length — `markdownlint` and formatters cover those, and no kit constraint turns such a check on
 
 ---
 

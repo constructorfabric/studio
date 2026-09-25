@@ -23,6 +23,8 @@ decision-makers: project maintainer
   - [The fail-fast heading gate counts errors, not findings](#the-fail-fast-heading-gate-counts-errors-not-findings)
   - [What a run reports](#what-a-run-reports)
   - [Ordering is deterministic](#ordering-is-deterministic)
+  - [What no policy can turn on: formatting](#what-no-policy-can-turn-on-formatting)
+  - [A reference may be a link; a definition may not](#a-reference-may-be-a-link-a-definition-may-not)
   - [Consequences](#consequences)
   - [Confirmation](#confirmation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
@@ -294,6 +296,94 @@ Findings sort by `(path, line, code)`; `--explain-severity` sorts by
 `(kind, code)`; `severity_overrides` sorts by `(kind, code, entry)`. Both
 outputs are read by humans and diffed in CI, and a golden comparison hides an
 ordering bug behind whatever insertion order a dict happened to have.
+
+### What no policy can turn on: formatting
+
+Severity makes a rule quieter or louder. It does not make a rule *exist*, and there
+is no rule set for formatting: table alignment, bullet markers, heading
+capitalisation, line length and spelling are outside `validate`, `validate-toc` and
+`validate-kits` entirely. Structure is in scope — which sections exist, at which
+level, in which order, which identifiers live under them, and whether the declared
+relationships hold. `markdownlint` and formatters cover the rest and are not Studio
+gates.
+
+Recording it as a decision rather than an omission: the boundary was implicit, so
+teams found it by watching a formatting problem pass validation and concluding the
+gate was unreliable. It is now written in `guides/CONFIGURATION.md`, the CLI spec and
+the kit constraints spec. A kit that wants formatting enforced adds a formatter to
+its own CI; it cannot express it as a constraint, and no `[validation.severity]` key
+will ever name one.
+
+### A reference may be a link; a definition may not
+
+An identifier reference may be written bare (`` `cpt-x` ``) or as the text of a
+markdown link (``[`cpt-x`](../prd/PRD.md#x)``), so one line can be both readable in a
+rendered document and traceable. Both spellings carry the same task marker and
+priority and resolve to one node, because the node is the id string — the link only
+tells a reader where to go next. The accepted form is narrow: the id must be marked
+up as an id, so `[the login flow](spec.md#cpt-x)` stays prose. Inferring a reference
+from a link *target* would make every path that happens to name an id a reference to
+it.
+
+A definition stays bare. A definition is the place being pointed at, so a link in its
+place points away from itself and declares nothing. Such a line used to be filed as a
+reference to the very id it meant to declare, and what followed depended on the id's
+system. Where the system is registered — the normal case — the self-reference found
+no definition and raised `ref-no-definition` *on the definition line itself*: an
+error, but one that told the author their definition was a reference to nothing.
+Where it is not registered, the reference was treated as external and skipped, and
+nothing was reported at all. The line is now recognised, counted as neither a
+definition nor a reference, and reported as `def-link-form-not-allowed` — a rule code
+like any other, so a kit or project that disagrees can lower it, and the severity
+model is what makes that disagreement expressible without a fork.
+
+**Why it is lowerable, when muting it looks like reopening the hole.** The other
+`def-*` codes encode a preference; this one exists to end a misleading or silent
+failure, so the question of whether it should be lockable by default is fair. It is
+lowerable because lowering it does not restore either. The suppressed finding is
+counted in `suppressed_count`, and a project's lowering is listed in
+`severity_overrides` on every run. The scan no longer misclassifies the line whatever
+the severity, so the id is honestly undefined. Where the id's system is registered,
+every reference to it raises `ref-no-definition` — an error this rule does not
+govern, now pointing at real references instead of at the definition — and a
+`required` id kind raises `required-id-kind-missing` on top. Where the system is not
+registered, its references are skipped as external, as they always have been, and
+the suppression count is the only signal left. That case and an unreferenced id of an
+optional kind are what stays quiet, each with a suppression count beside it, which is
+exactly what `off` means for any rule. A default lock on a built-in code is also a mechanism this model does
+not have: `locked` lives on a kit's own constraint entries, and adding a code-level
+lock for one rule is a change to the policy model that deserves its own record rather
+than a rider on this one.
+
+**Why it defaults to `error` rather than being staged in at `warning`.** The default
+follows whether the flagged documents are valid. `heading-requires-multiple` ships
+`off` because enforcing it would fail documents that are correct by the spec. Every
+line this rule flags is incorrect by the spec — it was always a definition that
+defined nothing — so a `warning` default would let a known-broken definition pass the
+gate out of the box.
+
+The upgrade cost differs by what the line was doing before, and there are three cases:
+
+- **The id is defined nowhere, and its system is registered.** The line already failed
+  with a misleading `ref-no-definition`; an accurate error replaces it at the same line
+  and severity.
+- **The id is defined nowhere, and its system is unregistered.** The line was silent and
+  now fails, which is the point.
+- **The id is defined bare elsewhere**, and this line re-lists it as a link — a
+  glossary or index using definition markup to point at the real definition. This one
+  *worked* before: it resolved as an ordinary reference, with no findings. It now
+  fails. It still uses `**ID**:` for something that is not a definition, and the fix
+  is one token: delete `**ID**:` and keep the link, and the line becomes the link-form
+  reference this change newly supports. The finding and its fix prompt name both
+  intents, because unwrapping this line, as for the other two cases, would create a
+  second definition. Measured before choosing the default, no repository available to
+  this change and no bundled kit contains such a line, or any link-form definition at
+  all.
+
+That third case is the real cost of an unstaged `error`. It is paid only by a pattern
+that measured absent, and its fix is mechanical. A project that has the pattern, or
+wants to stage the rule anyway, has the path this ADR provides: one line in
+`config/core.toml`, reported in every run.
 
 ### Consequences
 

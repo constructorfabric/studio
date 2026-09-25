@@ -122,6 +122,7 @@ DEFAULT_SEVERITY: Dict[str, str] = {
     EC.DEF_PROHIBITED_TASK:                     ERROR,
     EC.DEF_MISSING_PRIORITY:                    ERROR,
     EC.DEF_PROHIBITED_PRIORITY:                 ERROR,
+    EC.DEF_LINK_FORM_NOT_ALLOWED:               ERROR,
     EC.DEF_WRONG_HEADINGS:                      ERROR,
     EC.HEADING_MISSING:                         ERROR,
     EC.HEADING_PROHIBITS_MULTIPLE:              ERROR,

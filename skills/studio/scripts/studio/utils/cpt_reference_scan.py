@@ -13,7 +13,7 @@ callers keep their own projections.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 
 from .document import scan_cpt_ids
 
@@ -75,15 +75,30 @@ def references(
 ) -> List[Dict[str, object]]:
     """References to *target_id* (optionally including its definitions).
 
-    The ``where_used`` projection, verbatim: a reference hit whose id matches,
-    with its type; definition hits included only when *include_definitions*.
+    The ``where_used`` projection: a reference hit whose id matches, with its type;
+    definition hits included only when *include_definitions*.
+
+    One locus, one record. A line that names the same id twice — in prose and again
+    in a link, say — is one place to go and look, and reporting it twice made the
+    count a count of syntax rather than of places. A definition written in link form
+    is neither a definition nor a use of the id, so it is left out here; the
+    validator reports it under its own code.
     """
     out: List[Dict[str, object]] = []
+    seen_loci: Set[Tuple[str, int]] = set()
     for artifact_path, artifact_type, h in scan_records(artifacts_to_scan):
         if str(h.get("id") or "") != target_id:
             continue
-        if h.get("type") == "definition" and not include_definitions:
+        hit_type = str(h.get("type"))
+        if hit_type == "definition":
+            if not include_definitions:
+                continue
+        elif hit_type != "reference":
             continue
+        locus = (str(artifact_path), int(h.get("line", 1) or 1))
+        if locus in seen_loci:
+            continue
+        seen_loci.add(locus)
         out.append(_record(artifact_path, artifact_type, h, path_to_source, include_type=True))
     return out
 # @cpt-end:cpt-studio-algo-cpt-reference-scan:p1:inst-references

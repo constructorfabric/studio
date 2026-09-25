@@ -62,3 +62,21 @@ def test_scan_respects_registry_extensions():
         assert "src/ignored.txt" not in rel_paths
     finally:
         stray.unlink()
+
+
+def test_scan_ignores_a_link_form_definition(tmp_path):
+    """It defines nothing and uses nothing — `cfs validate` reports the line instead.
+
+    Counting it as a use is what the map did while the scan filed such a line as a
+    reference to the very id it meant to declare.
+    """
+    from studio.commands.map.scan import _split_md_cpt
+
+    doc = tmp_path / "PRD.md"
+    doc.write_text(
+        "# PRD\n\n**ID**: [`cpt-x-flow-login`](spec.md)\n\n`cpt-x-flow-logout`\n",
+        encoding="utf-8",
+    )
+    cpt_defs, cpt_uses = _split_md_cpt(doc)
+    assert cpt_defs == []
+    assert [u.cpt_id for u in cpt_uses] == ["cpt-x-flow-logout"]

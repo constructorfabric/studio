@@ -350,6 +350,14 @@ A warning-only failure adds `"failed_on": "warnings"` alongside `"status": "FAIL
 
 Both `errors` and `warnings` are emitted on every run, passing or failing. When a rule is set to `off`, the findings it removed are counted under `suppressed_count`; when a project lowers a rule, or a `locked` entry refuses a lowering, each is listed under `severity_overrides`. `--fail-on-warnings` (or `fail_on_warnings = true` in `core.toml`) turns a warning-only run into `status: FAIL`, exit 2, with `failed_on: "warnings"`.
 
+**What it does not check**: formatting. `validate`, `validate-toc` and `validate-kits`
+judge structure — which sections exist, at which level and in which order, which
+identifiers live under them, and whether the declared relationships hold. Table
+alignment, bullet markers, heading capitalisation, line length and spelling are outside
+every rule set, and no configuration key turns such a check on; `markdownlint` and
+formatters cover them and are not Studio gates. Whether the content is any *good* is
+the checklist review's question, not this command's.
+
 **Flags**: `--artifact`, `--skip-code`, `--verbose`, `--output`, `--local-only`, `--source`, `--fail-on-warnings`, `--explain-severity [--kind K] [--rule R]`.
 
 `--explain-severity` reports the effective severity of each rule and the layer that set it (`entry`, `project-kind`, `project`, `kit-kind`, `kit`, `default`), then exits 0 without validating anything.
@@ -493,6 +501,13 @@ combined with `--artifact`. Output gains a `code_files_scanned` count (and a
 `code_files_skipped` count, when non-zero) so a caller can tell "flag not
 passed" apart from "flag passed but every candidate file was ignored,
 oversized, or unparsable".
+
+One locus, one record. A reference written bare and the same reference written as a
+markdown link are two places and appear once each; a single line that names the id
+twice — in prose and again in a link, say — is one place to go and look, and is
+reported once. The count is a count of places, not of syntax. A definition written in
+link form is neither a definition nor a use and is not listed at all, with or without
+`--include-definitions`; `cfs validate` reports it under `def-link-form-not-allowed`.
 
 **Output** (JSON):
 ```json

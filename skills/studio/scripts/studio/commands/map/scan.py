@@ -268,6 +268,18 @@ def _scan_markdown(root: Path, source_name: str, skip_dirs: Set[str]) -> List[No
     # @cpt-end:cpt-studio-algo-map-scan:p1:inst-scan-markdown
 
 
+# @cpt-begin:cpt-studio-algo-map-scan:p1:inst-split-md-cpt
+def _is_mappable_hit(hit: dict) -> bool:
+    """Only definitions and references enter the map.
+
+    A definition written as a markdown link defines nothing and uses nothing —
+    `cfs validate` reports the line instead. Filtered before the split loop rather
+    than inside it, which is already at the complexity limit.
+    """
+    return hit.get("type", "reference") in ("definition", "reference")
+# @cpt-end:cpt-studio-algo-map-scan:p1:inst-split-md-cpt
+
+
 def _split_md_cpt(path: Path) -> Tuple[List[str], List[CptUse]]:
     """Use scan_cpt_ids to split into cpt_defs and cpt_uses for a markdown file.
 
@@ -278,7 +290,7 @@ def _split_md_cpt(path: Path) -> Tuple[List[str], List[CptUse]]:
     # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-split-md-cpt
     from studio.utils.document import read_text_safe, scan_cpt_ids
 
-    hits = scan_cpt_ids(path)
+    hits = filter(_is_mappable_hit, scan_cpt_ids(path))
     lines_raw = read_text_safe(path) or []
 
     cpt_defs: List[str] = []
