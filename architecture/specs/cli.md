@@ -57,6 +57,7 @@ drivers:
   - [validate-kits](#validate-kits)
   - [map](#map)
   - [spec-coverage](#spec-coverage)
+  - [declared-stops](#declared-stops)
   - [delegate](#delegate)
 - [Mirror Commands](#mirror-commands)
   - [mirror override](#mirror-override)
@@ -886,6 +887,51 @@ cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity 
 - 0 — coverage meets all thresholds (or no thresholds specified)
 - 1 — error (no project found, no codebase entries configured)
 - 2 — coverage or granularity below a specified threshold, or one or more `--system` selectors are invalid
+
+---
+
+### declared-stops
+
+Fail the build when a workflow declares more stops (places it interrupts the user) than its recorded per-workflow baseline. The count is a static reachability walk of `workflows/` and `skills/`, an upper bound on how often a workflow can stop, not a trace of one run.
+
+```
+cfs declared-stops [--root PATH] [--baseline PATH] [--update]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--root PATH` | The tree to walk (default: the current directory) |
+| `--baseline PATH` | The recorded counts (default: `architecture/baselines/declared-stops.json` under `--root`) |
+| `--update` | Rewrite the baseline from what was measured, after review — the only way it ever changes |
+
+**Drivers**: `cpt-studio-algo-developer-experience-declared-stop-gate`
+
+**Behavior**:
+1. Walk `--root`'s `workflows/` and `skills/` and count each workflow's declared stops (reusing the gate-surface reader).
+2. If the walk skipped anything — an unreadable file or a missing `LOAD` target — the count is a floor, so exit 1 (a fault) rather than compare an under-count.
+3. Compare per workflow against the baseline: a rise **or** a workflow the baseline has never recorded fails (exit 2); a fall or a vanished workflow is reported for re-recording but does not fail.
+4. With `--update`, rewrite the baseline atomically from the measured counts and exit 0.
+
+**Stdout** (JSON):
+```json
+{
+  "status": "FAIL",
+  "total_declared_stops": 415,
+  "needs_recording": true,
+  "risen": [{"workflow": "workflows/plan.md", "before": 9, "now": 11}],
+  "fallen": [],
+  "added": [],
+  "gone": []
+}
+```
+A fault emits `{"status": "ERROR", "message": ...}`; `--update` emits `{"status": "OK", "recorded": N, "total_declared_stops": N, "baseline": PATH}`.
+
+**Stderr**: human-readable summary; the failing workflow and both its numbers first.
+
+**Exit codes**:
+- 0 — no workflow stops more than its baseline (a fall/removal is reported but passes)
+- 1 — a fault: the walk failed, the tree or baseline could not be read, the baseline is malformed, or the surface was a floor
+- 2 — a check failed: a workflow rose, or one is not recorded in the baseline
 
 ---
 

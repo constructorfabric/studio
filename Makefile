@@ -1,5 +1,5 @@
 # @cpt-algo:cpt-studio-spec-init-structure-change-infrastructure:p1
-.PHONY: test test-verbose test-quick test-coverage test-coverage-diff validate validate-examples validate-feature validate-code validate-code-feature self-check validate-kits validate-kits-sdlc vulture vulture-ci pylint install install-pipx install-proxy install-prompt-tests clean help check-pytest check-pytest-cov check-pipx check-vulture check-pylint check-versions check-prompt-tests bootstrap-init bootstrap-repair update update-local seed-cache ensure-bootstrap generate-agents spec-coverage ci lint-ci test-prompts test-prompts-view
+.PHONY: test test-verbose test-quick test-coverage test-coverage-diff validate validate-examples validate-feature validate-code validate-code-feature self-check validate-kits validate-kits-sdlc vulture vulture-ci pylint install install-pipx install-proxy install-prompt-tests clean help check-pytest check-pytest-cov check-pipx check-vulture check-pylint check-versions check-prompt-tests bootstrap-init bootstrap-repair update update-local seed-cache ensure-bootstrap generate-agents spec-coverage ci lint-ci test-prompts test-prompts-view declared-stops
 
 # Detect container architecture for act (arm64 on Apple Silicon, amd64 otherwise)
 UNAME_M := $(shell uname -m)
@@ -255,6 +255,11 @@ pylint: check-pylint
 spec-coverage: ensure-bootstrap
 	@echo "Checking spec coverage (Constructor Studio system)..."
 	$(PYTHON) $(BOOTSTRAP_STUDIO) spec-coverage --system studio --min-coverage 90 --min-file-coverage 60 --min-granularity 0.45
+
+# Declared-stop non-regression gate (the story's CI invariant)
+declared-stops:
+	@echo "Checking declared stops against the recorded baseline..."
+	$(PYTHON) $(SOURCE_STUDIO) declared-stops --root .
 
 # Check version consistency
 check-versions:

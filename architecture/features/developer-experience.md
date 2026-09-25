@@ -22,6 +22,7 @@
   - [Pylint Rollout Phase 0](#pylint-rollout-phase-0)
   - [Change Summary Window And Events](#change-summary-window-and-events)
   - [Change Summary Digest Composition](#change-summary-digest-composition)
+  - [Gate the Declared Stop Count](#gate-the-declared-stop-count)
   - [Count the Reachable Gate Surface](#count-the-reachable-gate-surface)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Developer Experience State](#developer-experience-state)
@@ -317,6 +318,21 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 7. [x] - `p1` - Enforce the ceiling by omitting lines and saying how many were omitted, never by padding to fill it, cutting from the end so the order lines are emitted in is the order they are sacrificed in - `inst-digest-ceiling`
 8. [x] - `p1` - Carry the data behind every line in a payload that names no absolute path, so nothing a home directory or username could reach a review through is present, and in which every string is encodable, so an undecodable filename is escaped rather than allowed to crash the output - `inst-digest-payload`
 9. [x] - `p1` - Compose the digest: one line when there is no window and one when there are no changes, since repeating a reason or consulting the log for nothing to review would be padding, and the full set otherwise - `inst-digest-compose`
+
+### Gate the Declared Stop Count
+
+- [x] `p1` - **ID**: `cpt-studio-algo-developer-experience-declared-stop-gate`
+
+**Input**: A Studio source tree, and a recorded per-workflow baseline of declared stops
+
+**Output**: What rose, what fell, what is new and what is gone, each named with both numbers; a failing status when any workflow rose, and a distinct fault status when the tree or the baseline could not be read
+
+**Steps**:
+1. [x] - `p1` - Read the recorded counts, and say which of the three ways it failed when it cannot be read — absent, not parseable, or carrying a count that is not a whole number — since an operator fixes a missing file, a corrupted commit and a bad hand edit differently, and a shared message sends them to the wrong one - `inst-stops-read`
+2. [x] - `p1` - Compare **per workflow, never by total**: a total hides one workflow gaining four stops while another loses five, which reads as an improvement while the workflow someone just made worse is invisible. Report what rose, what fell, what the tree has and the baseline does not, and what the baseline has and the tree does not — a workflow deleted by accident removes its stops from every total and otherwise looks exactly like progress - `inst-stops-compare`
+3. [x] - `p1` - Name the workflow on every line and both numbers wherever there are two, failure first: a rise and a fall carry a before and an after, while an addition has only its new count and a removal only its old one, so each line shows the numbers it has. "declared stops rose" sends a reader to a diff where the workflow and its before-and-after send them to a file, and a passing run still says what moved - `inst-stops-report`
+4. [x] - `p1` - Emit **one shape on every outcome**, every key present whether or not it applies, so a caller keying on what rose never has to ask which outcome it is holding; and render the human summary from that same payload rather than beside it, since a summary assembled separately is how the two drift until they disagree about whether a run passed - `inst-stops-shape`
+5. [x] - `p1` - Fail on any rise, **and on any workflow the baseline has never recorded**, since an unrecorded workflow is how an inflation renamed onto a fresh path arrives as new and sails past a per-key compare — so it fails until its number is reviewed and recorded, while a workflow that only vanished is reported rather than failed because a deletion can only lower the count. Treat a walk that came back a **floor** — a file it could not read, or a `LOAD` target missing from the tree — as a **fault** rather than a pass, since a real rise a skipped file hid would otherwise read as no change. Follow the project's CLI exit-code contract: **0** pass, **2** a check that failed (a rise or an unrecorded workflow), **1** a fault (a runtime or filesystem error — the walk failing, an unreadable, non-UTF-8, duplicate-keyed or malformed baseline, or a floor), so a gate reporting "could not run" with the code that means "you made it worse" cannot be told from a passing one that broke; and emit a JSON object on every path so a `--json` caller is never handed empty output. Never re-record automatically on a fall: a reduction nobody intended — a workflow that stopped loading half its modules — would silently become the new normal, so re-recording is a separate deliberate action - `inst-stops-command`
 
 ### Count the Reachable Gate Surface
 

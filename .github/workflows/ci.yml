@@ -207,6 +207,21 @@ jobs:
       - name: Check version consistency
         run: make check-versions
 
+  declared-stops:
+    name: Declared Stops (no rise)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Walks the repository's own workflows/ and skills/, so it needs no generated
+      # bootstrap and no released kit -- both of which are absent here by design.
+      - name: Check declared stops against the baseline
+        run: make declared-stops
+
   spec-coverage:
     name: Spec Coverage
     runs-on: ubuntu-latest
