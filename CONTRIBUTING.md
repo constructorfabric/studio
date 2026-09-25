@@ -339,7 +339,7 @@ make test-prompts-view      # open the HTML report
 | `PROMPT_TESTS_TIMEOUT_MS` | `900000` | Worker timeout — needs headroom for cold sandbox. |
 | `CF_UX_CLAUDE_MODEL` | `claude-haiku-4-5` | Override per-test claude model. |
 | `CF_UX_CLAUDE_EFFORT` | `low` | Claude reasoning effort. |
-| `CF_UX_CODEX_MODEL` | `gpt-5.4-mini` | Override per-test codex model. |
+| `CF_UX_CODEX_MODEL` | `gpt-5.6-sol` | Override per-test codex model. Set this when the default slug is withdrawn — run `codex` to see what the account is entitled to. |
 | `CF_UX_CODEX_EFFORT` | `low` | Codex reasoning effort (`minimal` is incompatible with tools). |
 | `CF_UX_CODEX_CONTEXT` | `128000` | Codex context window (default 400k is wasteful for these). |
 | `CF_UX_GRADER_MODEL` | `claude-haiku-4-5` | Override LLM-rubric judge model. |

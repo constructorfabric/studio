@@ -4,8 +4,10 @@
 # source (see providers/_sandbox.py). Sandboxes are auto-cleaned on atexit,
 # SIGTERM/SIGINT, and via pid-liveness sweep on next invocation.
 #
-# Cheap-by-default models (Claude Haiku 4.5, gpt-5.4-mini) with low reasoning
-# keep wall-clock under ~3 min for the full pilot.
+# Cheap-by-default models at low reasoning effort keep the full pilot to a
+# couple of minutes of wall-clock. The slugs themselves live in providers/ and
+# are deliberately not restated here: this comment was one of the copies that
+# went stale on the last rotation.
 #
 # Env knobs:
 #   REQUEST_TIMEOUT_MS=900000        — promptfoo python-worker timeout.
