@@ -125,3 +125,18 @@ def _isolate_decision_log(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(decision_log, "_NOTICE_SHOWN", True)
     monkeypatch.setattr(decision_log, "_FAILURE_WARNED", False)   # each test can observe the warning
     decision_log.set_current_decision_id("")   # start each test with a clean correlation id
+
+
+@pytest.fixture(autouse=True)
+def _isolate_codex_home(monkeypatch):
+    """Keep every test away from the codex cache of whoever runs the suite.
+
+    Moving $HOME (above) is not enough: `model_entitlements.codex_cache_path()` gives
+    `CODEX_HOME` precedence, as the codex CLI does, and `_resolve_model_id` now reads
+    that cache on every (codex, openai) resolution -- which every agent-generation
+    test goes through. With `CODEX_HOME` exported, six tests in two other modules
+    read a real cache and saw every model "withdrawn"; they passed only because none
+    asserts on stderr (#245 review, measured). Tests that want a cache set
+    `CODEX_HOME` to a fixture of their own.
+    """
+    monkeypatch.delenv("CODEX_HOME", raising=False)

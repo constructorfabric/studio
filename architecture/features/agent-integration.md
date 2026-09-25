@@ -262,6 +262,12 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - Model matrix cell for (copilot, openai): tier-to-model base + role/target overrides - `inst-matrix-copilot-openai`
 - [x] - `p1` - Per-tool `cf:auto` literal mapping (degrade to inherit where tool has no `auto`) - `inst-auto-value-map`
 - [x] - `p1` - `_resolve_model_id` translating (tool, provider, tier, role, target) to concrete model id - `inst-resolve-model-id`
+- [x] - `p1` - Advisory warning when the local `codex` cache does not list a resolved (codex, openai) model, suppressed by `CF_SKIP_MODEL_ENTITLEMENT_CHECK` - `inst-model-entitlement-warning`
+- [x] - `p1` - Locate `codex`'s model cache, honouring `CODEX_HOME` - `inst-entitlement-cache-path`
+- [x] - `p1` - Read the login type `codex` recorded beside its cache, one field only and never logged, or `None` when it cannot be read - `inst-entitlement-login-type`
+- [x] - `p1` - Decide whether there is a cache worth reading: a resolvable home, a cache file, and a ChatGPT login, each missing case said once - `inst-entitlement-worth-reading`
+- [x] - `p1` - Read the cache into the set of listed slugs, or `None` when it says nothing usable - `inst-entitlement-read-cache`
+- [x] - `p1` - Decide whether the cache positively contradicts a model id, silent on every uncertainty - `inst-entitlement-verdict`
 - [x] - `p1` - Codex `context_window` → token-count map for `model_context_window` lines - `inst-codex-context-tokens`
 - [x] - `p1` - Codex `reasoning_effort` → `model_reasoning_effort` value map (max → xhigh) - `inst-codex-effort-map`
 - [x] - `p1` - HTML comment helper for `reasoning_effort`/`context_window` on tools that ignore these fields - `inst-unsupported-field-comment`
@@ -402,6 +408,18 @@ Recovery from `Partial` to `Generated` occurs only after the user resolves or re
 - [x] `--dry-run` mode shows planned output without writing files
 - [x] Re-running `cfs generate-agents` after kit install produces updated entry points
 - [x] OpenCode is an implemented sixth first-class host available only through `--agent opencode` or `--opencode`; it is not included in default generation
+- [x] A resolved `(codex, openai)` model that the local `codex` cache does not
+  list produces one advisory warning per model -- on stderr and in the
+  `warnings` of `--json` output -- naming what the account does have and how to
+  silence the check -- `CF_SKIP_MODEL_ENTITLEMENT_CHECK=1` skips it outright, for
+  an account whose entitlements this cache does not describe. Generation is never
+  altered or blocked by it, it reaches preview, dry-run and no-change responses
+  as well as a completed write. It stays silent when there is no cache file,
+  which only means `codex` has not run on this machine, and when `codex` is logged
+  in some other way than a ChatGPT plan, whose models the cache does not
+  describe; a cache that exists but
+  cannot be read or has an unfamiliar shape, and a machine with no resolvable home
+  and no `CODEX_HOME`, each produce one warning that the check is off for the run
 - [x] `cfs agents --agent opencode` read-only reports selected, generated, partial, and collision state
 - [x] OpenCode generation reuses `.agents/skills`, writes only marker-owned `.opencode/agents/cf-*.md` and `.opencode/.cf-studio-installed`, and preserves all other `.opencode/` content as user-owned
 - [x] An ownership-unproven `cf-*` collision returns an explicit partial result without overwrite or deletion and records only its path for rerun-safe exclusion

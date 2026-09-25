@@ -45,6 +45,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
+from ..utils import model_entitlements
 from ..utils._tomllib_compat import tomllib
 from ..utils.files import (
     core_subpath,
@@ -120,6 +121,161 @@ GITIGNORE_FILENAME = ".gitignore"
 
 def _warn_agents(message: str) -> None:
     logger.warning("agents: %s", message)
+
+
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-model-entitlement-warning
+#: Said once per (tool, provider, model) per generate. `_resolve_model_id` runs
+#: for every agent -- 44 of them in the shipped manifest -- and the same
+#: withdrawn slug answers most of them, so warning per call would bury the one
+#: line that matters under forty repetitions of itself. Reset by
+#: `_begin_entitlement_run` when a generate starts: it was once per *process*,
+#: so a second generate in the same process never reported a model the first had
+#: already warned about, on stderr or in its JSON (#245 review).
+_ENTITLEMENT_WARNED: set = set()
+
+#: Collected alongside the log line, because `--json` consumers see this dict
+#: and not stderr. Same dual-reporting as every other warning-worthy event in
+#: this file; drained into the command result by `drain_entitlement_warnings`.
+_ENTITLEMENT_NOTICES: List[Dict[str, Any]] = []
+
+#: The check is advisory, and anything advisory needs a way off. An account on
+#: an API key has a different entitlement set from the ChatGPT-plan cache this
+#: reads, and someone who knows that should be able to say so once.
+_ENTITLEMENT_OPT_OUT = "CF_SKIP_MODEL_ENTITLEMENT_CHECK"
+
+#: The tool the entitlement evidence is about. The provider half of the scope is
+#: not written here: `_entitlement_scope()` reads it off `_TOOL_PROVIDER_SUPPORT`
+#: below, so a tool gaining or losing OpenAI support cannot leave this behind.
+#: It was a second hand-written literal, under a comment claiming it was derived
+#: -- exactly the drift the comment promised to prevent (#245 review).
+_ENTITLEMENT_TOOL = "codex"
+
+_LOG_WITHDRAWN_MODEL = (
+    "%s config asks for model %r, which `codex` does not list for this account "
+    "(read from %s, which lists: %s). Generation continues -- the agent will "
+    "fail when it runs. If this account is entitled to it, ignore this, or set "
+    "%s=1: the check reads codex's own cache and can be out of date."
+)
+
+_LOG_ENTITLEMENT_BROKE = (
+    "the codex model-entitlement check could not run (%s); generation is "
+    "unaffected, but a withdrawn model would not have been caught"
+)
+
+
+def _begin_entitlement_run() -> None:
+    """Start a generate with no findings carried over from an earlier one.
+
+    Both structures are module-level, and every way out of a generate that is not
+    a completed emit -- the user answering `n` at the preview, an early error --
+    left them as that run filled them. The next generate in the same process then
+    drained the stale notices into its own result, and stayed silent about models
+    the earlier run had already warned for (#245 review). Clearing at the start
+    covers every exit at once, including ones added later, which clearing on each
+    exit path would not.
+    """
+    _ENTITLEMENT_NOTICES.clear()
+    _ENTITLEMENT_WARNED.clear()
+
+
+def drain_entitlement_warnings() -> List[Dict[str, Any]]:
+    """Take the notices collected during this generate, clearing them.
+
+    Drained rather than read, so a second generate in the same process does not
+    re-report the first one's findings.
+    """
+    taken = list(_ENTITLEMENT_NOTICES)
+    _ENTITLEMENT_NOTICES.clear()
+    return taken
+
+
+def _attach_entitlement_warnings(result: Dict[str, Any]) -> None:
+    """Dual-report the entitlement findings into a command result.
+
+    Every other warning-worthy event in this file lands in both the log and the
+    result; a `--json` consumer reads the dict and never sees stderr, and "the
+    account cannot use this model" is exactly what an automated caller should be
+    able to act on.
+
+    Called by `_build_result`, the constructor of every generate result -- a
+    preview, a dry run and a no-change JSON response as much as a completed write.
+    Each of those resolves models, so each can have collected a notice, and a dry
+    run is the natural way to ask what a generate would do, which makes it the
+    worst place for the answer to be missing. Draining keeps it to one report:
+    whichever result is built first takes the notices.
+
+    The key is created only when there is something to put in it, so a clean run
+    keeps the output shape it has always had.
+    """
+    notices = drain_entitlement_warnings()
+    if notices:
+        result.setdefault("warnings", []).extend(notices)
+
+
+def _checked(tool: str, provider: str, model_id: Optional[str]) -> Optional[str]:
+    """Pass `model_id` through, warning if the local `codex` contradicts it.
+
+    Advisory only, and deliberately so. The value is returned unchanged whatever
+    the answer: generation is a function of the repository, and making its
+    *output* depend on which machine it runs on would be a worse bargain than
+    the outage this warns about. Only the report is new.
+
+    Scoped to (codex, openai) because that is what the evidence covers, not
+    because the other cells hold different slugs -- (cursor, openai) holds the
+    *same* literals. The cache answers "what may this account use **through
+    codex**": the failure it was built from reads `not supported when using
+    Codex with a ChatGPT account`, which is a statement about one surface and
+    one account type, not about a model ceasing to exist. Cursor bills through
+    its own subscription, so a slug codex will not serve may still be served
+    there, and warning about it would be a confident guess. Copilot names models
+    from its own catalogue outright, and the Anthropic cells were each probed
+    against a live CLI.
+    """
+    if model_id is None or os.environ.get(_ENTITLEMENT_OPT_OUT):
+        return model_id
+    try:
+        # Inside the guard, not before it. `_entitlement_scope()` raises when the
+        # provider table stops naming exactly one provider for codex -- deliberately,
+        # because picking one would be a guess -- and calling it outside this block
+        # meant an unrelated edit to that table would raise out of *every* codex
+        # model resolution. An advisory check that can stop generation is worse than
+        # no check, which is the whole reason this block exists (#245 review).
+        if (tool, provider) != _entitlement_scope():
+            return model_id
+        if not model_entitlements.codex_model_is_withdrawn(model_id):
+            return model_id
+        seen = (tool, provider, model_id)
+        if seen in _ENTITLEMENT_WARNED:
+            return model_id
+        entitled = model_entitlements.entitled_codex_models() or frozenset()
+        cache_path = model_entitlements.codex_cache_path()
+        _warn_agents(_LOG_WITHDRAWN_MODEL % (
+            tool, model_id, cache_path,
+            model_entitlements.listed_for_message(entitled),
+            _ENTITLEMENT_OPT_OUT,
+        ))
+        # Recorded *after* the warning is out, so a raising logger leaves the
+        # finding unreported rather than silently marked as reported.
+        _ENTITLEMENT_WARNED.add(seen)
+        _ENTITLEMENT_NOTICES.append({
+            "kind": "model-not-entitled",
+            "tool": tool,
+            "provider": provider,
+            "model": model_id,
+            "entitled": sorted(entitled),
+            "source": str(cache_path),
+        })
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        # Deliberately broad: an advisory check must not be the thing that stops
+        # a config being written. Said once and visibly, though -- a check that
+        # fails silently is indistinguishable from one that found nothing, and
+        # the CLI never raises its level above WARNING, so a debug line here
+        # would be a line nobody can ever read.
+        if "check-failed" not in _ENTITLEMENT_WARNED:
+            _ENTITLEMENT_WARNED.add("check-failed")
+            _warn_agents(_LOG_ENTITLEMENT_BROKE % exc)
+    return model_id
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-model-entitlement-warning
 
 
 def _info_agents(message: str) -> None:
@@ -824,6 +980,28 @@ _TOOL_PROVIDER_SUPPORT: Dict[str, Set[str]] = {
     "copilot": {"anthropic", "openai"},
 }
 
+def _entitlement_scope() -> Tuple[str, str]:
+    """The one (tool, provider) pair the codex entitlement cache is evidence for.
+
+    Read from `_TOOL_PROVIDER_SUPPORT` rather than restated, so that the pair
+    cannot quietly disagree with the table that decides which providers the tool
+    supports at all. `codex` supports exactly one provider; if it ever supports
+    more, that is a decision about which of them the cache speaks for, and this
+    raises rather than guessing.
+
+    Cheap enough to call per resolution -- one dict lookup on a four-entry table
+    -- and calling it is what keeps it honest, since a cached value computed at
+    import time would be the same literal one indirection further away.
+    """
+    providers = _TOOL_PROVIDER_SUPPORT.get(_ENTITLEMENT_TOOL, set())
+    if len(providers) != 1:
+        raise ValueError(
+            f"{_ENTITLEMENT_TOOL!r} supports {sorted(providers)}; the entitlement "
+            "check covers one provider and cannot choose between them"
+        )
+    return (_ENTITLEMENT_TOOL, next(iter(providers)))
+
+
 _TOOL_PROVIDER_DEFAULT: Dict[str, str] = {
     "claude": "anthropic",
     "codex": "openai",
@@ -1046,8 +1224,11 @@ def _resolve_model_id(
         # (and not registered in the matrix), treat it as a raw vendor model
         # id and emit verbatim. Intentional — see the "Supported `model`
         # forms" header in skills/studio/agents.toml.
-        return tier  # passthrough raw id
-    return cell["overrides"].get((tier, role, target), cell["base"][tier])
+        return _checked(tool, provider, tier)  # passthrough raw id
+    return _checked(
+        tool, provider,
+        cell["overrides"].get((tier, role, target), cell["base"][tier]),
+    )
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-resolve-model-id
 
 
@@ -7813,6 +7994,7 @@ def _run_legacy_generate_path(
 
 def cmd_generate_agents(argv: List[str]) -> int:
     """Generate/update agent-specific workflow proxies and skill outputs."""
+    _begin_entitlement_run()
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-user-agents-entry
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-user-agents
     ctx = _resolve_agents_context(
@@ -8048,6 +8230,11 @@ def _build_result(
         result["gitignore"] = gitignore_action
     if partial_reasons:
         result["partial_reasons"] = partial_reasons
+    # Here, in the one constructor every emitted generate result comes from,
+    # rather than in each emitter. Wiring it per emitter needed an AST-walking
+    # test to catch the emitter somebody forgot; attaching where the result is
+    # made leaves no emitter to forget (#245 review).
+    _attach_entitlement_warnings(result)
     return result
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
