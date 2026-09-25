@@ -143,6 +143,8 @@ cfs <command> [subcommand] [options] [arguments]
 
 **Exception 1**: the `cfs mirror *` subcommand family (`mirror override`, `mirror list`, `mirror remove`, `mirror clear`, and the `--help` / no-subcommand fallback) is user-facing and emits **plain-text** output to stdout instead of JSON. The JSON-only convention does NOT apply to these subcommands.
 
+**Exception 2 — human-readable default with `--json` opt-in**: a command MAY render its result to stdout as human-readable text by default, provided the **same** result data is available as JSON on stdout when `--json` is passed. Where this applies, `--json` is the stable machine-readable contract and the default rendering is presentation only; the two MUST carry the same fields, and no data may exist in one form and not the other. This exception is **not yet in force for any shipped command**: it applies to the routing-summary output of `agents` and `generate-agents` (the per-harness `routing` section) only once `cpt-studio-feature-hook-based-session-routing` ships — that feature is currently `planned` in DECOMPOSITION.md and unimplemented, so today both commands remain JSON-only on stdout like every other command. Commands not named here remain JSON-only on stdout in all cases.
+
 ### Exit Codes
 
 | Code | Meaning | When |
@@ -157,9 +159,11 @@ cfs <command> [subcommand] [options] [arguments]
 |--------|-------------|
 | `--version` | Show cache and project skill versions |
 | `--help` | Show help for command |
-| `--json` | Force JSON output (default, explicit for clarity) |
+| `--json` | Force JSON output (default, explicit for clarity) — see the note below for the `agents` / `generate-agents` routing output |
 | `--quiet` | Suppress stderr |
 | `--verbose` | Increase stderr detail |
+
+Stdout is JSON by default for every command except the `cfs mirror *` family ([Exception 1](#output)), so passing `--json` changes nothing today. The one planned departure from that default is [Exception 2](#output) under Output: once `cpt-studio-feature-hook-based-session-routing` ships, the routing summary of `agents` and `generate-agents` will render as human-readable text by default and as JSON only when `--json` is passed.
 
 ---
 
@@ -658,9 +662,13 @@ cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-studio-root P
 | `--cf-studio-root PATH` | Explicit Constructor Studio core root (optional override) |
 | `--cf-constructor-root PATH` | Legacy alias for `--cf-studio-root` |
 | `--config PATH` | Path to agents config JSON (optional; built-in defaults used when omitted) |
-| `--dry-run` | Compute planned changes without writing files |
+| `--dry-run` | Compute planned changes without writing files (including all session-routing writes — see below) |
 
 **Without `--agent`**: regenerate for all agents.
+
+**`--agent` scoping exception — routing state**: `--agent` scopes which agent's files are generated, with one documented exception in the session-routing behavior described in `architecture/features/hook-based-session-routing.md`. The `AGENTS.md`/`CLAUDE.md` routing marker is a single project-wide resource shared by all agents, so a scoped run's marker outcome can change the routing state of in-scope harnesses the run did **not** name — most notably when a shared-marker write fails and every harness depending on that marker is marked `errored`. In that case the run also writes those harnesses' own routing state files (`<agent-config-dir>/.cf-studio-routing-state.json`), so a later `cfs agents` reports the fresh state rather than a stale one. The write set for routing state is therefore the run's *affected* set, not the `--agent` selection; see that feature's affected-dependent-set rule (`cpt-studio-algo-hook-based-session-routing-reconcile-marker`, step `inst-for-each-finalize`). No other surface is affected: an unselected agent's hook entry, execution receipt, and generated workflow/skill/subagent files are never touched by a scoped run.
+
+**`--dry-run` and routing**: routing participates in the write-free `--dry-run` contract with no exception. `--dry-run` computes and reports the `routing` summary that a real run would produce — per-agent `routing_mode`, paths, and warnings — while writing no hook entry, no execution receipt, no routing state file, and no change to the shared `AGENTS.md`/`CLAUDE.md` marker.
 
 **Behavior**:
 1. Collect `SKILL.md` extensions from all installed kits.
@@ -713,6 +721,12 @@ Legacy per-tool manifest skill files are migrated away only when they match gene
   `subagents`
 - unsupported provider capabilities are reported through skip metadata instead of
   silent omission
+- a routing state-file persistence failure (per-harness `.cf-studio-routing-state.json`
+  write fails after the harness's routing mode was otherwise resolved cleanly) also
+  triggers `PARTIAL`, reported as a `level: error` entry in that harness's routing
+  `warnings` array rather than a downgrade of `routing_mode` — see
+  `cpt-studio-feature-hook-based-session-routing`'s algorithm step
+  `inst-persist-failure-partial`
 
 **Exit**: 0.
 

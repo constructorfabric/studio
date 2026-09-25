@@ -22,9 +22,10 @@
   - [2.14 ralphex Delegation IN PROGRESS HIGH](#214-ralphex-delegation-in-progress-high)
   - [2.15 Project-Level Extensibility IN PROGRESS HIGH](#215-project-level-extensibility-in-progress-high)
   - [2.16 Dependency Mapping 🔶 HIGH](#216-dependency-mapping--high)
-  - [2.17 Thin Skill Runtime ⏳ HIGH](#217-thin-skill-runtime--high)
-  - [2.18 Workflow Eval-Harness ⏳ HIGH](#218-workflow-eval-harness--high)
-  - [2.19 Artifact Quality ⏳ HIGH](#219-artifact-quality--high)
+  - [2.17 Thin Skill Runtime (planned) HIGH](#217-thin-skill-runtime-planned-high)
+  - [2.18 Workflow Eval-Harness (planned) HIGH](#218-workflow-eval-harness-planned-high)
+  - [2.19 Artifact Quality (planned) HIGH](#219-artifact-quality-planned-high)
+  - [2.20 Hook-Based Session Routing (planned) HIGH](#220-hook-based-session-routing-planned-high)
 - [3. Feature Dependencies](#3-feature-dependencies)
 
 <!-- /toc -->
@@ -850,7 +851,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - `artifacts.toml` — read-only: codebase entries and artifact paths for registry categorization
 
 
-### 2.17 Thin Skill Runtime ⏳ HIGH
+### 2.17 Thin Skill Runtime (planned) HIGH
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-thin-skill-runtime`
 
@@ -919,7 +920,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
     `architecture/specs/thin-skill-runtime.md`
 
 
-### 2.18 [Workflow Eval-Harness](features/eval-harness.md) ⏳ HIGH
+### 2.18 [Workflow Eval-Harness](features/eval-harness.md) (planned) HIGH
 
 - [x] `p1` - **ID**: `cpt-studio-feature-eval-harness`
 
@@ -951,7 +952,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 ---
 
-### 2.19 [Artifact Quality](features/artifact-quality.md) ⏳ HIGH
+### 2.19 [Artifact Quality](features/artifact-quality.md) (planned) HIGH
 
 - [ ] `p1` - **ID**: `cpt-studio-feature-artifact-quality`
 
@@ -981,6 +982,48 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - Project Markdown artifacts (read-only)
 
 
+### 2.20 [Hook-Based Session Routing](features/hook-based-session-routing.md) (planned) HIGH
+
+- [ ] `p1` - **ID**: `cpt-studio-feature-hook-based-session-routing`
+
+- **Purpose**: Deliver Studio's routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`) through each harness's native on-session-start hook, instead of unconditionally writing it into every project's root `AGENTS.md`/`CLAUDE.md`, while keeping file injection as a verified fallback and making routing delivery reversible per harness through a single disablement switch.
+
+- **Depends On**: `cpt-studio-feature-agent-integration`, `cpt-studio-feature-subagent-registration`, `cpt-studio-feature-core-infra` (keeps this feature's per-machine per-harness state file and execution receipt out of version control via core-infra's gitignore-footprint mechanism)
+
+- **Scope**:
+  - One cross-harness `on_session_start` abstraction compiled per harness inside `cfs generate-agents`, driven by a dedicated per-harness hook-capability table (event name, config path, gating opt-in) rather than by the model/provider matrix
+  - A stable Studio-owned identifier on the hook entry so install, repeat install, and uninstall never touch user-authored hooks
+  - Hook verification (owned entry present, config parses, payload round-trips intact) plus an execution-receipt gate before file fallback is stopped for a harness
+  - Retained `AGENTS.md`/`CLAUDE.md` file injection as fallback, modeled as one shared project-wide resource spanning both files rather than as a per-harness resource
+  - An order-independent two-pass compile: per-harness hook work first, then a single shared-marker reconciliation against the complete target-mode set
+  - A per-harness state file (`<harness-config-dir>/.cf-studio-routing-state.json`) carrying `schema_version`, written for every mode, separate from the `MARKER_START`/`MARKER_END` scan
+  - State derived from installed resources on inspection, with the persisted file as a cross-check and `unknown` reserved for disagreement
+  - An explicit `errored` outcome when the fallback write itself fails
+  - One disablement switch per harness (routing on / routing off) covering the hook and file channels
+  - Per-harness install-outcome summary on `generate-agents` under a new top-level `routing` key (human table + `--json`), re-derivable later via `cfs agents`
+  - Migration of already-file-injected projects into the FileFallback state on first post-upgrade run, including partial states where only one of the two root files carries the marker
+
+- **Out of scope**:
+  - Changing the routing instruction payload itself (issue #144)
+  - Windsurf, which keeps today's unconditional file injection
+  - Copies of the routing precondition embedded in generated shim files by `_follow_protocol_lines()`
+  - Project-level `PreToolUse`/`PostToolUse` hooks and a `cfs hooks install`/`uninstall` command (still deferred by `cpt-studio-adr-ai-cli-extensibility-subagents`)
+
+- **Domain Model Entities**:
+  - HarnessRoutingOutcome
+  - HarnessRoutingState
+
+- **API**:
+  - `cfs generate-agents [--json]` — installs routing delivery per harness and prints the install-outcome summary
+  - `cfs agents` — re-derives and reports current per-harness routing state
+
+- **Data**:
+  - Harness-native hook config (`.claude/settings.json`, `.codex/hooks.json`, `.cursor/hooks.json`, `.github/hooks/<name>.json`) — Studio-owned hook entries
+  - Root `AGENTS.md` / `CLAUDE.md` managed block — shared file-fallback marker, treated as one resource spanning both files
+  - Per-harness routing state file `<harness-config-dir>/.cf-studio-routing-state.json` — routing state and `schema_version`
+  - Per-harness execution receipt — evidence the installed hook entry has actually run
+
+
 ---
 
 ## 3. Feature Dependencies
@@ -995,6 +1038,8 @@ cpt-studio-feature-core-infra
     │                                          │    └─→ cpt-studio-feature-ralphex-delegation ←── cpt-studio-feature-version-config
     │                                          │
     │                                          ├─→ cpt-studio-feature-subagent-registration
+    │                                          │    ↓
+    │                                          │    └─→ cpt-studio-feature-hook-based-session-routing
     │                                          │
     │                                          ↓
     │   cpt-studio-feature-project-extensibility ←── cpt-studio-feature-blueprint-system
@@ -1029,5 +1074,6 @@ cpt-studio-feature-core-infra
 - `cpt-studio-feature-developer-experience` requires `cpt-studio-feature-traceability-validation`: VS Code plugin and doctor delegate to validator and traceability engine
 - `cpt-studio-feature-workspace` requires `cpt-studio-feature-core-infra` and `cpt-studio-feature-traceability-validation`: workspace federation builds on core context loading and extends cross-repo ID resolution in the traceability engine
 - `cpt-studio-feature-ralphex-delegation` requires `cpt-studio-feature-execution-plans` and `cpt-studio-feature-version-config`: delegation compiles exported plans from Studio's authoritative decomposition model and persists ralphex integration settings via the config manager
+- `cpt-studio-feature-hook-based-session-routing` requires `cpt-studio-feature-agent-integration`, `cpt-studio-feature-subagent-registration`, and `cpt-studio-feature-core-infra`: it reuses the per-(tool, provider) matrix and the generation pipeline that own routing-precondition delivery today, it resolves the project-level `SessionStart` hook deferral recorded in `cpt-studio-adr-ai-cli-extensibility-subagents`, and it relies on core-infra's gitignore-footprint mechanism to keep its per-machine state file and execution receipt out of version control
 - `cpt-studio-feature-artifact-quality` requires `cpt-studio-feature-spec-coverage`: its judged detectors reuse the advisory semantic seam (never-gating, honest-unjudgeable, evidence checks) that spec-coverage introduced
 - SDLC-specific features (F4, F6, F9) have been extracted to `constructorfabric/studio-kit-sdlc` per `cpt-studio-adr-extract-sdlc-kit`
