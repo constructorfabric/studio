@@ -695,13 +695,13 @@ These side-topics are deliberately left open. They **MUST** be resolved before o
 
 ## 8. Applicability
 
-This feature is a CLI-command change: `cfs generate-agents` and `cfs agents` writing and reading local files in the project working tree. The following checklist domains are therefore not applicable, each for the stated reason:
+This feature is a CLI-command change: `cfs generate-agents` and `cfs agents` writing and reading local files in the project working tree. That one-shot command has no auth surface and no perf targets, so the domains below are not applicable **to the CLI command itself**, each for the stated reason. Two of them — SEC and PERF — are scoped narrowly and deliberately: this feature also installs an auto-executing command hook that each harness invokes on every future session start, indefinitely, and that ongoing execution surface is a materially different risk/perf profile than the one-shot installer. This checklist does not evaluate that surface; it is tracked separately (`constructorfabric/studio#276`) rather than waved through as "not applicable" alongside the installer.
 
-- **SEC**: Not applicable because there is no authentication or authorization surface — this is a local filesystem CLI operating with the invoking user's existing permissions, and the hook payload is Studio's own static routing text, not user-supplied input.
+- **SEC**: Not applicable **to the installer command** because there is no authentication or authorization surface — this is a local filesystem CLI operating with the invoking user's existing permissions, and the hook payload is Studio's own static routing text, not user-supplied input. **Not yet evaluated**: the security posture of the auto-executing hook itself once installed (what it can do, whether it should be scoped/sandboxed, whether newly-added hook entries in shared config should prompt a trust decision for teammates) — see `constructorfabric/studio#276` and `constructorfabric/studio#279`.
 - **COMPL**: Not applicable because no regulated data is read, stored, or transmitted.
 - **UX / accessibility**: Not applicable because there is no UI — output is CLI/terminal text plus the existing global `--json` payload.
 - **DATA privacy**: Not applicable because no PII is touched; the only data written is harness config entries, a marker block, and a small per-harness state file.
-- **PERF**: Not applicable because there are no response-time or throughput targets — the work is bounded local file I/O over at most 4 harnesses during a one-shot command, not a running service.
+- **PERF**: Not applicable **to the installer command** because there are no response-time or throughput targets for `cfs generate-agents`/`cfs agents` — that work is bounded local file I/O over at most 4 harnesses during a one-shot command, not a running service. **Not yet evaluated**: the hook's own recurring runtime cost (one state-file read, and conditionally one payload emission, per session-start firing — potentially more than once per continuing session, per the round-6 decision that repeated firings are intentional) — see `constructorfabric/studio#276`.
 
 ## Additional Context (optional)
 
