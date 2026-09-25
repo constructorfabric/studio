@@ -90,8 +90,21 @@ class Locus:
                 f"{self.artifact_path!r}")
         if any(ord(ch) < 0x20 for ch in self.artifact_path):
             raise ValueError(f"artifact_path must not contain control characters: {self.artifact_path!r}")
+        if len(self.artifact_path) > _MAX_PATH_LENGTH:
+            raise ValueError(
+                f"artifact_path must be at most {_MAX_PATH_LENGTH} characters; "
+                f"got {len(self.artifact_path)}")
+        segments = self.artifact_path.split("/")
+        if len(segments) > _MAX_PATH_SEGMENTS:
+            raise ValueError(
+                f"artifact_path must be at most {_MAX_PATH_SEGMENTS} segments deep; "
+                f"got {len(segments)}")
 
     def _validate_anchor(self) -> None:
+        if self.anchor is not None and len(self.anchor) > _MAX_ANCHOR_LENGTH:
+            raise ValueError(
+                f"anchor must be at most {_MAX_ANCHOR_LENGTH} characters; "
+                f"got {len(self.anchor)}")
         if self.anchor is not None and (not self.anchor.strip()
                                         or any(ord(ch) < 0x20 for ch in self.anchor)):
             raise ValueError(
@@ -227,6 +240,19 @@ class ArtifactFinding:
 #: Anchor/message blankness is decided by ``str.strip()``; enumerating it explicitly — not ECMA
 #: ``\s``, which differs on U+0085/U+FEFF/U+001C–1F — lets the wire pattern mirror the constructor
 #: exactly under a standards-compliant validator.
+
+#: Upper bounds on a locus path. Findings can arrive from out-of-tree producers, so the
+#: shape is a wire contract and not only an internal invariant: without a ceiling an
+#: arbitrarily long path -- or one nested thousands of segments deep -- passed validation
+#: and went straight into a serialized report. Generous enough that no real repository
+#: path comes near them; the point is that a bound exists, not where it sits.
+_MAX_PATH_LENGTH = 1024
+_MAX_PATH_SEGMENTS = 64
+
+#: And the same ceiling on the anchor, for the same reason: it sits in the same locus,
+#: arrives from the same out-of-tree producers, and lands in the same serialized report.
+#: Bounding one unbounded field and leaving its neighbour is a half-answer (#236 review).
+_MAX_ANCHOR_LENGTH = 512
 _PY_STRIP_WS = r"\t\n\x0b\x0c\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000"
 
 #: The stable JSON contract a presentation/UI layer relies on — obtain a fresh, mutable copy via
@@ -287,13 +313,20 @@ _FINDING_JSON_SCHEMA: Dict[str, object] = {
                 # non-empty, not '.'/'..', and free of '\' and control chars. This mirrors the
                 # dataclass's per-segment check (leading, interior AND trailing) — the dataclass is
                 # authoritative, but the wire pattern must reject the same set (incl. traversal).
-                "artifact_path": {"type": "string",
+                # `maxLength` mirrors the dataclass length bound, and the repetition is
+                # bounded to `_MAX_PATH_SEGMENTS - 1` so depth is enforced here too. The
+                # first version left depth to the constructor, which protects nothing for
+                # a validator that only has the schema -- and the bound is the existing
+                # `*` with a ceiling, not a new nested quantifier (#236 review).
+                "artifact_path": {"type": "string", "maxLength": _MAX_PATH_LENGTH,
                                   "pattern": r"^(?![A-Za-z]:(?:/|$))(?!\.\.?(?:/|$))[^/\\\x00-\x1f]+"
-                                             r"(?:/(?![A-Za-z]:(?:/|$))(?!\.\.?(?:/|$))[^/\\\x00-\x1f]+)*$"},
+                                             r"(?:/(?![A-Za-z]:(?:/|$))(?!\.\.?(?:/|$))[^/\\\x00-\x1f]+)"
+                                             rf"{{0,{_MAX_PATH_SEGMENTS - 1}}}$"},
                 # Non-blank (not all str.strip() whitespace) and control-free. Explicit classes,
                 # no ECMA `\s`/`.`, so the wire pattern mirrors the constructor exactly — NEL, BOM,
                 # line/paragraph separators all agree with str.strip() / ord < 0x20.
                 "anchor": {"type": "string", "minLength": 1,
+                           "maxLength": _MAX_ANCHOR_LENGTH,
                            "pattern": rf"^(?![{_PY_STRIP_WS}]*$)[^\x00-\x1f]+$"},
                 "line": {"type": "integer", "minimum": 1},
             },

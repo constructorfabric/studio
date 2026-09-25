@@ -238,3 +238,229 @@ class TestWithFileLock:
         lock_path = tmp_path / "x.lock"
         assert with_file_lock(lock_path, lambda: "ok", timeout=5.0) == "ok"
         assert len(calls) == 3  # two simulated-contention retries, then a real success
+
+
+class TestTheFailurePathDoesNotBecomeTheFailure:
+    """Cleanup runs when the write already went wrong. It must not take over from it."""
+
+    def test_a_cleanup_error_does_not_replace_the_original_exception(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`unlink` inside an `except` block can raise too -- a read-only directory, a
+        vanished mount -- and when it did, its exception propagated instead of the one
+        that explained what actually happened. The caller got the janitor's error."""
+        from studio.utils import atomic_io
+
+        def _replace_boom(_src, _dst):            # the real failure
+            raise RuntimeError("disk full")
+
+        def _unlink_boom(_self, **_kwargs):       # the janitor tripping over it
+            raise PermissionError("read-only directory")
+
+        monkeypatch.setattr(atomic_io.os, "replace", _replace_boom)
+        monkeypatch.setattr(Path, "unlink", _unlink_boom)
+
+        with pytest.raises(RuntimeError, match="disk full"):
+            atomic_io.atomic_write_text(tmp_path / "out.txt", "content")
+
+    def test_a_descriptor_is_not_leaked_when_fdopen_fails(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`os.fdopen` takes ownership of the descriptor only once it succeeds.
+
+        When it raises -- an unknown encoding, memory pressure -- nobody had wrapped the
+        descriptor and nobody closed it, so it leaked for the life of the process.
+        """
+        import os as _os
+
+        from studio.utils import atomic_io
+
+        closed: list[int] = []
+        real_close = _os.close
+
+        def _fdopen_boom(_fd, *_a, **_k):
+            raise OSError("cannot wrap the descriptor")
+
+        def _tracking_close(fd):
+            closed.append(fd)
+            return real_close(fd)
+
+        monkeypatch.setattr(atomic_io.os, "fdopen", _fdopen_boom)
+        monkeypatch.setattr(atomic_io.os, "close", _tracking_close)
+
+        with pytest.raises(OSError, match="cannot wrap"):
+            atomic_io.atomic_write_text(tmp_path / "out.txt", "content")
+
+        assert closed, "the descriptor fdopen never took ownership of must still be closed"
+        # The branch does two things, and the test only watched one of them: the temp
+        # file `mkstemp` created must not survive the failure either (#236 review).
+        assert not list(tmp_path.glob("**/*.tmp")), "the temp file was left behind"
+
+    def test_a_successful_write_is_untouched(self, tmp_path: Path) -> None:
+        """The restructured path must still do the ordinary thing."""
+        target = tmp_path / "nested" / "out.txt"
+        atomic_write_text(target, "hello")
+
+        assert target.read_text(encoding="utf-8") == "hello"
+        assert not list(tmp_path.glob("**/*.tmp"))          # no temp file left behind
+
+
+class TestAnInterruptDuringTheWriteStillCleansUp:
+    """`except Exception` skips `KeyboardInterrupt`, which is not an `Exception`.
+
+    The cleanup blocks exist so that a failed write leaves neither a leaked
+    descriptor nor a stray `.tmp` beside the target. Ctrl-C is the most ordinary
+    way for a write to fail, and it was the one way that skipped both
+    (#236 review).
+    """
+
+    def test_an_interrupt_in_fdopen_closes_the_descriptor_and_removes_the_temp(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from studio.utils import atomic_io
+
+        real_close = atomic_io.os.close
+        closed: list[int] = []
+
+        def _interrupted(_fd, *_a, **_k):
+            raise KeyboardInterrupt
+
+        def _tracking_close(fd):
+            closed.append(fd)
+            return real_close(fd)
+
+        monkeypatch.setattr(atomic_io.os, "fdopen", _interrupted)
+        monkeypatch.setattr(atomic_io.os, "close", _tracking_close)
+
+        with pytest.raises(KeyboardInterrupt):
+            atomic_io.atomic_write_text(tmp_path / "out.txt", "content")
+
+        assert closed, "an interrupt must not leak the descriptor fdopen never took"
+        assert not list(tmp_path.glob("**/*.tmp")), "an interrupt must not strand the temp file"
+
+    def test_an_interrupt_during_the_write_removes_the_temp(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from studio.utils import atomic_io
+
+        def _interrupted(*_a, **_k):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(atomic_io.os, "replace", _interrupted)
+
+        with pytest.raises(KeyboardInterrupt):
+            atomic_io.atomic_write_text(tmp_path / "out.txt", "content")
+
+        assert not list(tmp_path.glob("**/*.tmp")), "an interrupt must not strand the temp file"
+
+    def test_the_interrupt_itself_reaches_the_caller_unchanged(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Cleanup is added; how the process dies is not changed."""
+        from studio.utils import atomic_io
+
+        sentinel = KeyboardInterrupt("user pressed ctrl-c")
+
+        def _interrupted(*_a, **_k):
+            raise sentinel
+
+        monkeypatch.setattr(atomic_io.os, "replace", _interrupted)
+
+        with pytest.raises(KeyboardInterrupt) as caught:
+            atomic_io.atomic_write_text(tmp_path / "out.txt", "content")
+
+        assert caught.value is sentinel
+
+
+class TestTheTolerantJsonRead:
+    """One definition of what a tolerant read absorbs, for both cache readers.
+
+    `doc_index._read_cache_file` and `okf.load_okf_manifest` kept the same
+    try/except by hand, and it drifted: `UnicodeDecodeError` was named in one
+    and missed in the other (#236 review).
+    """
+
+    def test_valid_json_is_returned(self, tmp_path: Path) -> None:
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        path.write_text('{"a": 1}', encoding="utf-8")
+
+        def _unreachable(_exc):
+            raise AssertionError("a readable file must not report a failure")
+
+        assert read_json_tolerantly(path, on_unreadable=_unreachable) == {"a": 1}
+
+    @pytest.mark.parametrize(
+        "write, expected",
+        [
+            (lambda p: p.write_bytes(b"\xff\xfe not utf-8"), UnicodeDecodeError),
+            (lambda p: p.write_text("{not json", encoding="utf-8"), ValueError),
+            (lambda p: None, OSError),          # the file is never created
+        ],
+        ids=["invalid-utf8", "invalid-json", "unreadable-path"],
+    )
+    def test_an_unreadable_file_is_reported_and_read_as_none(
+            self, tmp_path: Path, write, expected) -> None:
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        write(path)
+        seen: list[Exception] = []
+
+        assert read_json_tolerantly(path, on_unreadable=seen.append) is None
+        assert len(seen) == 1
+        assert isinstance(seen[0], expected)
+
+    @pytest.mark.parametrize("content, got", [
+        ("null", "null"), ("[]", "list"), ('"x"', "str"), ("3", "int"),
+    ])
+    def test_a_document_of_the_wrong_type_is_unreadable_when_a_type_is_expected(
+            self, tmp_path: Path, content, got) -> None:
+        """`None` is both the failure sentinel and what `null` parses to, so without
+        this a `null` document returned silently, and a list reached a caller's
+        `.get()` and raised (#236 review)."""
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        path.write_text(content, encoding="utf-8")
+        seen: list[Exception] = []
+
+        assert read_json_tolerantly(path, on_unreadable=seen.append, expected=dict) is None
+        assert len(seen) == 1 and isinstance(seen[0], TypeError)
+        assert f"got {got}" in str(seen[0]) and "JSON object" in str(seen[0])
+
+    def test_the_expected_type_passes_through_untouched(self, tmp_path: Path) -> None:
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        path.write_text("[1, 2]", encoding="utf-8")
+
+        assert read_json_tolerantly(path, on_unreadable=_never, expected=list) == [1, 2]
+
+    def test_without_an_expected_type_any_document_is_returned(self, tmp_path: Path) -> None:
+        """A guard, passing with or without the change: the default stays as it was."""
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        path.write_text("[1, 2]", encoding="utf-8")
+
+        assert read_json_tolerantly(path, on_unreadable=_never) == [1, 2]
+
+    def test_invalid_utf8_is_the_case_the_two_readers_disagreed_on(
+            self, tmp_path: Path) -> None:
+        """`UnicodeDecodeError` is a ValueError subclass, so neither sibling catches it.
+
+        Named directly because this is the exception whose omission was the
+        original bug: `OSError` does not cover it and neither does
+        `json.JSONDecodeError`.
+        """
+        import json
+
+        from studio.utils.atomic_io import read_json_tolerantly
+
+        path = tmp_path / "cache.json"
+        path.write_bytes(b"\xff\xfe")
+        seen: list[Exception] = []
+
+        assert read_json_tolerantly(path, on_unreadable=seen.append) is None
+        assert not isinstance(seen[0], (OSError, json.JSONDecodeError))
+
+
+def _never(exc: Exception) -> None:
+    raise AssertionError(f"a readable document must not report a failure: {exc}")

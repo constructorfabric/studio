@@ -651,6 +651,17 @@ def _handle_section_header_line(  # pylint: disable=too-many-return-statements
     if indent_len > 0 and not (state.in_menu and section_name in MENU_SUB_HEADERS):
         return True
     state.section = section_name
+    # Per block, not per UNIT. PDSL.md states the cap twice and both times per block --
+    # "A `RULES` block may contain at most 5 rules" and authoring rule 7, "Keep each
+    # `RULES` block compact: maximum 5 rules". The only other reset is on a UNIT/MENU
+    # line, so two 3-rule blocks in one UNIT accumulated to 6 and emitted PDSL601 while
+    # neither block exceeded anything. A linter's false positive is expensive in a
+    # particular way: it teaches people to work around the rule instead of following it.
+    #
+    # `do_count` deliberately keeps its per-UNIT reset -- PDSL600 says "UNIT exceeds the
+    # N-action DO cap", so that one is a whole-unit budget by design.
+    if section_name == "RULES":
+        state.rules_count = 0
     state.menu_expected = 1 if state.in_menu and section_name == "OPTIONS" else None
     return True
 

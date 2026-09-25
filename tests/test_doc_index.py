@@ -522,6 +522,24 @@ class TestCachePersistence:
         # level (WARNING), not buried at debug.
         assert any(r.levelname == "WARNING" for r in caplog.records)
 
+    @pytest.mark.parametrize("content", ["[]", '"x"', "null"])
+    def test_a_cache_of_the_wrong_type_is_a_warned_miss_not_a_crash(
+        self, tmp_path: Path, monkeypatch, caplog, studio_logger_propagates, content
+    ):
+        """A list or a string reached `cached.get("etag")` and raised
+        `AttributeError`; `null` returned silently. Measured on `main` as well
+        (#236 review)."""
+        monkeypatch.setattr("studio.utils.files.find_studio_directory", lambda *_a, **_k: tmp_path)
+        f = _write(tmp_path)
+        save_doc_index(f, build_doc_index(f))
+        for cache_file in (tmp_path / ".cache" / "doc-index").glob("*.json"):
+            cache_file.write_text(content, encoding="utf-8")
+
+        with caplog.at_level("WARNING"):
+            assert load_doc_index(f) is None
+        assert any("unreadable" in r.getMessage() and "JSON object" in r.getMessage()
+                   for r in caplog.records if r.levelname == "WARNING")
+
     def test_cmd_doc_index_rebuilds_cleanly_after_corrupt_cache(self, tmp_path: Path, capsys, monkeypatch):
         """CodeRabbit PR #108: prove the corrupt-cache fallback at the
         CLI/exit-code level, not just load_doc_index() in isolation."""
@@ -1643,3 +1661,42 @@ class TestCmdDocIndex:
             set_json_mode(orig)
         assert rc == 0
         assert "Covers A." in capsys.readouterr().out
+
+
+class TestACacheThatCannotBeDecodedIsACacheMiss:
+    """The sibling reader, `_load_escalation_file`, already documents why
+    `UnicodeDecodeError` needs naming: it is a ValueError subclass, so neither
+    `OSError` nor `json.JSONDecodeError` catches it. That reasoning was applied there
+    and missed in `_read_cache_file`, so a doc-index cache holding invalid UTF-8 — a
+    truncated write, a killed process — propagated out of every caller instead of
+    being discarded and rebuilt.
+    """
+
+    def test_invalid_utf8_returns_none_instead_of_raising(
+            self, tmp_path: Path, caplog) -> None:
+        from studio.utils import doc_index as di
+
+        cache = tmp_path / "index.json"
+        cache.write_bytes(b'{"total_lines": \xff\xfe}')
+
+        with caplog.at_level(logging.WARNING):
+            assert di._read_cache_file(cache) is None
+
+        assert any("unreadable" in r.getMessage() for r in caplog.records)
+
+    def test_malformed_json_still_returns_none(self, tmp_path: Path) -> None:
+        """The pre-existing behaviour must survive the added exception type."""
+        from studio.utils import doc_index as di
+
+        cache = tmp_path / "index.json"
+        cache.write_text("{not json at all", encoding="utf-8")
+
+        assert di._read_cache_file(cache) is None
+
+    def test_a_readable_cache_is_still_returned(self, tmp_path: Path) -> None:
+        from studio.utils import doc_index as di
+
+        cache = tmp_path / "index.json"
+        cache.write_text('{"total_lines": 12}', encoding="utf-8")
+
+        assert di._read_cache_file(cache) == {"total_lines": 12}

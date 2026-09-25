@@ -16,11 +16,15 @@ don't need.
 from __future__ import annotations
 
 import errno
+import json
+import logging
 import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import Any, Callable, Optional, TypeVar
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -32,7 +36,84 @@ T = TypeVar("T")
 _LOCK_POLL_INTERVAL_SECONDS = 0.05
 
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-discard
+def _close_quietly(fd: int) -> None:
+    """Close a descriptor on the failure path, without becoming the failure.
+
+    `_discard` below is wrapped for exactly this reason and this call was not, one line
+    apart in the same `except` block: `os.close` can raise too (EBADF on a descriptor
+    already invalidated by whatever went wrong), and would then propagate in place of
+    the `fdopen` error that explains it -- the janitor's error replacing the fire, which
+    is the bug this block exists to prevent (#236 review).
+    """
+    try:
+        os.close(fd)
+    except OSError as exc:
+        logger.debug("atomic write: temp descriptor could not be closed: %s", exc)
+
+
+def _discard(tmp_path: Path) -> None:
+    """Remove a temp file on the failure path, without becoming the failure.
+
+    ``unlink`` inside an ``except`` block is itself a call that can raise -- a
+    read-only directory, a vanished mount -- and when it did, its exception replaced
+    the one that explained what actually went wrong: the caller was handed the
+    janitor's error instead of the fire. Cleanup reports at debug and gets out of the
+    way, so the original traceback is what propagates.
+    """
+    try:
+        tmp_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.debug("atomic write: temp file %s could not be removed: %s", tmp_path, exc)
+# @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-discard
+
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
+def read_json_tolerantly(
+        path: Path, *, on_unreadable: Callable[[Exception], None],
+        expected: Optional[type] = None) -> Any:
+    """Read *path* as JSON, or return ``None`` once *on_unreadable* has been told why.
+
+    With *expected*, a document that parses to anything else is unreadable too,
+    reported the same way. ``None`` was both the failure sentinel and what JSON
+    ``null`` parses to, so a manifest holding ``null`` returned silently where a
+    corrupt one warned; and a cache holding a list or a string reached a caller's
+    ``cached.get(...)`` and raised ``AttributeError`` (#236 review, the second
+    measured on ``doc_index`` and present on ``main`` too). Both callers expect
+    an object, so both pass ``expected=dict``.
+
+    The tolerant-read contract two caches need identically: a cache whose file
+    exists but cannot be turned back into an object is a cache miss, not an
+    error to propagate. What it deliberately does not own is the reporting --
+    each caller passes *on_unreadable* so the warning keeps its own logger and
+    its own wording, naming the thing the reader cares about (a doc-index cache
+    path, an OKF bundle's source path) rather than whatever this helper was
+    handed.
+
+    So the single-sourced part is the exception tuple, which is the part that
+    drifted. ``UnicodeDecodeError`` is a ``ValueError`` subclass, so neither
+    ``OSError`` nor ``json.JSONDecodeError`` catches it; it was named in one of
+    the two readers and missed in the other, and invalid UTF-8 in a cache
+    propagated out of every caller of the one that missed it. Adding a fourth
+    exception here now reaches both readers at once, which is the property this
+    extraction exists to buy (#236 review).
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        on_unreadable(exc)
+        return None
+    if expected is not None and not isinstance(data, expected):
+        on_unreadable(TypeError(
+            f"expected a JSON {_JSON_NAMES.get(expected, expected.__name__)}, "
+            f"got {'null' if data is None else type(data).__name__}"))
+        return None
+    return data
+
+
+_JSON_NAMES = {dict: "object", list: "array"}
+
+
 def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> None:
     """Write ``content`` to ``path`` atomically: temp file + ``os.replace``,
     so a reader racing a concurrent writer sees either the old complete
@@ -47,11 +128,30 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     tmp_path = Path(tmp_name)
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as tmp_fh:
+        tmp_fh = os.fdopen(fd, "w", encoding=encoding)
+    except BaseException:
+        # `os.fdopen` takes ownership of the descriptor only once it succeeds. When it
+        # raises -- an unknown encoding, memory pressure -- the descriptor was neither
+        # wrapped nor closed by anyone, and leaked for the life of the process.
+        #
+        # `BaseException`, not `Exception`: a Ctrl-C landing between `mkstemp` and
+        # `fdopen` raises `KeyboardInterrupt`, which is not an `Exception`, so an
+        # `except Exception` here leaks exactly the descriptor and temp file this
+        # block exists to reclaim -- and does so in the case a person is most likely
+        # to repeat. The bare `raise` re-raises the interrupt untouched, so nothing
+        # about how the process dies changes; only the cleanup is added (#236 review).
+        _close_quietly(fd)
+        _discard(tmp_path)
+        raise
+    try:
+        with tmp_fh:
             tmp_fh.write(content)
         os.replace(tmp_path, path)
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
+    except BaseException:
+        # Same reasoning as above. `with tmp_fh` closes the handle on any exit, but
+        # only this block removes the temp file, so an interrupt during `write` or
+        # `os.replace` would otherwise strand a `.tmp` beside the target.
+        _discard(tmp_path)
         raise
 # @cpt-end:cpt-studio-algo-traceability-validation-atomic-io:p1:inst-atomic-write
 

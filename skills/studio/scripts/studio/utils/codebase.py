@@ -732,18 +732,30 @@ _DEFAULT_IGNORED_DIR_NAMES = frozenset(
     {"node_modules", ".git", ".venv", "venv", "build", "dist", "vendor", ".tox", "__pycache__"}
 )
 
+#: What `Path.resolve()` raises on a path it cannot follow. A symlink loop is a
+#: `RuntimeError` up to Python 3.12 and an `OSError` from 3.13 on; CI runs 3.11
+#: to 3.14, and catching `OSError` alone let one loop in a registered tree abort
+#: the whole scan on half of them (#236 review, measured on 3.12.3).
+_UNRESOLVABLE = (OSError, RuntimeError)
+
 # Files larger than this are skipped (with a warning) rather than fully read. A
 # consumer learns that a file was declined from `read_code_file`'s FILE_TOO_LARGE
 # error code, so no public alias of the number is needed.
 _MAX_CODE_FILE_BYTES = 2_000_000
 
 
-def _is_in_default_ignored_dir(file_path: Path, root: Path) -> bool:
-    """Return whether *file_path* sits under a conventional non-source directory."""
+def _is_in_default_ignored_dir(resolved_file: Path, resolved_root: Path) -> bool:
+    """Return whether *resolved_file* sits under a conventional non-source directory.
+
+    Both arguments are already resolved. They used to be resolved here, which
+    made this the second of three walks of the same path in the only loop that
+    calls it -- and re-resolved the unchanging root once per candidate
+    (#236 review).
+    """
     try:
-        rel_parts = file_path.resolve().relative_to(root.resolve()).parts
-    except (OSError, ValueError) as exc:
-        _warn_codebase(f"failed to resolve {file_path} relative to {root}: {exc}")
+        rel_parts = resolved_file.relative_to(resolved_root).parts
+    except ValueError as exc:
+        _warn_codebase(f"failed to place {resolved_file} relative to {resolved_root}: {exc}")
         return False
     return any(part in _DEFAULT_IGNORED_DIR_NAMES for part in rel_parts[:-1])
 
@@ -757,6 +769,7 @@ def resolve_entry_code_files(
     extensions: List[str],
     *,
     project_root: Path,
+    seen: Optional[Set[Path]] = None,
 ) -> Tuple[List[Path], int]:
     """Code files one registry codebase entry covers, and how many were excluded.
 
@@ -771,6 +784,17 @@ def resolve_entry_code_files(
       outside the project under a name that looks local;
     * resolved containment, because a symlinked *directory* escapes the project
       by a different route than a symlinked file.
+
+    ``seen`` makes the count honest across *several* entries. Deduplication was
+    within one entry's walk only, so a caller iterating overlapping entries -- one
+    registered directory inside another -- counted every file in the overlap once per
+    covering entry, in the file list *and* in the excluded total. Pass a set shared
+    across the loop and each path is decided once, wherever it is first reached; the
+    set is updated in place. Omit it and behaviour is exactly as before.
+
+    Here rather than in the caller because this function is the single shared exclusion
+    policy, and the first fix for this put the dedupe in one caller and left the
+    excluded tally double-counting (constructorfabric/studio#236 review).
 
     The excluded count is returned rather than logged so the caller can report
     its own denominator: "scanned N, excluded M" is checkable where a bare file
@@ -787,11 +811,61 @@ def resolve_entry_code_files(
     # This also covers the single-file case, which previously returned the path
     # unconditionally: an entry resolving to a file outside the project was
     # refused by `list-ids` and read by `validate` and `spec-coverage`.
-    if _escapes_project(code_path, root):
+    #
+    # Resolved once, here, and handed on: to the containment test, to the
+    # single-file identity, and to the walk as the base it measures against. Each
+    # used to resolve the entry for itself (#236 review).
+    try:
+        resolved_entry = code_path.resolve()
+    except _UNRESOLVABLE as exc:
+        _warn_codebase(f"failed to resolve {code_path}: {exc}")
+        return [], 1
+    if _escapes_project(code_path, root, resolved=resolved_entry):
         return [], 1
     if code_path.is_file():
+        # The single-file entry goes through `seen` like any other candidate.
+        # It used to return unconditionally, so a file registered in its own right
+        # *and* covered by a directory entry was counted under both -- which is the
+        # double count `seen` was added to end, surviving in the one branch that
+        # skipped it. It has to work both ways round, too: registering it here is
+        # what makes a later directory entry skip it, and the entries are walked in
+        # whatever order the registry lists them (#236 review).
+        if not _claim(seen, resolved_entry):
+            return [], 0              # decided under an earlier entry; neither file nor skip
         return [code_path], 0
+    return _walk_directory_entry(code_path, resolved_entry, extensions, root, seen)
 
+
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve-entry-files
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-dedupe-across-entries
+def _claim(seen: Optional[Set[Path]], identity: Path) -> bool:
+    """Record *identity* as decided; False if an earlier entry already decided it.
+
+    With no shared set every path is new, which is the single-entry behaviour.
+    """
+    if seen is None:
+        return True
+    if identity in seen:
+        return False
+    seen.add(identity)
+    return True
+
+
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-dedupe-across-entries
+
+
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-walk-directory-entry
+def _walk_directory_entry(
+    code_path: Path,
+    resolved_code_path: Path,
+    extensions: List[str],
+    root: Path,
+    seen: Optional[Set[Path]],
+) -> Tuple[List[Path], int]:
+    """The directory half of :func:`resolve_entry_code_files`: every candidate under
+    *code_path* with one of *extensions*, judged once, against the shared *seen*."""
     # Candidates are collected before they are judged, so each one is decided
     # once. Judging inside the extension loop counted a single excluded file
     # once per matching extension, which made the excluded total disagree with
@@ -802,33 +876,65 @@ def resolve_entry_code_files(
 
     files: Set[Path] = set()
     excluded = 0
+    # Resolved once per candidate and handed to both checks below. Each of the
+    # three -- the dedup identity, the ignored-directory test, the containment
+    # test -- used to resolve the same path independently, so every scanned file
+    # paid three walks and two of the results were thrown away.
+    #
+    # It also puts the failure in one place. The dedup's `candidate.resolve()`
+    # was the only unguarded one of the three, so an unresolvable candidate -- a
+    # symlink loop, which is a `RuntimeError` up to Python 3.12 and an `OSError`
+    # after -- propagated out of a function whose other two resolutions both
+    # treat that as an ordinary skip. Now it is a skip here too, warned once
+    # instead of twice (#236 review).
     for candidate in candidates:
-        if _is_in_default_ignored_dir(candidate, code_path):
+        try:
+            is_link = candidate.is_symlink()
+            resolved = candidate.resolve()
+        except _UNRESOLVABLE as exc:
+            _warn_codebase(f"failed to resolve {candidate}: {exc}")
             excluded += 1
             continue
-        if _escapes_project(candidate, root):
+        # A symlink is registered under its own path, never under its target's.
+        # Resolving one yields the file it points at, and claiming that identity
+        # made the *real* file -- reached later in this walk or under another
+        # entry -- look already-decided, so it silently left the scan while the
+        # link that displaced it was excluded anyway. `candidates` is a set, so
+        # which of the two came first moved with `PYTHONHASHSEED`: the same tree
+        # scanned twice could report different files (#236 review).
+        if not _claim(seen, candidate.absolute() if is_link else resolved):
+            continue              # decided under an earlier entry; neither file nor skip
+        if _is_in_default_ignored_dir(resolved, resolved_code_path):
+            excluded += 1
+            continue
+        if _escapes_project(candidate, root, resolved=resolved):
             excluded += 1
             continue
         files.add(candidate)
     return sorted(files, key=str), excluded
 
 
-# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve-entry-files
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-walk-directory-entry
 
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-escapes-project
-def _escapes_project(candidate: Path, root: Path) -> bool:
+def _escapes_project(candidate: Path, root: Path, *, resolved: Optional[Path] = None) -> bool:
     """Whether *candidate* is a symlink or resolves outside *root*.
 
     Checked on the resolved path: refusing symlinked files alone still lets a
     symlinked directory inside a registered root carry the scan outside the
     project.
+
+    The symlink test has to run against *candidate* itself -- resolving first is
+    exactly what hides a link -- so a caller that already resolved the path
+    passes it as *resolved* rather than making this resolve it a second time.
     """
     try:
         if candidate.is_symlink():
             return True
-        resolved = candidate.resolve()
-    except OSError as exc:
+        if resolved is None:
+            resolved = candidate.resolve()
+    except _UNRESOLVABLE as exc:
         _warn_codebase(f"failed to resolve {candidate}: {exc}")
         return True
     if resolved == root:
@@ -850,7 +956,7 @@ def _is_ignored_code_file(file_path: Path, ctx) -> bool:
     """
     try:
         rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
-    except (OSError, ValueError) as exc:
+    except (*_UNRESOLVABLE, ValueError) as exc:
         _warn_codebase(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
         return True
     return ctx.meta.is_ignored(rel)
@@ -905,6 +1011,25 @@ class _SourceScanContext:
     meta: object
 
 
+def _note_entry_overlap(code_path: Path, name: str,
+                        seen_entries: List[Tuple[Path, str]]) -> None:
+    """Warn when a registered entry covers ground an earlier one already covers.
+
+    Named, because the registry is what wants correcting: deduplicating quietly would
+    leave the overlap in place for the next reader to rediscover. Both halves are named
+    -- "b overlaps a" is actionable where "b" alone is not (#236 review).
+
+    Appends to *seen_entries* so the next entry is compared against this one.
+    """
+    for earlier_path, earlier_name in seen_entries:
+        if (code_path == earlier_path or earlier_path in code_path.parents
+                or code_path in earlier_path.parents):
+            _warn_codebase(
+                f"codebase entries overlap: {name} overlaps {earlier_name}; files covered "
+                "by both are scanned once")
+    seen_entries.append((code_path, name))
+
+
 def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]:
     """Scan all codebase entries reachable from *scan_ctx* (primary or a workspace source).
 
@@ -917,6 +1042,16 @@ def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]
     scanned = 0
     skipped = 0
     root = scan_ctx.project_root.resolve()
+    # One identity set across every entry, handed to the shared resolver so a file in
+    # an overlap is decided once -- in the file list and in the excluded tally alike.
+    # Deduplicating in this caller instead left `skipped` double-counting, which is
+    # exactly what the first version of this fix did (#236 review).
+    seen_files: Set[Path] = set()
+    # Overlap is reported between *entries*, not between files: with the resolver
+    # deduplicating, a repeated file never reaches this loop twice, and the containment
+    # of one registered path in another is the thing worth reporting anyway -- it names
+    # both halves, and the registry is what wants correcting.
+    seen_entries: List[Tuple[Path, str]] = []
     for cb_entry, _system_node in scan_ctx.meta.iter_all_codebase():
         code_path = (root / cb_entry.path).resolve()
         try:
@@ -924,8 +1059,10 @@ def _scan_codebase_entries(scan_ctx) -> Tuple[List[Dict[str, object]], int, int]
         except ValueError:
             _warn_codebase(f"codebase entry {cb_entry.path!r} resolves outside {root}; skipping")
             continue
+        _note_entry_overlap(code_path, str(cb_entry.path), seen_entries)
         entry_files, entry_excluded = resolve_entry_code_files(
-            code_path, cb_entry.extensions or [".py"], project_root=root
+            code_path, cb_entry.extensions or [".py"], project_root=root,
+            seen=seen_files,
         )
         # Counted as skipped: that total already means "ignored, oversized, or
         # unparsable", and a policy exclusion is the first of those.

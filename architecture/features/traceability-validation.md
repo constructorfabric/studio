@@ -203,6 +203,8 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 **Supporting**:
 - [x] - `p1` - Imports and module setup for query commands (list-ids, where-defined, where-used) - `inst-query-imports`
 - [x] - `p1` - Resolve the code files one registered codebase entry covers, applying the shared exclusion policy and returning how many candidates were excluded - `inst-query-resolve-entry-files`
+- [x] - `p1` - Decide each candidate once across overlapping codebase entries, keyed on a symlink's own path and on any other file's resolved path, so neither the file list nor the excluded count is inflated by the overlap - `inst-query-dedupe-across-entries`
+- [x] - `p1` - Walk a directory entry: collect candidates by extension, resolve each once, and exclude those under a conventional non-source directory or escaping the project - `inst-query-walk-directory-entry`
 - [x] - `p1` - Refuse a candidate that is a symlink or resolves outside the project root, so a link cannot re-open an excluded tree - `inst-query-escapes-project`
 - [x] - `p1` - Argument parsing, context resolution, and artifact collection for query commands - `inst-query-resolve`
 - [x] - `p1` - Deduplicate scan hits per ID, preferring a definition record and surfacing conflicting duplicate definitions - `inst-scan-dedupe`
@@ -626,7 +628,8 @@ Deterministic infrastructure only, matching `doc_index.py`/`tfidf.py`: no LLM ca
 
 Shared by every local cache/bundle writer in this package (`doc_index.py`, `okf.py`) once a second consumer needed the exact same two behaviors a first implementation had already solved once -- extracted rather than reimplemented a second time. Mirrors the fallback shape `decision_log.py`'s own locking already established for this codebase (exclusive `fcntl` lock where available, unlocked elsewhere), kept separate since that module also bakes in log-rotation behavior these callers don't need.
 
-1. [x] - `p1` - Write text to a path atomically: temp file + `os.replace`, so a reader racing a concurrent writer sees either the old complete file or the new complete one, never a torn write - `inst-atomic-write`
+1. [x] - `p1` - Write text to a path atomically: temp file + `os.replace`, so a reader racing a concurrent writer sees either the old complete file or the new complete one, never a torn write; the descriptor `mkstemp` hands back is closed even when `os.fdopen` never takes ownership of it - `inst-atomic-write`
+   - [x] - `p1` - Remove the temp file on the failure path without becoming the failure: `unlink` inside an `except` can raise too, and its exception replaced the one that explained what actually went wrong - `inst-atomic-discard`
 2. [x] - `p1` - Run a read-modify-write callback under an exclusive lock on a sibling lock file, serializing concurrent callers so two overlapping cycles can't each read the same base state and have whichever writes last silently discard the other's update. An optional `timeout` bounds the wait instead of blocking forever (`None` keeps every existing caller's original block-forever behavior unchanged) - `inst-atomic-lock`
 3. [x] - `p1` - Poll for the lock under a bounded timeout via non-blocking `flock` attempts, retrying only the errno that means "someone else holds this lock right now" (`EAGAIN`/`EWOULDBLOCK`) and raising `TimeoutError` once the deadline passes; any other `OSError` (a real filesystem/descriptor failure, not contention) propagates immediately instead of being misdiagnosed as an ordinary wait - `inst-atomic-lock-poll`
 

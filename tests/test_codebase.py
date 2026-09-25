@@ -19,6 +19,13 @@ from studio.utils.codebase import (
 )
 
 
+#: For the tests that build real symlinks. On Windows, creating one needs Developer
+#: Mode or an elevated shell, and without either `symlink_to` raises WinError 1314 --
+#: a failure about the machine, not the code under test (#236 review).
+_NEEDS_SYMLINKS = pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs Developer Mode or elevation on Windows")
+
+
 class _FakeCodebaseEntry:
     def __init__(self, path, extensions):
         self.path = path
@@ -938,3 +945,386 @@ class TestErrorFunction:
         err = error("test", "Message", path=tmp_path, line=1, skip_none=None)
 
         assert "skip_none" not in err
+
+
+class TestOverlappingEntriesAreScannedOnce:
+    """`resolve_entry_code_files` deduplicates within one entry's own walk, and nothing
+    spanned entries. So when one registered entry is a parent of another, every file
+    under the overlap was parsed and counted once per covering entry — inflating
+    `files_scanned` and duplicating each CPT hit, which feeds the coverage numbers. A
+    registry mistake read as *more* coverage rather than as a mistake.
+    """
+
+    def _project(self, tmp_path: Path):
+        nested = tmp_path / "src" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "auth.py").write_text(
+            dedent("""
+                # @cpt-begin:cpt-myapp-feature-auth-flow-login:p1:inst-check-creds
+                def login():
+                    pass
+                # @cpt-end:cpt-myapp-feature-auth-flow-login:p1:inst-check-creds
+            """)
+        )
+        return tmp_path / "src", nested
+
+    def test_a_file_covered_by_two_entries_is_counted_once(self, tmp_path: Path):
+        parent, child = self._project(tmp_path)
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(parent, [".py"]),
+                                  _FakeCodebaseEntry(child, [".py"])])
+
+        hits, scanned, skipped = scan_registered_codebase_references(ctx)
+
+        assert scanned == 1, "the same file must not be parsed once per covering entry"
+        assert len(hits) == 1, "a duplicated hit inflates coverage"
+        assert skipped == 0, "'skipped' means ignored/oversized/unparsable — this was none of those"
+
+    def test_the_overlap_is_reported_rather_than_silently_absorbed(
+            self, tmp_path: Path, caplog):
+        """The registry is the thing that wants correcting. Deduplicating quietly would
+        leave the overlap in place for the next reader to rediscover."""
+        import logging
+
+        parent, child = self._project(tmp_path)
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(parent, [".py"]),
+                                  _FakeCodebaseEntry(child, [".py"])])
+
+        with caplog.at_level(logging.WARNING):
+            scan_registered_codebase_references(ctx)
+
+        assert any("overlap" in r.getMessage() for r in caplog.records)
+
+    def test_entries_that_do_not_overlap_are_unaffected(self, tmp_path: Path):
+        """The dedupe must not start dropping distinct files."""
+        for name in ("a", "b"):
+            d = tmp_path / name
+            d.mkdir()
+            (d / f"{name}.py").write_text(
+                dedent(f"""
+                    # @cpt-begin:cpt-myapp-feature-auth-flow-{name}:p1:inst-x
+                    def f():
+                        pass
+                    # @cpt-end:cpt-myapp-feature-auth-flow-{name}:p1:inst-x
+                """)
+            )
+        ctx = _FakeCtx(tmp_path, [_FakeCodebaseEntry(tmp_path / "a", [".py"]),
+                                  _FakeCodebaseEntry(tmp_path / "b", [".py"])])
+
+        hits, scanned, _skipped = scan_registered_codebase_references(ctx)
+
+        assert scanned == 2
+        assert len(hits) == 2
+
+
+class TestACandidateIsResolvedOnce:
+    """Three independent `resolve()` calls per scanned file, two of them discarded.
+
+    The dedup identity, the ignored-directory test and the containment test each
+    resolved the same path. The dedup's was also the only one of the three that
+    was unguarded, so an unresolvable candidate escaped a function whose other
+    two resolutions both treat that as an ordinary skip (#236 review).
+    """
+
+    def test_each_candidate_is_resolved_exactly_once(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from collections import Counter
+
+        from studio.utils.codebase import resolve_entry_code_files
+
+        (tmp_path / "src").mkdir()
+        target = tmp_path / "src" / "a.py"
+        target.write_text("x = 1", encoding="utf-8")
+
+        counts: Counter[str] = Counter()
+        real_resolve = Path.resolve
+
+        def _counting_resolve(self, *args, **kwargs):
+            counts[str(self)] += 1
+            return real_resolve(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", _counting_resolve)
+
+        files, _ = resolve_entry_code_files(
+            tmp_path / "src", [".py"], project_root=tmp_path, seen=set())
+
+        assert files == [target]
+        assert counts[str(target)] == 1, (
+            f"the candidate was resolved {counts[str(target)]} times, not once")
+
+    def test_an_unresolvable_candidate_is_excluded_rather_than_raised(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The dedup path used to let this propagate out of the whole scan."""
+        from studio.utils.codebase import resolve_entry_code_files
+
+        (tmp_path / "src").mkdir()
+        good = tmp_path / "src" / "good.py"
+        good.write_text("x = 1", encoding="utf-8")
+        bad = tmp_path / "src" / "bad.py"
+        bad.write_text("x = 2", encoding="utf-8")
+
+        real_resolve = Path.resolve
+
+        def _resolve_or_loop(self, *args, **kwargs):
+            if self.name == "bad.py":
+                raise OSError(40, "Too many levels of symbolic links")
+            return real_resolve(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", _resolve_or_loop)
+
+        files, excluded = resolve_entry_code_files(
+            tmp_path / "src", [".py"], project_root=tmp_path, seen=set())
+
+        assert files == [good], "one unresolvable file must not lose the rest of the scan"
+        assert excluded == 1, "the unresolvable file still has to count against the total"
+
+
+class TestASingleFileEntryIsDedupedToo:
+    """`seen` makes the count honest across entries — in every branch, not most.
+
+    The single-file branch returned before `seen` was consulted, so a file both
+    registered in its own right and covered by a directory entry was counted
+    under both. That is the exact double count `seen` was added to end, surviving
+    in the one branch that skipped it (#236 review).
+    """
+
+    @staticmethod
+    def _entry(path, root, seen):
+        from studio.utils.codebase import resolve_entry_code_files
+        return resolve_entry_code_files(path, [".py"], project_root=root, seen=seen)
+
+    def test_a_file_already_counted_under_a_directory_is_not_counted_again(
+            self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        target = tmp_path / "src" / "a.py"
+        target.write_text("x = 1", encoding="utf-8")
+        seen: set = set()
+
+        first, _ = self._entry(tmp_path / "src", tmp_path, seen)
+        second, excluded = self._entry(target, tmp_path, seen)
+
+        assert first == [target]
+        assert second == [], "the directory entry already covered this file"
+        assert excluded == 0, "a file decided earlier is neither counted nor excluded"
+
+    def test_it_works_in_the_other_order_too(self, tmp_path: Path) -> None:
+        """Registry order is not guaranteed, so the file entry must register itself."""
+        (tmp_path / "src").mkdir()
+        target = tmp_path / "src" / "a.py"
+        target.write_text("x = 1", encoding="utf-8")
+        other = tmp_path / "src" / "b.py"
+        other.write_text("y = 2", encoding="utf-8")
+        seen: set = set()
+
+        first, _ = self._entry(target, tmp_path, seen)
+        second, _ = self._entry(tmp_path / "src", tmp_path, seen)
+
+        assert first == [target]
+        assert second == [other], "the file entry did not register itself in `seen`"
+
+    def test_without_a_shared_set_the_behaviour_is_exactly_as_before(
+            self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        target = tmp_path / "src" / "a.py"
+        target.write_text("x = 1", encoding="utf-8")
+
+        first, _ = self._entry(tmp_path / "src", tmp_path, None)
+        second, _ = self._entry(target, tmp_path, None)
+
+        assert first == [target]
+        assert second == [target], "omitting `seen` must not start deduplicating"
+
+
+@_NEEDS_SYMLINKS
+class TestASymlinkNeverClaimsItsTargetsIdentity:
+    """A link resolves to the file it points at, and `seen` is keyed on identity.
+
+    Registering the resolved path for a symlink claimed the *target's* identity,
+    so the real file -- reached later in the same walk, or under another entry --
+    looked already-decided and left the scan, while the link that displaced it was
+    excluded anyway. `candidates` is a set, so which of the two was reached first
+    moved with `PYTHONHASHSEED`: the same tree scanned twice could report
+    different files (#236 review).
+    """
+
+    @staticmethod
+    def _entry(path, root, seen):
+        from studio.utils.codebase import resolve_entry_code_files
+        return resolve_entry_code_files(path, [".py"], project_root=root, seen=seen)
+
+    @staticmethod
+    def _tree(tmp_path):
+        (tmp_path / "src").mkdir()
+        real = tmp_path / "src" / "real.py"
+        real.write_text("x = 1", encoding="utf-8")
+        link = tmp_path / "src" / "link.py"
+        link.symlink_to(real)
+        return real, link
+
+    def test_the_real_file_survives_whichever_was_reached_first(self, tmp_path: Path) -> None:
+        real, _link = self._tree(tmp_path)
+
+        files, _ = self._entry(tmp_path / "src", tmp_path, set())
+
+        assert files == [real], "the symlink displaced the file it points at"
+
+    def test_the_real_file_survives_across_entries_too(self, tmp_path: Path) -> None:
+        """A symlink under one entry must not hide a real file covered by another."""
+        real, link = self._tree(tmp_path)
+        (tmp_path / "other").mkdir()
+        seen: set = set()
+
+        first, _ = self._entry(link, tmp_path, seen)
+        second, _ = self._entry(tmp_path / "src", tmp_path, seen)
+
+        assert first == [], "a symlink entry is still excluded"
+        assert real in second, "the symlink registered its target and hid the real file"
+
+    def test_a_link_reached_by_two_overlapping_entries_is_excluded_once(
+            self, tmp_path: Path) -> None:
+        """Keying on its own path has to keep the exclusion deduped, too.
+
+        Two registered directories where one contains the other, which is the
+        overlap `seen` was added for. Both walks reach the same link and the same
+        file; the second must find them already decided.
+        """
+        real, _link = self._tree(tmp_path)
+        seen: set = set()
+
+        first, excluded_first = self._entry(tmp_path, tmp_path, seen)
+        second, excluded_second = self._entry(tmp_path / "src", tmp_path, seen)
+
+        assert first == [real]
+        assert excluded_first == 1, "the link is the one skip"
+        assert second == [], "the file was already decided under the parent entry"
+        assert excluded_second == 0, "the same link was counted against the total twice"
+
+    def test_the_totals_still_add_up(self, tmp_path: Path) -> None:
+        """`scanned + skipped` has to equal what was actually there."""
+        real, _link = self._tree(tmp_path)
+
+        files, excluded = self._entry(tmp_path / "src", tmp_path, set())
+
+        assert files == [real]
+        assert excluded == 1, "two candidates, one file and one link: the link is the skip"
+
+
+@_NEEDS_SYMLINKS
+class TestASymlinkLoopIsAnOrdinaryExclusion:
+    """A loop in a registered tree is one unreadable candidate, not a failed scan.
+
+    `Path.resolve()` raises `RuntimeError` on a loop up to Python 3.12 and `OSError`
+    from 3.13; the handlers caught only the second, so on 3.11 and 3.12 one loop
+    aborted the whole scan (#236 review). Built from real links rather than a
+    patched `resolve`, because the defect *was* which exception the real call
+    raises -- a fake that raises `OSError` is exactly the test that passed while
+    the scan crashed. On 3.13+ this passes with or without the fix.
+    """
+
+    @staticmethod
+    def _looped_tree(tmp_path: Path) -> Path:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "ok.py").write_text("x = 1\n", encoding="utf-8")
+        (src / "a.py").symlink_to("b.py")
+        (src / "b.py").symlink_to("a.py")
+        return src
+
+    def test_the_scan_survives_and_counts_the_loop_as_excluded(self, tmp_path: Path) -> None:
+        from studio.utils.codebase import resolve_entry_code_files
+
+        src = self._looped_tree(tmp_path)
+
+        files, excluded = resolve_entry_code_files(src, [".py"], project_root=tmp_path)
+
+        assert [f.name for f in files] == ["ok.py"]
+        assert excluded == 2, "each link of the loop is one excluded candidate"
+
+    def test_a_shared_seen_set_does_not_change_that(self, tmp_path: Path) -> None:
+        from studio.utils.codebase import resolve_entry_code_files
+
+        src = self._looped_tree(tmp_path)
+        seen: set = set()
+
+        files, excluded = resolve_entry_code_files(src, [".py"], project_root=tmp_path, seen=seen)
+
+        assert [f.name for f in files] == ["ok.py"] and excluded == 2
+
+    def test_a_loop_as_the_entry_itself_is_not_an_error(self, tmp_path: Path) -> None:
+        """A guard, not a regression test: `exists()` is False on a loop, so the entry
+        is dropped before anything resolves it, with or without the fix. Pinned so
+        that reordering those two checks cannot bring the crash back."""
+        from studio.utils.codebase import resolve_entry_code_files
+
+        (tmp_path / "x.py").symlink_to("y.py")
+        (tmp_path / "y.py").symlink_to("x.py")
+
+        assert resolve_entry_code_files(tmp_path / "x.py", [".py"], project_root=tmp_path) == ([], 0)
+
+
+class TestAnUnresolvableEntryIsOneExclusion:
+    """The entry itself is resolved once, up front, and a failure there is one
+    excluded entry -- for a file entry and a directory entry alike. That guard had no
+    test of its own; the loop tests only reach the candidates inside an entry
+    (#236 review)."""
+
+    @staticmethod
+    def _entry_cannot_resolve(monkeypatch, entry: Path, exc: Exception) -> None:
+        real = Path.resolve
+
+        def _resolve(self, *args, **kwargs):
+            if self == entry:
+                raise exc
+            return real(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", _resolve)
+
+    @pytest.mark.parametrize("exc", [OSError(40, "Too many levels of symbolic links"),
+                                     RuntimeError("Symlink loop")],
+                             ids=["oserror", "runtimeerror"])
+    @pytest.mark.parametrize("kind", ["file", "directory"])
+    def test_the_entry_is_excluded_not_raised(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind, exc) -> None:
+        from studio.utils.codebase import resolve_entry_code_files
+
+        if kind == "file":
+            entry = tmp_path / "one.py"
+            entry.write_text("x = 1\n", encoding="utf-8")
+        else:
+            entry = tmp_path / "src"
+            entry.mkdir()
+            (entry / "one.py").write_text("x = 1\n", encoding="utf-8")
+        self._entry_cannot_resolve(monkeypatch, entry, exc)
+        # The module's own warning helper, not caplog: whether the `studio` logger
+        # propagates depends on which CLI test ran first in the process.
+        from studio.utils import codebase
+        warned: list[str] = []
+        monkeypatch.setattr(codebase, "_warn_codebase", warned.append)
+
+        assert resolve_entry_code_files(entry, [".py"], project_root=tmp_path) == ([], 1)
+        assert len(warned) == 1 and str(entry) in warned[0], (
+            "an excluded entry with nothing said is indistinguishable from an empty one")
+
+
+@_NEEDS_SYMLINKS
+class TestADirectoryAliasDoesNotDoubleCountALink:
+    """A link reached through a directory symlink aliasing its own directory is one
+    excluded candidate, not two (#236 review). Measured on 3.11.15, 3.12.3 and
+    3.14.4: `rglob` does not descend into a symlinked directory, so the alias
+    route is never walked and `candidate.absolute()` never sees two spellings of
+    one link. Pinned rather than canonicalised: resolving each link's parent would
+    be a second resolve per candidate, the cost #236 removed. If a Python release
+    starts following directory links in `rglob`, this is the test that says so."""
+
+    def test_the_link_is_excluded_once(self, tmp_path: Path) -> None:
+        from studio.utils.codebase import resolve_entry_code_files
+
+        real = tmp_path / "real"
+        real.mkdir()
+        (real / "ok.py").write_text("x = 1\n", encoding="utf-8")
+        (real / "target.py").symlink_to("ok.py")
+        (tmp_path / "alias").symlink_to("real", target_is_directory=True)
+
+        files, excluded = resolve_entry_code_files(tmp_path, [".py"], project_root=tmp_path)
+
+        assert [f.name for f in files] == ["ok.py"]
+        assert excluded == 1

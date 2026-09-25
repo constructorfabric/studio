@@ -11,6 +11,7 @@ IMPORTANT: This module MUST NOT contain business logic.
 """
 
 # @cpt-algo:cpt-studio-algo-core-infra-route-command:p1
+import os
 import sys
 import logging
 from pathlib import Path
@@ -20,9 +21,35 @@ from typing import Callable, List, Optional
 from .utils import decision_log
 
 _CLI_STDERR_HANDLER_NAME = "studio-cli-stderr"
+_LOG_LEVEL_ENV = "CF_STUDIO_LOG_LEVEL"
 
 
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
+def _studio_log_level() -> int:
+    """The level the `studio` logger family runs at, WARNING unless overridden.
+
+    WARNING is the right default: these diagnostics share stderr with command
+    output, and a CLI that narrates its own cache reads is a CLI people stop
+    reading. But pinning it unconditionally made every `logger.debug` in the
+    package unreachable through the shipped CLI -- including the atomic-write
+    cleanup diagnostics added precisely so that a failed write could be
+    investigated. They could be read from a test's `caplog` and from nowhere
+    else, which is not what "reports at debug" is supposed to mean
+    (#236 review).
+
+    An environment variable rather than a flag because it has to work for every
+    command without each one growing an argument, and because the person who
+    needs it is usually re-running a command that already failed. An
+    unrecognised value falls back to WARNING rather than failing the command:
+    this knob exists to investigate a problem, so it must not become one.
+    """
+    requested = os.environ.get(_LOG_LEVEL_ENV, "").strip().upper()
+    if not requested:
+        return logging.WARNING
+    level = logging.getLevelName(requested)
+    return level if isinstance(level, int) else logging.WARNING
+
+
 def _configure_studio_logging() -> None:
     """Route studio diagnostics to stderr with a stable handler."""
     studio_logger = logging.getLogger("studio")
@@ -38,7 +65,7 @@ def _configure_studio_logging() -> None:
     handler.set_name(_CLI_STDERR_HANDLER_NAME)
     handler.setFormatter(logging.Formatter("%(message)s"))
     studio_logger.addHandler(handler)
-    studio_logger.setLevel(logging.WARNING)
+    studio_logger.setLevel(_studio_log_level())
     studio_logger.propagate = False
 
 
