@@ -482,9 +482,15 @@ cfs where-defined --id <id>
 Find where an ID is referenced.
 
 ```
-cfs where-used --id <id>
-cfs where-used --id <id> --include-code
+cfs where-used [--id] <id> [--artifact PATH] [--include-definitions] [--include-code]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `<id>` / `--id <id>` | The ID to look up, positionally or by flag |
+| `--artifact PATH` | Scan only this artifact |
+| `--include-definitions` | Also list the ID's definitions, typed `definition` |
+| `--include-code` | Also scan registered codebase paths for `@cpt-*` markers (below) |
 
 `--include-code` also scans code files under Studio-registered `codebase`
 paths (declared in `artifacts.toml`) for `@cpt-*` marker references — it does
@@ -497,19 +503,38 @@ oversized, or unparsable".
 **Output** (JSON):
 ```json
 {
-  "id": "cpt-studio-fr-core-init",
+  "id": "cpt-studio-component-traceability-engine",
+  "artifacts_scanned": 52,
+  "count": 23,
   "references": [
     {
-      "file": "architecture/DESIGN.md",
-      "line": 62,
-      "context": "inline_reference"
+      "artifact": "/path/to/project/architecture/ADR/0011-cpt-studio-adr-structured-id-format-v1.md",
+      "artifact_type": "ADR",
+      "line": 98,
+      "kind": null,
+      "type": "reference",
+      "checked": false
     }
-  ],
-  "total": 3
+  ]
 }
 ```
 
-**Exit**: 0.
+- `count` equals the length of `references`.
+- `artifact` is an absolute path. `artifact_type` is the artifact's kind, or `CODE` for a code reference.
+- `type` is `reference`, `definition` (only with `--include-definitions`), or the code marker's type.
+- `kind` is `null` for artifact references; code references carry their marker's kind.
+- `checked` is the reference's task state; `source` is added when the artifact belongs to a workspace source.
+- `--include-code` adds `code_files_scanned` and, when non-zero, `code_files_skipped`.
+
+No references is an answer, not a failure: `count` is `0` and the exit code is `0`.
+That is also what an ID that exists nowhere returns, because a scan cannot tell an
+unreferenced ID from a mistyped one. Use `where-defined`, which exits `2` for an
+unknown ID, when that distinction matters.
+
+If the target cannot be resolved — an `--artifact` that does not exist, no ID given,
+no Studio project — the command prints `{"status": "ERROR", "message": "..."}`.
+
+**Exit**: 0 = the scan ran (with or without references), 1 = the target could not be resolved.
 
 ---
 

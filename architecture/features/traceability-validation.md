@@ -187,7 +187,9 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 - User runs `cfs get-content --id <id>` → content block under the ID heading returned
 
 **Error Scenarios**:
-- ID not found in any artifact → empty result with exit code 2
+- `where-defined` / `get-content` for an ID that is not defined in any artifact → not-found result with exit code 2
+- `where-used` / `list-ids` with nothing to report → empty result with exit code 0: no references and no matches are answers, not failures
+- Target cannot be resolved (no Studio project, empty ID, missing `--artifact`) → `ERROR` with exit code 1
 
 **Steps**:
 1. [x] - `p1` - User invokes one of: `list-ids [--kind K] [--pattern P]`, `where-defined --id <id>`, `where-used --id <id>`, `get-content --id <id>` - `inst-user-query`
@@ -918,7 +920,7 @@ The system **MUST** scan code files for `@cpt-*` markers (scope markers and bloc
 
 - [x] `p1` - **ID**: `cpt-studio-dod-traceability-validation-queries`
 
-The system **MUST** provide CLI commands for navigating the ID graph: `list-ids [--kind K] [--pattern P]` (list definitions matching criteria), `where-defined --id <id>` (find definition location), `where-used --id <id>` (find all references), `get-content --id <id>` (extract content block). All commands **MUST** output JSON, scan all registered artifacts, and use exit codes 0 (found) / 2 (not found).
+The system **MUST** provide CLI commands for navigating the ID graph: `list-ids [--kind K] [--pattern P]` (list definitions matching criteria), `where-defined --id <id>` (find definition location), `where-used --id <id>` (find all references), `get-content --id <id>` (extract content block). All commands **MUST** output JSON, scan all registered artifacts, and exit 1 when the target cannot be resolved. A lookup of one thing — `where-defined`, `get-content` — **MUST** exit 0 when found and 2 when not found. A query whose empty result is itself an answer — `where-used` (no references), `list-ids` (no matches) — **MUST** exit 0 either way.
 
 **Implements**:
 - `cpt-studio-flow-traceability-validation-query`

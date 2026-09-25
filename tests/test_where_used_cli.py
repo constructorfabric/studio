@@ -166,3 +166,49 @@ def test_where_used_include_code_real_scan_through_cli() -> None:
             assert out["references"][0]["artifact"].endswith("impl.py")
         finally:
             os.chdir(cwd)
+
+
+# ------------------------------------------------ the documented contract (#292)
+def _where_used_rc(tmp: str, text: str, argv: list[str], resolve_error=None) -> tuple[int, dict]:
+    """Run the real command over a real artifact, with only target resolution mocked."""
+    artifact = Path(tmp) / "doc.md"
+    artifact.write_text(text, encoding="utf-8")
+    saved = is_json_mode()
+    stdout = io.StringIO()
+    try:
+        set_json_mode(True)
+        with patch(
+            "studio.commands.where_used.resolve_target_and_artifacts",
+            return_value=("cpt-example-thing-x", object(), [(artifact, "FEATURE")], {}, resolve_error),
+        ), redirect_stdout(stdout):
+            rc = cmd_where_used(argv)
+        return rc, json.loads(stdout.getvalue())
+    finally:
+        set_json_mode(saved)
+
+
+def test_contract_found_matches_the_documented_shape() -> None:
+    """`architecture/specs/cli.md` § where-used documents exactly these keys."""
+    with TemporaryDirectory() as tmp:
+        rc, data = _where_used_rc(tmp, "# Doc\n\n`cpt-example-thing-x`\n", ["cpt-example-thing-x"])
+    assert rc == 0
+    assert set(data) == {"id", "artifacts_scanned", "count", "references"}
+    assert data["count"] == len(data["references"]) == 1
+    assert set(data["references"][0]) == {"artifact", "artifact_type", "line", "kind", "type", "checked"}
+    assert Path(data["references"][0]["artifact"]).is_absolute()
+
+
+def test_contract_no_references_is_an_answer_not_a_failure() -> None:
+    """Exit 0 with `count: 0` — the documented contract. It is also what an id that
+    exists nowhere returns, which the spec states so callers use `where-defined`."""
+    with TemporaryDirectory() as tmp:
+        rc, data = _where_used_rc(tmp, "# Doc\n\nnothing here\n", ["cpt-example-thing-x"])
+    assert rc == 0
+    assert data["count"] == 0 and data["references"] == []
+
+
+def test_contract_a_resolution_error_exits_1() -> None:
+    with TemporaryDirectory() as tmp:
+        rc, data = _where_used_rc(tmp, "", ["cpt-example-thing-x"], resolve_error="Artifact not found: x.md")
+    assert rc == 1
+    assert data == {"status": "ERROR", "message": "Artifact not found: x.md"}
