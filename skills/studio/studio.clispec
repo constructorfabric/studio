@@ -684,6 +684,8 @@ OPTIONS:
   --system  <string>  Limit to system slug(s). Can be repeated. Default: all systems.
   --verbose  <boolean>  Include per-file marker details and line ranges
   --output  <path>  Write report to file instead of stdout
+  --requirement  <string>  Limit the --semantic pass to every block implementing this requirement. Can be repeated. Takes a bare <algo>; given an <algo>:<inst> it exits 2 and names --block. A selector matching nothing is reported. Requires --semantic; alone it exits 2.
+  --block  <string>  Limit the --semantic pass to one instruction, <algo>:<inst>. Can be repeated. Not necessarily one block (block ids are not unique); the instruction may be written with or without its source inst- prefix. Given a bare <algo> or an empty instruction it exits 2 and names --requirement. A selector matching nothing is reported. Requires --semantic; alone it exits 2.
 
 EXIT CODES:
   0  Coverage meets thresholds (or no thresholds specified)

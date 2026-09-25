@@ -12,7 +12,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from ..utils import decision_log
 from ..utils.codebase import resolve_entry_code_files
@@ -110,6 +110,27 @@ def _build_spec_coverage_parser() -> argparse.ArgumentParser:
                         help="Attach the advisory semantic-coverage pass — assesses covered/partial/"
                              "wrong/unjudgeable per marked block; never gates status/exit "
                              "(see architecture/features/spec-coverage.md)")
+    parser.add_argument(
+        "--requirement",
+        action="append",
+        default=None,
+        dest="requirements",
+        metavar="<algo>",
+        help="Limit the --semantic pass to every block implementing this requirement. Can be "
+             "repeated. Takes a bare algo id; use --block for a single instruction. "
+             "A selector matching nothing is reported, not silently empty. Default: all blocks.",
+    )
+    parser.add_argument(
+        "--block",
+        action="append",
+        default=None,
+        dest="blocks",
+        metavar="<algo>:<inst>",
+        help="Limit the --semantic pass to one instruction. Can be repeated. Not necessarily one "
+             "block, since block ids are not unique. The instruction may be written with or "
+             "without its source `inst-` prefix. Use --requirement for a whole requirement. "
+             "A selector matching nothing is reported, not silently empty. Default: all blocks.",
+    )
     return parser
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-build-parser
 
@@ -452,7 +473,8 @@ def _attach_semantic_section(args, filtered_files, json_report) -> None:
         ctx = get_context()
         if ctx is None:
             return
-        json_report["semantic"] = run_semantic_pass(ctx, filtered_files, json_report)
+        json_report["semantic"] = run_semantic_pass(
+            ctx, filtered_files, json_report, blocks=getattr(args, "blocks", None))
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("semantic pass failed (advisory, ignored): %s", exc)
         json_report["semantic"] = {"advisory": True, "error": str(exc)}
@@ -499,10 +521,62 @@ def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict
     return json_report, 0 if status == "PASS" else 2
 
 
+def _resolve_selectors(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Optional[List[str]]:
+    """Check `--requirement` and `--block` against each other, and combine them into one list.
+
+    Each flag names one granularity and refuses the other's shape, naming the flag that wants it.
+    Selecting a whole requirement and selecting one instruction have very different blast radii —
+    potentially dozens of blocks across many files against one — and a colon is too small a thing
+    to carry that difference silently (raised in review, #297).
+
+    Both narrow the semantic pass and nothing else, so alone either would filter nothing and say
+    nothing: a full report comes back and a reader reasonably concludes the filter applied. That is
+    the same silent no-op these flags exist to prevent one level down. All of it is caught at parse
+    time, which is before the advisory wall and therefore free to stop.
+
+    They combine into one list because the matcher already accepts either granularity; keeping them
+    apart downstream would duplicate it for no gain. After validation a selector's shape is enough
+    to tell them apart again, which is how the unmatched warning names the right flag.
+    """
+    blocks = getattr(args, "blocks", None) or []
+    requirements = getattr(args, "requirements", None) or []
+
+    if (blocks or requirements) and not getattr(args, "semantic", False):
+        named = "--block" if blocks else "--requirement"
+        parser.error(f"{named} requires --semantic (it narrows the semantic pass only)")
+
+    for selector in requirements:
+        if ":" in selector:
+            parser.error(
+                f"--requirement takes a bare algo id, but got '{selector}'. "
+                f"Use --block {selector} to narrow to one instruction.")
+
+    for selector in blocks:
+        algo, _, inst = selector.partition(":")
+        if not inst:
+            parser.error(
+                f"--block takes '<algo>:<inst>', but got '{selector}'. "
+                f"Use --requirement {algo} to select every block of that requirement.")
+
+    return (requirements + blocks) or None
+
+
+def _selector_flag(selector: str) -> str:
+    """Name the flag a selector arrived on, so the warning quotes what the user actually typed.
+
+    `_resolve_selectors` has already refused every shape that would make this ambiguous, so the
+    colon is a reliable witness: `--requirement` takes a bare algo, `--block` an `<algo>:<inst>`.
+    """
+    return "--block" if ":" in selector else "--requirement"
+
+
 # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
+
 def cmd_spec_coverage(argv: List[str]) -> int:
     """Run spec coverage analysis on registered codebase files."""
-    args = _build_spec_coverage_parser().parse_args(argv)
+    parser = _build_spec_coverage_parser()
+    args = parser.parse_args(argv)
+    args.blocks = _resolve_selectors(parser, args)
 
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
     context = _load_spec_coverage_context()
@@ -656,6 +730,12 @@ def _human_spec_coverage(data: dict) -> None:
         ui.info(f"semantic (advisory, never gates): pass errored, skipped — {semantic['error']}")
     elif semantic:
         from ..utils.semantic_coverage import flagged_lines, summary_line
+        # A --block selector that matched nothing is named BEFORE the summary, because the summary
+        # for an empty selection reads exactly like a clean one. This pass cannot change the exit
+        # code by design, so the message is the whole signal (#196).
+        for selector in semantic.get("unmatched_selectors", []):
+            ui.warn(f"{_selector_flag(selector)} {selector} matched no block "
+                    "— nothing was assessed for it")
         ui.info(summary_line(semantic))
         # Name the flagged requirements beneath the count, so a reader can act without --json
         # (#195). Rendering only; the section is advisory, exactly like the summary line above it.

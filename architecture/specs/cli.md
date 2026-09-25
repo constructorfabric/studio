@@ -842,7 +842,7 @@ cfs map [--out PATH] [--format html|json] [--config FILE] [--no-source] [--local
 Measure CDSL marker coverage in codebase files.
 
 ```
-cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--system SLUG]... [--verbose] [--output PATH]
+cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--system SLUG]... [--verbose] [--output PATH] [--requirement ALGO]... [--block ALGO:INST]...
 ```
 
 | Option | Description |
@@ -854,6 +854,8 @@ cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity 
 | `--system SLUG` | Limit coverage to one or more system slugs; can be repeated and matches nested child systems |
 | `--verbose` | Include per-file marker details in output |
 | `--output PATH` | Write report to file instead of stdout |
+| `--requirement ALGO` | Limit the `--semantic` pass to every block implementing this requirement; can be repeated. Takes a bare `<algo>`; given an `<algo>:<inst>` it exits 2 and names `--block`. A selector matching nothing is reported rather than silently empty. Requires `--semantic`; alone it exits 2 |
+| `--block ALGO:INST` | Limit the `--semantic` pass to one instruction; can be repeated. Not necessarily one block, as block ids are not unique. The instruction may be written with or without its source `inst-` prefix. Given a bare `<algo>` or an empty instruction it exits 2 and names `--requirement`. A selector matching nothing is reported rather than silently empty. Requires `--semantic`; alone it exits 2 |
 
 **Drivers**: `cpt-studio-fr-core-traceability`, `cpt-studio-fr-core-cdsl`
 

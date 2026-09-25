@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from .codebase import CodeFile
 from .context import collect_artifacts_to_scan
@@ -129,20 +129,90 @@ def _pairings_for_files(files: Sequence[Path], definitions: Dict[str, Path],
 # @cpt-end:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-pairings
 
 
+# @cpt-begin:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-selector-forms
+def _selector_forms(selector: str) -> List[str]:
+    """The selector as typed, and with a leading ``inst-`` stripped from its instruction part.
+
+    A marker in the source reads ``@cpt-begin:<algo>:p1:inst-scov-run``, but the parser drops the
+    ``inst-`` prefix, so the ``block_id`` is ``<algo>:scov-run``. Copying the id straight out of
+    the code — the obvious thing to do — therefore matched nothing, and an unmatched selector
+    reads as "this requirement is clean". Every example first written for this flag used the
+    ``inst-`` form and none of them worked; caught by a test built from real pairings rather than
+    hand-made ones.
+
+    Both forms are accepted rather than demanding the reader know an internal prefix rule. The
+    bare ``<algo>`` form has no instruction part and is returned unchanged.
+
+    A list, not a tuple: the length varies with the selector — one form or two — and a tuple
+    reads as a fixed record shape, which is what ``python:S8495`` objects to.
+    """
+    algo, sep, inst = selector.partition(":")
+    if sep and inst.startswith("inst-"):
+        return [selector, f"{algo}:{inst[len('inst-'):]}"]
+    return [selector]
+# @cpt-end:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-selector-forms
+
+
+# @cpt-begin:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-select
+def _select_blocks(pairings: List[eval_semantic.Pairing],
+                   selectors: Optional[Sequence[str]]
+                   ) -> Tuple[List[eval_semantic.Pairing], List[str]]:
+    """Narrow ``pairings`` to the named selectors, and name any selector that matched nothing.
+
+    A ``block_id`` is ``<algo>:<inst>``, and one requirement is shared across an algo's blocks, so
+    a selector is accepted at either granularity: the bare ``<algo>`` selects every block
+    implementing that requirement, ``<algo>:<inst>`` narrows to that instruction. It is **not** a
+    promise of one block: block ids are not unique in this repository — of the 2632 ``@cpt-begin``
+    markers in ``.py`` files, 283 ids are carried by more than one block, the worst by ten — so
+    the narrow form selects every block carrying that id. (Counted over the markers in the tree,
+    not over one run's pairings: the pairing set is scoped to the files in the coverage report,
+    so a count taken from it would not be a fact about the repository.) The prefix rule is
+    anchored on the colon rather than a bare ``startswith`` — otherwise ``cpt-studio-algo-eval``
+    would silently also select ``cpt-studio-algo-eval-harness``, handing a reviewer a wider set
+    than they asked for while looking like it worked.
+
+    Unmatched selectors are **returned, not dropped**. An empty result and a typo are the same
+    picture on screen — no findings — and they mean opposite things. The caller surfaces them; it
+    cannot raise, because this whole pass is walled off from the status and exit code by design.
+    """
+    if not selectors:
+        return pairings, []
+    wanted = list(dict.fromkeys(selectors))          # de-duplicated, order preserved for the report
+    kept: List[eval_semantic.Pairing] = []
+    matched: set[str] = set()
+    for pairing in pairings:
+        block_id = pairing.block_id
+        for selector in wanted:
+            if any(block_id == form or block_id.startswith(f"{form}:")
+                   for form in _selector_forms(selector)):
+                matched.add(selector)
+                kept.append(pairing)
+                break
+    return kept, [selector for selector in wanted if selector not in matched]
+# @cpt-end:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-select
+
+
 # @cpt-begin:cpt-studio-algo-semantic-coverage-pass:p1:inst-scov-run
 def run_semantic_pass(ctx: object, files: Sequence[Path], coverage_report: Dict[str, object],
-                      judge_fn: Optional[eval_semantic.SemanticJudgeFn] = None) -> Dict[str, object]:
+                      judge_fn: Optional[eval_semantic.SemanticJudgeFn] = None,
+                      blocks: Optional[Sequence[str]] = None) -> Dict[str, object]:
     """Build pairings from the marked blocks, run the advisory engine, return the ``semantic`` section.
 
     ``coverage_report`` is passed straight to ``assess`` for scoping (``excluded`` / ``whole_file_claims``,
     tolerated absent → empty scope). With no ``judge_fn`` wired, weak links are ``unjudgeable`` and no
     model is called. The returned dict is advisory on its face (``"advisory": True``) and is never read
     by the coverage gate — the caller attaches it after the status/exit are set.
+
+    ``blocks`` narrows the pass to named selectors (see ``_select_blocks``). A selector that
+    matches nothing is reported back under ``unmatched_selectors`` rather than silently
+    yielding an empty pass: "no findings" and "you spelled it wrong" must not look alike.
     """
     definitions = _definition_map(ctx)
     pairings = _pairings_for_files(files, definitions, getattr(ctx, "project_root", None))
+    pairings, unmatched = _select_blocks(pairings, blocks)
     result = eval_semantic.assess(pairings, judge_fn=judge_fn, report=coverage_report)
     return {
+        **({"unmatched_selectors": unmatched} if unmatched else {}),
         "assessed": result.assessed,
         "presumed_covered": result.presumed_covered,
         "unjudgeable": [{"block_id": gap.block_id, "path": gap.path,
