@@ -988,7 +988,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 - **Purpose**: Deliver Studio's routing precondition (`ROOT_AGENTS_PIPELINE_INSTRUCTION`) through each harness's native on-session-start hook, instead of unconditionally writing it into every project's root `AGENTS.md`/`CLAUDE.md`, while keeping file injection as a verified fallback and making routing delivery reversible per harness through a single disablement switch.
 
-- **Depends On**: `cpt-studio-feature-agent-integration`, `cpt-studio-feature-subagent-registration`
+- **Depends On**: `cpt-studio-feature-agent-integration`, `cpt-studio-feature-subagent-registration`, `cpt-studio-feature-core-infra` (keeps this feature's per-machine per-harness state file and execution receipt out of version control via core-infra's gitignore-footprint mechanism)
 
 - **Scope**:
   - One cross-harness `on_session_start` abstraction compiled per harness inside `cfs generate-agents`, driven by a dedicated per-harness hook-capability table (event name, config path, gating opt-in) rather than by the model/provider matrix
@@ -1074,6 +1074,6 @@ cpt-studio-feature-core-infra
 - `cpt-studio-feature-developer-experience` requires `cpt-studio-feature-traceability-validation`: VS Code plugin and doctor delegate to validator and traceability engine
 - `cpt-studio-feature-workspace` requires `cpt-studio-feature-core-infra` and `cpt-studio-feature-traceability-validation`: workspace federation builds on core context loading and extends cross-repo ID resolution in the traceability engine
 - `cpt-studio-feature-ralphex-delegation` requires `cpt-studio-feature-execution-plans` and `cpt-studio-feature-version-config`: delegation compiles exported plans from Studio's authoritative decomposition model and persists ralphex integration settings via the config manager
-- `cpt-studio-feature-hook-based-session-routing` requires `cpt-studio-feature-agent-integration` and `cpt-studio-feature-subagent-registration`: it reuses the per-(tool, provider) matrix and the generation pipeline that own routing-precondition delivery today, and it resolves the project-level `SessionStart` hook deferral recorded in `cpt-studio-adr-ai-cli-extensibility-subagents`
+- `cpt-studio-feature-hook-based-session-routing` requires `cpt-studio-feature-agent-integration`, `cpt-studio-feature-subagent-registration`, and `cpt-studio-feature-core-infra`: it reuses the per-(tool, provider) matrix and the generation pipeline that own routing-precondition delivery today, it resolves the project-level `SessionStart` hook deferral recorded in `cpt-studio-adr-ai-cli-extensibility-subagents`, and it relies on core-infra's gitignore-footprint mechanism to keep its per-machine state file and execution receipt out of version control
 - `cpt-studio-feature-artifact-quality` requires `cpt-studio-feature-spec-coverage`: its judged detectors reuse the advisory semantic seam (never-gating, honest-unjudgeable, evidence checks) that spec-coverage introduced
 - SDLC-specific features (F4, F6, F9) have been extracted to `constructorfabric/studio-kit-sdlc` per `cpt-studio-adr-extract-sdlc-kit`
