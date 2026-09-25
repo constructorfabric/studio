@@ -11,10 +11,16 @@ from __future__ import annotations
 
 import os
 import subprocess
+
+from _sandbox import MAX_DIAGNOSTIC_CHARS, child_env, redact_secrets, safe_head
 import time
 from typing import Any
 
 CLAUDE_BIN = "claude"
+
+#: Namespaces the grader's `claude` CLI is entitled to -- the same as the provider it
+#: grades for. It inherited the whole runner environment until #229's review.
+_CHILD_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")
 CALL_TIMEOUT_S = 180
 
 # The grader must reason carefully about which of the five cf-skill
@@ -28,8 +34,21 @@ GRADER_MODEL = os.environ.get("CF_UX_GRADER_MODEL", "claude-sonnet-4-6")
 GRADER_EFFORT = os.environ.get("CF_UX_GRADER_EFFORT", "medium")
 
 
+#: This file's own ceiling, shorter than the providers': a grader's stderr is a
+#: rubric failure, not a transcript, and 400 has always been enough of it.
+_STDERR_CHARS = MAX_DIAGNOSTIC_CHARS - 100
+
+# Derived rather than written, because "shorter than the providers'" was a claim in a
+# comment and nothing held it to it: lowering `MAX_DIAGNOSTIC_CHARS` for an unrelated
+# size budget would have left this one larger than the cap it documents itself as
+# staying under, with every test still green (#229 review).
+assert _STDERR_CHARS < MAX_DIAGNOSTIC_CHARS
+
+
 def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
     started = time.monotonic()
+    # One mapping for spawning and for redacting, as in the other two providers.
+    env = child_env(*_CHILD_ENV_PREFIXES)
     try:
         proc = subprocess.run(
             [
@@ -44,6 +63,7 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
             capture_output=True, text=True,
             timeout=CALL_TIMEOUT_S, check=False,
             stdin=subprocess.DEVNULL,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return {"error": f"grader timed out after {CALL_TIMEOUT_S}s"}
@@ -53,10 +73,14 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
     duration = time.monotonic() - started
     if proc.returncode != 0:
         return {
-            "error": f"grader exited {proc.returncode}: {proc.stderr.strip()[:400]}",
+            "error": f"grader exited {proc.returncode}: "
+                     f"{safe_head(proc.stderr.strip(), env, _STDERR_CHARS)}",
             "metadata": {"duration_s": round(duration, 2)},
         }
     return {
-        "output": proc.stdout.strip(),
+        # The judge's verdict is model-authored too, and it is stored in the
+        # report beside the answers it judged (#229 review, found as the third
+        # sibling of the two providers that review named).
+        "output": redact_secrets(proc.stdout.strip(), env),
         "metadata": {"duration_s": round(duration, 2)},
     }

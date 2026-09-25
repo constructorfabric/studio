@@ -11,7 +11,8 @@ import time
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from _sandbox import SandboxError, sandbox
+from _sandbox import (MAX_DIAGNOSTIC_CHARS, SandboxError, child_env, isolated_home,
+                      redact_secrets, safe_head, safe_tail, sandbox)
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +32,64 @@ DEFAULT_EFFORT = os.environ.get("CF_UX_CLAUDE_EFFORT", "low")
 # Skill *execution* asks for permission, and `-p` has nobody to ask, so the
 # request is denied, the `cf` skill never runs, and the agent answers directly
 # instead — returning something plausible that the shared rubric then scores as
-# though Studio had behaved well. The codex provider has always passed the
-# equivalent pair (`--sandbox workspace-write`, `approval_policy="never"`); this
-# is the same decision for this CLI, and the asymmetry was the bug.
+# though Studio had behaved well. The codex provider has always passed
+# `approval_policy="never"`, which is this decision for that CLI.
 #
-# Scoped to a throwaway tree: `_sandbox.sandbox()` builds a fresh directory
-# under the system temp dir and wipes it in `finally`, on `atexit`, and on
-# SIGTERM/SIGINT/SIGHUP. The one exception is `CF_UX_SHARED_SANDBOX`, which
-# points a run at a directory the caller chose — noted in the README, because
-# there the agent writes where it is told to.
+# What codex passes beside it, `--sandbox workspace-write`, has no counterpart
+# here: that one is an OS boundary on writes, and this CLI's invocation has none.
+# `_sandbox.sandbox()` builds a fresh directory under the system temp dir and
+# wipes it in `finally`, on `atexit`, and on SIGTERM/SIGINT/SIGHUP — but `cwd=`
+# is where the child works, not a wall it cannot see past. What stands between
+# an ungated tool call and the runner's home is `PERMISSION_DENY_RULES` below,
+# and, on request, `CF_UX_ISOLATED_HOME`. The README says what neither covers.
 PERMISSION_MODE = "bypassPermissions"
+
+#: What `bypassPermissions` does not switch off. An ungated Read, Write or Bash
+#: resolves `~` and absolute paths against the runner's real home, so the mode
+#: alone left `~/.ssh`, `~/.aws` and the CLI's own settings one tool call away
+#: (#229 review). Deny rules hold in every mode -- the docs say so, and it was
+#: measured on 2.1.281 for Read, Write, and a `cat`/`head` of the path in Bash --
+#: so the runner's home is closed to the child's tools. Named by absolute path
+#: as well as by `~`, because under `CF_UX_ISOLATED_HOME` the two differ and it
+#: is the absolute one that matters. The CLI's own reads of its configuration
+#: are not tool calls and are unaffected.
+#:
+#: A check on what the call *names*, not an OS boundary: a path reached through
+#: indirection is not caught. Every refusal is reported in the metadata as
+#: `permission_denials` and warned about, because a run in which the model
+#: reached for the runner's home is itself a finding for this suite.
+_DENY_TOOLS = ("Read", "Edit")   # `Edit` rules govern Write and the other editors too
+_CLAUDE_CREDENTIAL = ".claude/.credentials.json"
+_LOG_TOOL_DENIED = (
+    "cf-ux: the deny rules refused %d tool call(s) that named the runner's home: %s"
+)
+
+
+def permission_deny_rules(runner_home: Path | None = None) -> tuple[str, ...]:
+    """The rules for this run, built from the runner's home (`Path.home()` by default)."""
+    runner_home = str(runner_home or Path.home()).lstrip("/")
+    return tuple(
+        f"{tool}({pattern})"
+        for tool in _DENY_TOOLS
+        for pattern in (f"//{runner_home}/**", "~/**")
+    )
+
+
+def _permission_settings() -> str:
+    """The `--settings` argument: inline JSON, so nothing is written for the child to find."""
+    return json.dumps({"permissions": {"deny": list(permission_deny_rules())}})
+
+
+def _claude_credential() -> Path:
+    """Where this runner keeps the CLI's credential: under `CLAUDE_CONFIG_DIR` when set."""
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(config_dir) if config_dir else Path.home() / ".claude") / ".credentials.json"
+
+#: Namespaces the `claude` CLI is entitled to: its own credential and configuration.
+#: `CF_UX_` is deliberately absent -- every CF_UX_* variable is read by this Python
+#: parent (model, effort, sandbox reuse), never by the binary (#229 review).
+_CHILD_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")
+
 
 #: Cost ceiling for one scenario. Named because the error text for a transcript
 #: that stops early has to be able to point at it as a cause.
@@ -107,6 +156,30 @@ _LOG_AMBIGUOUS_BYPASS = (
 _LOG_AMBIGUOUS_MATCH = (
     "cf-ux claude provider: matched %r in a Skill input that also names %s; "
     "the verdict may rest on a field that is not the skill name"
+)
+
+#: The ceiling every other diagnostic string in this module is already held to.
+#: `skill_call_inputs` was the exception, and the one field carrying content a
+#: model -- and so, transitively, a crafted prompt -- decides the length of.
+#: Shared with the sibling providers rather than owned here. All three return
+#: diagnostics, and a redact-then-cut helper that lives in one of them is a
+#: helper the other two quietly do without -- which is exactly how they kept the
+#: truncate-then-redact bug this module had already fixed. Aliased so the call
+#: sites below read as they did.
+_MAX_DIAGNOSTIC_CHARS = MAX_DIAGNOSTIC_CHARS
+_safe_head = safe_head
+_safe_tail = safe_tail
+
+#: The CLI's own version, as its `init` event reports it. Recorded because the
+#: verdict in `_skill_trace` rests on an output shape that was measured rather
+#: than promised: absent `is_error` means a successful skill result. Nothing
+#: pins the installed CLI, so when that shape changes this is what says which
+#: version the run was graded against, instead of leaving it to be rediscovered.
+_VERSION_KEY = "claude_code_version"
+
+_LOG_MISSING_EVIDENCE = (
+    "cf-ux: the %r call has no tool_result in the transcript at all; the run is "
+    "graded failed, since nothing reported what it did"
 )
 
 
@@ -242,6 +315,22 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
                 # collision can only take evidence away, never invent it.
                 calls[block.get("id")] = block.get("input") or {}
             elif kind == "tool_result":
+                # `bool()`, deliberately. For this CLI an **absent** `is_error` is
+                # what a successful skill result looks like: measured against
+                # claude-code 2.1.276, a successful `Skill` result carries exactly
+                # `{"type", "tool_use_id", "content"}` with content "Launching skill:
+                # cf" and no `is_error` at all, while `Bash` and `Read` results in the
+                # same transcript carry it explicitly as false or true.
+                #
+                # #229's review read the missing field as missing evidence and this
+                # was briefly a three-state read. Running the suite showed the cost:
+                # every successful skill invocation graded unproven, the harness red
+                # across the board. Here the absence of the field is the tool's
+                # success signal, not an absence of evidence.
+                #
+                # A call with no `tool_result` at all is a different thing, and is
+                # still refused below -- that is the case "the transcript said
+                # nothing" actually describes.
                 results[block.get("tool_use_id")] = bool(block.get("is_error"))
 
     named = {call_id: _invoked_names(payload) for call_id, payload in calls.items()}
@@ -322,6 +411,11 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
             f"a {_SKILL_TOOL} ran but none of them named {_SKILL_NAME!r}",
         )
     if any(call_id not in results for call_id in targeted):
+        # No `tool_result` for the call at all: a stream cut short after the call, a
+        # killed CLI. Warned as well as graded, because "failed because the
+        # transcript stops" is a different thing from "failed because the skill said
+        # so", and only the log tells them apart afterwards.
+        logger.warning(_LOG_MISSING_EVIDENCE, _SKILL_NAME)
         return _SkillTrace(
             "failed", names, inputs,
             f"the {_SKILL_NAME!r} call has no result in the transcript",
@@ -329,6 +423,20 @@ def _skill_trace(events: list[dict[str, Any]], raw: str) -> _SkillTrace:
     return _SkillTrace(
         "failed", names, inputs, f"every {_SKILL_NAME!r} call came back as an error",
     )
+
+
+def _cli_version(events: list[dict[str, Any]]) -> str | None:
+    """What the CLI said it was, from its `init` event.
+
+    `None` when the stream carried no such event or no such field: an older or
+    newer CLI is exactly the case this records, so not finding it is an answer
+    and not a reason to fail.
+    """
+    for event in events:
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            version = event.get(_VERSION_KEY)
+            return version if isinstance(version, str) else None
+    return None
 
 
 def _bypassing_names(named: dict[Any, list[str]], results: dict[Any, bool]) -> list[str]:
@@ -366,9 +474,35 @@ def _bypassing_names(named: dict[Any, list[str]], results: dict[Any, bool]) -> l
 _GRADED_STATES = frozenset({"ran", "bypassed"})
 
 
-def _baseline(cwd: Path, started: float) -> dict[str, Any]:
-    """What every return carries, answer or error: how long it took, and where."""
-    return {"duration_s": round(time.monotonic() - started, 2), "sandbox": str(cwd)}
+def _baseline(cwd: Path, started: float, home: Path | None = None) -> dict[str, Any]:
+    """What every return carries, answer or error: how long it took, where, and
+    whose home the child had -- an isolated run is a different measurement."""
+    return {
+        "duration_s": round(time.monotonic() - started, 2),
+        "sandbox": str(cwd),
+        "home": "isolated" if home is not None else "runner",
+    }
+
+
+def _denials(payload: dict[str, Any], env: dict) -> list[dict[str, str]]:
+    """The tool calls the deny rules refused, as the result event reports them.
+
+    Each is reduced to the tool and its input: the input is model-authored, so it
+    goes through the same redact-then-cut as every other model-authored field.
+    An unfamiliar shape reads as no denials rather than as an error.
+    """
+    reported = payload.get("permission_denials")
+    if not isinstance(reported, list):
+        return []
+    denials = []
+    for entry in reported:
+        if not isinstance(entry, dict):
+            continue
+        denials.append({
+            "tool": str(entry.get("tool_name", "?")),
+            "input": safe_head(json.dumps(entry.get("tool_input"), sort_keys=True), env),
+        })
+    return denials
 
 
 def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
@@ -400,6 +534,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "--effort", DEFAULT_EFFORT,
         # Without this the skill is denied and the run scores the fallback path.
         "--permission-mode", PERMISSION_MODE,
+        # And with only this, the runner's home is one tool call away.
+        "--settings", _permission_settings(),
         # The transcript, not just the answer: tool-use events are the only place
         # the run says whether the skill was reached. `--verbose` is what makes
         # `-p` emit the intermediate events rather than the result alone.
@@ -408,10 +544,15 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "--max-budget-usd", MAX_BUDGET_USD,
         invoked,
     ]
+    # Built once: the same mapping spawns the child and defines what must not come back
+    # out of it. A CLI that echoes its own key in an error -- an ordinary shape for one
+    # -- would otherwise put it in a stored promptfoo report (#229 review).
+    home = isolated_home(cwd, _claude_credential(), _CLAUDE_CREDENTIAL)
+    env = child_env(*_CHILD_ENV_PREFIXES, tmpdir=cwd, home=home)
     try:
         proc = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, env=env,
         )
     except subprocess.TimeoutExpired:
         # Handled here rather than in `call_api` so it carries the same baseline
@@ -419,13 +560,14 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         # run that burned 850s from one that failed at once, and can say where.
         return {
             "error": f"claude timed out after {CALL_TIMEOUT_S}s",
-            "metadata": _baseline(cwd, started),
+            "metadata": _baseline(cwd, started, home),
         }
-    base = _baseline(cwd, started)
+    base = _baseline(cwd, started, home)
 
     if proc.returncode != 0:
         return {
-            "error": f"claude exited {proc.returncode}: {proc.stderr.strip()[:500]}",
+            "error": f"claude exited {proc.returncode}: "
+                     f"{_safe_head(proc.stderr.strip(), env)}",
             "metadata": base,
         }
 
@@ -455,7 +597,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
                 **base,
                 "events_seen": len(events),
                 "last_event_type": events[-1].get("type") if events else None,
-                "stdout_tail": proc.stdout.strip()[-500:],
+                "stdout_tail": _safe_tail(proc.stdout.strip(), env),
             },
         }
 
@@ -465,7 +607,8 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # What to show when the answer is withheld from the grader: the text itself,
     # or a repr of whatever non-text thing arrived instead of one. Kept as a
     # string so no branch below can slice a dict.
-    withheld = (output_text if is_text else "" if answer is None else repr(answer))[:500]
+    withheld = _safe_head(
+        output_text if is_text else "" if answer is None else repr(answer), env)
     trace = _skill_trace(events, proc.stdout)
     state, detail = trace.state, trace.detail
     metadata = {
@@ -475,9 +618,20 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         "total_cost_usd": payload.get("total_cost_usd"),
         "skill_state": state,
         "skills_invoked": trace.names,
-        "skill_call_inputs": trace.inputs,
+        "skill_call_inputs": [
+            _safe_head(item, env) for item in trace.inputs
+        ],
+        # Held to the same ceiling as its neighbours. It comes from the CLI's own
+        # init event rather than from a model, but a diagnostic field that is
+        # bounded only because of where it happens to come from is one source
+        # change away from not being bounded.
+        "claude_code_version": _safe_head(_cli_version(events) or "", env) or None,
         "skill_match_other_candidates": list(trace.other_candidates),
+        "permission_denials": _denials(payload, env),
     }
+    if metadata["permission_denials"]:
+        logger.warning(_LOG_TOOL_DENIED, len(metadata["permission_denials"]),
+                       ", ".join(sorted({d["tool"] for d in metadata["permission_denials"]})))
     cost = payload.get("total_cost_usd")
 
     # A turn that stopped short is not an answer, even when the skill did load:
@@ -517,7 +671,12 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
         # and that is what `skill_state` in the metadata is for -- a bypass
         # counted as an ordinary pass would make the routing finding invisible
         # in every report downstream.
-        result = {"output": output_text, "metadata": metadata}
+        #
+        # Redacted, not capped: the grader needs the whole answer, and a
+        # length ceiling on it would change what is scored. It was the one
+        # returned field without redaction, and the one most likely to carry
+        # a key -- it is what the model chose to say (#229 review).
+        result = {"output": redact_secrets(output_text, env), "metadata": metadata}
     if isinstance(cost, (int, float)):
         result["cost"] = float(cost)
     return result

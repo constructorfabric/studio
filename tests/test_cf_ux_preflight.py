@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -318,3 +319,133 @@ class TestTheVersionParsingItself:
         monkeypatch.setattr(preflight.subprocess, "run", refuse)
 
         assert preflight._node_version() is None
+
+
+class TestTheClaudeVersionFloor:
+    """The grading reads a result with no `is_error` key as a success.
+
+    That is the shape claude-code emits, measured rather than promised by any
+    schema. On a CLI older than the measurement the shape is unknown, and every
+    verdict in the run would be wrong the same way — silently, since a misread
+    success looks exactly like a success (#229 review).
+    """
+
+    @staticmethod
+    def _claude_says(monkeypatch, stdout: str, returncode: int = 0,
+                     raises: Exception | None = None):
+        def _fake_run(cmd, **_kwargs):
+            if raises is not None:
+                raise raises
+            return subprocess.CompletedProcess(cmd, returncode, stdout, "")
+
+        monkeypatch.setattr(preflight.subprocess, "run", _fake_run)
+
+    def test_the_measured_version_passes(self, monkeypatch):
+        floor = ".".join(map(str, preflight.CLAUDE_MIN))
+        self._claude_says(monkeypatch, f"{floor} (Claude Code)")
+
+        assert preflight.check_claude() == []
+
+    def test_the_floor_covers_the_deny_rule_measurement_too(self, monkeypatch):
+        """The deny rules were measured on a later release than the grading shape, and
+        they are the security claim; a CLI between the two used to pass (#229 review)."""
+        assert preflight.CLAUDE_MIN == max(preflight.CLAUDE_DENY_RULES_MEASURED,
+                                           preflight.CLAUDE_SHAPE_MEASURED)
+        below = min(preflight.CLAUDE_DENY_RULES_MEASURED, preflight.CLAUDE_SHAPE_MEASURED)
+        self._claude_says(monkeypatch, f"{self._dotted(below)} (Claude Code)")
+
+        problem = "\n".join(preflight.check_claude())
+
+        assert self._dotted(preflight.CLAUDE_MIN) in problem and "deny rules" in problem
+
+    @staticmethod
+    def _dotted(version) -> str:
+        return ".".join(map(str, version))
+
+    def test_each_claim_is_named_with_its_own_release(self, monkeypatch):
+        """Naming only the floor attributed both claims to it, and the grading shape
+        was measured on an older release (#229 review). Read from the constants, so
+        moving either one cannot leave this checking yesterday's numbers."""
+        self._claude_says(monkeypatch, "2.1.100 (Claude Code)")
+        lines = preflight.check_claude()
+
+        shape = next(i for i, line in enumerate(lines) if "is_error" in line)
+        deny = next(i for i, line in enumerate(lines) if "deny rules" in line)
+        assert self._dotted(preflight.CLAUDE_SHAPE_MEASURED) in " ".join(lines[shape:shape + 2])
+        assert self._dotted(preflight.CLAUDE_DENY_RULES_MEASURED) in " ".join(lines[deny:deny + 2])
+
+    def test_a_newer_version_passes(self, monkeypatch):
+        """A floor, not a pin: refusing anything newer would be the thing that breaks."""
+        self._claude_says(monkeypatch, "3.0.1 (Claude Code)")
+
+        assert preflight.check_claude() == []
+
+    def test_an_older_version_is_refused_with_the_reason(self, monkeypatch):
+        self._claude_says(monkeypatch, "2.1.100 (Claude Code)")
+
+        problem = "\n".join(preflight.check_claude())
+
+        assert "2.1.100" in problem
+        assert ".".join(map(str, preflight.CLAUDE_MIN)) in problem
+        assert "is_error" in problem, "the reason has to name the shape it depends on"
+        assert f"{preflight.SKIP_CLAUDE_CHECK_ENV}=1" in problem, (
+            "and the way to run anyway, since the message is the only place a person meets it")
+
+    @pytest.mark.parametrize("scenario", ["unreadable", "nonzero", "missing"])
+    def test_an_unanswerable_version_is_not_invented_into_a_problem(
+            self, monkeypatch, scenario):
+        """Unknown is not broken — the rule the rest of this file follows."""
+        if scenario == "unreadable":
+            self._claude_says(monkeypatch, "not a version at all")
+        elif scenario == "nonzero":
+            self._claude_says(monkeypatch, "", returncode=1)
+        else:
+            self._claude_says(monkeypatch, "", raises=FileNotFoundError("no claude"))
+
+        assert preflight.check_claude() == []
+
+    @staticmethod
+    def _main_without_the_other_checks(monkeypatch, *, claude):
+        """Drive the real `main` -- not `--node-only`, which returns before the claude
+        branch is ever reached, so a test through it passed whatever the opt-out did
+        (#229 review)."""
+        monkeypatch.setattr(preflight, "check_node", list)
+        monkeypatch.setattr(preflight, "check_codex_model", lambda _model: [])
+        monkeypatch.setattr(preflight, "check_claude", claude)
+        return preflight.main([])
+
+    def test_the_opt_out_skips_it_and_says_so(self, monkeypatch, capsys):
+        monkeypatch.setenv(preflight.SKIP_CLAUDE_CHECK_ENV, "1")
+
+        def _must_not_be_called():
+            raise AssertionError("the version check ran despite the opt-out")
+
+        assert self._main_without_the_other_checks(monkeypatch, claude=_must_not_be_called) == 0
+        err = capsys.readouterr().err
+        assert "claude version check skipped" in err and preflight.SKIP_CLAUDE_CHECK_ENV in err
+
+    @pytest.mark.parametrize("value", ["0", "false", "no", "true"])
+    def test_any_other_value_keeps_the_check_and_names_the_value(
+            self, monkeypatch, capsys, value):
+        monkeypatch.setenv(preflight.SKIP_CLAUDE_CHECK_ENV, value)
+        ran = []
+
+        assert self._main_without_the_other_checks(
+            monkeypatch, claude=lambda: ran.append(True) or []) == 0
+        assert ran, f"{value!r} switched the check off"
+        assert repr(value) in capsys.readouterr().err
+
+    def test_unset_runs_the_check_silently(self, monkeypatch, capsys):
+        monkeypatch.delenv(preflight.SKIP_CLAUDE_CHECK_ENV, raising=False)
+        ran = []
+
+        self._main_without_the_other_checks(monkeypatch, claude=lambda: ran.append(True) or [])
+
+        assert ran and capsys.readouterr().err == ""
+
+    def test_a_refusal_reaches_the_exit_code(self, monkeypatch, capsys):
+        monkeypatch.delenv(preflight.SKIP_CLAUDE_CHECK_ENV, raising=False)
+
+        assert self._main_without_the_other_checks(
+            monkeypatch, claude=lambda: ["claude 2.1.100 is older than 2.1.276"]) == 1
+        capsys.readouterr()

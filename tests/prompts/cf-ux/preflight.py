@@ -39,6 +39,35 @@ NODE_MIN = (22, 22, 0)
 #: newest few are where a qualifying one will be. Probed newest first.
 NVM_PROBE_LIMIT = 8
 
+#: The claude-code release the grading was measured against. `_skill_trace` reads a
+#: `tool_result` with no `is_error` key as a success, because that is the shape this
+#: CLI emits for a successful `Skill` call -- measured, not promised by any schema.
+#: A CLI that starts emitting `is_error: false` explicitly, or stops emitting the key
+#: on failures, would be misread silently and every verdict in the run would be
+#: wrong in the same direction (#229 review).
+#:
+#: A floor, not a pin: the shape has held since this version, and refusing to run on
+#: anything newer would make the check the thing that breaks the suite. What it
+#: catches is a CLI older than the measurement, where the shape is simply unknown.
+CLAUDE_SHAPE_MEASURED = (2, 1, 276)
+
+#: The release the deny rules were measured on: `--settings` deny rules holding
+#: under `bypassPermissions` for Read, Write, and `cat`/`head`/`find`/`grep -r`/`ls`
+#: of the runner's home in Bash. That is the security claim of the claude
+#: provider, and it was guarded by nothing while the grading shape had a floor
+#: (#229 review). Same reasoning as above: a CLI older than this is unmeasured.
+CLAUDE_DENY_RULES_MEASURED = (2, 1, 281)
+
+#: The floor preflight enforces: the higher of the two, so neither claim runs on a
+#: CLI it was never measured on.
+CLAUDE_MIN = max(CLAUDE_SHAPE_MEASURED, CLAUDE_DENY_RULES_MEASURED)
+
+#: Runs the pilot on a CLI below :data:`CLAUDE_MIN` anyway. Only the exact value
+#: ``1`` counts, as for every other CF_UX_* switch: a bare truthiness test read
+#: ``0`` and ``false`` as "skip", so the spelling that means "keep checking"
+#: switched the check off (#229 review).
+SKIP_CLAUDE_CHECK_ENV = "CF_UX_SKIP_CLAUDE_VERSION_CHECK"
+
 #: Where the `codex` CLI caches what the account may use. Written by the CLI
 #: itself, so consulting it costs nothing and needs no API call -- and when it
 #: is missing or stale, that is a reason to say nothing rather than to refuse.
@@ -143,6 +172,46 @@ def check_node() -> list[str]:
     return problem
 
 
+def check_claude() -> list[str]:
+    """Whether the installed `claude` is at least the release grading was measured on.
+
+    Silent when the version cannot be read at all. `claude --version` not
+    answering is its own failure and the suite will report it far more clearly
+    than a preflight guess would; inventing a problem here from a missing answer
+    would be the "unknown means broken" reading this file avoids everywhere else.
+    """
+    try:
+        proc = subprocess.run(["claude", "--version"], capture_output=True, text=True,
+                              timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if proc.returncode != 0:
+        return []
+
+    have = _version(proc.stdout)
+    if have is None or have >= CLAUDE_MIN:
+        return []
+
+    def _dotted(version: tuple[int, int, int]) -> str:
+        return ".".join(str(part) for part in version)
+
+    # Each claim named with the release it was measured on. Naming only the floor
+    # attributed both to it, and the grading shape was measured on an older one
+    # (#229 review).
+    got = _dotted(have)
+    return [
+        f"claude {got} is older than {_dotted(CLAUDE_MIN)}, the newest of the releases "
+        "this suite's two measurements were taken on:",
+        "  * a successful `Skill` call is recognised by its result carrying no",
+        f"    `is_error` key -- measured on {_dotted(CLAUDE_SHAPE_MEASURED)}; on an older CLI",
+        "    that shape is unknown, and every verdict in the run would be wrong the",
+        "    same way;",
+        "  * the deny rules that keep the unattended child out of your home directory",
+        f"    -- measured on {_dotted(CLAUDE_DENY_RULES_MEASURED)}.",
+        f"  Upgrade, or set {SKIP_CLAUDE_CHECK_ENV}=1 to run anyway.",
+    ]
+
+
 def check_codex_model(model: str) -> list[str]:
     """Whether `codex` still lists the model the pilot is about to ask for.
 
@@ -219,8 +288,31 @@ def main(argv: list[str] | None = None) -> int:
                         "  (read while importing the codex provider; check "
                         "CF_UX_CODEX_CONTEXT)"])
 
+    claude_problems = _claude_problems_unless_skipped()
     return _report(check_node()
+                   + claude_problems
                    + (check_codex_model(DEFAULT_MODEL) if DEFAULT_MODEL else []))
+
+
+def _claude_problems_unless_skipped() -> list[str]:
+    """:func:`check_claude`, unless :data:`SKIP_CLAUDE_CHECK_ENV` is ``1``.
+
+    Either way the person is told. A skip that leaves no trace makes a run graded
+    on an unmeasured CLI indistinguishable afterwards from one that was checked,
+    and a value that is set but is not ``1`` is almost certainly someone who meant
+    one or the other -- so it is named rather than silently read as "check"
+    (#229 review).
+    """
+    value = os.environ.get(SKIP_CLAUDE_CHECK_ENV)
+    if value == "1":
+        print(f"cf-ux preflight: claude version check skipped ({SKIP_CLAUDE_CHECK_ENV}=1); "
+              "verdicts from this run rest on an output shape not measured on this CLI",
+              file=sys.stderr)
+        return []
+    if value:
+        print(f"cf-ux preflight: {SKIP_CLAUDE_CHECK_ENV}={value!r} is not 1, so the "
+              "claude version check runs", file=sys.stderr)
+    return check_claude()
 
 
 def _report(problems: list[str]) -> int:

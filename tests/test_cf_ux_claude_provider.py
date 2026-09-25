@@ -38,6 +38,14 @@ def _skill_call(call_id: str = "t1", name: str = "Skill", skill: str = "cf") -> 
     ]}}
 
 
+def _skill_result_without_flag(call_id: str = "t1") -> dict:
+    """The shape a *successful* skill result actually has: claude-code omits
+    `is_error` entirely when a `Skill` call succeeds."""
+    return {"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": call_id, "content": "..."},
+    ]}}
+
+
 def _skill_result(call_id: str = "t1", *, is_error: bool = False) -> dict:
     return {"type": "user", "message": {"content": [
         {"type": "tool_result", "tool_use_id": call_id, "is_error": is_error, "content": "..."},
@@ -63,8 +71,9 @@ def run_provider(tmp_path, monkeypatch):
         yield tmp_path
 
     def _make(stdout: str, returncode: int = 0, stderr: str = "", raises: Exception | None = None):
-        def _fake_run(cmd, **_kwargs):
+        def _fake_run(cmd, **kwargs):
             seen["cmd"] = list(cmd)
+            seen["kwargs"] = kwargs
             if raises is not None:
                 raise raises
             return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
@@ -646,7 +655,7 @@ class TestAnUnreadableRunIsNeverScored:
         )
 
         assert f"timed out after {claude_provider.CALL_TIMEOUT_S}s" in out["error"]
-        assert set(out["metadata"]) == {"duration_s", "sandbox"}
+        assert set(out["metadata"]) == {"duration_s", "sandbox", "home"}
         assert out["metadata"]["sandbox"] == str(tmp_path)
 
     def test_a_setup_timeout_is_not_blamed_on_the_cli(self, monkeypatch):
@@ -1018,3 +1027,469 @@ class TestBypassingNamesDirectly:
 
         assert trace.state == "bypassed"
         assert "never invoked" in trace.detail
+
+
+# ------------------------------------------------- what the subprocess inherits
+
+class TestTheSubprocessDoesNotInheritTheRunnersSecrets:
+    """The CLI is started with `--permission-mode bypassPermissions`. Whatever the
+    parent is carrying, it should not be carrying it *there*.
+
+    `cwd=` sandboxes the filesystem; it does nothing for environment variables, and
+    `subprocess.run` without `env=` passes the lot. On CI the lot includes
+    GITHUB_TOKEN and cloud credentials.
+    """
+
+    @pytest.mark.parametrize("name", [
+        "GITHUB_TOKEN",
+        "AWS_SECRET_ACCESS_KEY",
+        # A runner carries GitHub's own ephemeral credentials too, and they are exactly
+        # the kind a denylist written today would not have heard of.
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+        "ACTIONS_RUNTIME_TOKEN",
+        # The invariant, not a list: an allowlist excludes what nobody thought of. A
+        # denylist that happened to name the four above would pass the cases above and
+        # fail this one (#229 review).
+        "CF_SOME_VARIABLE_NOBODY_ANTICIPATED",
+    ])
+    def test_an_unrelated_variable_is_not_passed_through(self, run_provider, monkeypatch, name):
+        monkeypatch.setenv(name, "should_not_travel")
+
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        env = seen["kwargs"]["env"]
+        assert name not in env
+        assert "should_not_travel" not in env.values()
+
+    def test_every_allowlisted_name_survives_when_set(self, run_provider, monkeypatch):
+        """The positive half of the invariant, over the whole list rather than a sample."""
+        from _sandbox import ENV_NAMES
+
+        for index, name in enumerate(ENV_NAMES):
+            monkeypatch.setenv(name, f"value-{index}")
+
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        env = seen["kwargs"]["env"]
+        missing = [name for name in ENV_NAMES if env.get(name) is None]
+        assert not missing, f"allowlisted names dropped by the filter: {missing}"
+
+    def test_the_harness_namespace_is_not_forwarded(self, run_provider, monkeypatch):
+        """`CF_UX_*` is read by this Python parent, never by the `claude` binary."""
+        monkeypatch.setenv("CF_UX_CLAUDE_MODEL", "some-model")
+
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert "CF_UX_CLAUDE_MODEL" not in seen["kwargs"]["env"]
+
+    def test_what_the_cli_needs_does_come_through(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/tmp/cfg")
+
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        env = seen["kwargs"]["env"]
+        assert env["ANTHROPIC_API_KEY"] == "sk-test"      # its own credential, not a stray one
+        assert env["CLAUDE_CONFIG_DIR"] == "/tmp/cfg"
+        assert "PATH" in env                              # or `claude` is not findable
+        assert "HOME" in env                              # its config and credential store
+
+    def test_an_env_is_passed_at_all(self, run_provider):
+        """The defect was the absence of the argument, so pin the argument."""
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert seen["kwargs"].get("env") is not None
+
+
+# ------------------------------------ an omitted `is_error` is this CLI's success
+
+class TestAToolResultWithoutIsErrorIsTheSuccessShape:
+    """Measured against claude-code 2.1.276: a successful `Skill` result carries
+    exactly `{"type", "tool_use_id", "content"}`, content "Launching skill: cf", and
+    no `is_error` at all -- while `Bash` and `Read` results in the same transcript
+    carry it explicitly. Reading the omission as missing evidence (#229's first
+    attempt) graded every real successful run as a failure.
+
+    What genuinely proves nothing is a call with no `tool_result` whatsoever, and
+    that is still refused.
+    """
+
+    def test_a_missing_is_error_is_graded_as_a_run(self, run_provider):
+        out, _seen = run_provider(
+            _stream(_skill_call(), _skill_result_without_flag(), _result("the answer")))
+
+        assert out["output"] == "the answer"
+        assert out["metadata"]["skill_state"] == "ran"
+
+    def test_no_tool_result_at_all_is_not_a_run(self, run_provider):
+        """A stream cut short after the call -- nothing ever reported what it did."""
+        out, _seen = run_provider(_stream(_skill_call(), _result("answered anyway")))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
+        assert "no result in the transcript" in out["error"]
+
+    def test_an_explicit_false_is_still_a_run(self, run_provider):
+        out, _seen = run_provider(
+            _stream(_skill_call(), _skill_result(is_error=False), _result("the answer")))
+
+        assert out["output"] == "the answer"
+        assert out["metadata"]["skill_state"] == "ran"
+
+    def test_an_explicit_true_is_still_a_failure(self, run_provider):
+        out, _seen = run_provider(
+            _stream(_skill_call(), _skill_result(is_error=True), _result("answered anyway")))
+
+        assert "output" not in out
+        assert out["metadata"]["skill_state"] == "failed"
+
+
+class TestTheChildsOwnCredentialDoesNotComeBackOut:
+    """The provider hands its CLI a real API key and then returns that CLI's stderr,
+    stdout tail and result text as promptfoo metadata — stored, and read by people. A
+    CLI that echoes its key in an error ("invalid x-api-key: sk-ant-…") would put it in
+    the report. Raised on #229's review.
+    """
+
+    _KEY = "sk-ant-secret-value-not-for-reports"
+
+    def test_a_key_echoed_on_stderr_is_redacted(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._KEY)
+
+        out, _seen = run_provider("", returncode=2, stderr=f"invalid x-api-key: {self._KEY}")
+
+        assert self._KEY not in out["error"]
+        assert "[redacted]" in out["error"]
+
+    def test_a_key_echoed_in_the_stdout_tail_is_redacted(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._KEY)
+
+        out, _seen = run_provider(f"no result event here, but a key: {self._KEY}\n")
+
+        assert self._KEY not in json.dumps(out)
+
+    def test_a_key_in_withheld_output_is_redacted(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._KEY)
+
+        # A skill call with no result: the answer is withheld, and carried in metadata.
+        out, _seen = run_provider(
+            _stream(_skill_call(), _result(f"leaked {self._KEY} in the answer")))
+
+        assert self._KEY not in json.dumps(out)
+
+    def test_ordinary_diagnostics_are_left_readable(self, run_provider, monkeypatch):
+        """Only credential-ish names are redacted. PATH and HOME appear in real
+        diagnostics constantly, and blanking them destroys what a reader needs."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._KEY)
+
+        out, _seen = run_provider("", returncode=2, stderr="command not found: claude")
+
+        assert "command not found: claude" in out["error"]
+
+
+class TestDiagnosticsStayBounded:
+    """`stderr`, `stdout_tail` and `unscored_output` are each sliced before they
+    are returned. `skill_call_inputs` was not — and it is the one field whose
+    length a model, and so a crafted prompt, decides."""
+
+    def test_a_huge_skill_input_is_capped_like_its_siblings(self, run_provider):
+        huge = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill",
+             "input": {"command": "cf", "args": "A" * 50_000}},
+        ]}}
+
+        out, _seen = run_provider(_stream(huge, _skill_result(), _result()))
+
+        for item in out["metadata"]["skill_call_inputs"]:
+            assert len(item) <= claude_provider._MAX_DIAGNOSTIC_CHARS
+
+
+class TestTheCliVersionIsRecorded:
+    """The verdict rests on an output shape that was measured, not promised:
+    an absent `is_error` means success. Nothing pins the installed CLI, so the
+    run records which version it was graded against."""
+
+    def test_the_version_from_the_init_event_reaches_metadata(self, run_provider):
+        init = {"type": "system", "subtype": "init", "claude_code_version": "2.1.276"}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["claude_code_version"] == "2.1.276"
+
+    def test_a_stream_without_one_is_not_an_error(self, run_provider):
+        """An older or newer CLI is the case this records; not finding it is an
+        answer, not a failure."""
+        out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["claude_code_version"] is None
+
+    def test_an_over_long_version_is_capped(self, run_provider):
+        """It comes from the CLI rather than from a model, so the risk is small —
+        but a field bounded only by where it happens to come from is one source
+        change away from not being bounded."""
+        init = {"type": "system", "subtype": "init", "claude_code_version": "9" * 10_000}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        assert len(out["metadata"]["claude_code_version"]) == (
+            claude_provider._MAX_DIAGNOSTIC_CHARS)
+
+    def test_a_version_string_carrying_a_secret_is_redacted(self, run_provider, monkeypatch):
+        secret = "sk-ant-api03-SUPERSECRETVALUE0123456789"
+        monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+        init = {"type": "system", "subtype": "init",
+                "claude_code_version": f"2.1.276 ({secret})"}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        version = out["metadata"]["claude_code_version"]
+        assert secret not in version
+        assert "[redacted]" in version and version.startswith("2.1.276")
+
+    def test_an_empty_version_string_is_none_not_an_empty_string(self, run_provider):
+        """`_safe_head("")` is `""`, and an empty string in metadata reads as a
+        version that was reported as blank rather than one never reported."""
+        init = {"type": "system", "subtype": "init", "claude_code_version": ""}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["claude_code_version"] is None
+
+    def test_a_non_string_version_is_not_passed_through(self, run_provider):
+        init = {"type": "system", "subtype": "init", "claude_code_version": {"major": 2}}
+
+        out, _seen = run_provider(_stream(init, _skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["claude_code_version"] is None
+
+
+class TestACutNeverLandsInsideASecret:
+    """`redact_secrets` matches whole values. Cutting first can land inside a
+    credential, and the surviving prefix is one the redactor no longer
+    recognises — so a size cap, added for safety, leaked the start of a key."""
+
+    _SECRET = "sk-ant-api03-SUPERSECRETVALUE0123456789"
+
+    def test_a_secret_straddling_the_head_cut_does_not_survive(self):
+        limit = claude_provider._MAX_DIAGNOSTIC_CHARS
+        text = "A" * (limit - 10) + self._SECRET
+
+        got = claude_provider._safe_head(text, {"ANTHROPIC_API_KEY": self._SECRET})
+
+        assert self._SECRET[:10] not in got
+        assert "[redacted]" in got
+        assert len(got) <= limit
+
+    def test_a_secret_straddling_the_tail_cut_does_not_survive(self):
+        limit = claude_provider._MAX_DIAGNOSTIC_CHARS
+        text = self._SECRET + "B" * (limit - 10)
+
+        got = claude_provider._safe_tail(text, {"ANTHROPIC_API_KEY": self._SECRET})
+
+        assert self._SECRET[-10:] not in got
+        assert len(got) <= limit
+
+    def test_the_head_cap_still_caps(self):
+        got = claude_provider._safe_head("A" * 10_000, {})
+
+        assert len(got) == claude_provider._MAX_DIAGNOSTIC_CHARS
+
+    def test_the_tail_cap_still_caps(self):
+        """The same ceiling from the other end — asserted, not assumed from its
+        sibling: they are separate functions and only one was pinned."""
+        got = claude_provider._safe_tail("A" * 10_000, {})
+
+        assert len(got) == claude_provider._MAX_DIAGNOSTIC_CHARS
+
+    def test_the_tail_keeps_the_end_and_the_head_keeps_the_start(self):
+        text = "START" + "A" * 10_000 + "END"
+
+        assert claude_provider._safe_head(text, {}).startswith("START")
+        assert claude_provider._safe_tail(text, {}).endswith("END")
+
+    def test_a_straddling_secret_does_not_reach_skill_call_inputs(self, run_provider, monkeypatch):
+        """End to end, through the field the cap was added to."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._SECRET)
+        padding = "A" * (claude_provider._MAX_DIAGNOSTIC_CHARS - 10)
+        call = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill",
+             "input": {"command": "cf", "args": padding + self._SECRET}},
+        ]}}
+
+        out, _seen = run_provider(_stream(call, _skill_result(), _result()))
+
+        for item in out["metadata"]["skill_call_inputs"]:
+            assert self._SECRET[:12] not in item
+
+
+# ------------------------------------ the runner's home is closed to the tools
+
+class TestTheRunnersHomeIsClosedToTheChildsTools:
+    """`bypassPermissions` switches off the prompts, not the deny rules, and `cwd=`
+    is where the child works rather than a wall: an ungated Read or Write resolves
+    `~` and absolute paths against the runner's real home (#229 review). The
+    invocation therefore carries deny rules for that home, and every refusal comes
+    back as metadata -- a run in which the model reached for the runner's home is
+    a finding, not noise.
+
+    What these tests do not claim: that the CLI honours the rules. That was
+    measured on 2.1.281 for Read, Write and Bash, and belongs to whoever can run
+    one; what is pinned here is that the rules are passed, and what they name.
+    """
+
+    @staticmethod
+    def _settings(seen: dict) -> dict:
+        cmd = seen["cmd"]
+        return json.loads(cmd[cmd.index("--settings") + 1])
+
+    def test_the_invocation_carries_deny_rules_for_the_runners_home(self, run_provider):
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        deny = self._settings(seen)["permissions"]["deny"]
+        runner_home = str(Path.home()).lstrip("/")
+        assert f"Read(//{runner_home}/**)" in deny
+        assert f"Edit(//{runner_home}/**)" in deny, "Edit rules govern Write too"
+
+    def test_the_rules_name_the_home_both_ways(self):
+        """Under `CF_UX_ISOLATED_HOME` `~` is the sandbox's home and the runner's
+        is reachable only by absolute path, so both spellings are needed."""
+        rules = claude_provider.permission_deny_rules(Path("/home/someone"))
+
+        assert set(rules) == {
+            "Read(//home/someone/**)", "Edit(//home/someone/**)",
+            "Read(~/**)", "Edit(~/**)",
+        }
+
+    def test_the_settings_are_inline_not_a_file(self, run_provider, tmp_path):
+        """Nothing is written for the child to find, or for the sandbox wipe to miss."""
+        _out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        cmd = seen["cmd"]
+        argument = cmd[cmd.index("--settings") + 1]
+        assert argument.startswith("{"), "a JSON document, not a path"
+        assert not list(tmp_path.glob("*.json"))
+
+    def test_a_refusal_reaches_the_metadata_and_the_log(self, run_provider, caplog):
+        denials = [
+            {"tool_name": "Read", "tool_use_id": "t9",
+             "tool_input": {"file_path": "/home/someone/.ssh/id_rsa"}},
+            {"tool_name": "Bash", "tool_use_id": "t10",
+             "tool_input": {"command": "cat ~/.aws/credentials"}},
+        ]
+
+        with caplog.at_level("WARNING", logger=claude_provider.logger.name):
+            out, _seen = run_provider(_stream(
+                _skill_call(), _skill_result(), _result(permission_denials=denials)))
+
+        reported = out["metadata"]["permission_denials"]
+        assert [d["tool"] for d in reported] == ["Read", "Bash"]
+        assert ".ssh/id_rsa" in reported[0]["input"]
+        assert "refused 2 tool call(s)" in caplog.text
+        assert "Bash, Read" in caplog.text
+
+    def test_no_refusal_is_an_empty_list_and_silence(self, run_provider, caplog):
+        with caplog.at_level("WARNING", logger=claude_provider.logger.name):
+            out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["permission_denials"] == []
+        assert "refused" not in caplog.text
+
+    @pytest.mark.parametrize("shape", ["not-a-list", {"tool_name": "Read"}, None, 3])
+    def test_an_unfamiliar_shape_reads_as_no_refusals(self, run_provider, shape):
+        out, _seen = run_provider(_stream(
+            _skill_call(), _skill_result(), _result(permission_denials=shape)))
+
+        assert out["metadata"]["permission_denials"] == []
+
+    def test_a_refused_input_is_redacted_and_bounded(self, run_provider, monkeypatch):
+        """Model-authored, so it gets the same treatment as every other such field."""
+        secret = "sk-ant-" + "Z" * 40
+        monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+        denials = [{"tool_name": "Bash", "tool_use_id": "t1",
+                    "tool_input": {"command": "echo " + secret + "A" * 10_000}}]
+
+        out, _seen = run_provider(_stream(
+            _skill_call(), _skill_result(), _result(permission_denials=denials)))
+
+        item = out["metadata"]["permission_denials"][0]["input"]
+        assert secret not in item
+        assert len(item) <= claude_provider._MAX_DIAGNOSTIC_CHARS
+
+
+# ------------------------------------------------ whose home the child was given
+
+class TestTheReportSaysWhoseHomeTheChildHad:
+    """An isolated run has no competing plugins, so it is a different measurement,
+    and the report has to say which one it was (#229 review)."""
+
+    def test_by_default_it_is_the_runners(self, run_provider, monkeypatch):
+        monkeypatch.delenv("CF_UX_ISOLATED_HOME", raising=False)
+
+        out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        assert out["metadata"]["home"] == "runner"
+        assert seen["kwargs"]["env"].get("HOME") == str(Path.home())
+
+    def test_on_request_it_is_a_home_inside_the_sandbox(
+            self, run_provider, monkeypatch, tmp_path):
+        credential = tmp_path / "store" / ".credentials.json"
+        credential.parent.mkdir()
+        credential.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(claude_provider, "_claude_credential", lambda: credential)
+        monkeypatch.setenv("CF_UX_ISOLATED_HOME", "1")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/the/runners/config")
+
+        out, seen = run_provider(_stream(_skill_call(), _skill_result(), _result()))
+
+        env = seen["kwargs"]["env"]
+        assert out["metadata"]["home"] == "isolated"
+        assert Path(env["HOME"]).is_relative_to(tmp_path)
+        assert "CLAUDE_CONFIG_DIR" not in env, "it points back at the runner's configuration"
+
+    def test_the_credential_is_looked_for_under_claude_config_dir_when_set(
+            self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfg"))
+
+        assert claude_provider._claude_credential() == tmp_path / "cfg" / ".credentials.json"
+
+    def test_and_under_the_home_otherwise(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+        assert claude_provider._claude_credential() == Path.home() / ".claude" / ".credentials.json"
+
+    def test_a_timeout_says_so_too(self, run_provider, monkeypatch, tmp_path):
+        credential = tmp_path / ".credentials.json"
+        credential.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(claude_provider, "_claude_credential", lambda: credential)
+        monkeypatch.setenv("CF_UX_ISOLATED_HOME", "1")
+
+        out, _seen = run_provider(
+            "", raises=subprocess.TimeoutExpired(cmd=["claude"], timeout=850))
+
+        assert out["metadata"]["home"] == "isolated"
+
+
+class TestTheGradedAnswerIsRedactedToo:
+    """Every other returned field went through `redact_secrets`; the answer itself,
+    the one field the model writes freely, did not (#229 review). Redacted but not
+    capped: the grader has to see all of it."""
+
+    _SECRET = "sk-ant-api03-ANSWERSECRETVALUE0123456789"
+
+    def test_a_key_in_the_answer_does_not_reach_the_report(self, run_provider, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._SECRET)
+        answer = "Here is your key: " + self._SECRET + ". Done."
+
+        out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result(text=answer)))
+
+        assert self._SECRET not in out["output"]
+        assert out["output"] == "Here is your key: [redacted]. Done."
+
+    def test_a_long_answer_is_not_cut(self, run_provider, monkeypatch):
+        """A guard, passing before the change too: redaction must not become a cap."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", self._SECRET)
+        answer = "A" * (claude_provider._MAX_DIAGNOSTIC_CHARS * 20)
+
+        out, _seen = run_provider(_stream(_skill_call(), _skill_result(), _result(text=answer)))
+
+        assert out["output"] == answer
