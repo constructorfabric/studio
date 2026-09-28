@@ -50,19 +50,19 @@ Evidence: `Makefile:4-13` (arch detection), `Makefile:174-183` (ci target).
 
 ### GitHub Actions
 
-CI runs on every push to `main` and every PR targeting `main`. Nine parallel jobs:
+CI runs on pushes and PRs for `main`, `release/**`, and `v[0-9]*`. Nine job definitions expand into Python-version matrix jobs:
 
-1. **Test** — `make test` on Python 3.11, 3.12, 3.13, 3.14
-2. **Coverage** — `make test-coverage` on Python 3.14 (≥90% gate)
-3. **SonarQube** — SonarCloud scan with coverage reporting (needs `SONAR_TOKEN`)
-4. **Pylint** — `make pylint` static analysis (staged rollout — 12 checks enabled)
-5. **Vulture** — `make vulture-ci` dead code scan
-6. **Versions** — `make check-versions` consistency check
-7. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)
-8. **Validate** — `make validate` + `make self-check` on Python 3.11–3.14
-9. **Validate Kits** — `make validate-kits` on Python 3.11–3.14
+1. **Test** — `make test` on Python 3.11–3.13
+2. **Coverage** — `make test-coverage` on Python 3.14, including its full test suite (≥90% gate)
+3. **Enforcement Gates** — seeded violations fail; known-good fixtures pass
+4. **SonarQube** — scan with coverage when `SONAR_TOKEN` is available; otherwise the job is skipped
+5. **Pylint** — `make pylint` static analysis
+6. **Vulture** — `make vulture-ci` dead code scan
+7. **Versions** — `make check-versions` consistency check
+8. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)
+9. **Validate Artifacts and Kits** — `make validate`, `make self-check`, and `make validate-kits` together on Python 3.11–3.14
 
-Evidence: `.github/workflows/ci.yml:15-176`, `CONTRIBUTING.md#github-actions`.
+Evidence: `.github/workflows/ci.yml`, `CONTRIBUTING.md#github-actions`.
 
 ## Make Targets
 

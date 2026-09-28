@@ -61,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13', '3.14']
+        python-version: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
@@ -125,6 +125,8 @@ jobs:
     permissions:
       # Runs the same `make install` + test suite over pull-request code as `test`.
       contents: read
+    outputs:
+      sonar_configured: ${{ steps.sonar-availability.outputs.configured }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
@@ -141,6 +143,12 @@ jobs:
       - name: Run tests with coverage
         run: make test-coverage
 
+      - name: Check SonarQube availability
+        id: sonar-availability
+        env:
+          SONAR_CONFIGURED: ${{ secrets.SONAR_TOKEN != '' }}
+        run: echo "configured=$SONAR_CONFIGURED" >> "$GITHUB_OUTPUT"
+
       - name: Upload coverage report
         if: always() && !env.ACT
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
@@ -155,14 +163,8 @@ jobs:
   sonarqube:
     name: SonarQube
     needs: coverage
+    if: needs.coverage.outputs.sonar_configured == 'true'
     runs-on: ubuntu-latest
-    env:
-      # A boolean, not the secret. The two steps below have to know whether a scan
-      # is possible, and the job-level `env:` is the only place a step-level `if:`
-      # can read that from -- but putting the token there handed it to `checkout`
-      # and `download-artifact`, neither of which has any use for it. The token
-      # itself now lives on the one step that consumes it (#229 review).
-      SONAR_CONFIGURED: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
@@ -170,13 +172,11 @@ jobs:
           fetch-depth: 0
 
       - name: Download coverage report
-        if: env.SONAR_CONFIGURED == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: coverage-report
 
       - name: SonarQube Scan
-        if: env.SONAR_CONFIGURED == 'true'
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602  # v6.0.0
@@ -246,7 +246,7 @@ jobs:
         run: make spec-coverage
 
   validate:
-    name: Validate Artifacts (Python ${{ matrix.python-version }})
+    name: Validate Artifacts and Kits (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -269,25 +269,6 @@ jobs:
 
       - name: Self-check SDLC examples
         run: make CFS="python3 .bootstrap/.core/skills/studio/scripts/studio.py" self-check
-
-  validate-kits:
-    name: Validate Kits (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.11', '3.12', '3.13', '3.14']
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Repair bootstrap
-        run: make bootstrap-repair
 
       - name: Validate all registered kits
         run: make CFS="python3 .bootstrap/.core/skills/studio/scripts/studio.py" validate-kits

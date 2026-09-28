@@ -423,6 +423,8 @@ The simplest solution that satisfies the requirements is the correct one. No abs
 
 Every check, validation, and enforcement MUST be implementable as a deterministic CI step. LLM-based analysis is used only when deterministic methods are provably insufficient (e.g., semantic quality review, natural language understanding). If a task can be expressed as a regex, a schema check, or a graph traversal — it MUST NOT require an LLM. This ensures that quality gates are reproducible, fast, and free of hallucination risk.
 
+The repository CI keeps its Python 3.11–3.14 compatibility checks while avoiding duplicate runners for the same gate. The coverage run is also the Python 3.14 test run; artifact and kit validation share one job per Python version and one bootstrap repair. A SonarQube job is scheduled only when the coverage job reports that its scan credential is available; only the scan step receives the credential. No path-based gate is skipped until its inputs have been audited, because repository documents, kits, and examples can themselves be validation inputs.
+
 #### Zero Harm, Only Benefits
 
 - [x] `p1` - **ID**: `cpt-studio-principle-zero-harm`
