@@ -554,11 +554,12 @@ Rules:
 
 ### Declared gate key
 
-> **Proposal, open for review.** This section is a draft: the mechanics below
-> (region, indentation, near-miss detection) follow directly from `TYPE` and
-> `SHAPE`'s precedent, but the two items marked **PROPOSED** are genuine
-> design calls with no precedent to copy from, and are the actual open
-> questions for this change.
+> **Reviewed** (constructorfabric/studio#327). The mechanics below (region,
+> indentation, near-miss detection) follow directly from `TYPE` and `SHAPE`'s
+> precedent. Key syntax and namespace scope — the two design calls with no
+> precedent to copy from — are confirmed as proposed below; the one addition
+> from review is a non-blocking follow-up on kit-over-core key collisions,
+> noted where it applies.
 
 A decision or confirmation menu may declare the key it resolves by, so an
 economy filter can answer it from a plan rather than matching on prose. This
@@ -589,17 +590,30 @@ MENU DeployTargetGate:
 
 `TITLE`, `TYPE`, `SHAPE`, and `KEY` may be declared in any order — order
 never affects the declaration region or which sub-header sets the menu's
-indentation level (see "declared menu header" rules above).
+indentation level (see "declared menu header" rules above). Three
+declarations sharing one region is a new interaction with no `TYPE`/`SHAPE`
+precedent, so this is not left to ride on the claim that it transfers: the
+implementation must assert it directly, over all six orderings of the three,
+plus one case confirming a fourth recognized section still ends the region
+regardless of order (see the design note's Tests section).
 
 Rules:
 
 - `KEY` is a **declared identifier**, not a token from a closed table — the
   one way it differs in kind from `TYPE`/`SHAPE`, both of which validate
-  membership in a fixed 2-3-token set. **PROPOSED**: a bare lowercase
-  identifier matching `^[a-z][a-z0-9_]*$` (letters, digits, `_`; must start
-  with a letter) — the same shape `GateRuling.decision_key` already accepts
-  as a plain `str`, made checkable at declaration time. Never interpolated,
-  never a variable, never carrying a `WHEN` clause.
+  membership in a fixed 2-3-token set. **Confirmed: a bare lowercase
+  identifier matching `^[a-z][a-z0-9_]*$`** (letters, digits, `_`; must start
+  with a letter, no hyphens) — the same shape `GateRuling.decision_key`
+  already accepts as a plain `str`, made checkable at declaration time. `KEY`
+  is a *data* identifier — it is also a key in the plan's `[[gate_decisions]]`
+  table, resolved by exact string match with no normalisation
+  (`plan_decisions.py`) — so it stays snake_case rather than adopting
+  `UNIT`/`MENU`'s PascalCase or `@cpt-`'s kebab-case, keeping all three
+  identifier kinds visually un-confusable. Grouping, where wanted, is a prefix
+  convention (`plan_produce_approach`, `plan_next_action`), not a hierarchy
+  separator — a dot was considered and rejected: it buys nothing an
+  exact-match resolver needs and clashes with TOML's own dotted-key syntax.
+  Never interpolated, never a variable, never carrying a `WHEN` clause.
 - At most one `KEY` per menu.
 - **`KEY` may be omitted.** An undeclared decision/confirmation gate is valid
   today; a *newly added* decision/confirmation gate must declare one, so
@@ -621,17 +635,25 @@ Rules:
   using the same edit-distance-1 + alias-folding mechanism as `TYPE`/`SHAPE`.
   **PROPOSED** rejected alternatives: `ID`, `DECISION_KEY`, `GATE_KEY`,
   `RESOLVE_KEY`, `KEY_ID`.
-- **Keys must be unique.** **PROPOSED namespace scope: repo-wide** — every
+- **Keys must be unique. Confirmed namespace scope: repo-wide** — every
   declared `KEY` across the whole PDSL corpus is a single flat namespace, the
   same scope the existing `@cpt-` traceability-ID uniqueness check already
   uses (`_validate_duplicate_definitions`,
   `skills/studio/scripts/studio/utils/constraints.py`). A narrower scope
-  (per-kit, per-workflow-file) was considered and rejected for this draft:
-  the plan-and-ledger filter resolves a gate by key alone, with no file or
-  kit qualifier in `GateRuling`, so a key that collides across files would be
-  ambiguous exactly where it is read. This is the one rule with no `TYPE`/
-  `SHAPE` precedent at all — both are validated per-menu, never across
-  files — so it is the item most likely to need revision in review.
+  (per-kit, per-workflow-file) was considered and rejected: the plan-and-ledger
+  filter resolves a gate by key alone, with no file or kit qualifier in
+  `GateRuling`, so a key that collides across files would be ambiguous exactly
+  where it is read. This is the one rule with no `TYPE`/`SHAPE` precedent at
+  all — both are validated per-menu, never across files.
+  **Known gap, not blocking this proposal:** repo-wide lint only covers the
+  core corpus at authoring time. A kit is authored and distributed
+  separately, so its keys cannot be checked against core's before install —
+  yet at runtime a kit gate and a core gate can resolve against the same
+  active plan, a real collision the repo-wide lint cannot see. Tracked as a
+  follow-up: a naming convention where core keys stay unprefixed and each kit
+  is required to prefix its own, so a kit can never shadow a core key — the
+  same shape as the existing rule that a kit inherits behaviour only by
+  declaring its own.
 - **The boundary, stated rather than implied**, is the same as `TYPE`'s:
   decoration is discarded, not listed, so a declaration with another token
   embedded in it, a near-miss outside the region or written as continuation

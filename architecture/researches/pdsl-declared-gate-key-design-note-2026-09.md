@@ -7,9 +7,10 @@
 - [Spec change](#spec-change)
 - [Implementation touch-points (not yet coded)](#implementation-touch-points-not-yet-coded)
   - [`skills/studio/scripts/studio/utils/pdsl.py`](#skillsstudioscriptsstudioutilspdslpy)
+  - [`requirements/plan-template.md`](#requirementsplan-templatemd)
   - [Cross-file uniqueness — the one piece with no `TYPE`/`SHAPE` precedent](#cross-file-uniqueness--the-one-piece-with-no-typeshape-precedent)
   - [Tests](#tests)
-- [Open questions for review](#open-questions-for-review)
+- [Resolved in review (PR #327, Sanjeev Solanki, 2026-09-28)](#resolved-in-review-pr-327-sanjeev-solanki-2026-09-28)
 
 <!-- /toc -->
 
@@ -17,11 +18,11 @@
 
 This note accompanies the `KEY:` sub-header proposal added to
 `architecture/specs/PDSL.md` ("Declared gate key"). It records where in the
-existing validator that declaration would need to be wired once the spec
-wording is settled, so the PR captures the full picture — wording and
-implementation shape — in one place, per HYP-2984 (a subtask of 2871). No
-code in this PR implements any of it; this is a map for whoever picks up the
-follow-on ticket.
+existing validator that declaration would need to be wired, so the PR
+captures the full picture — wording and implementation shape — in one place,
+per HYP-2984 (a subtask of 2871). No code in this PR implements any of it;
+Sanjeev Solanki has taken the follow-on implementation (PR #327 review,
+2026-09-28) — this is the map he'll work from.
 
 ## Why this is being proposed
 
@@ -66,6 +67,16 @@ All of the following mirror the existing `TYPE`/`SHAPE` pattern directly:
 | new `_handle_gate_key_header` | Mirrors `_handle_gate_type_header` (`pdsl.py:738`), wired into `_handle_section_header_line`'s dispatch (`pdsl.py:644`) next to `TYPE`/`SHAPE` |
 | Error codes | Following the existing 700/710 allocation: **PDSL720** (malformed value) / **PDSL721** (duplicate-per-menu) / **PDSL722** (outside declaration region) / **PDSL723** (near-miss) |
 
+### `requirements/plan-template.md`
+
+Flagged in review: the engine already reads `[[gate_decisions]]`
+(`plan_decisions.py`, exact match against `decision_key`), and
+`execution-plans.md` documents it, but the author-facing plan template still
+only has a prose "User Decisions" section — not the array. Without this, a
+declared `KEY` resolves against nothing an author actually wrote in a real
+plan. The template needs to expose `[[gate_decisions]]` directly as part of
+this same follow-on, not as a separate, easy-to-drop task.
+
 ### Cross-file uniqueness — the one piece with no `TYPE`/`SHAPE` precedent
 
 `TYPE`/`SHAPE`'s "duplicate" check is per-menu, done entirely with in-block
@@ -87,27 +98,41 @@ traceability IDs via a `defs_by_id` index built by
   citizen of the traceability-ID system rather than a PDSL-local concept.
 
 This note assumes the first (a separate, PDSL-local index) — see the spec's
-own "PROPOSED namespace scope" line for the reasoning.
+own "namespace scope" rule for the reasoning, including the confirmed
+kit-over-core follow-up below.
 
 ### Tests
 
 Mirror the existing `TYPE`/`SHAPE` cases in `tests/test_pdsl_keywords.py`
 (region membership, indentation/continuation, near-miss aliases,
-duplicate-per-menu), plus two cases only `KEY` needs: malformed-syntax
-rejection, and cross-file duplicate detection (likely in a new test module
-alongside wherever the cross-file index lands, given today's `pdsl.py` tests
-are all single-source).
+duplicate-per-menu), plus cases only `KEY` needs:
 
-## Open questions for review
+- malformed-syntax rejection;
+- cross-file duplicate detection (likely in a new test module alongside
+  wherever the cross-file index lands, given today's `pdsl.py` tests are all
+  single-source);
+- **three-way declaration-order independence, asserted explicitly** — flagged
+  in review as not safe to leave implicit. Three declarations sharing one
+  region has no `TYPE`/`SHAPE` precedent (that pair only ever had two to
+  order), so cover all six orderings of `TITLE`/`TYPE`/`SHAPE`/`KEY`, plus one
+  case confirming a fourth recognized section (e.g. `NOTES:`) still ends the
+  region regardless of which of the three preceded it.
 
-1. **Key syntax** — is `^[a-z][a-z0-9_]*$` right, or should hyphens be
-   allowed (PDSL identifiers elsewhere, e.g. `UNIT`/`MENU` names, allow
-   `[A-Za-z][A-Za-z0-9_-]*`)?
-2. **Namespace scope** — repo-wide (proposed), or should a kit boundary
-   matter? `GateRuling` itself carries no file/kit qualifier today, which is
-   the argument for repo-wide, but that's worth a second look given kits are
-   meant to be independently distributable.
-3. **Three-way declaration order** — confirmed order-independent in the spec
-   text above by direct extension of `TYPE`/`SHAPE`'s existing guarantee; flag
-   if that extension itself needs a test asserting it explicitly rather than
-   assuming it transfers.
+## Resolved in review (PR #327, Sanjeev Solanki, 2026-09-28)
+
+1. **Key syntax** — `^[a-z][a-z0-9_]*$` confirmed, no hyphens. `KEY` is a data
+   identifier (a `[[gate_decisions]]` table key, exact-match resolved), so it
+   stays snake_case to keep it visually distinct from `UNIT`/`MENU`'s
+   PascalCase and `@cpt-`'s kebab-case. Grouping is a prefix convention
+   (`plan_produce_approach`), not a hierarchy separator — a dot was
+   considered and dropped: it clashes with TOML's own dotted-key syntax.
+2. **Namespace scope** — repo-wide confirmed for the core corpus. One gap
+   named, tracked as a non-blocking follow-up: a kit's keys can't be
+   lint-checked against core's at authoring time, so a kit-over-core key
+   collision is invisible to this lint even though both can resolve against
+   the same active plan at runtime. Follow-up: a prefix convention (core
+   unprefixed, each kit required to prefix its own), the same shape as the
+   existing rule that a kit inherits behaviour only by declaring its own.
+3. **Three-way declaration order** — must be asserted by an explicit test,
+   not left to ride on "transfers from TYPE/SHAPE". See the Tests section
+   above.
