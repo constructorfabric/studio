@@ -1027,7 +1027,7 @@ def test_prompt_runtime_references_use_cf_studio_path() -> None:
 # this set has to declare a TYPE.
 # Shrink this set as menus are typed; never add to it.
 UNTYPED_MENU_BASELINE: frozenset[str] = frozenset({
-    "architecture/specs/PDSL.md#14::SubAgentApprovalMenu",
+    "architecture/specs/PDSL.md#15::SubAgentApprovalMenu",
     "architecture/specs/PDSL.md#7::ApprovalMenu",
     "requirements/auto-config.md#2::ExistingRulesRefreshMenu",
     "requirements/storytelling-modes.md#0::ModeSelectionMenu",
@@ -1507,7 +1507,7 @@ def test_the_untyped_menu_surface_does_not_grow() -> None:
 # still the same flat frozenset of `"path#idx::Name"` strings every test in
 # this module already expects.
 UNSHAPED_MENU_BASELINE_BY_FILE: dict[str, frozenset[str]] = {
-    "architecture/specs/PDSL.md": frozenset({"14::SubAgentApprovalMenu", "7::ApprovalMenu", "8::PlanApprovalGate"}),
+    "architecture/specs/PDSL.md": frozenset({"15::SubAgentApprovalMenu", "7::ApprovalMenu", "8::PlanApprovalGate"}),
     "requirements/auto-config.md": frozenset({"2::ExistingRulesRefreshMenu"}),
     "requirements/storytelling-modes.md": frozenset({
         "0::ModeSelectionMenu", "5::ChallengePostRoundMenu", "5::ChallengeReactionMenu",
