@@ -5,7 +5,7 @@ on:
 jobs:
   code-ranker:
     # Pinned to an immutable commit SHA (supply-chain hardening).
-    uses: code-ranker-com/actions/.github/workflows/report.yml@42c2fba1acd7c99a71875c8eefa171224d8e683c  # 2026-07-23; upstream publishes no tag for this commit
+    uses: code-ranker-com/actions/.github/workflows/report.yml@f5df154e14f221757012ec87455ec423e6ce3df9  # 2026-07-23; upstream publishes no tag for this commit
     permissions:
       id-token: write
       contents: read
