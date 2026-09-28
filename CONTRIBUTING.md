@@ -283,15 +283,15 @@ All CI is driven through `make`. No virtual environment required — tools run v
 
 CI runs on pushes and PRs for `main`, `release/**`, and `v[0-9]*` branches. The workflow has nine job definitions; the Python matrices expand them into separate runner jobs:
 
-1. **Test** — `make test` on Python 3.11, 3.12, and 3.13
-2. **Coverage** — `make test-coverage` on Python 3.14; this also runs the complete 3.14 test suite (≥90% gate)
+1. **Test** — uninstrumented `make test` on Python 3.11, 3.12, 3.13, and 3.14
+2. **Coverage** — `make test-coverage` on Python 3.14 (≥90% gate)
 3. **Enforcement Gates** — seeded violations must fail and known-good fixtures must pass
 4. **SonarQube** — coverage scan only when `SONAR_TOKEN` is available; otherwise the whole job is skipped
 5. **Pylint** — `make pylint` static analysis (staged rollout configured in `pyproject.toml`)
 6. **Vulture** — `make vulture-ci` dead code scan
 7. **Versions** — `make check-versions` (proxy sync, bootstrap sync)
 8. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)
-9. **Validate Artifacts and Kits** — `make validate`, `make self-check`, and `make validate-kits` in one job per Python 3.11–3.14 version
+9. **Validate Artifacts and Kits** — `make validate`, `make self-check`, and `make validate-kits` in one job per Python 3.11–3.14 version; later checks still run after an earlier validation failure unless cancelled
 
 All applicable checks should pass before merge.
 

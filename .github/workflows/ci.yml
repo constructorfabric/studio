@@ -61,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
@@ -268,7 +268,9 @@ jobs:
         run: make CFS="python3 .bootstrap/.core/skills/studio/scripts/studio.py" validate
 
       - name: Self-check SDLC examples
+        if: ${{ !cancelled() }}
         run: make CFS="python3 .bootstrap/.core/skills/studio/scripts/studio.py" self-check
 
       - name: Validate all registered kits
+        if: ${{ !cancelled() }}
         run: make CFS="python3 .bootstrap/.core/skills/studio/scripts/studio.py" validate-kits

@@ -52,15 +52,15 @@ Evidence: `Makefile:4-13` (arch detection), `Makefile:174-183` (ci target).
 
 CI runs on pushes and PRs for `main`, `release/**`, and `v[0-9]*`. Nine job definitions expand into Python-version matrix jobs:
 
-1. **Test** — `make test` on Python 3.11–3.13
-2. **Coverage** — `make test-coverage` on Python 3.14, including its full test suite (≥90% gate)
+1. **Test** — uninstrumented `make test` on Python 3.11–3.14
+2. **Coverage** — `make test-coverage` on Python 3.14 (≥90% gate)
 3. **Enforcement Gates** — seeded violations fail; known-good fixtures pass
 4. **SonarQube** — scan with coverage when `SONAR_TOKEN` is available; otherwise the job is skipped
 5. **Pylint** — `make pylint` static analysis
 6. **Vulture** — `make vulture-ci` dead code scan
 7. **Versions** — `make check-versions` consistency check
 8. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)
-9. **Validate Artifacts and Kits** — `make validate`, `make self-check`, and `make validate-kits` together on Python 3.11–3.14
+9. **Validate Artifacts and Kits** — `make validate`, `make self-check`, and `make validate-kits` together on Python 3.11–3.14; later checks still run after an earlier validation failure unless cancelled
 
 Evidence: `.github/workflows/ci.yml`, `CONTRIBUTING.md#github-actions`.
 

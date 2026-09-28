@@ -29,6 +29,7 @@ _ALLOWED_SCHEMES = ("http://", "https://")  # NOSONAR(S5332) HTTP is acceptable 
 LOGGER = logging.getLogger(__name__)
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-telemetry
 def track_invocation(args: List[str]) -> None:
     """
     Fire-and-forget telemetry for a CLI invocation.
@@ -94,8 +95,10 @@ def _telemetry_worker(command: str) -> None:
             _log_error(f"Telemetry URL rejected: scheme must be http:// or https:// (got {telemetry_url})")
     except Exception as exc:  # pylint: disable=broad-exception-caught
         _log_error(f"Telemetry worker error: {exc}")
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-telemetry
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-telemetry
 def _collect_git_info() -> Dict[str, str]:
     """
     Collect git user.name, user.email, and remote.origin.url
@@ -236,3 +239,4 @@ def _log_error(message: str) -> None:
             handle.write(json.dumps(error_record, ensure_ascii=False) + "\n")
     except OSError as exc:
         LOGGER.warning("Warning: unable to record telemetry error locally: %s", exc)
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-telemetry
