@@ -26,6 +26,7 @@
   - [2.18 Workflow Eval-Harness (planned) HIGH](#218-workflow-eval-harness-planned-high)
   - [2.19 Artifact Quality (planned) HIGH](#219-artifact-quality-planned-high)
   - [2.20 Hook-Based Session Routing (planned) HIGH](#220-hook-based-session-routing-planned-high)
+  - [2.21 Studio CLI — Off by Default (planned) HIGH](#221-studio-cli--off-by-default-planned-high)
 - [3. Feature Dependencies](#3-feature-dependencies)
 
 <!-- /toc -->
@@ -1024,6 +1025,38 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - Per-harness execution receipt — evidence the installed hook entry has actually run
 
 
+### 2.21 [Studio CLI — Off by Default](features/studio-cli-off-by-default.md) (planned) HIGH
+
+- [ ] `p1` - **ID**: `cpt-studio-feature-studio-cli-off-by-default`
+
+- **Purpose**: Turn Studio's routing precondition from an unconditional interception of every prompt into a decision made once per turn, cheaply, before any Studio module loads — answer direct work directly by default, and enter the full flow only on an explicit signal (`cf`, `cf ` as the first token, or a recognized cf-* skill alias), while keeping today's always-on behavior available as a single documented setting.
+
+- **Depends On**: `cpt-studio-feature-hook-based-session-routing` (gives the routing decision somewhere to live that is not an unconditional line in a file the agent always reads; this feature's file-injection-text design does not require it merged first, but its forward-looking hook-payload note does), `cpt-studio-feature-core-infra` (config resolution and the `MARKER_START`/`MARKER_END` managed-block mechanism this feature's config-baking and drift detection reuse), `cpt-studio-feature-agent-integration` (the `cfs generate-agents` pipeline and per-harness support matrix this feature's config-baking and regeneration hook into)
+
+- **Scope**:
+  - An always-injected, pre-Studio-module-load pre-check evaluated against a literal explicit-signal rule (exact `cf`, `cf `-prefixed first token, or a recognized cf-* skill alias as the first token) — no fuzzy or natural-language intent detection
+  - A one-line, non-blocking suggestion appended to the end of a direct answer when a request would clearly benefit from the full flow — never a separate message, menu, or second prompt
+  - A new `[routing]` table in `core.toml` (`engagement_mode = "opt-in" | "always-on"`, default `opt-in`), reusing the exact config-surface pattern already established by `[ui].skill_invocation_art_enabled`
+  - Generation-time baking of the currently configured `engagement_mode` into the root `AGENTS.md`/`CLAUDE.md` managed block via `cfs generate-agents`, since the always-injected text cannot execute a runtime `core.toml` lookup
+  - Atomic, synchronous regeneration of the injected block whenever the posture setting changes, failing loudly rather than leaving stale text
+  - Passive, non-blocking drift detection (at `cfs doctor`/`cfs info`) between `core.toml`'s `engagement_mode` and the value baked into the injected text, reusing the existing `MARKER_START`/`MARKER_END` tamper-detection pattern
+  - An `always-on` posture that reproduces today's unconditional `IntentRouting` behavior with zero functional change, as a true escape hatch
+
+- **Out of scope**:
+  - Prescribing the classifier beyond the literal explicit-signal rule, the opt-in keyword beyond `cf`/cf-* aliases, or the config storage location beyond `core.toml` (design freedom preserved per issue #144)
+  - Editing `guides/CONFIGURATION.md` or `guides/USAGE-GUIDE.md` (tracked as a required later CODE-phase deliverable, not part of this feature's own diff)
+  - A per-harness hook-payload equivalent of config-baking for `routing_mode == hook` harnesses (regeneration scope here is `routing_mode == file` harnesses only)
+  - Any new domain-model entity for the `[routing]` config table (covered by `DESIGN.md`'s existing `Config` entity, matching the `[ui]` precedent)
+
+- **API**:
+  - `cfs generate-agents [--json]` — bakes the currently configured `engagement_mode` into the regenerated managed block
+  - `cfs doctor` / `cfs info` — surfaces a passive drift warning when `core.toml`'s `engagement_mode` and the injected block's baked value disagree
+
+- **Data**:
+  - `core.toml` → `[routing]` table (`engagement_mode`)
+  - Root `AGENTS.md` / `CLAUDE.md` managed block — now also encodes the baked `engagement_mode` value alongside `ROOT_AGENTS_PIPELINE_INSTRUCTION`
+
+
 ---
 
 ## 3. Feature Dependencies
@@ -1040,6 +1073,8 @@ cpt-studio-feature-core-infra
     │                                          ├─→ cpt-studio-feature-subagent-registration
     │                                          │    ↓
     │                                          │    └─→ cpt-studio-feature-hook-based-session-routing
+    │                                          │         ↓
+    │                                          │         └─→ cpt-studio-feature-studio-cli-off-by-default
     │                                          │
     │                                          ↓
     │   cpt-studio-feature-project-extensibility ←── cpt-studio-feature-blueprint-system
@@ -1075,5 +1110,6 @@ cpt-studio-feature-core-infra
 - `cpt-studio-feature-workspace` requires `cpt-studio-feature-core-infra` and `cpt-studio-feature-traceability-validation`: workspace federation builds on core context loading and extends cross-repo ID resolution in the traceability engine
 - `cpt-studio-feature-ralphex-delegation` requires `cpt-studio-feature-execution-plans` and `cpt-studio-feature-version-config`: delegation compiles exported plans from Studio's authoritative decomposition model and persists ralphex integration settings via the config manager
 - `cpt-studio-feature-hook-based-session-routing` requires `cpt-studio-feature-agent-integration`, `cpt-studio-feature-subagent-registration`, and `cpt-studio-feature-core-infra`: it reuses the per-(tool, provider) matrix and the generation pipeline that own routing-precondition delivery today, it resolves the project-level `SessionStart` hook deferral recorded in `cpt-studio-adr-ai-cli-extensibility-subagents`, and it relies on core-infra's gitignore-footprint mechanism to keep its per-machine state file and execution receipt out of version control
+- `cpt-studio-feature-studio-cli-off-by-default` requires `cpt-studio-feature-hook-based-session-routing`, `cpt-studio-feature-core-infra`, and `cpt-studio-feature-agent-integration`: it needs somewhere for the routing decision to live that is not an unconditional line in a file the agent always reads (the dependency issue #144 names on issue #143), it reuses core-infra's config resolution and `MARKER_START`/`MARKER_END` managed-block mechanism for its own posture-baking and drift detection, and it hooks its generation-time config-baking into the existing `cfs generate-agents` pipeline
 - `cpt-studio-feature-artifact-quality` requires `cpt-studio-feature-spec-coverage`: its judged detectors reuse the advisory semantic seam (never-gating, honest-unjudgeable, evidence checks) that spec-coverage introduced
 - SDLC-specific features (F4, F6, F9) have been extracted to `constructorfabric/studio-kit-sdlc` per `cpt-studio-adr-extract-sdlc-kit`
