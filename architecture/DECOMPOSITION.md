@@ -1036,16 +1036,16 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 - **Scope**:
   - An always-injected, pre-Studio-module-load pre-check evaluated against a literal explicit-signal rule (exact `cf`, `cf `-prefixed first token, or a recognized cf-* skill alias as the first token) — no fuzzy or natural-language intent detection
   - A one-line, non-blocking suggestion appended to the end of a direct answer when a request would clearly benefit from the full flow — never a separate message, menu, or second prompt
-  - A new `[routing]` table in `core.toml` (`engagement_mode = "opt-in" | "always-on"`, default `opt-in`), reusing the exact config-surface pattern already established by `[ui].skill_invocation_art_enabled`
+  - A new `[routing]` table in `core.toml` (`engagement_mode = "opt-in" | "always-on"`, default `opt-in` when the table or key is absent — including for already-initialized projects predating this feature; whether that default should instead preserve those projects' current always-on behavior is an open design question, see the FEATURE spec's Section 7 item (e)), reusing the exact config-surface pattern already established by `[ui].skill_invocation_art_enabled`
   - Generation-time baking of the currently configured `engagement_mode` into the root `AGENTS.md`/`CLAUDE.md` managed block via `cfs generate-agents`, since the always-injected text cannot execute a runtime `core.toml` lookup
-  - Atomic, synchronous regeneration of the injected block whenever the posture setting changes, failing loudly rather than leaving stale text
+  - Regeneration of the injected block whenever the posture setting changes: atomic and synchronous when triggered via a config-set command (name/contract undecided, see the FEATURE spec's Section 7 item (h)); requiring an explicit follow-up `cfs generate-agents` run when `core.toml` is hand-edited directly (no file watcher). Either path fails loudly on failure rather than leaving stale text.
   - Passive, non-blocking drift detection (at `cfs doctor`/`cfs info`) between `core.toml`'s `engagement_mode` and the value baked into the injected text, reusing the existing `MARKER_START`/`MARKER_END` tamper-detection pattern
   - An `always-on` posture that reproduces today's unconditional `IntentRouting` behavior with zero functional change, as a true escape hatch
 
 - **Out of scope**:
   - Prescribing the classifier beyond the literal explicit-signal rule, the opt-in keyword beyond `cf`/cf-* aliases, or the config storage location beyond `core.toml` (design freedom preserved per issue #144)
   - Editing `guides/CONFIGURATION.md` or `guides/USAGE-GUIDE.md` (tracked as a required later CODE-phase deliverable, not part of this feature's own diff)
-  - A per-harness hook-payload equivalent of config-baking for `routing_mode == hook` harnesses (regeneration scope here is `routing_mode == file` harnesses only)
+  - A per-harness hook-payload equivalent of config-baking for `routing_mode == hook` harnesses (regeneration scope here is `routing_mode == file` harnesses only). Concretely: a `routing_mode == hook` harness never receives the extended block this feature bakes `engagement_mode` into, so it stays unconditionally engaged — today's behavior, unaffected by this feature — until that hook-payload equivalent is designed and shipped.
   - Any new domain-model entity for the `[routing]` config table (covered by `DESIGN.md`'s existing `Config` entity, matching the `[ui]` precedent)
 
 - **API**:
