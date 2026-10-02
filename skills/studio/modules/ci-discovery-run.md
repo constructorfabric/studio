@@ -104,6 +104,7 @@ WHEN:
 DO:
   SET REVIEW_TARGET_PATHS = file paths parsed from user.reply WHEN user.reply names one or more files
   SET CI_TARGET_CAPTURE_STATE = unset WHEN REVIEW_TARGET_PATHS is provided
+  SET CI_DISCOVERY_STATUS = provided WHEN REVIEW_TARGET_PATHS is provided
   CONTINUE CiDiscoveryRunClassifyResult WHEN REVIEW_TARGET_PATHS is provided
   CONTINUE CiDiscoveryRunFailure WHEN REVIEW_TARGET_PATHS is unset
 ```
