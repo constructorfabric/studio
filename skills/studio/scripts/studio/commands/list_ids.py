@@ -273,6 +273,22 @@ def _render_kind_hits(kind_name: str, items: List[Dict[str, object]]) -> None:
         ui.substep(f"  {hit.get('id', '?')}  ({hit.get('type', '')}, {artifact_label}{suffix})")
 
 
+# @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-user-query
+def _pattern_error(args: argparse.Namespace) -> Optional[str]:
+    """Why `--pattern` cannot be used as a regular expression under `--regex`, or None.
+
+    Checked before anything is scanned: the compile used to happen inside the filter,
+    after the scan, and an invalid pattern escaped as a traceback with nothing on stdout.
+    """
+    if not (args.regex and args.pattern):
+        return None
+    try:
+        re.compile(str(args.pattern))
+    except re.error as exc:
+        return f"Invalid --pattern regular expression: {exc}"
+    return None
+# @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-user-query
+
 # @cpt-flow:cpt-studio-flow-traceability-validation-query:p1
 def cmd_list_ids(argv: List[str]) -> int:  # pylint: disable=too-many-locals
     """List Studio IDs from artifacts.
@@ -293,6 +309,10 @@ def cmd_list_ids(argv: List[str]) -> int:  # pylint: disable=too-many-locals
     p.add_argument("--include-code", action="store_true", help="Also scan code files for Studio marker references")
     p.add_argument("--source", default=None, help="Filter by workspace source name (workspace mode only)")
     args = p.parse_args(argv)
+    pattern_error = _pattern_error(args)
+    if pattern_error:
+        ui.result({"status": "ERROR", "message": pattern_error})
+        return 1
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-user-query
 
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-load-context

@@ -192,7 +192,10 @@ class TestCLIArtifactToolsE2E(unittest.TestCase):
             self.assertEqual(payload["inst"], "validate")
             self.assertIn("def validate():", payload["text"])
 
-    def test_get_content_code_mode_missing_inst_falls_back_to_id_without_writes(self):
+    def test_get_content_code_mode_missing_inst_is_not_found_without_writes(self):
+        """This test used to pin the opposite: an `--inst` the ID has no block for came
+        back FOUND with the ID's first block, under the requested name. That silently
+        served the wrong instruction's code; it is now not-found."""
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _bootstrap_content_project(root)
@@ -214,14 +217,14 @@ class TestCLIArtifactToolsE2E(unittest.TestCase):
             )
             after = _snapshot_tree(root)
 
-            self.assertEqual(exit_code, 0)
+            self.assertEqual(exit_code, 2)
             self.assertEqual(stderr, "")
             self.assertEqual(after, baseline)
             payload = json.loads(stdout)
-            self.assertEqual(payload["status"], "FOUND")
-            self.assertEqual(payload["id"], "cpt-web-flow-login")
-            self.assertEqual(payload["inst"], "missing-inst")
-            self.assertIn("def validate():", payload["text"])
+            self.assertEqual(
+                payload,
+                {"status": "NOT_FOUND", "id": "cpt-web-flow-login", "inst": "missing-inst"},
+            )
 
     def test_get_content_code_mode_missing_inst_and_id_returns_not_found_without_writes(self):
         with TemporaryDirectory() as tmpdir:

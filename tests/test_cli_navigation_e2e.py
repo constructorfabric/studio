@@ -5,11 +5,13 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
@@ -522,6 +524,66 @@ class TestCLINavigationE2E(unittest.TestCase):
                 [(Path(item["artifact"]).name, item["type"], item.get("source")) for item in where_used_payload["references"]],
                 [("PRD.md", "definition", "backend-repo"), ("PRD.md", "reference", "backend-repo")],
             )
+
+    def test_workspace_list_ids_unknown_source_is_an_empty_answer(self):
+        """Documented in `architecture/specs/cli.md` § list-ids: inside a workspace, a
+        `--source` no configured source has is not an error — nothing is scanned, the
+        result is empty and the exit code is 0. A known source still narrows the scan."""
+        with TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir) / "workspace-root"
+            workspace_root.mkdir(parents=True, exist_ok=True)
+            (workspace_root / ".git").mkdir()
+            _bootstrap_workspace_source(workspace_root / "docs-repo", source_id="cpt-docs-item-home", source_name="docs")
+            _bootstrap_workspace_source(workspace_root / "backend-repo", source_id="cpt-backend-item-api", source_name="backend")
+            exit_code, _, _ = _run_main(["--json", "workspace-init"], cwd=workspace_root)
+            self.assertEqual(exit_code, 0)
+
+            exit_code, stdout, stderr = _run_main(
+                ["--json", "list-ids", "--source", "no-such-source"], cwd=workspace_root)
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stderr, "")
+            self.assertEqual(json.loads(stdout), {"count": 0, "artifacts_scanned": 0, "ids": []})
+
+            exit_code, stdout, _ = _run_main(
+                ["--json", "list-ids", "--source", "docs-repo"], cwd=workspace_root)
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["artifacts_scanned"], 1)
+            self.assertEqual([item["id"] for item in payload["ids"]], ["cpt-docs-item-home"])
+
+            # Documented exception: `--include-code` is not scoped by `--source`. With an
+            # unknown source there are no artifacts, yet the project's code hits still come
+            # back. This pins the disclosure; scoping the code scan would change both.
+            code_hit = {"id": "cpt-anywhere-algo-x", "kind": "algo", "type": "code_reference",
+                        "artifact_type": "CODE", "line": 1, "artifact": "/repo/src/x.py", "marker_type": "scope"}
+            with patch("studio.commands.list_ids.scan_registered_codebase_references",
+                       return_value=([code_hit], 1, 0)):
+                exit_code, stdout, _ = _run_main(
+                    ["--json", "list-ids", "--source", "no-such-source", "--include-code"], cwd=workspace_root)
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["artifacts_scanned"], 0)
+            self.assertEqual([item["id"] for item in payload["ids"]], ["cpt-anywhere-algo-x"])
+
+    def test_workspace_list_ids_unreachable_source_is_the_same_empty_answer(self):
+        """A source the workspace configures but cannot reach (its directory is gone) is
+        answered like an unknown one: nothing scanned, an empty result, exit 0. It is
+        never an error, and never another source's artifacts."""
+        with TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir) / "workspace-root"
+            workspace_root.mkdir(parents=True, exist_ok=True)
+            (workspace_root / ".git").mkdir()
+            _bootstrap_workspace_source(workspace_root / "docs-repo", source_id="cpt-docs-item-home", source_name="docs")
+            _bootstrap_workspace_source(workspace_root / "backend-repo", source_id="cpt-backend-item-api", source_name="backend")
+            exit_code, _, _ = _run_main(["--json", "workspace-init"], cwd=workspace_root)
+            self.assertEqual(exit_code, 0)
+            self.assertIn("[sources.backend-repo]", (workspace_root / ".cf-workspace.toml").read_text(encoding="utf-8"))
+            shutil.rmtree(workspace_root / "backend-repo")
+
+            exit_code, stdout, _ = _run_main(
+                ["--json", "list-ids", "--source", "backend-repo"], cwd=workspace_root)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(json.loads(stdout), {"count": 0, "artifacts_scanned": 0, "ids": []})
 
 if __name__ == "__main__":
     unittest.main()

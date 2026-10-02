@@ -11,6 +11,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
 from studio.commands.where_used import cmd_where_used
@@ -166,3 +168,157 @@ def test_where_used_include_code_real_scan_through_cli() -> None:
             assert out["references"][0]["artifact"].endswith("impl.py")
         finally:
             os.chdir(cwd)
+
+
+def test_where_used_no_references_through_the_real_entry_point() -> None:
+    """The empty answer end to end, with real argv parsing, dispatch, target resolution
+    and scan, not the mocked resolver the contract tests below use. An ID nothing
+    references, in a project that has a registered artifact, is exit 0, `count: 0` and
+    `references: []`."""
+    from studio.cli import main
+    from studio.utils import toml_utils
+
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        _write_codebase_only_project(root)
+        (root / "docs").mkdir()
+        (root / "docs" / "req.md").write_text("- [x] `p1` - **ID**: `cpt-test-req-1`\n", encoding="utf-8")
+        registry = root / "adapter" / "config" / "artifacts.toml"
+        config = toml_utils.load(registry)
+        config["systems"][0]["artifacts"] = [{"path": "docs/req.md", "kind": "req"}]
+        toml_utils.dump(config, registry)
+
+        cwd, saved = os.getcwd(), is_json_mode()
+        try:
+            os.chdir(root)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = main(["--json", "where-used", "cpt-test-req-nowhere"])
+        finally:
+            set_json_mode(saved)
+            os.chdir(cwd)
+    assert rc == 0
+    assert json.loads(buf.getvalue()) == {
+        "id": "cpt-test-req-nowhere", "artifacts_scanned": 1, "count": 0, "references": [],
+    }
+
+
+# ------------------------------------------------ the documented contract (#292)
+def _where_used_rc(tmp: str, text: str, argv: list[str], resolve_error=None) -> tuple[int, dict]:
+    """Run the real command over a real artifact, with only target resolution mocked."""
+    artifact = Path(tmp) / "doc.md"
+    artifact.write_text(text, encoding="utf-8")
+    saved = is_json_mode()
+    stdout = io.StringIO()
+    try:
+        set_json_mode(True)
+        with patch(
+            "studio.commands.where_used.resolve_target_and_artifacts",
+            return_value=("cpt-example-thing-x", object(), [(artifact, "FEATURE")], {}, resolve_error),
+        ), redirect_stdout(stdout):
+            rc = cmd_where_used(argv)
+        return rc, json.loads(stdout.getvalue())
+    finally:
+        set_json_mode(saved)
+
+
+def test_contract_found_matches_the_documented_shape() -> None:
+    """`architecture/specs/cli.md` § where-used documents exactly these keys."""
+    with TemporaryDirectory() as tmp:
+        rc, data = _where_used_rc(tmp, "# Doc\n\n`cpt-example-thing-x`\n", ["cpt-example-thing-x"])
+    assert rc == 0
+    assert set(data) == {"id", "artifacts_scanned", "count", "references"}
+    assert data["count"] == len(data["references"]) == 1
+    assert set(data["references"][0]) == {"artifact", "artifact_type", "line", "kind", "type", "checked"}
+    assert Path(data["references"][0]["artifact"]).is_absolute()
+
+
+def test_contract_no_references_is_an_answer_not_a_failure() -> None:
+    """Exit 0 with `count: 0` — the documented contract. It is also what an id that
+    exists nowhere returns, which the spec states so callers use `where-defined`."""
+    with TemporaryDirectory() as tmp:
+        rc, data = _where_used_rc(tmp, "# Doc\n\nnothing here\n", ["cpt-example-thing-x"])
+    assert rc == 0
+    assert data["count"] == 0 and data["references"] == []
+
+
+def test_contract_include_code_is_a_no_op_with_artifact() -> None:
+    """Documented: `--include-code` is ignored, with no warning, when `--artifact`
+    narrows the scan — no code scan runs and no code counters appear."""
+    with TemporaryDirectory() as tmp:
+        data, mock_scan = _run_where_used_with_mocked_scan(
+            tmp, ["cpt-example-thing-x", "--artifact", "doc.md", "--include-code"])
+        mock_scan.assert_not_called()
+    assert "code_files_scanned" not in data
+    assert "code_files_skipped" not in data
+
+
+def test_contract_code_files_skipped_is_reported_when_nonzero() -> None:
+    """The counter is documented as present only when non-zero; the tests above cover
+    only its absence, so a regression that dropped it would have passed."""
+    with TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "doc.md"
+        artifact.write_text("no references here\n", encoding="utf-8")
+        with patch(
+            "studio.commands.where_used.resolve_target_and_artifacts",
+            return_value=("cpt-example-thing-x", object(), [(artifact, "FEATURE")], {}, None),
+        ), patch(
+            "studio.commands.where_used.scan_registered_codebase_references",
+            return_value=(_CODE_HITS, 3, 2),
+        ):
+            data = _run_where_used(["cpt-example-thing-x", "--include-code"])
+    assert data["code_files_scanned"] == 3
+    assert data["code_files_skipped"] == 2
+
+
+def test_contract_an_unreadable_artifact_is_skipped_without_a_signal() -> None:
+    """Pins the *disclosed* limitation, not a desired behaviour: an artifact that cannot
+    be read drops out of the result while `artifacts_scanned` still counts it, and no
+    field or exit code says so. When a skip counter is added, this test and the
+    `where-used` section of `architecture/specs/cli.md` change together."""
+    with TemporaryDirectory() as tmp:
+        readable = Path(tmp) / "a.md"
+        readable.write_text("# A\n\n`cpt-example-thing-x`\n", encoding="utf-8")
+        unreadable = Path(tmp) / "b.md"
+        unreadable.write_text("# B\n\n`cpt-example-thing-x`\n", encoding="utf-8")
+        os.chmod(unreadable, 0)
+        try:
+            if os.access(unreadable, os.R_OK):
+                pytest.skip("this user can read a mode-000 file (root)")
+            with patch(
+                "studio.commands.where_used.resolve_target_and_artifacts",
+                return_value=("cpt-example-thing-x", object(),
+                              [(readable, "FEATURE"), (unreadable, "FEATURE")], {}, None),
+            ):
+                data = _run_where_used(["cpt-example-thing-x"])
+        finally:
+            os.chmod(unreadable, 0o644)
+    assert data["artifacts_scanned"] == 2
+    assert data["count"] == 1
+    assert Path(data["references"][0]["artifact"]).name == "a.md"
+    assert not any(key.endswith("skipped") for key in data)
+
+
+def test_contract_an_invalid_byte_never_splices_a_different_id() -> None:
+    """A cp1252 smart quote (0x93) inside `cpt-example-thing-\\x93x`. Deleting the byte,
+    as the reader used to, splices the two halves into `cpt-example-thing-x` — a second,
+    phantom reference to the target. Replacing it with U+FFFD leaves no ID there, and the
+    genuine reference on another line is still found."""
+    with TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "doc.md"
+        artifact.write_bytes(
+            b"# Doc\n\n`cpt-example-thing-x`\n\nsee `cpt-example-thing-\x93x` for more\n")
+        with patch(
+            "studio.commands.where_used.resolve_target_and_artifacts",
+            return_value=("cpt-example-thing-x", object(), [(artifact, "FEATURE")], {}, None),
+        ):
+            data = _run_where_used(["cpt-example-thing-x"])
+    assert data["count"] == 1
+    assert data["references"][0]["line"] == 3
+
+
+def test_contract_a_resolution_error_exits_1() -> None:
+    with TemporaryDirectory() as tmp:
+        rc, data = _where_used_rc(tmp, "", ["cpt-example-thing-x"], resolve_error="Artifact not found: x.md")
+    assert rc == 1
+    assert data == {"status": "ERROR", "message": "Artifact not found: x.md"}

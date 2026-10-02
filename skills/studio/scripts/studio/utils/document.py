@@ -675,8 +675,12 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
-        logger.warning("Non-UTF-8 bytes ignored while reading %s: %s", path, exc)
-        text = raw.decode("utf-8", errors="ignore")
+        # Replace, never drop: deleting an invalid byte splices the text on either
+        # side of it, and a byte inside an ID would silently read as a different,
+        # valid-looking ID. U+FFFD cannot occur in an ID, so a damaged ID reads as
+        # no ID at all, while the rest of the file is still scanned.
+        logger.warning("Non-UTF-8 bytes replaced with U+FFFD while reading %s: %s", path, exc)
+        text = raw.decode("utf-8", errors="replace")
 
     if os.linesep != "\n":
         text = text.replace("\r\n", "\n")

@@ -184,20 +184,25 @@ Catches structural and traceability issues that AI agents miss or hallucinate �
 - User runs `cfs list-ids` → all ID definitions listed with kind, file, line, checked status
 - User runs `cfs where-defined --id <id>` → definition location returned with file path and line
 - User runs `cfs where-used --id <id>` → all reference locations returned across artifacts and code
-- User runs `cfs get-content --id <id>` → content block under the ID heading returned
+- User runs `cfs get-content --id <id> --artifact <path>` (or `--code <path>`) → content block under the ID heading, or the marked code block, returned
 
 **Error Scenarios**:
-- ID not found in any artifact → empty result with exit code 2
+- `where-defined` for an ID not defined in any scanned artifact → not-found result with exit code 2
+- `get-content` for an ID with no content in the one file it is given → not-found result with exit code 2. The scope is that file alone: with `--artifact`, an ID defined in another artifact is still not found; with `--code`, artifact definitions are never consulted, so an ID that exists only as a code marker is found and one defined in an artifact but not marked in the file is not
+- `where-used` / `list-ids` with nothing to report → empty result with exit code 0: no references and no matches are answers, not failures
+- Target cannot be resolved → `ERROR` with exit code 1. No Studio project, or an `--artifact` path that does not exist, applies to `list-ids`, `where-defined`, `where-used` and `get-content --artifact`; `get-content --code` reads the file directly and needs no project. An empty ID is an error for `where-defined` and `where-used`; `get-content` reports it as not found (exit 2), and `list-ids` takes no ID. A `list-ids --pattern` that is not a valid regular expression under `--regex` is the same `ERROR` with exit code 1, checked before anything is scanned.
+- `get-content` with neither `--artifact` nor `--code` → `ERROR` with exit code 1; the other three treat `--artifact` as optional and scan every registered artifact without it
+- A registered artifact that cannot be read → skipped with a warning on stderr; the JSON and the exit code do not record the skip. A disclosed limitation of the artifact scan: `--include-code` reports `code_files_skipped` for code files, the artifact scan has no equivalent
 
 **Steps**:
-1. [x] - `p1` - User invokes one of: `list-ids [--kind K] [--pattern P]`, `where-defined --id <id>`, `where-used --id <id>`, `get-content --id <id>` - `inst-user-query`
-2. [x] - `p1` - Load project context and resolve all registered artifacts - `inst-query-load-context`
-3. [x] - `p1` - Scan all artifacts using `cpt-studio-algo-traceability-validation-scan-ids` to build ID index - `inst-scan-all`
+1. [x] - `p1` - User invokes one of: `list-ids [--kind K] [--pattern P]`, `where-defined --id <id>`, `where-used --id <id>`, `get-content --id <id> --artifact PATH | --code PATH` - `inst-user-query`
+2. [x] - `p1` - **IF** `list-ids`, `where-defined` or `where-used`: load project context and collect the registered artifacts to scan — every one, only the one named by `--artifact`, or, for `list-ids --source`, only that workspace source's - `inst-query-load-context`
+3. [x] - `p1` - Scan the collected artifacts using `cpt-studio-algo-traceability-validation-scan-ids` to build ID index - `inst-scan-all`
 4. [x] - `p1` - **IF** `list-ids --include-code`: scan codebase files for marker references - `inst-if-list-code`
 5. [x] - `p1` - **IF** `list-ids`: filter index by `--kind` and `--pattern`, return definitions - `inst-if-list`
 6. [x] - `p1` - **IF** `where-defined`: find definition entries for the given ID - `inst-if-where-def`
 7. [x] - `p1` - **IF** `where-used`: find reference entries for the given ID across artifacts and code - `inst-if-where-used`
-8. [x] - `p1` - **IF** `get-content`: locate ID definition, extract content block from heading scope - `inst-if-get-content`
+8. [x] - `p1` - **IF** `get-content`: with `--artifact`, load project context, resolve only that registered artifact and extract the content block under the ID's heading; with `--code`, read that file directly, with no project context and no artifact scan, and extract the ID's marked block - `inst-if-get-content`
 9. [x] - `p1` - **RETURN** JSON result - `inst-return-query`
 
 **Supporting**:
@@ -924,7 +929,7 @@ The system **MUST** scan code files for `@cpt-*` markers (scope markers and bloc
 
 - [x] `p1` - **ID**: `cpt-studio-dod-traceability-validation-queries`
 
-The system **MUST** provide CLI commands for navigating the ID graph: `list-ids [--kind K] [--pattern P]` (list definitions matching criteria), `where-defined --id <id>` (find definition location), `where-used --id <id>` (find all references), `get-content --id <id>` (extract content block). All commands **MUST** output JSON, scan all registered artifacts, and use exit codes 0 (found) / 2 (not found).
+The system **MUST** provide CLI commands for navigating the ID graph: `list-ids [--kind K] [--pattern P]` (list definitions matching criteria), `where-defined --id <id>` (find definition location), `where-used --id <id>` (find all references), `get-content --id <id> --artifact PATH | --code PATH` (extract the content block from a named artifact or code file). All commands **MUST** output JSON and exit 1 when the target cannot be resolved. The three that search — `list-ids`, `where-defined`, `where-used` — **MUST** scan all registered artifacts unless `--artifact` narrows the scope to one. `list-ids --source` narrows it instead to one workspace source's registered artifacts: it is an error outside workspace mode, a source that is unknown or unreachable yields no artifacts, and it is ignored when `--artifact` is given. It does not scope `--include-code`, whose code scan always covers every registered codebase path. `get-content` reads the one file it is given. A lookup of one thing — `where-defined`, `get-content` — **MUST** exit 0 when found and 2 when not found (for `where-defined`, also when the ID is defined more than once). `where-defined` also exits 0, with status `NO_ARTIFACTS`, when nothing is registered to scan — an empty project is not a failed lookup. A query whose empty result is itself an answer — `where-used` (no references), `list-ids` (no matches) — **MUST** exit 0 either way.
 
 **Implements**:
 - `cpt-studio-flow-traceability-validation-query`

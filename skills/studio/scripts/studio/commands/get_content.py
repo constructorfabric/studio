@@ -28,9 +28,10 @@ def _emit_code_content(args: argparse.Namespace) -> int:
         ui.result({"status": "ERROR", "message": f"Failed to parse code file: {errs}"})
         return 1
 
-    content = cf.get_by_inst(args.inst) if args.inst else None
-    if content is None:
-        content = cf.get(args.id)
+    # An instruction the ID has no block for is not found — never the ID's first block
+    # reported under the name that was asked for. That includes an empty `--inst`: it
+    # asks for an instruction, and no marker has an empty one.
+    content = cf.get_by_inst(args.id, args.inst) if args.inst is not None else cf.get(args.id)
     if content is None:
         ui.result({"status": "NOT_FOUND", "id": args.id, "inst": args.inst})
         return 2
@@ -100,7 +101,10 @@ def cmd_get_content(argv: List[str]) -> int:
     p.add_argument("--artifact", default=None, help="Path to Studio artifact file")
     p.add_argument("--code", default=None, help="Path to code file (alternative to --artifact)")
     p.add_argument("--id", required=True, help="Studio ID to retrieve content for")
-    p.add_argument("--inst", default=None, help="Instruction ID for code blocks (e.g., 'inst-validate-input')")
+    p.add_argument(
+        "--inst", default=None,
+        help="Instruction of one of this ID's code blocks, with or without inst- (e.g. 'validate-input')",
+    )
     args = p.parse_args(argv)
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-user-query
 

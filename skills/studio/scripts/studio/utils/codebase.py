@@ -318,10 +318,16 @@ class CodeFile:
         """Get content for multiple IDs."""
         return [self.get(i) for i in ids]
 
-    def get_by_inst(self, inst: str) -> Optional[str]:
-        """Get code content by instruction ID."""
+    def get_by_inst(self, id_value: str, inst: str) -> Optional[str]:
+        """Get the content of *id_value*'s block for instruction *inst*.
+
+        The ID is required: instruction names repeat across IDs in one file, so a lookup
+        by name alone returns whichever ID's block comes first. *inst* is accepted with
+        or without its ``inst-`` prefix, since the marker parser stores it without.
+        """
+        wanted = inst.removeprefix("inst-")
         for block in self.block_markers:
-            if block.inst == inst:
+            if block.id == id_value and block.inst == wanted:
                 return "\n".join(block.content)
         return None
 

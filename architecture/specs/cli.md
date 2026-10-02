@@ -154,6 +154,13 @@ cfs <command> [subcommand] [options] [arguments]
 | 1 | Error | Filesystem error, invalid arguments, runtime error |
 | 2 | FAIL | Validation failed, check failed, item not found |
 
+**Argument errors in the query commands.** `list-ids`, `where-defined`, `where-used` and
+`get-content` parse their options with argparse. An option it rejects — a missing
+`--id`, an unknown flag — exits `2` with a usage message on stderr and nothing on stdout,
+not `1`. Errors the commands detect themselves, such as no `--artifact`/`--code` or a path
+that does not exist, are the JSON `ERROR` with `1`. Where `2` also means not found
+(`where-defined`, `get-content`), the empty stdout is what tells a usage error apart.
+
 ### Common Options
 
 | Option | Description |
@@ -429,38 +436,88 @@ Two `results[]` entries have a different shape, and a consumer indexing `error_c
 
 ### list-ids
 
-List IDs matching criteria.
+List the IDs found in registered artifacts.
 
 ```
-cfs list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMAT]
+cfs list-ids [--kind KIND] [--pattern PATTERN [--regex]] [--artifact PATH] [--all] [--include-code] [--source SOURCE]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--kind KIND` | Filter by ID kind (fr, nfr, actor, component, etc.) |
-| `--pattern PATTERN` | Glob or regex filter on ID slug |
-| `--system SYSTEM` | Limit to a specific system |
-| `--format FORMAT` | Output format: `json` (default), `table`, `ids-only` |
-| `--source SOURCE` | Filter by workspace source name. Returns error when used outside workspace mode. |
+| `--kind KIND` | Keep IDs whose inferred kind is `KIND` |
+| `--pattern PATTERN` | Keep IDs containing `PATTERN`; a regular expression with `--regex` |
+| `--artifact PATH` | Scan only this artifact |
+| `--all` | List every occurrence; without it, one entry per ID |
+| `--include-code` | Also scan registered codebase paths for `@cpt-*` markers |
+| `--source SOURCE` | Scan only this workspace source's registered artifacts. Returns an error outside workspace mode; a source that is unknown, or not reachable on disk, yields no artifacts and exit 0. Ignored when `--artifact` is given. Does not scope `--include-code`: see below. |
+
+> Earlier revisions of this section listed `--system` and `--format`. Neither exists — JSON is the only output — and they are removed here rather than left describing a surface that does not exist. They also described `--pattern` as a glob or regex. It has only ever been a substring match (a regex with `--regex`): `--pattern 'cpt-studio-fr-*'` matches the literal `*` and finds nothing.
 
 **Output** (JSON):
 ```json
 {
+  "count": 1,
+  "artifacts_scanned": 52,
   "ids": [
     {
-      "id": "cpt-studio-fr-core-init",
-      "kind": "fr",
-      "file": "architecture/PRD.md",
-      "line": 154,
-      "checked": false,
+      "id": "cpt-studio-component-traceability-engine",
+      "kind": "component",
+      "type": "definition",
+      "artifact_type": "DESIGN",
+      "line": 702,
+      "artifact": "/path/to/project/architecture/DESIGN.md",
+      "checked": true,
       "priority": "p1"
     }
-  ],
-  "total": 42
+  ]
 }
 ```
 
-**Exit**: 0.
+- `count` equals the length of `ids`. `kind` is inferred from the ID's slug against the
+  registered systems' known kinds, or `null` when it cannot be.
+- `type` is `definition`, `reference`, or — with `--include-code` — `code_reference`, or
+  `definition-link-form` for a definition written as a markdown link. That last is listed
+  with its checkbox and priority, but it is neither a definition nor a reference: it never
+  wins the dedupe as a definition, and `cfs validate` reports it under
+  `def-link-form-not-allowed`. A code record also carries `marker_type` (`scope`, `block`, …), `phase`, and `inst` when
+  the marker names one, and its `kind` is the marker's, or the string `code` when the
+  marker names none — not `null`. Without `--all` each ID appears
+  once — its definition when one exists, otherwise its first occurrence. Artifacts are
+  read before code, so a code record is listed only for an ID that appears in no
+  artifact; `--all` shows every code record. A further definition of the
+  same ID is not dropped: it is listed on that entry as `duplicate_definitions`, and a
+  warning naming both locations goes to stderr. This command lists; it does not judge.
+  `cfs validate` is the gate, and it is narrower. It compares every registered artifact
+  but reports `duplicate-definition` only on the ones it checks — those of a system
+  bound to an installed kit — and only when another definition is in a different file.
+  So a duplicate split between a checked artifact and a kit-less one fails the checked
+  one, naming the other; the kit-less side gets no finding. A second definition in the
+  same file, or a duplicate whose definitions all sit in kit-less systems, is listed
+  here and passes `validate`.
+- `priority` appears when the line carries one. `list-ids` does not emit `source` —
+  unlike `where-used` and `where-defined`, which add it for an artifact that belongs to a
+  workspace source.
+- `--include-code` adds `code_files_scanned`, and `code_files_skipped` when it is
+  non-zero — the same counters, with the same meaning, as under `where-used`: a skipped
+  file was ignored, oversized or unparsable, its markers are absent from `ids`, and the
+  exit code is unchanged. `--include-code` is ignored, without a warning, when
+  `--artifact` is given — but `code_files_scanned` is still emitted, as `0`, so a zero
+  there can mean "no code scan ran" as well as "no files"; `code_files_skipped` never
+  appears in that case. `where-used` omits both counters under `--artifact`; the two
+  commands differ here.
+- `--include-code` is **not** scoped by `--source`: the code scan always covers every
+  registered codebase path. So `--source X --include-code` returns code records from the
+  whole project, and for a source that is unknown or unreachable it returns *only* those —
+  `artifacts_scanned: 0`, with the code records in `ids` if any marker matched. To query
+  one source, omit `--include-code`.
+
+No match is an answer: `count` is `0`, `ids` is `[]`, and the exit code is `0`. An
+`--artifact` that does not exist, no Studio project, or a `--pattern` that is not a valid
+regular expression under `--regex` prints `{"status": "ERROR", "message": "..."}` and
+exits `1`; the pattern is checked before anything is scanned. The unreadable-artifact limitation described
+under `where-used` applies to this scan too.
+
+**Exit**: 0 = the scan ran, 1 = the target could not be resolved, 2 = an argument the parser rejects ([see Exit Codes](#exit-codes)).
 
 ---
 
@@ -469,24 +526,42 @@ cfs list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMA
 Find where an ID is defined.
 
 ```
-cfs where-defined --id <id>
+cfs where-defined <id> [--artifact PATH]
+cfs where-defined --id <id> [--artifact PATH]
 ```
+
+The ID is given positionally or with `--id`; given both, the positional wins, with a warning on stderr, exactly as under `where-used`. `--artifact PATH` limits the search to one artifact.
 
 **Output** (JSON):
 ```json
 {
-  "id": "cpt-studio-fr-core-init",
-  "defined_in": {
-    "file": "architecture/PRD.md",
-    "line": 154,
-    "kind": "fr",
-    "checked": false,
-    "content_preview": "The system MUST provide an interactive `cfs init` command..."
-  }
+  "status": "FOUND",
+  "id": "cpt-studio-component-traceability-engine",
+  "artifacts_scanned": 52,
+  "count": 1,
+  "definitions": [
+    {
+      "artifact": "/path/to/project/architecture/DESIGN.md",
+      "artifact_type": "DESIGN",
+      "line": 702,
+      "kind": null,
+      "checked": true
+    }
+  ]
 }
 ```
 
-**Exit**: 0=found, 2=not found.
+- `status` is `FOUND` for exactly one definition, `AMBIGUOUS` for more than one (all are
+  listed, and `count` says how many), `NOT_FOUND` for none — same keys, empty list — and
+  `NO_ARTIFACTS` when there is nothing registered to scan. A definition written as a
+  markdown link does not count, so an ID defined only that way is `NOT_FOUND`.
+- `artifact` is an absolute path. `kind` is always `null`: this command does not infer
+  it (`list-ids` does). `source` is added when the artifact belongs to a workspace source.
+- An unresolvable target — an `--artifact` that does not exist, an empty ID, no Studio
+  project — prints `{"status": "ERROR", "message": "..."}`. The unreadable-artifact
+  limitation described under `where-used` applies to this scan too.
+
+**Exit**: 0 = found, or nothing to scan; 1 = the target could not be resolved; 2 = not found, or ambiguous — or an argument the parser rejects, which prints nothing on stdout ([see Exit Codes](#exit-codes)).
 
 ---
 
@@ -495,9 +570,16 @@ cfs where-defined --id <id>
 Find where an ID is referenced.
 
 ```
-cfs where-used --id <id>
-cfs where-used --id <id> --include-code
+cfs where-used <id> [--artifact PATH] [--include-definitions] [--include-code]
+cfs where-used --id <id> [--artifact PATH] [--include-definitions] [--include-code]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `<id>` / `--id <id>` | The ID to look up, positionally or by flag. Given both, the positional wins and a warning goes to stderr, not into the JSON; an empty positional falls through to `--id`. |
+| `--artifact PATH` | Scan only this artifact |
+| `--include-definitions` | Also list the ID's definitions, typed `definition` |
+| `--include-code` | Also scan registered codebase paths for `@cpt-*` markers (below) |
 
 `--include-code` also scans code files under Studio-registered `codebase`
 paths (declared in `artifacts.toml`) for `@cpt-*` marker references — it does
@@ -517,19 +599,50 @@ link form is neither a definition nor a use and is not listed at all, with or wi
 **Output** (JSON):
 ```json
 {
-  "id": "cpt-studio-fr-core-init",
+  "id": "cpt-studio-component-traceability-engine",
+  "artifacts_scanned": 52,
+  "count": 1,
   "references": [
     {
-      "file": "architecture/DESIGN.md",
-      "line": 62,
-      "context": "inline_reference"
+      "artifact": "/path/to/project/architecture/ADR/0011-cpt-studio-adr-structured-id-format-v1.md",
+      "artifact_type": "ADR",
+      "line": 98,
+      "kind": null,
+      "type": "reference",
+      "checked": false
     }
-  ],
-  "total": 3
+  ]
 }
 ```
 
-**Exit**: 0.
+- `count` equals the length of `references`.
+- `artifact` is an absolute path. `artifact_type` is the artifact's kind, or `CODE` for a code reference.
+- `type` is `reference`, `definition` (only with `--include-definitions`), or `code_reference` for a code marker (only with `--include-code`).
+- `kind` is `null` for artifact references. A code reference carries its marker's kind, or `code` when the marker names none. The marker's own category — scope, block — is not in `where-used`'s output; `list-ids --include-code --all` shows it as `marker_type`.
+- `checked` is the reference's task state; `source` is added when the artifact belongs to a workspace source.
+- `--include-code` adds `code_files_scanned` and, when non-zero, `code_files_skipped`.
+
+No references is an answer, not a failure: `count` is `0` and the exit code is `0`.
+That is also what an ID that exists nowhere returns, because a scan cannot tell an
+unreferenced ID from a mistyped one. Use `where-defined`, which exits `2` for an
+unknown ID, when that distinction matters.
+
+One limitation is disclosed rather than signalled. A registered artifact that cannot be
+read — permissions, a file that vanished after registration — is skipped: a warning
+names it on stderr, its references are absent from the result, and nothing in the JSON
+or the exit code records the skip; `artifacts_scanned` still counts it. A file holding
+bytes that are not valid UTF-8 is *not* skipped: each invalid byte is replaced with
+U+FFFD, a warning names the file on stderr, and the rest of the file is scanned as
+usual. An ID with an invalid byte inside it is therefore not read as an ID at all — it
+is never mistaken for a different ID, as it would be if the byte were simply deleted.
+So an empty result from a project with an unreadable artifact is not proof of no
+references. `--include-code` reports `code_files_skipped` for code
+files; the artifact scan has no equivalent yet.
+
+If the target cannot be resolved — an `--artifact` that does not exist, no ID given,
+no Studio project — the command prints `{"status": "ERROR", "message": "..."}`.
+
+**Exit**: 0 = the scan ran (with or without references, and with any unreadable artifact skipped), 1 = the target could not be resolved, 2 = an argument the parser rejects ([see Exit Codes](#exit-codes)).
 
 ---
 
@@ -538,21 +651,69 @@ link form is neither a definition nor a use and is not listed at all, with or wi
 Get content block for an ID definition.
 
 ```
-cfs get-content --id <id>
+cfs get-content --id <id> --artifact PATH
+cfs get-content --id <id> --code PATH [--inst INST]
 ```
 
-**Output** (JSON):
+| Option | Description |
+|--------|-------------|
+| `--id <id>` | The ID whose content to return (required) |
+| `--artifact PATH` | The artifact holding the definition; returns the block under it |
+| `--code PATH` | A code file instead; returns the marked block for the ID |
+| `--inst INST` | With `--code`: which of this ID's instruction blocks to return — `validate-input` or `inst-validate-input` for `@cpt-begin:…:inst-validate-input` |
+
+One of `--artifact` or `--code` is required. They are not checked for exclusivity: given
+both, `--code` is used and `--artifact` is ignored. `--inst` is read only with `--code`
+and is ignored otherwise. `--artifact` names a *registered* artifact and needs a Studio
+project; `--code` reads the file directly and needs none — it works on any file, anywhere.
+
+**Output** (JSON), `--artifact`:
 ```json
 {
-  "id": "cpt-studio-fr-core-init",
-  "file": "architecture/PRD.md",
-  "line_start": 154,
-  "line_end": 159,
-  "content": "The system MUST provide an interactive `cfs init` command..."
+  "status": "FOUND",
+  "id": "cpt-studio-component-traceability-engine",
+  "text": "##### Why this component exists\n\n...",
+  "artifact": "/path/to/project/architecture/DESIGN.md",
+  "start_line": 704,
+  "end_line": 726,
+  "kind": "DESIGN",
+  "system": "Constructor Studio",
+  "traceability": "FULL"
 }
 ```
 
-**Exit**: 0=found, 2=not found.
+**Output** (JSON), `--code`:
+```json
+{
+  "status": "FOUND",
+  "id": "cpt-studio-algo-traceability-validation-scan-ids",
+  "inst": null,
+  "text": "import re\nimport logging\n..."
+}
+```
+
+Without `--inst`, `text` is the content of the ID's **first** `@cpt-begin`/`@cpt-end`
+block in the file — or, for an ID that has only a scope marker there, that marker's
+line — and `inst` is `null`. With `--inst`, it is that instruction's block **of this
+ID**: the name is accepted with or without its `inst-` prefix, and only the ID's own
+blocks are searched, because instruction names repeat across IDs in one file. An
+`--inst` the ID has no block for is `NOT_FOUND` with exit 2 — never another block
+reported under the name that was asked for. That includes an empty `--inst ""`, which is
+a request for an instruction, not an omitted option. `inst` echoes the value as given.
+
+Several blocks for one ID are the norm, not a conflict: an algorithm's steps are
+`@cpt-begin` blocks that share its ID and differ in instruction id, and `--inst` is how
+one is chosen. This is not `where-defined`'s `AMBIGUOUS`, which is an ID *defined* more
+than once. With `--artifact`, an artifact that defines the ID twice yields the first
+definition's block; `cfs validate` does not report that duplicate, because it flags only
+definitions in different files (see `list-ids`). An ID with no content block in the given file
+returns `{"status": "NOT_FOUND", "id": "...", "inst": ...}` (`--code`) or
+`{"status": "NOT_FOUND", "id": "..."}` (`--artifact`). Neither
+`--artifact` nor `--code`, a path that does not exist, `--artifact` outside a Studio project, or a code file whose markers do
+not parse (a `marker-begin-no-end`, say — the message carries the marker findings)
+returns `{"status": "ERROR", "message": "..."}`.
+
+**Exit**: 0 = found; 1 = neither `--artifact` nor `--code` given, the path cannot be resolved, or the code file cannot be parsed; 2 = not found — or an argument the parser rejects, such as a missing `--id`, which prints nothing on stdout ([see Exit Codes](#exit-codes)).
 
 ---
 
