@@ -284,6 +284,11 @@ BACKEND_ROUTING_NAMES = frozenset({
     "CLAUDE_CODE_USE_VERTEX",
     "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
     "CLAUDE_CODE_SKIP_VERTEX_AUTH",
+    # Not an endpoint, but it decides which credential answers: Claude Code runs
+    # this as an external helper and uses whatever it returns, so a runner that
+    # happens to export it silently swaps the credential source for the graded
+    # CLI (#283).
+    "CLAUDE_CODE_API_KEY_HELPER",
     # The codex family, which the list covered not at all while the provider
     # forwards `OPENAI_`/`CODEX_` wholesale (#229 review). `CODEX_URL` and
     # `CODEX_EXEC_SERVER_URL` are names found in the codex-cli 0.156.1 binary;
@@ -339,8 +344,8 @@ def child_env(*prefixes: str, tmpdir: Path | None = None, home: Path | None = No
     if dropped:
         print(
             f"cf-ux: not forwarding {', '.join(dropped)} to the graded CLI -- these "
-            "choose which service answers, and the run reports as a measurement of "
-            "the default one",
+            "choose which service answers or which credential source it uses, and the "
+            "run reports as a measurement of the default one",
             file=sys.stderr,
         )
     if tmpdir is not None:
