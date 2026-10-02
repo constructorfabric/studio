@@ -1022,7 +1022,7 @@ def test_prompt_runtime_references_use_cf_studio_path() -> None:
 # Every MENU that does not yet declare a gate risk TYPE, frozen 2026-09-07.
 # `blocking` is the *intended* contract for an undeclared gate. In the autonomous
 # default mode it is now also the actual behaviour (that mode never resolves an
-# undeclared gate); two other paths still resolve one by runtime judgement,
+# undeclared gate); one other path still resolves one by runtime judgement,
 # so this set freezes the existing untyped inventory rather than recording a
 # fail-closed default. The surface migrates gate by gate and must not grow --
 # anything not in this set has to declare a TYPE.
@@ -1233,16 +1233,16 @@ def _menu_shape_declarations() -> dict[str, str | None]:
 #: a declared TYPE. Named here so the claim in UNTYPED_MENU_BASELINE's comment is
 #: pinned to something: if a path is retired or stops judging, the guard below
 #: fails and the comment has to be corrected with it. Sourced from
-#: `architecture/specs/PDSL.md`, which cites the same two. The default flip
-#: retired the third -- assistant mode's own auto-selection rule in
-#: `simple-mode-rules.md` -- so autonomy there now comes from a declared type
-#: resolved against the plan, not from a confidence judgement. Both survivors are
-#: outside the autonomous default's declaration-driven resolution: one is opt-in
-#: (BNW), one is mode-agnostic (the dispatch pre-set, bounded by an explicit
-#: imperative in the user's message, not by the mode).
+#: `architecture/specs/PDSL.md`. The default flip retired one -- assistant mode's
+#: own auto-selection rule in `simple-mode-rules.md` -- so autonomy there now comes
+#: from a declared type resolved against the plan, not from a confidence judgement.
+#: A later change retired the sub-agent dispatch pre-set -- the rule that inferred
+#: `approve-once` from an explicit imperative in the user's message -- so the
+#: native-vs-inline menu is now simply asked (a `blocking` hard gate), never guessed.
+#: The one remaining survivor is outside the autonomous default's declaration-driven
+#: resolution: it is opt-in (BNW).
 RUNTIME_JUDGEMENT_PATHS = {
     "workflows/brave-new-world.md": "allowing this overlay to answer eligible menus",
-    "skills/studio/modules/subagents/dispatch.md": "SUB_AGENT_GROUP_DECISION = approve-once",
 }
 
 #: The claim has a second half -- that none of those paths *reads* a declaration --
@@ -1268,8 +1268,8 @@ def test_the_runtime_judgement_paths_named_in_the_baseline_comment_still_exist()
 
     `UNTYPED_MENU_BASELINE`'s comment and this module's docstrings state that
     `blocking` is the intended contract, now also the default-mode behaviour,
-    while two other paths still auto-resolve an undeclared gate by runtime
-    judgement. That is a factual claim about two specific files, and prose cannot
+    while one other path still auto-resolves an undeclared gate by runtime
+    judgement. That is a factual claim about one specific file, and prose cannot
     hold it: a path could be retired or bound to declared types and the comment
     would quietly become false, which is the same overclaim this wording replaced.
 
@@ -1285,10 +1285,10 @@ def test_the_runtime_judgement_paths_named_in_the_baseline_comment_still_exist()
     `DECLARED_TYPE_READ_RE` does not match. The fix when this fails is to correct
     the comment in the same change, not to edit these constants to match.
     """
-    assert len(RUNTIME_JUDGEMENT_PATHS) == 2, (
-        f"The comment on UNTYPED_MENU_BASELINE says two paths resolve gates by "
+    assert len(RUNTIME_JUDGEMENT_PATHS) == 1, (
+        f"The comment on UNTYPED_MENU_BASELINE says one path resolves gates by "
         f"runtime judgement; this guard names {len(RUNTIME_JUDGEMENT_PATHS)}. Keep "
-        "the two in step."
+        "the count and the comment in step."
     )
 
     findings: list[str] = []
@@ -1328,22 +1328,28 @@ def test_the_runtime_judgement_paths_named_in_the_baseline_comment_still_exist()
     )
 
 
-def test_sub_agent_dispatch_pre_set_is_mode_agnostic() -> None:
-    """The dispatch pre-set path runs in every SIMPLE_MODE, including the default (PR #398).
+def test_sub_agent_dispatch_has_no_inference_pre_set() -> None:
+    """The native-vs-inline menu is asked, never guessed from the user's phrasing.
 
-    PDSL.md describes this path as mode-agnostic -- `dispatch.md:43` pre-sets the dispatch
-    decision from an explicit imperative in the user's message, with no `SIMPLE_MODE` gate,
-    so it fires in the autonomous default too. An earlier draft of that spec text called it
-    "non-default modes," which review corrected. This pins the fact so the doc and the rule
-    cannot silently drift: if dispatch ever gains a `SIMPLE_MODE` carve-out, this fails and
-    PDSL.md's characterisation of the path must be revisited with it.
+    An earlier rule let a calling workflow pre-set `SUB_AGENT_GROUP_DECISION = approve-once` by
+    inferring intent from an explicit imperative in the user's message, skipping the menu. That
+    inference was retired: native-vs-inline stays a `blocking` hard gate the user answers, never
+    a guess from wording. This pins the removal so the pre-set cannot silently return.
+
+    The gate was deliberately **not** re-typed to a plan-resolvable `decision`: it carries a
+    session-wide option (`approve-session`/`inline-session`), and a shipped invariant keeps
+    session-wide preference a user-only choice -- a plan must not be able to set it. So only the
+    inference is retired here; making the menu plan-resolvable is a larger change that first has
+    to separate the one-shot choice from the session-wide one.
     """
     dispatch = (REPO_ROOT / "skills/studio/modules/subagents/dispatch.md").read_text(encoding="utf-8")
-    assert "SUB_AGENT_GROUP_DECISION = approve-once" in dispatch   # the pre-set rule is present
-    assert "SIMPLE_MODE" not in dispatch, (
-        "dispatch.md now references SIMPLE_MODE, so its pre-set path may no longer be "
-        "mode-agnostic; revisit PDSL.md's description of the runtime-judgement paths."
-    )
+    assert "MENU SubAgentApprovalRequest" in dispatch
+    assert "TYPE: blocking" in dispatch  # still a hard gate, asked not guessed
+    # the inference pre-set is gone: no rule pre-sets the decision from message phrasing
+    assert "explicit imperative" not in dispatch
+    assert "before reaching SubAgentDispatch when the user" not in dispatch
+    assert ("NEVER pre-set SUB_AGENT_GROUP_DECISION or SUB_AGENT_DISPATCH_MODE on behalf of "
+            "the user by inferring intent") in dispatch
 
 
 class TestWhyNoLintDecidesWhichGateMayAnswerForTheUser:
@@ -1475,7 +1481,7 @@ def test_the_untyped_menu_surface_does_not_grow() -> None:
     The tail recorded in UNTYPED_MENU_BASELINE is grandfathered so the surface
     can migrate one gate at a time. It is *not* grandfathered because undeclared
     already means `blocking` everywhere -- that is the intended contract, now also
-    the autonomous default's behaviour, while two other paths still resolve
+    the autonomous default's behaviour, while one other path still resolves
     an undeclared gate by runtime judgement today. This test freezes the existing
     untyped inventory: what must not happen is that inventory growing, so a MENU
     neither typed nor in the baseline fails here.
@@ -3597,10 +3603,11 @@ def test_the_two_corpus_scans_cover_the_same_tree() -> None:
 def test_no_auto_proceeding_gate_offers_a_session_wide_option() -> None:
     """A `confirmation` gate may answer for the user — but only for this turn.
 
-    `subagents/dispatch.md` already draws this line and draws it in the shipped rules: a
-    calling workflow **may** pre-set `approve-once` on the user's behalf, and may **never**
-    pre-set `approve-session` — *"session-wide preference must only be set by the user"*.
-    A `confirmation` label says "auto-proceed on the recommendation" without naming which
+    `subagents/dispatch.md` draws this line in its shipped rules: a calling workflow may
+    **never** pre-set `approve-session` on the user's behalf — *"session-wide preference must
+    only be set by the user"*. (It once allowed pre-setting the one-shot `approve-once` from an
+    inferred imperative; that inference was retired, so now neither is pre-set — the menu is
+    asked.) A `confirmation` label says "auto-proceed on the recommendation" without naming which
     option, so a menu that offers a session-wide choice alongside a one-shot one could have
     the session-wide one taken autonomously. That is the one thing those rules forbid.
 

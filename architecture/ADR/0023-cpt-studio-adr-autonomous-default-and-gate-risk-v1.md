@@ -214,13 +214,14 @@ SubAgentApprovalRequest`, `SubAgentFallbackRequest` and
 `:53`, `:60`), so all four can carry a declaration and all four are in scope.
 Being declarable does not make them autonomous: git mutation is in the blocked
 set referenced below, so those gates are `blocking` unless and until an author
-declares otherwise within that boundary. Nor is each of them *enforced* today,
-though only one is affected: `dispatch.md:43` lets a caller pre-set the group
-decision, which suppresses
+declares otherwise within that boundary. Nor was each of them *enforced* at the time of this ADR,
+though only one was affected: `dispatch.md:43` let a caller pre-set the group
+decision, which suppressed
 `SubAgentApprovalRequest` — its `EMIT_MENU` at `:103` is guarded on that
-variable being unset. That is the third of the three paths named under *What
-this decision does not enforce*, and until it is bound that gate is declarable
-but still bypassable. The two fallback menus are guarded on dispatch failure and
+variable being unset. That was the third of the three paths named under *What
+this decision does not enforce*. **(Update: that inference pre-set has since been
+retired — the menu is now simply asked as a blocking gate, never pre-set from
+message phrasing — so this path is no longer bypassable.)** The two fallback menus are guarded on dispatch failure and
 retry count rather than the group decision, and `GitCommitModeMenu` on
 `GIT_COMMIT_MODE == unset` with no caller pre-set path, so neither is
 suppressible this way.
@@ -401,12 +402,16 @@ judgement:
   auto-selection rule, with no overlay and no declaration involved
 - `workflows/brave-new-world.md` — the autonomy overlay, whose eligibility
   module explicitly rejects requiring a declared marking
-- `skills/studio/modules/subagents/dispatch.md:43` — a calling workflow may
+- `skills/studio/modules/subagents/dispatch.md:43` — a calling workflow could
   pre-set `SUB_AGENT_GROUP_DECISION = approve-once` from *"an explicit imperative
   with a named target artifact or operation … and no conditional or questioning
   language"*. The `EMIT_MENU`, `WAIT` and `STOP_TURN` at `:103-105` are each
   guarded on `SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION ==
-  unset`, so pre-setting the group decision alone suppresses all three
+  unset`, so pre-setting the group decision alone suppressed all three.
+  **(Update: this inference pre-set was retired in a follow-up change — the menu
+  is now asked, never pre-set from phrasing. The gate was kept `blocking` rather
+  than re-typed to a plan-resolvable decision, because it carries a session-wide
+  option a shipped invariant keeps user-only.)**
 
 All three must be retired or bound to declared types **by the default-flip
 change, as a required component of it rather than a follow-up** — a flip that

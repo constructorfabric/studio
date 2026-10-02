@@ -40,7 +40,7 @@ RULES:
   ALWAYS let the user choose native once, native for session, inline once, inline for session, or cancel
   ALWAYS treat explicit user language such as "no sub-agents", "without subagents", or "inline only" as inline-once unless the user asks to save it for the session
   ALWAYS reset SUB_AGENT_DISPATCH_MODE to unset when the user asks to revoke or change the saved dispatch preference
-  ALWAYS allow the calling workflow to set SUB_AGENT_GROUP_DECISION = approve-once before reaching SubAgentDispatch when the user's original message is an explicit imperative with a named target artifact or operation (e.g. 'run cf-review on X', 'fix these findings') and no conditional or questioning language; NEVER allow pre-setting SUB_AGENT_DISPATCH_MODE = approve-session on behalf of the user — session-wide preference must only be set by the user via SubAgentApprovalRequest option 2
+  NEVER pre-set SUB_AGENT_GROUP_DECISION or SUB_AGENT_DISPATCH_MODE on behalf of the user by inferring intent from the phrasing of their message — ask via SubAgentApprovalRequest instead; session-wide preference must only be set by the user via SubAgentApprovalRequest option 2. The boundary is direction, not mechanism: honouring an explicit literal decline ("no sub-agents"/"inline only") to the safe, reversible inline default is not inference, whereas reading phrasing to approve dispatch — the consequential, less-reversible action — is exactly the inference this forbids
 MENU SubAgentApprovalRequest
 TITLE: Ready to run a background task — native mode runs it in a separate process (faster, isolated); inline keeps everything in this chat. Recommended: native.
 TYPE: blocking

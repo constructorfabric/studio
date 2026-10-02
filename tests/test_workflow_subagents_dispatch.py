@@ -1537,12 +1537,20 @@ def test_skill_requires_dispatch_group_approval_before_native_subagent_dispatch(
     ) in dispatch
     assert "ALWAYS ask before every dispatch group unless SUB_AGENT_DISPATCH_MODE" in dispatch
     assert "NEVER dispatch a sub-agent silently" in dispatch
+    # The native-vs-inline menu stays a blocking hard gate (asked, never inferred): the
+    # phrasing-inference pre-set was retired, but the gate itself is unchanged.
+    assert "TYPE: blocking" in dispatch
     assert "1 native (this time) -> SET SUB_AGENT_GROUP_DECISION = approve-once" in dispatch
     assert "2 native (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = approve-session" in dispatch
     assert "3 inline (this time) -> SET SUB_AGENT_GROUP_DECISION = inline-once" in dispatch
     assert "4 inline (always, this session) -> SET SUB_AGENT_DISPATCH_MODE = inline-session" in dispatch
     assert "5 cancel -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN" in dispatch
     assert "RUN SubAgentDispatchIntentNormalize" in dispatch
+    # The 'never infer' rule states its own boundary so it does not read as contradicting the
+    # line above (which honours an explicit literal decline): honouring an explicit decline to the
+    # safe inline default is not inference; inferring an approval to dispatch is what is forbidden.
+    assert "inferring intent from the phrasing of their message" in dispatch
+    assert "The boundary is direction, not mechanism" in dispatch
     assert (
         "LOAD each sub-agent contract from the selected registry entry's prompt_file when present"
         in dispatch

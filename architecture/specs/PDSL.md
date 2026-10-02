@@ -397,27 +397,26 @@ Rules:
   default mode resolves an *eligible* gate — one whose declared `TYPE` is
   `confirmation` or `decision` — by taking the one valid option the approved
   plan's `[[gate_decisions]]` answers for its declared `KEY`; it reads the
-  declaration to do so. Two shipped paths still auto-resolve gates by runtime
-  judgement rather than a declaration, and neither is the autonomous default
+  declaration to do so. **One** shipped path still auto-resolves gates by runtime
+  judgement rather than a declaration, and it is not the autonomous default
   resolving one: the autonomy overlay (`workflows/brave-new-world.md`), reachable
-  only when the user opts into it, and sub-agent dispatch's pre-set rule
-  (`skills/studio/modules/subagents/dispatch.md:43`), which is **mode-agnostic**.
-  The dispatch path skips the `TYPE: blocking` approval menu when it judges the
-  message an explicit imperative with a named target, in any mode including the
-  default, so it is bounded by that phrasing-inference rather than by the mode,
-  and is pre-existing and unchanged by this flip. Assistant mode's former
-  auto-selection rule was retired by the flip — it now narrates and recommends but
-  never selects. So an undeclared menu is **not** fail-closed in those two paths,
-  but the autonomous default mode itself never resolves one: it asks every
-  `blocking` or undeclared gate.
+  only when the user opts into it. Sub-agent dispatch's former pre-set rule — which
+  skipped the `TYPE: blocking` approval menu when it judged the user's message an
+  explicit imperative with a named target — was **retired**: native-vs-inline is now
+  simply asked as a blocking hard gate, never guessed from phrasing. (It was not
+  re-typed to a plan-resolvable `decision`, because it carries a session-wide option
+  that a shipped invariant keeps a user-only choice.) Assistant mode's former
+  auto-selection rule was likewise retired by the flip — it now narrates and
+  recommends but never selects. So an undeclared menu is **not** fail-closed in that
+  one opt-in path, but the autonomous default mode itself never resolves one: it asks
+  every `blocking` or undeclared gate.
 - **The lint still does not enforce this; the default flip does.** A lint cannot
   bind a path. The change that introduces declaration-driven resolution has now
   landed: the autonomous default reads declared types and asks any `blocking` or
-  undeclared gate, and the assistant auto-select path was retired. The remaining
-  two judgement paths — one opt-in, one mode-agnostic but bounded by an explicit
-  imperative in the user's own message — are narrow and reviewed, and the
-  autonomous default mode itself asks every undeclared gate, so the safety of the
-  grandfathered set rests on those facts — asserted by a structural test over
+  undeclared gate, and the assistant auto-select path was retired. The one remaining
+  judgement path — opt-in (BNW) — is narrow and reviewed, and the autonomous default
+  mode itself asks every undeclared gate, so the safety of the grandfathered set
+  rests on those facts — asserted by a structural test over
   `simple-mode-autonomous.md`, not demonstrated by a lint default.
 - **`TYPE` is read only in the menu's declaration region:** from the menu
   header up to the first section that is not `TITLE`, `TYPE`, `SHAPE`, or
@@ -476,8 +475,8 @@ Rules:
   records** — the failure direction is more friction, never more autonomy. That
   is the contract, and in the autonomous default mode it is now also current
   behaviour; as stated above, an undeclared menu is still not fail-closed in the
-  two remaining paths that resolve by runtime judgement — the opt-in overlay and
-  the mode-agnostic dispatch pre-set.
+  one remaining path that resolves by runtime judgement — the opt-in overlay (the
+  sub-agent dispatch pre-set was since retired; its menu is now simply asked).
 - Everything else is prose, in the region or out of it: `NOTE:`, `NOTES:` and
   `ELSE:`, any lower- or mixed-case line whose value is **some other token**
   (`type: skill`, `**Type**: CLI`), and any line with neither a separator nor a
