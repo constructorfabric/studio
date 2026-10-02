@@ -344,8 +344,8 @@ def child_env(*prefixes: str, tmpdir: Path | None = None, home: Path | None = No
     if dropped:
         print(
             f"cf-ux: not forwarding {', '.join(dropped)} to the graded CLI -- these "
-            "choose which service answers, and the run reports as a measurement of "
-            "the default one",
+            "choose which service answers or which credential source it uses, and the "
+            "run reports as a measurement of the default one",
             file=sys.stderr,
         )
     if tmpdir is not None:
