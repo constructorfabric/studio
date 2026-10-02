@@ -397,9 +397,9 @@ now **in progress** rather than unstarted — a growing set of menus declare a
 declared type at runtime yet**. The resolution chain this decision specifies
 exists as library code (`skills/studio/scripts/studio/utils/gate_chain.py`);
 its safety and economy filters are landing in increments, but the chain has no
-caller outside its own test suite, so every gate — typed or not — still stops
-and asks exactly as before. An undeclared gate is therefore **not fail-closed
-today** — three shipped paths resolve undeclared gates by runtime judgement:
+caller outside its own test suite, so declared types do not affect runtime
+resolution yet. An undeclared gate is therefore **not fail-closed today** —
+three shipped paths resolve undeclared gates by runtime judgement:
 
 - `skills/studio/modules/gates/simple-mode-rules.md:19` — assistant mode's
   auto-selection rule, with no overlay and no declaration involved
