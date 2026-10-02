@@ -191,3 +191,197 @@ def test_more_than_the_cap_criteria_truncates_with_a_note(tmp_path: Path) -> Non
     result = pi.read_plan_items(_plan(tmp_path, manifest, {"p.md": body}))
     assert len(result.items) == pi.MAX_ITEMS_PER_PHASE
     assert any("more than" in p for p in result.read_problems)
+
+
+def test_exactly_the_cap_is_not_truncated(tmp_path: Path) -> None:
+    # The exact boundary: cap items is not truncation (no off-by-one note).
+    lines = "\n".join(f"- [ ] item {n}" for n in range(pi.MAX_ITEMS_PER_PHASE))
+    result = _one_phase(tmp_path, lines)
+    assert len(result.items) == pi.MAX_ITEMS_PER_PHASE
+    assert not any("more than" in p for p in result.read_problems)
+
+
+def test_one_over_the_cap_truncates_exactly_one(tmp_path: Path) -> None:
+    # The other side of the boundary: cap+1 drops exactly the one over, with the note.
+    lines = "\n".join(f"- [ ] item {n}" for n in range(pi.MAX_ITEMS_PER_PHASE + 1))
+    result = _one_phase(tmp_path, lines)
+    assert len(result.items) == pi.MAX_ITEMS_PER_PHASE
+    assert any("more than" in p for p in result.read_problems)
+
+
+_ONE_PHASE_MANIFEST = '[plan]\ntask="t"\n[[phases]]\nnumber=1\nfile="p.md"\n'
+
+
+def _one_phase(tmp_path: Path, criteria: str) -> pi.PlanItems:
+    body = f"## Acceptance Criteria\n{criteria}\n"
+    return pi.read_plan_items(_plan(tmp_path, _ONE_PHASE_MANIFEST, {"p.md": body}))
+
+
+def test_a_needs_marker_declares_the_dependency_keeping_the_full_text(tmp_path: Path) -> None:
+    result = _one_phase(tmp_path, "- [ ] PRD approved (needs: pricing_model)")
+    assert result.read_problems == []
+    assert len(result.items) == 1
+    item = result.items[0]
+    assert item.depends_on_question == "pricing_model"
+    # the marker is NOT stripped: the text is the full criterion, so two criteria differing
+    # only by their marker keep distinct identities
+    assert item.text == "PRD approved (needs: pricing_model)"
+
+
+def test_two_criteria_differing_only_by_marker_stay_distinct(tmp_path: Path) -> None:
+    # The feature's own differentiator must not collapse two deliverables to one verdict
+    # identity: same base wording, different dependency, must remain two distinct items.
+    result = _one_phase(
+        tmp_path,
+        "- [ ] Deploy (needs: staging_ok)\n- [ ] Deploy (needs: prod_ok)")
+    assert [i.text for i in result.items] == [
+        "Deploy (needs: staging_ok)", "Deploy (needs: prod_ok)"]
+    assert [i.depends_on_question for i in result.items] == ["staging_ok", "prod_ok"]
+    assert len({i.text for i in result.items}) == 2  # distinct verdict identities
+
+
+def test_no_marker_means_no_dependency(tmp_path: Path) -> None:
+    result = _one_phase(tmp_path, "- [ ] PRD approved")
+    assert result.items[0].depends_on_question is None
+
+
+def test_a_checked_criterion_with_a_marker_keeps_both(tmp_path: Path) -> None:
+    # Checkbox parsing and marker parsing are independent: a `[x]` criterion still carries its
+    # dependency (guards against a regression that couples the two).
+    result = _one_phase(tmp_path, "- [x] PRD approved (needs: pricing_model)")
+    item = result.items[0]
+    assert item.authored_done is True
+    assert item.depends_on_question == "pricing_model"
+
+
+def test_a_malformed_needs_key_is_reported_and_not_applied(tmp_path: Path) -> None:
+    result = _one_phase(tmp_path, "- [ ] PRD approved (needs: Pricing-Model)")
+    item = result.items[0]
+    assert item.depends_on_question is None          # the bad key is not applied
+    assert any("needs" in p and "criterion 1" in p for p in result.read_problems)
+
+
+def test_the_reserved_unspecified_key_is_rejected(tmp_path: Path) -> None:
+    # `(needs: unspecified)` is syntactically valid but the register treats "unspecified" as
+    # "no key", so it could never block: reject it loudly rather than apply it silently.
+    result = _one_phase(tmp_path, "- [ ] PRD approved (needs: unspecified)")
+    assert result.items[0].depends_on_question is None
+    assert any("reserved" in p for p in result.read_problems)
+
+
+def test_a_key_the_log_cannot_store_unchanged_is_rejected(tmp_path: Path) -> None:
+    # The grammar has no length limit but the decision log caps `decision_key` at 500 chars. A
+    # longer valid key would be recorded truncated, so an answering event could never match it and
+    # the item would stay blocked with no further diagnostic. Reject-and-report, like the other
+    # unusable keys — not a silent partial application.
+    long_key = "a" * 501  # grammar-valid, but one over the log's field cap
+    result = _one_phase(tmp_path, f"- [ ] Ship it (needs: {long_key})")
+    assert result.items[0].depends_on_question is None
+    assert any("longer than the decision log" in p for p in result.read_problems)
+
+
+def test_a_marker_with_trailing_punctuation_is_still_honoured(tmp_path: Path) -> None:
+    # A marker that ends a sentence ("...(needs: k).") must still be read — not silently ignored,
+    # which would let the item complete with its declared dependency unchecked.
+    for text in ("- [ ] PRD approved (needs: pricing_model).",
+                 "- [ ] PRD approved (needs: pricing_model)!",
+                 "- [ ] PRD approved (needs: pricing_model) ;"):
+        result = _one_phase(tmp_path, text)
+        assert result.read_problems == []
+        assert result.items[0].depends_on_question == "pricing_model", text
+
+
+def test_a_needs_like_group_mid_sentence_is_still_left_alone(tmp_path: Path) -> None:
+    # Allowing trailing punctuation must not start matching a marker that is not trailing.
+    result = _one_phase(tmp_path, "- [ ] Document what the API (needs: auth) exposes and ships")
+    assert result.items[0].depends_on_question is None
+    # A closed group followed by real words is prose, not a broken marker: no diagnostic.
+    assert result.read_problems == []
+
+
+def test_a_trailing_marker_missing_its_colon_is_reported(tmp_path: Path) -> None:
+    # A typo'd marker (missing colon) must NOT silently collapse to "no dependency" — the author
+    # meant to gate the item, so the broken shape is reported, not read as "waits on nothing".
+    result = _one_phase(tmp_path, "- [ ] PRD approved (needs pricing_model)")
+    assert result.items[0].depends_on_question is None
+    assert any("malformed" in p for p in result.read_problems)
+
+
+def test_a_trailing_marker_missing_its_closing_paren_is_reported(tmp_path: Path) -> None:
+    result = _one_phase(tmp_path, "- [ ] PRD approved (needs: pricing_model")
+    assert result.items[0].depends_on_question is None
+    assert any("malformed" in p for p in result.read_problems)
+
+
+def test_a_trailing_marker_with_an_extra_paren_is_reported(tmp_path: Path) -> None:
+    result = _one_phase(tmp_path, "- [ ] PRD approved (needs: pricing_model))")
+    assert result.items[0].depends_on_question is None
+    assert any("malformed" in p for p in result.read_problems)
+
+
+def test_a_needs_like_word_is_not_treated_as_a_broken_marker(tmp_path: Path) -> None:
+    # "(needsfoo)" is a different word, not a typo'd marker — no false diagnostic.
+    result = _one_phase(tmp_path, "- [ ] Ship the (needsfoo) module")
+    assert result.items[0].depends_on_question is None
+    assert result.read_problems == []
+
+
+def test_a_long_criterion_keeps_its_dependency_past_the_text_bound(tmp_path: Path) -> None:
+    # `_extract_needs` runs on the FULL text, but `PlanItem.text` is capped at 500 chars. A
+    # criterion longer than the cap whose marker sits past it must still yield the right
+    # dependency key (the part that actually blocks), even though the stored text is truncated.
+    pad = "x" * 520  # the base text alone exceeds the 500-char store cap
+    result = _one_phase(tmp_path, f"- [ ] {pad} (needs: pricing_model)")
+    item = result.items[0]
+    assert result.read_problems == []
+    assert item.depends_on_question == "pricing_model"   # key survives the bound
+    assert len(item.text) <= 500                          # stored text is capped
+    assert item.text.endswith("…[truncated]")             # and marked as truncated
+    assert "(needs: pricing_model)" not in item.text      # the marker fell outside the cap
+
+
+def test_two_long_criteria_collide_in_text_but_keep_distinct_keys(tmp_path: Path) -> None:
+    # The disclosed boundary consequence (/047): two criteria identical up to the cap but
+    # differing only in a trailing marker store the SAME truncated text, so `(phase, text)`
+    # collapses — yet their dependency keys stay distinct, which is the identity that blocks.
+    # Pin it so a future refactor at the 500-char boundary cannot change it unnoticed.
+    pad = "x" * 520
+    result = _one_phase(
+        tmp_path, f"- [ ] {pad} (needs: staging_ok)\n- [ ] {pad} (needs: prod_ok)")
+    assert len({i.text for i in result.items}) == 1                       # texts collide past the cap
+    assert [i.depends_on_question for i in result.items] == ["staging_ok", "prod_ok"]  # keys do not
+
+
+def test_a_second_earlier_marker_is_reported(tmp_path: Path) -> None:
+    result = _one_phase(tmp_path, "- [ ] Ship it (needs: a) (needs: b)")
+    assert result.items[0].depends_on_question is None  # not a silent partial application
+    assert any("more than one" in p for p in result.read_problems)
+
+
+def test_an_empty_needs_key_is_reported(tmp_path: Path) -> None:
+    result = _one_phase(tmp_path, "- [ ] PRD approved (needs: )")
+    assert result.items[0].depends_on_question is None
+    assert any("needs" in p for p in result.read_problems)
+
+
+def test_needs_like_text_mid_criterion_is_left_alone(tmp_path: Path) -> None:
+    # Only a *trailing* marker is a dependency; `(needs: …)` mid-sentence is plain prose.
+    result = _one_phase(tmp_path, "- [ ] Document what the API (needs: auth) exposes")
+    item = result.items[0]
+    assert item.depends_on_question is None
+    assert item.text == "Document what the API (needs: auth) exposes"
+    assert result.read_problems == []
+
+
+def test_a_non_table_phase_entry_is_skipped_with_a_note(tmp_path: Path) -> None:
+    manifest = 'phases = ["not-a-table"]\n[plan]\ntask = "t"\n'  # top-level phases, non-table entry
+    result = pi.read_plan_items(_plan(tmp_path, manifest, {}))
+    assert result.items == []
+    assert any("not a table" in p for p in result.read_problems)
+
+
+def test_a_phase_declaring_no_file_is_a_note(tmp_path: Path) -> None:
+    manifest = '[plan]\ntask = "t"\n[[phases]]\nnumber = 1\n'
+    result = pi.read_plan_items(_plan(tmp_path, manifest, {}))
+    assert result.items == []
+    assert any("no `file`" in p for p in result.read_problems)

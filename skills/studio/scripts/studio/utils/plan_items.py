@@ -5,7 +5,15 @@ approved plan says it must satisfy. Those items are not a structured array in ``
 today -- they live as Markdown task-list checkboxes under an ``## Acceptance Criteria``
 heading in each phase file, the shape ``requirements/plan-template.md`` Section 8 mandates
 (3-10 objectively-verifiable criteria per phase). This reads them into an enumerable list so
-a later increment can walk it; it does not add plan syntax.
+the completion check can walk it.
+
+**The one bit of plan syntax it adds** is an optional trailing ``(needs: key)`` marker on a
+criterion, declaring the open question the item waits on by that question's decision ``KEY``.
+It reuses the existing ``needs`` vocabulary (a phase already declares the decisions it
+``needs``) and the existing decision-key grammar, so only the inline placement is new. An item
+whose question is still outstanding cannot be shown complete -- the open-question invariant.
+A malformed marker -- a broken trailing shape (missing colon or unbalanced parentheses) or an
+unusable key -- is reported, never silently read as "waits on nothing".
 
 **The checkbox is a claim, never a verdict.** A ``[x]`` records that the *author* marked the
 criterion done. This reader carries that as ``authored_done`` and nothing more -- whether the
@@ -36,6 +44,18 @@ from .plan_decisions import (  # noqa: F401  (re-exported constants kept near th
     _bounded,
     _load_plan,
 )
+# The decision-key grammar, imported rather than re-compiled: the key a `(needs: key)`
+# marker names is a `decision_key`, and a second copy of its pattern would drift from the
+# one the MENU `KEY:` declaration and `GateRuling.decision_key` already use.
+from .pdsl import MENU_KEY_SYNTAX_RE
+# The reserved sentinel the log uses for "no key": a `(needs: unspecified)` marker would be
+# syntactically valid yet unrepresentable in the register (which treats it as absent), so it
+# must be rejected here rather than applied silently. Imported, never re-spelled.
+# `capped_text` is the log's own `decision_key` field transform: a marker key that does not
+# survive it unchanged (e.g. longer than the field) would be recorded in a truncated form an
+# answering event could never match, so it is rejected here using that same transform rather
+# than a re-spelled length rule that would drift from the log's.
+from .decision_log import UNSPECIFIED, capped_text
 
 # @cpt-begin:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-model
 #: The level-2 heading whose task-list items are the deliverable criteria
@@ -52,6 +72,18 @@ _CHECKBOX_RE = re.compile(r"^\s*[-*]\s+\[(?P<box>[ xX])\]\s+(?P<text>\S.*)$")
 #: or close the criteria section, so a sub-heading inside it does not end it. The title is
 #: captured greedily and ``.strip()``-ed at the call site, so no trailing ``\s*$`` is needed.
 _H2_RE = re.compile(r"^\s*##\s+(?P<title>\S.*)$")
+
+#: A trailing ``(needs: key)`` marker on a criterion: declares the open question the item
+#: waits on, by that question's decision ``KEY``. Anchored to end-of-line so only a *trailing*
+#: marker is read (``needs:`` mid-prose is left alone), and the key is captured raw (``.strip``ed
+#: at the call site) so a malformed one is reported rather than silently treated as no
+#: dependency. The key is validated against ``MENU_KEY_SYNTAX_RE``, the shared decision-key
+#: grammar. ``[^)]*`` owns the whole inner span with no adjacent ``\s*`` to backtrack against.
+#: Trailing sentence punctuation and whitespace after the marker are allowed
+#: (``…(needs: key).``), so an author who ends the criterion as ordinary prose still has the
+#: marker honoured rather than silently ignored. One combined class ``[\s.;:,!?]*`` — not two
+#: adjacent quantified groups — so there is no super-linear backtracking (Sonar S8786).
+_NEEDS_RE = re.compile(r"\(needs:(?P<key>[^)]*)\)[\s.;:,!?]*$")
 
 #: v1 verification kind -- an explicit statement to be made at completion. See module doc.
 VERIFY_EXPLICIT = "explicit"
@@ -73,6 +105,10 @@ class PlanItem:
     text: str            #: the criterion text, bounded and whitespace-collapsed
     authored_done: bool  #: the ``[x]`` box as AUTHORED -- a claim, not a verified fact
     verify_kind: str = VERIFY_EXPLICIT
+    #: The decision ``KEY`` of the open question this item waits on, from a trailing
+    #: ``(needs: key)`` marker, or ``None`` when the item declares no dependency. An item
+    #: whose question is still outstanding cannot be shown complete (the open-question invariant).
+    depends_on_question: Optional[str] = None
 # @cpt-end:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-model
 
 
@@ -127,12 +163,11 @@ def read_plan_items(plan_dir: Path) -> PlanItems:
     without: List[int] = []
     problems: List[str] = []
     for index, phase in enumerate(phases):
-        found, empty_of, problem = _items_for_phase(plan_dir, phase, index)
+        found, empty_of, phase_problems = _items_for_phase(plan_dir, phase, index)
         items.extend(found)
         if empty_of is not None:
             without.append(empty_of)
-        if problem is not None:
-            problems.append(problem)
+        problems.extend(phase_problems)
     return PlanItems(items=items, phases_without_criteria=without, read_problems=problems)
 # @cpt-end:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-read
 
@@ -140,28 +175,31 @@ def read_plan_items(plan_dir: Path) -> PlanItems:
 # @cpt-begin:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-phase
 def _items_for_phase(
     plan_dir: Path, phase: object, index: int
-) -> Tuple[List[PlanItem], Optional[int], Optional[str]]:
+) -> Tuple[List[PlanItem], Optional[int], List[str]]:
     """One phase's contribution: its items, the number to file under
-    ``phases_without_criteria`` when it has none, and a ``read_problems`` note when reading
-    it went wrong. A phase speaks to exactly the lists it has something to say for --
-    truncation yields both items and a problem; a read failure yields only a problem.
+    ``phases_without_criteria`` when it has none, and its ``read_problems`` notes when reading
+    it went wrong. A phase speaks to exactly the lists it has something to say for -- a read
+    failure yields only a problem; truncation yields both items and a problem; a malformed
+    ``(needs: …)`` marker yields the item *and* a problem, so one phase may have several.
     """
     if not isinstance(phase, dict):
-        return [], None, f"phase at position {index}: not a table, so it was skipped"
+        return [], None, [f"phase at position {index}: not a table, so it was skipped"]
     number = _phase_number(phase, index)
     file_name = phase.get("file")
     if not isinstance(file_name, str) or not file_name:
-        return [], None, f"phase {number}: declares no `file` to read criteria from"
+        return [], None, [f"phase {number}: declares no `file` to read criteria from"]
     text, read_error = _read_phase_text(plan_dir, file_name)
     if read_error is not None:
-        return [], None, f"phase {number} ({_bounded(file_name)}): {read_error}"
-    criteria, truncated = _acceptance_items(text, number)
+        return [], None, [f"phase {number} ({_bounded(file_name)}): {read_error}"]
+    criteria, truncated, marker_problems = _acceptance_items(text, number)
+    problems = [f"phase {number}: {note}" for note in marker_problems]
     if truncated:
-        return criteria, None, (f"phase {number}: more than {MAX_ITEMS_PER_PHASE} criteria; "
-                                "the rest were not read")
+        problems.append(f"phase {number}: more than {MAX_ITEMS_PER_PHASE} criteria; "
+                        "the rest were not read")
+        return criteria, None, problems
     if not criteria:
-        return [], number, None
-    return criteria, None, None
+        return [], number, problems
+    return criteria, None, problems
 # @cpt-end:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-phase
 
 
@@ -216,16 +254,20 @@ def _read_phase_text(plan_dir: Path, file_name: str) -> Tuple[Optional[str], Opt
 
 
 # @cpt-begin:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-criteria
-def _acceptance_items(phase_text: str, phase_number: int) -> Tuple[List[PlanItem], bool]:
+def _acceptance_items(
+    phase_text: str, phase_number: int
+) -> Tuple[List[PlanItem], bool, List[str]]:
     """The task-list items under this phase's ``## Acceptance Criteria`` heading.
 
     Scans line by line: a level-2 heading opens the section when its title is
     ``Acceptance Criteria`` (case-folded) and closes it when it is anything else, so a
-    checkbox under a different ``##`` heading is never collected. Returns the items and a
-    flag for whether the per-phase cap truncated them.
+    checkbox under a different ``##`` heading is never collected. Returns the items, a flag
+    for whether the per-phase cap truncated them, and a note for each item whose trailing
+    ``(needs: …)`` marker was malformed (reported, never silently dropped).
     """
     in_section = False
     items: List[PlanItem] = []
+    problems: List[str] = []
     ordinal = 0
     for line in phase_text.splitlines():
         heading = _H2_RE.match(line)
@@ -238,15 +280,92 @@ def _acceptance_items(phase_text: str, phase_number: int) -> Tuple[List[PlanItem
         if box is None:
             continue
         if ordinal >= MAX_ITEMS_PER_PHASE:
-            return items, True
+            return items, True, problems
+        depends_on, marker_problem = _extract_needs(box.group("text"))
+        if marker_problem is not None:
+            problems.append(f"criterion {ordinal + 1}: {marker_problem}")
         items.append(
             PlanItem(
                 phase=phase_number,
                 ordinal=ordinal,
-                text=_bounded(box.group("text")),
+                text=_bounded(box.group("text")),  # full text; the marker is kept, never stripped
                 authored_done=box.group("box").casefold() == "x",
+                depends_on_question=depends_on,
             )
         )
         ordinal += 1
-    return items, False
+    return items, False, problems
 # @cpt-end:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-criteria
+
+
+# @cpt-begin:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-needs
+def _looks_like_broken_marker(raw_text: str) -> bool:
+    """Whether the criterion ends in a *broken* attempt at a ``(needs: key)`` marker.
+
+    Only a **trailing** attempt counts: a properly closed ``(needs: …)`` group followed by real
+    words is ordinary prose (``"the API (needs: auth) exposes …"``) and is left alone. A trailing
+    group that opens with ``(needs`` but is not the exact valid shape -- missing the colon, missing
+    the closing parenthesis, or carrying an extra one -- is a typo the author meant as a marker, so
+    the caller reports it rather than letting the intended dependency silently vanish. Called only
+    after the strict ``_NEEDS_RE`` has already failed, so a valid marker never reaches here.
+    """
+    stripped = raw_text.rstrip(" \t.;:,!?")
+    start = stripped.rfind("(needs")
+    if start == -1:
+        return False
+    after_needs = stripped[start + 6:start + 7]
+    if after_needs.isalnum() or after_needs == "_":
+        return False  # "(needsfoo…" is a different word, not a marker attempt
+    tail = stripped[start:]
+    close = tail.find(")")
+    if close == -1:
+        return True  # unclosed, e.g. "(needs: key"
+    # Closed: a marker attempt only if nothing but punctuation / extra parens follows the close
+    # ("(needs key)", "(needs: key))"); real words after it make it mid-sentence prose.
+    return not any(ch.isalnum() for ch in tail[close + 1:])
+
+
+def _extract_needs(raw_text: str) -> Tuple[Optional[str], Optional[str]]:
+    """Find a criterion's optional trailing ``(needs: key)`` dependency key.
+
+    Returns ``(depends_on, problem)``. The criterion text is **left intact** -- the marker is
+    not stripped -- because two criteria with identical wording but different dependency keys
+    are different deliverables, and stripping the marker would collapse them to one verdict
+    identity (same ``(phase, text)``). The marker stays part of the text, so the two keep
+    distinct identities and an author can give each its own verdict by its full wording.
+
+    A well-formed key sets ``depends_on``. The dependency is **reported and left unset** --
+    fail-loud, never a silent partial application -- when the trailing marker is a broken shape
+    (a typo'd ``(needs …)`` the author meant as a marker -- missing colon or unbalanced
+    parentheses -- so the intended dependency does not silently vanish), or when the key is not a
+    valid decision key, is the reserved ``UNSPECIFIED`` sentinel (which the register treats as "no
+    key", so it could never block), does not survive the log's ``decision_key`` field transform
+    unchanged (a longer key is stored truncated, so an answering event could never match it -- the
+    item would stay blocked with no further diagnostic), or when a *second*, earlier marker is
+    present (only the trailing one is read).
+    """
+    match = _NEEDS_RE.search(raw_text)
+    if match is None:
+        # A trailing typo'd marker is reported; anything else genuinely has no marker.
+        problem = ("a trailing `(needs: …)` dependency marker is malformed — it must be exactly "
+                   "`(needs: key)`, a colon after `needs` inside one balanced pair of parentheses "
+                   "at the end of the criterion; the dependency was not applied"
+                   ) if _looks_like_broken_marker(raw_text) else None
+        return None, problem
+    key = match.group("key").strip()
+    if not MENU_KEY_SYNTAX_RE.match(key):
+        return None, (f"a `(needs: …)` marker whose key {key!r} is not a valid decision key "
+                      "(lowercase, starting with a letter, letters/digits/underscores only); "
+                      "the dependency was not applied")
+    if key == UNSPECIFIED:
+        return None, (f"a `(needs: …)` marker whose key {key!r} is the reserved value the log "
+                      'uses for "no key", so it could never block; the dependency was not applied')
+    if capped_text(key) != key:
+        return None, ("a `(needs: …)` marker whose key is longer than the decision log can "
+                      "store (it would be recorded truncated, so an answer could never match "
+                      "it and the item would stay blocked); the dependency was not applied")
+    if "(needs:" in raw_text[:match.start()]:
+        return None, ("more than one `(needs: …)` marker on this criterion; only the trailing "
+                      "one is read, so the dependency was not applied — keep a single marker")
+    return key, None
+# @cpt-end:cpt-studio-algo-execution-plans-deliverable-items:p1:inst-items-needs

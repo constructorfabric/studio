@@ -155,6 +155,16 @@ def new_decision_id() -> str:
     return uuid.uuid4().hex[:16]
 
 
+def current_run_id() -> str:
+    """The id every event this process records is stamped with (``run_id``).
+
+    A reader that must not mix one run's events with another's — the open-questions register,
+    where one run's answer must never clear a different run's blocker — scopes its read to this,
+    so the default is the run it is called from rather than the whole shared log.
+    """
+    return _RUN_ID
+
+
 def set_current_decision_id(decision_id: str) -> None:
     """Set the correlation id for the current context.
 

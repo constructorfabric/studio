@@ -234,6 +234,15 @@ RULES:
   - ALWAYS include a "no unresolved variables" check criterion
 ```
 
+**Optional — declaring an open-question dependency.** A criterion may append a trailing
+`(needs: <decision_key>)` marker to declare the open question it waits on, by that question's
+decision key — for example `- [ ] PRD approved (needs: pricing_model)`. When the marker is
+present, `verify-completion` holds that item incomplete while the question is still unanswered,
+even if the criterion is otherwise met. The key reuses the same vocabulary a phase uses to
+declare the decisions it `needs`, and must be a snake_case decision key (lowercase, starting
+with a letter; letters, digits and underscores only). The marker is optional: a criterion
+without one behaves exactly as before.
+
 ### Section 9: Output Format
 
 This section MUST be included verbatim:

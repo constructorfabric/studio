@@ -192,7 +192,8 @@ def test_say_routes_each_status_to_the_right_ui_call(
     monkeypatch.setattr(vc.ui, "error", lambda m: calls.append(("error", m)))
     monkeypatch.setattr(vc.ui, "detail", lambda k, v: calls.append(("detail", k, v)))
     payload = {"status": status, "message": "the message",
-               "unsatisfied": ["item X"], "unstated": ["item Y"]}
+               "unsatisfied": ["item X"], "unstated": ["item Y"],
+               "blocked_on_question": ["item Z"]}
     vc._say(payload)
     assert calls[0] == (headline, "verify-completion: the message")
     # Only INCOMPLETE lists the blocking items; COMPLETE/ERROR stop at the headline.
@@ -200,6 +201,7 @@ def test_say_routes_each_status_to_the_right_ui_call(
     if status == "INCOMPLETE":
         assert ("detail", "not satisfied", "item X") in details
         assert ("detail", "no verdict", "item Y") in details
+        assert ("detail", "waits on an open question", "item Z") in details
     else:
         assert details == []
 
@@ -267,6 +269,95 @@ def test_classification_does_not_depend_on_evidence_text(tmp_path: Path) -> None
     assert result.status == "INCOMPLETE"
     assert result.unsatisfied == ["A exists"]
     assert result.unstated == []
+
+
+def _defer(key: str, log: Path) -> None:
+    """Record an open (parked) question for ``key`` in the log the register reads."""
+    dl.record_gate("open-question", "SomeGate", "decision",
+                   dl.GateRuling(decision_key=key, why="the plan is silent", status="absent"),
+                   command="gate-log", path=log)
+
+
+def _answer(key: str, log: Path) -> None:
+    """Record an answer that closes the open question ``key``."""
+    dl.record_gate("plan-resolved", "SomeGate", "decision",
+                   dl.GateRuling(decision_key=key, value="chosen", provenance="plan",
+                                 status="resolved", cost_if_wrong="re-run"),
+                   command="gate-log", path=log)
+
+
+_NEEDS_PHASE = "## Acceptance Criteria\n- [ ] PRD approved (needs: pricing_model)\n"
+# The marker is NOT stripped from the item text (so two criteria differing only by their
+# marker stay distinct), so a verdict is keyed by the full criterion text.
+_NEEDS_ITEM = "PRD approved (needs: pricing_model)"
+
+
+def test_item_waiting_on_an_open_question_is_incomplete_even_if_satisfied(tmp_path: Path) -> None:
+    # The dependency overrides the verdict: a satisfied item that still waits on an
+    # unanswered question cannot be shown done.
+    log = tmp_path / "log.jsonl"
+    _defer("pricing_model", log)
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdict(_NEEDS_ITEM, "satisfied"))
+    result = vc.assess(plan_dir, vpath, log_path=log)
+    assert result.status == "INCOMPLETE"
+    assert result.exit_code == 2
+    assert result.blocked_on_question == [_NEEDS_ITEM]
+    assert result.unsatisfied == []  # blocked, not "unsatisfied" -- a distinct cause
+
+
+def test_answering_the_question_lets_the_item_complete(tmp_path: Path) -> None:
+    log = tmp_path / "log.jsonl"
+    _defer("pricing_model", log)
+    _answer("pricing_model", log)  # the register no longer holds the key
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdict(_NEEDS_ITEM, "satisfied"))
+    result = vc.assess(plan_dir, vpath, log_path=log)
+    assert result.status == "COMPLETE"
+    assert result.exit_code == 0
+    assert result.blocked_on_question == []
+
+
+def test_dependency_on_a_never_raised_question_blocks(tmp_path: Path) -> None:
+    # A declared dependency on a question nobody ever raised is NOT assumed irrelevant: it
+    # blocks (the fail-safe direction) until that question is actually raised and answered,
+    # even with a satisfying verdict.
+    log = tmp_path / "log.jsonl"
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdict(_NEEDS_ITEM, "satisfied"))
+    result = vc.assess(plan_dir, vpath, log_path=log)
+    assert result.status == "INCOMPLETE"
+    assert result.blocked_on_question == [_NEEDS_ITEM]
+
+
+def test_open_question_block_is_scoped_to_the_run_being_verified(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A DIFFERENT run answering the same key must not clear this run's blocker (the shared-log
+    # cross-run contamination CodeRabbit flagged). Verify the executing run; another run's
+    # answer is ignored.
+    log = tmp_path / "log.jsonl"
+    monkeypatch.setattr(dl, "_RUN_ID", "exec-run")
+    _defer("pricing_model", log)
+    monkeypatch.setattr(dl, "_RUN_ID", "other-run")
+    _answer("pricing_model", log)
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdict(_NEEDS_ITEM, "satisfied"))
+    result = vc.assess(plan_dir, vpath, log_path=log, run_id="exec-run")
+    assert result.status == "INCOMPLETE"
+    assert result.blocked_on_question == [_NEEDS_ITEM]
+
+
+def test_blocked_item_records_a_not_satisfied_verification(tmp_path: Path) -> None:
+    # The close stays auditable: the blocked item leaves one not-satisfied verification event.
+    log = tmp_path / "log.jsonl"
+    _defer("pricing_model", log)
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdict(_NEEDS_ITEM, "satisfied"))
+    vc.assess(plan_dir, vpath, log_path=log)
+    verifications = [e for e in dl.read_events(log, event="verification")
+                     if e["payload"].get("item") == _NEEDS_ITEM]
+    assert len(verifications) == 1
+    assert verifications[0]["payload"]["verdict"] == "not-satisfied"
 
 
 class TestRegistration:

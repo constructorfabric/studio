@@ -10,6 +10,17 @@ Each item's verdict is recorded to the decision log through ``record_verificatio
 close is auditable and the session summary (a later increment) can be projected from the
 ledger rather than re-constructed.
 
+An item may also declare that it **waits on an open question** (a ``(needs: key)`` marker). The
+open-question check is scoped to **one run** -- the decision log is shared across runs, so it
+must be, or a different run's answer would clear this run's blocker. That scoping has a
+consequence worth stating plainly: run **stand-alone** against a plan, with no ``--run-id``, the
+check scopes to *this* command's run, which answered no questions -- so **every** ``(needs: …)``
+item blocks and the run reports incomplete. That is the fail-safe direction (it refuses to pass
+rather than passing on a dependency it cannot confirm), but it means a plan using the marker
+cannot be shown complete stand-alone: meaningful enforcement needs the close to run **in the
+executing run** (the end-of-run wiring, a later increment) or that run's id passed with
+``--run-id``. The verdict checks above do not need this and work stand-alone as before.
+
 Exit codes follow the project contract (``architecture/specs/cli.md``): **0** the run is
 complete, **2** a check FAILED (an item is not satisfied, not stated, or its criteria could
 not be read), **1** a fault (the plan or the verdicts file could not be read). A fault is kept
@@ -23,7 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..utils import decision_log, plan_items, ui
+from ..utils import decision_log, open_questions, plan_items, ui
 from ..utils.plan_decisions import PLAN_FILE, _bounded, _load_plan
 
 #: The run writes its verdicts here, beside the plan's own ``plan.toml`` by default.
@@ -66,10 +77,12 @@ class Completion:
     """One result shape for every outcome of a completion check.
 
     ``status`` is ``COMPLETE``, ``INCOMPLETE`` or ``ERROR``; ``exit_code`` is the contract
-    code it maps to. ``unsatisfied`` and ``unstated`` name the items that block completion;
-    ``read_problems`` carries the plan phases whose criteria could not be read (so an item
-    may be missing entirely); ``applicable`` is ``False`` only when the plan declares no
-    items at all, a vacuous pass that is stated rather than hidden.
+    code it maps to. ``unsatisfied``, ``unstated`` and ``blocked_on_question`` name the items
+    that block completion -- the last being items that still wait on an unanswered open
+    question, which cannot be shown done however their verdict reads; ``read_problems`` carries
+    the plan phases whose criteria could not be read (so an item may be missing entirely);
+    ``applicable`` is ``False`` only when the plan declares no items at all, a vacuous pass that
+    is stated rather than hidden.
     """
 
     status: str
@@ -77,6 +90,7 @@ class Completion:
     checked: int = 0
     unsatisfied: List[str] = field(default_factory=list)
     unstated: List[str] = field(default_factory=list)
+    blocked_on_question: List[str] = field(default_factory=list)
     read_problems: List[str] = field(default_factory=list)
     phases_without_criteria: List[int] = field(default_factory=list)
     unmatched_verdicts: List[str] = field(default_factory=list)
@@ -164,23 +178,41 @@ def _verdict_for(item: plan_items.PlanItem, verdicts: Verdicts,
 
 # @cpt-begin:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-assess
 def _reconcile(items: plan_items.PlanItems, verdicts: Verdicts,
-               log_path: Optional[Path]) -> Tuple[List[str], List[str]]:
-    """Record one verification event per item and split the blockers into (unsatisfied, unstated).
+               register: open_questions.OpenQuestions,
+               log_path: Optional[Path]) -> Tuple[List[str], List[str], List[str]]:
+    """Record one verification event per item and split the blockers into
+    (unsatisfied, unstated, blocked_on_question).
 
-    An item with no usable answer (``missing``/``ambiguous``) is *unstated*; one answered
-    wrongly (``conflict``/``unrecognised``/an explicit not-satisfied) is *unsatisfied*. The
-    split is on the reason tag, never on the evidence text.
+    An item that still waits on an **outstanding open question** cannot be shown done however
+    its verdict reads, so that check comes first and overrides the verdict: it is recorded
+    ``not-satisfied`` with reason ``blocked-on-question``. Otherwise an item with no usable
+    answer (``missing``/``ambiguous``) is *unstated*; one answered wrongly
+    (``conflict``/``unrecognised``/an explicit not-satisfied) is *unsatisfied*. The split is on
+    the reason tag, never on the evidence text.
     """
     unsatisfied: List[str] = []
     unstated: List[str] = []
+    blocked: List[str] = []
     text_counts = Counter(item.text for item in items.items)
     for item in items.items:
+        key = item.depends_on_question
+        if key is not None and not register.is_answered(key):
+            # Block unless the dependency's question was answered: a key still outstanding OR one
+            # never raised both leave the declared dependency unaddressed, so the item is not done.
+            why = ("is still outstanding" if register.is_open(key)
+                   else "was never raised, so this declared dependency is unaddressed")
+            decision_log.record_verification(
+                item.text, "not-satisfied",
+                f"waits on the open question {key!r}, which {why}", item.phase,
+                command=_COMMAND, path=log_path)
+            blocked.append(item.text)
+            continue
         verdict, evidence, reason = _verdict_for(item, verdicts, text_counts)
         decision_log.record_verification(item.text, verdict, evidence, item.phase,
                                          command=_COMMAND, path=log_path)
         if verdict == "not-satisfied":
             (unstated if reason in ("missing", "ambiguous") else unsatisfied).append(item.text)
-    return unsatisfied, unstated
+    return unsatisfied, unstated, blocked
 # @cpt-end:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-assess
 
 
@@ -201,7 +233,8 @@ def _unmatched(items: plan_items.PlanItems, verdicts: Verdicts) -> List[str]:
 
 
 # @cpt-begin:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-assess
-def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = None) -> Completion:
+def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = None,
+           run_id: Optional[str] = None) -> Completion:
     """Reconcile the plan's items against the run's verdicts and decide if the run is complete.
 
     Reads the items the plan declares and the verdicts the run recorded, records one
@@ -218,12 +251,20 @@ def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = No
         return Completion(status="ERROR", exit_code=1,
                           message=f"the verdicts file could not be read: {verdicts.error}")
 
-    unsatisfied, unstated = _reconcile(items, verdicts, log_path)
+    # Read the open-question register only when an item actually declares a dependency: a plan
+    # that uses no `(needs: …)` marker must not pay a log read, and behaves exactly as before.
+    # The read is scoped to one run (`run_id`, defaulting to the current run), so another run's
+    # answer can never clear this run's blocker.
+    register = (open_questions.read_open_questions(log_path, run_id=run_id)
+                if any(item.depends_on_question for item in items.items)
+                else open_questions.OpenQuestions())
+    unsatisfied, unstated, blocked_on_question = _reconcile(items, verdicts, register, log_path)
     unmatched = _unmatched(items, verdicts)
 
     # A phase whose criteria could not be read means an item may be missing entirely, so the
     # run cannot be shown complete -- fail-safe toward more friction, never toward a pass.
-    blocked = bool(unsatisfied) or bool(unstated) or bool(items.read_problems)
+    blocked = (bool(unsatisfied) or bool(unstated) or bool(blocked_on_question)
+               or bool(items.read_problems))
     if not items.items and not items.read_problems:
         return Completion(status="COMPLETE", exit_code=0, checked=0, applicable=False,
                           read_problems=list(items.read_problems),
@@ -233,11 +274,12 @@ def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = No
     status, code = ("INCOMPLETE", 2) if blocked else ("COMPLETE", 0)
     return Completion(
         status=status, exit_code=code, checked=len(items.items),
-        unsatisfied=unsatisfied, unstated=unstated,
+        unsatisfied=unsatisfied, unstated=unstated, blocked_on_question=blocked_on_question,
         read_problems=list(items.read_problems),
         phases_without_criteria=list(items.phases_without_criteria),
         unmatched_verdicts=unmatched,
-        message=_message(status, len(items.items), unsatisfied, unstated, items.read_problems),
+        message=_message(status, len(items.items), unsatisfied, unstated,
+                         blocked_on_question, items.read_problems),
     )
 
 
@@ -245,7 +287,8 @@ def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = No
 
 # @cpt-begin:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-report
 def _message(status: str, checked: int, unsatisfied: List[str],
-             unstated: List[str], read_problems: List[str]) -> str:
+             unstated: List[str], blocked_on_question: List[str],
+             read_problems: List[str]) -> str:
     """One human line summarising the outcome, naming the first blocking cause."""
     if status == "COMPLETE":
         return f"all {checked} item(s) satisfied"
@@ -254,6 +297,8 @@ def _message(status: str, checked: int, unsatisfied: List[str],
         parts.append(f"{len(unsatisfied)} not satisfied")
     if unstated:
         parts.append(f"{len(unstated)} with no recorded verdict")
+    if blocked_on_question:
+        parts.append(f"{len(blocked_on_question)} waiting on an open question")
     if read_problems:
         parts.append(f"{len(read_problems)} phase(s) whose criteria could not be read")
     return "incomplete: " + "; ".join(parts)
@@ -267,6 +312,7 @@ def _payload(result: Completion) -> Dict[str, object]:
         "applicable": result.applicable,
         "unsatisfied": result.unsatisfied,
         "unstated": result.unstated,
+        "blocked_on_question": result.blocked_on_question,
         "read_problems": result.read_problems,
         "phases_without_criteria": result.phases_without_criteria,
         "unmatched_verdicts": result.unmatched_verdicts,
@@ -289,6 +335,8 @@ def _say(payload: Dict[str, object]) -> None:
         ui.detail("not satisfied", str(text))
     for text in payload["unstated"]:  # type: ignore[union-attr]
         ui.detail("no verdict", str(text))
+    for text in payload["blocked_on_question"]:  # type: ignore[union-attr]
+        ui.detail("waits on an open question", str(text))
 
 
 # @cpt-end:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-report
@@ -309,6 +357,13 @@ def _parser() -> ui.JsonSafeArgumentParser:
                         help="the plan directory holding plan.toml (default: current dir)")
     parser.add_argument("--verdicts", default=None,
                         help=f"the verdicts file (default: {VERDICTS_FILE} under the plan dir)")
+    parser.add_argument("--run-id", default=None,
+                        help="the run whose open questions scope the check; defaults to this "
+                             "command's own run. The log is shared across runs, so the check is "
+                             "confined to one run. Run stand-alone with no --run-id this run has "
+                             "answered nothing, so every (needs: …) item blocks and the run reports "
+                             "incomplete (fail-safe); pass the executing run's id to check the "
+                             "dependencies against the run that actually answered them")
     return parser
 
 
@@ -324,7 +379,7 @@ def cmd_verify_completion(argv: List[str]) -> int:
         ui.result({"status": "ERROR", "message": f"no {PLAN_FILE} under {plan_dir}"},
                   human_fn=lambda d: ui.error(f"verify-completion: {d['message']}"))
         return 1
-    result = assess(plan_dir, verdicts_path)
+    result = assess(plan_dir, verdicts_path, run_id=args.run_id)
     payload = _payload(result)
     ui.result(payload, human_fn=_say)
     return result.exit_code
