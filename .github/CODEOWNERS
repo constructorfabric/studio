@@ -1,0 +1,6 @@
+# Every pull request into the default branch needs an approval from one of the
+# maintainers below. GitHub enforces this only when the branch rules have
+# "Require review from Code Owners" enabled; one owner's approval satisfies it,
+# and an author's own approval never counts, so a PR opened by one maintainer
+# is approved by the other.
+*   @ainetx @vasylcf
