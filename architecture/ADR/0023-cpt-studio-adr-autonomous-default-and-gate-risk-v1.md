@@ -194,12 +194,11 @@ Every gate declares a risk type as a **static constant** of its `MENU` block,
 never computed at runtime. The grammar is not invented here: the declaration is
 a `TYPE:` sub-header inside the menu's declaration region — from the `MENU`
 header to its first other section — whose value is one of the three literals,
-written `TYPE: blocking`. That grammar is **not on `main` yet**: the open #153
-adds it to `architecture/specs/PDSL.md` — including what counts as a near-miss
-of it — and implements the lint that validates it. So the shape is specified and
-reviewable in that pull request rather than in this branch, and a reader
-checking `PDSL.md` here will not find it. This record fixes the model; #153
-fixes the syntax, so a lint and a reviewer end up checking the same thing.
+written `TYPE: blocking`. That grammar **landed on `main` via #153** (merged
+2026-09-08), which added it to `architecture/specs/PDSL.md` — including what
+counts as a near-miss of it — and implemented the lint that validates it. This
+record fixes the model; #153 fixed the syntax, so a lint and a reviewer check
+the same thing.
 
 "Gate" here means a menu: a bare `STOP_TURN`, a
 `WAIT user.reply` and an approval `REQUIRE` are statements rather than menus, so
@@ -392,10 +391,15 @@ removes.
 
 ### What this decision does not enforce
 
-Recording this decision does not alter runtime behaviour: no gate declares a
-type yet, and nothing in Studio reads one. An undeclared gate is therefore **not
-fail-closed today** — three shipped paths resolve undeclared gates by runtime
-judgement:
+Recording this decision does not itself alter runtime behaviour. Gate typing is
+now **in progress** rather than unstarted — a growing set of menus declare a
+`TYPE`, the grammar #153 made possible — but **nothing resolves a gate from its
+declared type at runtime yet**. The resolution chain this decision specifies
+exists as library code (`skills/studio/scripts/studio/utils/gate_chain.py`);
+its safety and economy filters are landing in increments, but the chain has no
+caller outside its own test suite, so every gate — typed or not — still stops
+and asks exactly as before. An undeclared gate is therefore **not fail-closed
+today** — three shipped paths resolve undeclared gates by runtime judgement:
 
 - `skills/studio/modules/gates/simple-mode-rules.md:19` — assistant mode's
   auto-selection rule, with no overlay and no declaration involved
