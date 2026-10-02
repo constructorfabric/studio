@@ -1,0 +1,21 @@
+# Code owners for constructorfabric/studio, track "Studio".
+#
+# Managed by Fabric Pass. The two "managed" sections are regenerated from the
+# track's teams; team membership changes in PASS, not here. Only the "local"
+# section is yours to edit, and PASS keeps it verbatim.
+#
+# The last matching rule wins, so the order is: catch-all, local paths, governance.
+
+# --- managed: catch-all ------------------------------------------------------
+*                       @constructorfabric/studio-maintainers
+
+# --- local: path owners, kept on regeneration ---------------------------------
+# Every rule must still name the maintainers team: an approval is required from
+# one of the owners listed on the matching line, so a line with one person
+# leaves that path blocked whenever that person is away.
+
+# --- managed: governance (last, so it wins) -----------------------------------
+/.github/               @constructorfabric/studio-leaders
+/LICENSE                @constructorfabric/studio-leaders
+/NOTICE                 @constructorfabric/studio-leaders
+/SECURITY.md            @constructorfabric/studio-leaders
