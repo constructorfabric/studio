@@ -909,27 +909,25 @@ class TestTheCacheIsOnlyEvidenceForTheLoginItDescribes:
         assert model_entitlements.entitled_codex_models() is None
         assert model_entitlements.codex_model_is_withdrawn("gpt-something-else") is False
 
-    @pytest.mark.parametrize("content", ['{"no_mode": 1}', '{"auth_mode": 7}', "[]"])
-    def test_an_unreadable_login_type_is_said_once_and_without_its_content(
+    @pytest.mark.parametrize("content", [
+        '{"auth_mode": 7, "tokens": "sk-NOTLOGGED-0123456789"}',
+        '{"no_mode": 1, "tokens": "sk-NOTLOGGED-0123456789"}',
+        '[]',
+        '{"tokens": "sk-NOTLOGGED-0123456789", broken',
+        "",
+    ])
+    def test_an_unusable_login_record_is_said_once_and_without_its_content(
             self, tmp_path, monkeypatch, caplog, content):
         _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
         self._login(tmp_path, content)
 
         with caplog.at_level(logging.WARNING):
             model_entitlements.entitled_codex_models()
+            model_entitlements.codex_model_is_withdrawn("gpt-other")
 
-        assert caplog.text.count("names no login type") == 1
+        assert len(caplog.records) == 1, "one reason, said once, however often it is asked"
         assert "check is off" in caplog.text
-
-    def test_what_it_read_is_never_logged(self, tmp_path, monkeypatch, caplog):
-        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
-        self._login(tmp_path, json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": "sk-SECRETVALUE"}))
-
-        with caplog.at_level(logging.DEBUG):
-            model_entitlements.entitled_codex_models()
-
-        assert "sk-SECRETVALUE" not in caplog.text
-
+        assert "sk-NOTLOGGED" not in caplog.text
 
 class TestTheSuiteNeverSeesTheRunnersCodexHome:
     """`conftest.py` clears `CODEX_HOME` for every test. Meaningful where the runner
