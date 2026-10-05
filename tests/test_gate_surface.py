@@ -1515,15 +1515,6 @@ class TestTheThirdNumberAndItsBoundaries:
         assert (w.stop_sites, w.non_stop_sites, w.halt_sites) == (1, 1, 1), w
 
 
-def _timed(call) -> float:
-    """Seconds one call took. Wall clock, so callers take the minimum of several."""
-    import time  # noqa: PLC0415
-
-    start = time.perf_counter()
-    call()
-    return time.perf_counter() - start
-
-
 class TestThePatternsStayLinear:
     """Raised by the analyser: `\\s` matches a newline, and `re.M` then spans lines."""
 
@@ -1542,9 +1533,10 @@ class TestThePatternsStayLinear:
         shows up as many times that, deterministically and on any machine.
 
         **This replaced a wall-clock test of the same regression.** Both caught it; this
-        one in 1.6 seconds against 49, without depending on the scheduler. The timing test
-        beside it stays only for the case a call count cannot see — a regex backtracking
-        inside `re`, where the work happens without touching this function at all.
+        one in 1.6 seconds against 49, without depending on the scheduler. The case a call
+        count cannot see -- a regex backtracking inside `re`, where the work happens without
+        touching this function at all -- is pinned by the test below, by what each pattern
+        is given rather than by how long it takes.
         """
         calls = []
         real = gs._action
@@ -1554,39 +1546,83 @@ class TestThePatternsStayLinear:
         assert len(sites) == 500, len(sites)
         assert len(calls) == len(text.splitlines()), (len(calls), len(text.splitlines()))
 
-    def test_finding_emit_sites_stays_linear(self) -> None:
-        """Measured 0.8 / 3.2 / 12.5 / 52.4 ms for 500 / 1000 / 2000 / 4000 lines.
+    def test_no_pattern_in_the_emit_scan_is_given_more_than_one_line(
+            self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The cross-line backtracking this class is named for, made impossible rather than timed.
 
-        A clean doubling into quadrupling — textbook super-linear backtracking, from `\\s*`
-        crossing newlines under `re.M` on whitespace followed by a near-miss. An indent is
-        horizontal whitespace, so `[ \\t]*` is both faster and the more accurate statement.
+        The regression measured 0.8 / 3.2 / 12.5 / 52.4 ms for 500 / 1000 / 2000 / 4000 lines:
+        `^\\s*` under `re.M`, where `\\s` matches a newline, so a run of blank lines followed
+        by a near-miss backtracked across lines. That cost needs a pattern that is *given*
+        more than one line. A pattern applied to one line at a time cannot backtrack across
+        lines, whatever its shape, so the property is asserted on the input each pattern
+        receives.
 
-        Asserted as a ratio rather than an absolute time, since a wall-clock threshold is a
-        flake on a loaded machine. A first attempt to reproduce this used the wrong hostile
-        input and found nothing, which is why the shape of the input is spelled out here.
+        This replaced a wall-clock ratio (`elapsed(64000) < elapsed(16000) * 8`), which went
+        red on loaded runners with no defect behind it -- 8.05x under coverage on CI, 10x and
+        14.5x under `pytest -n 8` locally, each passing alone (#418). A red run that may be the
+        scheduler makes every red run ambiguous.
+
+        Every compiled pattern in the module's namespace (its own and the `FENCE_RE` it
+        imports) is wrapped, and so is the `re` module it calls, so a pattern compiled inside
+        a function is seen too. The input is the old hostile shape plus real emits, waits and
+        a fence, so every pattern the scan uses runs and the spy cannot pass by being skipped.
         """
-        def elapsed(n: int) -> float:
-            """The *fastest* of several runs, not the median.
+        import re  # noqa: PLC0415
 
-            A contended runner only ever adds time, so the minimum is the sample closest
-            to the real cost and the one a parallel CI job cannot inflate. The median
-            still moved: CI's Python 3.14 reported 11x with a single sample and 9.5x with
-            a median of five, on an input measured linear at 2.0x per doubling across a
-            32x range locally.
-            """
-            hostile = ("   \n" * n) + "EMIT_MENUX"
-            gs.emit_sites(hostile)                      # warm up, then measure
-            return min(_timed(lambda: gs.emit_sites(hostile)) for _ in range(7))
+        given: list = []
 
-        # Sizes large enough that the work dominates the noise, and a median rather than a
-        # single sample. The first version timed one run at n=1000 — 0.13ms locally — and
-        # failed on CI's Python 3.14 at a ratio of 11x on an input this is provably linear
-        # in: measured 2.04, 2.05, 2.01, 1.93, 2.14 for each doubling from 1k to 32k. A
-        # test whose failures are GC pauses reports the runner, not the code.
-        small, large = elapsed(16000), elapsed(64000)
-        # Four times the input; quadratic would be ~16x. Generous headroom, and still fails
-        # the behaviour that was there.
-        assert large < small * 8, (small, large)
+        class _PatternSpy:
+            def __init__(self, real: "re.Pattern[str]") -> None:
+                self._real = real
+
+            def __getattr__(self, name: str):
+                attr = getattr(self._real, name)
+                if not callable(attr) or name not in {
+                        "search", "match", "fullmatch", "finditer", "findall",
+                        "sub", "subn", "split"}:
+                    return attr
+
+                def call(*args, **kwargs):
+                    # `sub`/`subn` take the replacement first; the text is the last string.
+                    text = [a for a in args if isinstance(a, str)][-1]
+                    given.append(text)
+                    return attr(*args, **kwargs)
+                return call
+
+        class _ReSpy:
+            def __getattr__(self, name: str):
+                attr = getattr(re, name)
+                if name == "compile":
+                    return lambda *a, **k: _PatternSpy(re.compile(*a, **k))
+                if name not in {"search", "match", "fullmatch", "finditer", "findall",
+                                "sub", "subn", "split"}:
+                    return attr
+
+                def call(*args, **kwargs):
+                    # The text is `string`: third for `sub`/`subn` (pattern, repl, string),
+                    # second for the rest -- positional, or by keyword.
+                    at = 2 if name in {"sub", "subn"} else 1
+                    given.append(kwargs["string"] if len(args) <= at else args[at])
+                    return attr(*args, **kwargs)
+                return call
+
+        for name, value in list(vars(gs).items()):
+            if isinstance(value, re.Pattern):
+                monkeypatch.setattr(gs, name, _PatternSpy(value))
+        monkeypatch.setattr(gs, "re", _ReSpy())
+
+        text = (("   \n" * 200) + "EMIT_MENUX\n"
+                + "UNIT U\nDO:\n  - EMIT_MENU Asks WHEN x\n  WAIT user.reply\n"
+                + "  EMIT_MENU Proceeds\n  CONTINUE Next\n```pdsl\n```\n"
+                + "  EMIT_MENU Halts\n  STOP_TURN\n")
+        sites = gs.emit_sites(text)
+
+        # A stop that is conditional, a non-stop, and a stop: the scan's three outcomes.
+        assert [(s.menu, s.waits, s.conditional) for s in sites] == [
+            ("Asks", True, True), ("Proceeds", False, False), ("Halts", True, False)], sites
+        assert given, "no pattern ran: the spy saw nothing, so this asserted nothing"
+        multi = [t for t in given if "\n" in t]
+        assert multi == [], f"{len(multi)} pattern call(s) were given more than one line"
 
     @staticmethod
     def _findall_spy(monkeypatch: pytest.MonkeyPatch) -> list:
