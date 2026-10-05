@@ -868,7 +868,8 @@ class TestTheCacheIsOnlyEvidenceForTheLoginItDescribes:
     (#245 review). codex records the login type in `auth.json` beside the cache.
 
     Only the API-key test fails without the change; the rest pin that the new
-    condition does not reach past it -- an unknown login keeps the check running."""
+    condition does not reach past it -- no login record keeps the check running, while
+    a record that names no account switches it off (#355)."""
 
     @staticmethod
     def _login(tmp_path, content):
@@ -888,14 +889,37 @@ class TestTheCacheIsOnlyEvidenceForTheLoginItDescribes:
 
         assert model_entitlements.codex_model_is_withdrawn("gpt-something-else") is True
 
-    @pytest.mark.parametrize("content", [None, "{not json", "[]", '{"no_mode": 1}', '{"auth_mode": 7}'])
-    def test_not_knowing_the_login_type_keeps_the_check(self, tmp_path, monkeypatch, content):
-        """Unknown is not evidence of a different account: the check stays as it was."""
+    def test_no_login_record_keeps_the_check(self, tmp_path, monkeypatch):
+        """No `auth.json` is the ordinary state of a login codex keeps elsewhere, not a
+        different account: the check stays as it was."""
         _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
-        if content is not None:
-            self._login(tmp_path, content)
 
         assert model_entitlements.codex_model_is_withdrawn("gpt-something-else") is True
+
+    @pytest.mark.parametrize("content", [
+        "{not json", "", "[]", "{}", '{"no_mode": 1}', '{"auth_mode": 7}', '{"auth_mode": null}',
+    ])
+    def test_a_login_record_that_names_no_account_is_unknown_not_withdrawn(
+            self, tmp_path, monkeypatch, content):
+        """A record that is there and cannot be read as a login type confirms no
+        account, so the cache is no evidence about one (#355)."""
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        self._login(tmp_path, content)
+
+        assert model_entitlements.entitled_codex_models() is None
+        assert model_entitlements.codex_model_is_withdrawn("gpt-something-else") is False
+
+    @pytest.mark.parametrize("content", ['{"no_mode": 1}', '{"auth_mode": 7}', "[]"])
+    def test_an_unreadable_login_type_is_said_once_and_without_its_content(
+            self, tmp_path, monkeypatch, caplog, content):
+        _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
+        self._login(tmp_path, content)
+
+        with caplog.at_level(logging.WARNING):
+            model_entitlements.entitled_codex_models()
+
+        assert caplog.text.count("names no login type") == 1
+        assert "check is off" in caplog.text
 
     def test_what_it_read_is_never_logged(self, tmp_path, monkeypatch, caplog):
         _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
@@ -958,16 +982,17 @@ class TestAnUnfamiliarLoginTypeIsSaidOutLoud:
 
     def test_an_unreadable_login_record_is_said_without_its_content(
             self, tmp_path, monkeypatch, caplog):
-        """The check keeps running, on an assumption it could not confirm -- worth a
-        line. Only the exception's type is named: the file holds tokens."""
+        """The check goes off, and says why. Only the exception's type is named: the
+        file holds tokens."""
         _cache(tmp_path, monkeypatch, [{"slug": "gpt-5.6-sol", "visibility": "list"}])
         (tmp_path / "codex_home" / "auth.json").write_text(
             '{"tokens": "sk-NOTLOGGED-0123456789", broken', encoding="utf-8")
 
         with caplog.at_level(logging.WARNING):
-            assert model_entitlements.codex_model_is_withdrawn("gpt-other") is True
+            assert model_entitlements.codex_model_is_withdrawn("gpt-other") is False
 
         assert "cannot read codex's login record" in caplog.text
+        assert "check is off" in caplog.text
         assert "sk-NOTLOGGED" not in caplog.text
 
 

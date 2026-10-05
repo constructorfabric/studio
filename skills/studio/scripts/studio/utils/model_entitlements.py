@@ -25,7 +25,7 @@ import logging
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import FrozenSet, Optional
+from typing import FrozenSet, NamedTuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -81,29 +81,45 @@ def _quoted_mode(mode: str) -> str:
     return f"{shown[:_MAX_MODE_IN_MESSAGE]}... ({len(mode)} characters)"
 
 
-def _login_mode(codex_home: Path) -> Optional[str]:
-    """codex's recorded `auth_mode`, or None when it cannot be read.
+class _Login(NamedTuple):
+    """What `auth.json` says. `recorded` apart from `mode` because they answer two
+    questions: *is there a login record* (no file is the ordinary state of a login
+    kept elsewhere), and *can it be read as a login type* (a record that cannot is
+    not evidence of anything -- #355)."""
+
+    mode: Optional[str]
+    recorded: bool
+
+
+def _login_mode(codex_home: Path) -> _Login:
+    """codex's recorded `auth_mode`, and whether there is a record at all.
 
     Reads one field and nothing else from a file that also holds tokens, and returns
-    only that field. Anything short of a string -- no file, an unreadable one, no
-    `auth_mode`, an unfamiliar shape -- is None, and None keeps the check running:
-    not knowing the login type is not evidence that it differs.
+    only that field. No file is `recorded=False`: codex can keep a login somewhere
+    other than `auth.json`, so absence is not a different account. A file that is
+    there and cannot be read as a login type -- unreadable, malformed, no string
+    `auth_mode` -- is `recorded=True` with `mode=None`, and is said once here. The
+    cache then has no account to be evidence about, so it is not consumed (#355).
     """
     auth = codex_home / _CODEX_AUTH_NAME
     if not auth.is_file():
-        return None     # not logged in through a file, or not at all: a condition
+        return _Login(None, False)  # not logged in through a file, or not at all
     try:
         data = json.loads(auth.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        # A file codex wrote and this cannot read is worth a line: the check keeps
-        # running, but on an assumption about the login it could not confirm. The
-        # exception's text only -- never the file's content, which holds tokens.
+        # The exception's type only -- never the file's content, which holds tokens.
         logger.warning("model entitlements: cannot read codex's login record at %s "
-                       "(%s); checking as if it were a ChatGPT login",
+                       "(%s), so which account the model cache describes is unknown "
+                       "and the withdrawn-model check is off for this run",
                        auth, type(exc).__name__)
-        return None
+        return _Login(None, True)
     mode = data.get("auth_mode") if isinstance(data, dict) else None
-    return mode if isinstance(mode, str) else None
+    if not isinstance(mode, str):
+        logger.warning("model entitlements: codex's login record at %s names no "
+                       "login type, so which account the model cache describes is "
+                       "unknown and the withdrawn-model check is off for this run", auth)
+        return _Login(None, True)
+    return _Login(mode, True)
 
 
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-entitlement-login-type
@@ -150,7 +166,16 @@ def _cache_worth_reading() -> Optional[Path]:
     # off for every ChatGPT user in silence, indistinguishable from an API-key login
     # (#245 review). Said once per process, since the answer is cached; the opt-out
     # silences it, because `_checked` returns before anything is read.
-    mode = _login_mode(path.parent)
+    #
+    # A login record that is there and cannot be read as a login type is not
+    # "not a different account": it is no confirmation of which one, and a cache
+    # from an account that cannot be named is not evidence either (#355). `_login_mode`
+    # has already said why. No record at all is the ordinary state of a login codex
+    # keeps elsewhere, and keeps the check running.
+    login = _login_mode(path.parent)
+    if login.recorded and login.mode is None:
+        return None
+    mode = login.mode
     if mode is not None and mode != _CACHE_DESCRIBES_AUTH_MODE:
         logger.warning("model entitlements: codex reports login type '%s', not %r; its "
                        "model cache describes a ChatGPT plan, so the withdrawn-model "
