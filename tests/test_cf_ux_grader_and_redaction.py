@@ -326,6 +326,54 @@ class TestTheGradedChildIsNotSilentlyRepointed:
         assert capsys.readouterr().err == ""
 
 
+class TestASettingsFileCredentialHelperIsSaidOutLoud:
+    """`child_env` filters environment variables only. An `apiKeyHelper` in the
+    runner's Claude settings reaches the child through the kept `HOME`, so the run
+    can use a credential source other than the one it reports (#404)."""
+
+    @pytest.fixture
+    def config_root(self, monkeypatch, tmp_path):
+        root = tmp_path / "claude"
+        root.mkdir()
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(root))
+        return root
+
+    @pytest.mark.parametrize("name", ["settings.json", "settings.local.json"])
+    def test_a_helper_in_the_runners_settings_is_found(self, config_root, name):
+        (config_root / name).write_text('{"apiKeyHelper": "/bin/get-key"}')
+
+        assert _sandbox.settings_credential_helpers(None) == [config_root / name]
+
+    def test_a_malformed_file_that_names_the_helper_still_counts(self, config_root):
+        (config_root / "settings.json").write_text('{"apiKeyHelper": ')
+
+        assert _sandbox.settings_credential_helpers(None)
+
+    def test_settings_without_a_helper_are_not_reported(self, config_root, capsys):
+        (config_root / "settings.json").write_text('{"model": "opus"}')
+
+        _sandbox.warn_on_settings_credential_helper(None)
+
+        assert capsys.readouterr().err == ""
+
+    def test_no_settings_file_is_not_reported(self, config_root):
+        assert _sandbox.settings_credential_helpers(None) == []
+
+    def test_an_isolated_home_reaches_none_of_them(self, config_root, tmp_path):
+        (config_root / "settings.json").write_text('{"apiKeyHelper": "/bin/get-key"}')
+
+        assert _sandbox.settings_credential_helpers(tmp_path / ".home") == []
+
+    def test_the_warning_names_the_file_and_the_way_out(self, config_root, capsys):
+        (config_root / "settings.json").write_text('{"apiKeyHelper": "/bin/get-key"}')
+
+        _sandbox.warn_on_settings_credential_helper(None)
+
+        err = capsys.readouterr().err
+        assert str(config_root / "settings.json") in err
+        assert _sandbox.ISOLATED_HOME_ENV in err
+
+
 class TestTheChildsScratchStaysInTheSandbox:
     def test_tmpdir_points_inside_the_sandbox_when_one_is_given(self, tmp_path):
         env = _sandbox.child_env("ANTHROPIC_", tmpdir=tmp_path)

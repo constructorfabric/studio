@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from _sandbox import (MAX_DIAGNOSTIC_CHARS, SandboxError, child_env, isolated_home,
-                      redact_secrets, safe_head, safe_tail, sandbox)
+                      redact_secrets, safe_head, safe_tail, sandbox,
+                      warn_on_settings_credential_helper)
 
 logger = logging.getLogger(__name__)
 
@@ -549,6 +550,7 @@ def _invoke(prompt: str, cwd: Path, started: float) -> dict:
     # -- would otherwise put it in a stored promptfoo report (#229 review).
     home = isolated_home(cwd, _claude_credential(), _CLAUDE_CREDENTIAL)
     env = child_env(*_CHILD_ENV_PREFIXES, tmpdir=cwd, home=home)
+    warn_on_settings_credential_helper(home)
     try:
         proc = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=CALL_TIMEOUT_S, check=False,
