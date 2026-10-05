@@ -12,7 +12,8 @@ from __future__ import annotations
 import os
 import subprocess
 
-from _sandbox import MAX_DIAGNOSTIC_CHARS, child_env, redact_secrets, safe_head
+from _sandbox import (MAX_DIAGNOSTIC_CHARS, child_env, redact_secrets, safe_head,
+                      warn_on_settings_credential_helper)
 import time
 from typing import Any
 
@@ -49,6 +50,7 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
     started = time.monotonic()
     # One mapping for spawning and for redacting, as in the other two providers.
     env = child_env(*_CHILD_ENV_PREFIXES)
+    warn_on_settings_credential_helper(None)  # the judge runs in the runner's home too
     try:
         proc = subprocess.run(
             [

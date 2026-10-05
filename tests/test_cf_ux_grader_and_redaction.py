@@ -336,6 +336,8 @@ class TestASettingsFileCredentialHelperIsSaidOutLoud:
         root = tmp_path / "claude"
         root.mkdir()
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(root))
+        monkeypatch.delenv(_sandbox.ISOLATED_HOME_ENV, raising=False)
+        monkeypatch.setattr(_sandbox, "_WARNED_SETTINGS_HELPERS", set())
         return root
 
     @pytest.mark.parametrize("name", ["settings.json", "settings.local.json"])
@@ -363,6 +365,59 @@ class TestASettingsFileCredentialHelperIsSaidOutLoud:
         (config_root / "settings.json").write_text('{"apiKeyHelper": "/bin/get-key"}')
 
         assert _sandbox.settings_credential_helpers(tmp_path / ".home") == []
+
+    @pytest.mark.parametrize("text", ['{"apiKeyHelper": null}', '{"apiKeyHelper": ""}',
+                                      '{"note": "no apiKeyHelper here"}'])
+    def test_a_file_that_does_not_set_one_is_not_reported(self, config_root, text):
+        (config_root / "settings.json").write_text(text)
+
+        assert _sandbox.settings_credential_helpers(None) == []
+
+    def test_the_default_root_is_under_the_home_directory(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "settings.json").write_text('{"apiKeyHelper": "x"}')
+
+        assert _sandbox.settings_credential_helpers(None) == [tmp_path / ".claude" / "settings.json"]
+
+    def test_no_resolvable_home_is_an_answer_not_an_exception(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        monkeypatch.setattr(_sandbox.Path, "home",
+                            classmethod(lambda cls: (_ for _ in ()).throw(RuntimeError("no home"))))
+
+        assert _sandbox.settings_credential_helpers(None) == []
+
+    def test_it_is_said_once_per_file_not_once_per_scenario(self, config_root, capsys):
+        (config_root / "settings.json").write_text('{"apiKeyHelper": "/bin/get-key"}')
+
+        for _ in range(3):
+            _sandbox.warn_on_settings_credential_helper(None)
+
+        assert capsys.readouterr().err.count("configures apiKeyHelper") == 1
+
+    def test_an_isolated_home_that_was_declined_does_not_advise_setting_it(
+            self, config_root, monkeypatch, capsys):
+        monkeypatch.setenv(_sandbox.ISOLATED_HOME_ENV, "1")
+        (config_root / "settings.json").write_text('{"apiKeyHelper": "/bin/get-key"}')
+
+        _sandbox.warn_on_settings_credential_helper(None)
+
+        err = capsys.readouterr().err
+        assert "declined" in err and "runs without it" not in err
+
+    def test_an_isolated_home_is_silent(self, config_root, tmp_path, capsys):
+        (config_root / "settings.json").write_text('{"apiKeyHelper": "/bin/get-key"}')
+
+        _sandbox.warn_on_settings_credential_helper(tmp_path / ".home")
+
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize("provider", ["claude_provider.py", "grader_claude.py"])
+    def test_every_claude_spawning_provider_calls_it(self, provider):
+        source = (Path(_sandbox.__file__).parent / provider).read_text(encoding="utf-8")
+
+        assert "warn_on_settings_credential_helper(" in source
 
     def test_the_warning_names_the_file_and_the_way_out(self, config_root, capsys):
         (config_root / "settings.json").write_text('{"apiKeyHelper": "/bin/get-key"}')
