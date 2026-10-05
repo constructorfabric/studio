@@ -6,16 +6,21 @@ jobs:
   code-ranker:
     # Pinned to an immutable commit SHA (supply-chain hardening).
     uses: code-ranker-com/actions/.github/workflows/report.yml@f5df154e14f221757012ec87455ec423e6ce3df9  # 2026-07-29; upstream publishes no tag for this commit (v1 is 6f07a2fc)
+    with:
+      # Upload the findings to code scanning, as every run did before this pin:
+      # the previous SHA uploaded SARIF unconditionally, and at this one it is
+      # opt-in (`sarif` defaults to false), so the bump in #341 turned it off
+      # without anyone choosing to (#420).
+      sarif: true
     permissions:
-      # The only permission the reusable workflow needs: it checks the code out,
-      # analyses it, and publishes the `code-ranker-report` artifact. The
-      # code-ranker GitHub App picks that artifact up through a `workflow_run`
-      # webhook and posts (and updates in place) the report comment with its own
-      # installation token, so there is no pull-requests: write here either.
-      #
+      # Check the code out, analyse it, and publish the `code-ranker-report`
+      # artifact. The code-ranker GitHub App picks that artifact up through a
+      # `workflow_run` webhook and posts (and updates in place) the report
+      # comment with its own installation token, so there is no
+      # pull-requests: write here.
+      contents: read
+      # Required by `sarif: true`, and only by it.
+      security-events: write
       # No id-token: write. Granting it is what upstream treats as a
       # pre-artifact caller, and such a run mints an OIDC token to POST the
       # report to the API directly -- a path kept only for compatibility.
-      # No security-events: write. It is needed only with `sarif: true`, which
-      # this caller does not pass (#420).
-      contents: read
