@@ -1,4 +1,7 @@
-"""Normalized kit package model and canonical manifest conversion."""
+"""Normalized kit package model and canonical manifest conversion.
+
+@cpt-dod:cpt-studio-dod-kit-extends-declaration:p1
+"""
 
 from __future__ import annotations
 
@@ -426,12 +429,17 @@ def _warn_unknown_keys(
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-warnings
 
 
+# @cpt-algo:cpt-studio-algo-kit-extends-declaration:p1
 def _parse_extends(raw: Any, context: str) -> Optional[KitExtends]:
     """Validate a ``[kits.extends]`` table into a declaration; no base is fetched."""
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-shape
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-optional
     if raw is None:
         return None
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-optional
     if not isinstance(raw, dict):
         raise ValueError(f"{_CANONICAL_MANIFEST}: {context} must be a table")
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unknown-key
     unknown = sorted(set(raw) - _EXTENDS_KEYS)
     if unknown:
         # A dropped key (a misspelt `suppress`) would silently change the effective kit.
@@ -439,19 +447,23 @@ def _parse_extends(raw: Any, context: str) -> Optional[KitExtends]:
             f"{_CANONICAL_MANIFEST}: {context} has unknown field '{unknown[0]}' "
             f"(allowed: {', '.join(sorted(_EXTENDS_KEYS))})",
         )
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unknown-key
     source = _require_string(raw, "source", context)
     ref = _require_string(raw, "ref", context)
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unpinned
     if ref.lower() == _UNPINNED_REF:
         raise ValueError(
             f"{_CANONICAL_MANIFEST}: {context}.ref '{ref}' is unpinned; "
             "pin the base to a tag, branch or commit so the effective kit does not change silently",
         )
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unpinned
     return KitExtends(
         source=source,
         ref=ref,
         kit=_optional_string(raw, "kit"),
         suppress=_string_list(raw.get("suppress"), f"{context}.suppress"),
     )
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-shape
 
 
 def _validate_relative_source(kit_source: Path, resource: KitResource) -> None:
@@ -848,11 +860,13 @@ def _validate_canonical_manifest_version(data: Dict[str, Any]) -> None:
             f"{_CANONICAL_MANIFEST}: unsupported manifest_version '{version}' "
             f"(supported: {supported}). {_UPDATE_CFS_HINT}",
         )
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-version-gate
     if version != _EXTENDS_MANIFEST_VERSION and _declares_extends(data):
         raise ValueError(
             f"{_CANONICAL_MANIFEST}: extends requires manifest_version '{_EXTENDS_MANIFEST_VERSION}' "
             f"(found '{version}'). {_UPDATE_CFS_HINT}",
         )
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-version-gate
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-version-gate
 
 
@@ -1552,8 +1566,10 @@ def _load_core_model(kit_source: Path) -> KitModel:
 
 
 # @cpt-algo:cpt-studio-algo-kit-model-normalize:p1
+# @cpt-algo:cpt-studio-algo-kit-extends-load-declared:p1
 def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") -> KitModel:
     """Load a kit source through canonical, legacy manifest, or layout adapters."""
+    # @cpt-begin:cpt-studio-algo-kit-extends-load-declared:p1:inst-extends-load-no-lookup
     # @cpt-begin:cpt-studio-state-kit-manifest:p1:inst-manifest-source-state
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-single-boundary
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-canonical-manifest
@@ -1576,6 +1592,7 @@ def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") 
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-single-boundary
     # @cpt-end:cpt-studio-state-kit-manifest:p1:inst-manifest-source-state
+    # @cpt-end:cpt-studio-algo-kit-extends-load-declared:p1:inst-extends-load-no-lookup
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
@@ -1711,13 +1728,16 @@ def _resource_to_toml_item(resource: KitResource) -> Dict[str, Any]:
 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
 
 
+# @cpt-algo:cpt-studio-algo-kit-extends-normalize:p1
 def _extends_to_toml_item(extends: KitExtends) -> Dict[str, Any]:
+    # @cpt-begin:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-emit
     item: Dict[str, Any] = {"source": extends.source, "ref": extends.ref}
     if extends.kit:
         item["kit"] = extends.kit
     if extends.suppress:
         item["suppress"] = list(extends.suppress)
     return item
+    # @cpt-end:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-emit
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
@@ -1733,14 +1753,14 @@ def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
         entry["resources"] = [_resource_to_toml_item(resource) for resource in model.resources]
         kits.append(entry)
 
-    return {
-        "manifest_version": (
-            _EXTENDS_MANIFEST_VERSION
-            if any(model.extends is not None for model in models)
-            else _CANONICAL_MANIFEST_VERSION
-        ),
-        "kits": kits,
-    }
+    # @cpt-begin:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-version
+    manifest_version = (
+        _EXTENDS_MANIFEST_VERSION
+        if any(model.extends is not None for model in models)
+        else _CANONICAL_MANIFEST_VERSION
+    )
+    # @cpt-end:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-version
+    return {"manifest_version": manifest_version, "kits": kits}
 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
 

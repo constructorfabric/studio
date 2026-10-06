@@ -50,6 +50,10 @@
   - [Manifest Legacy Migration](#manifest-legacy-migration)
   - [Manifest Resource Resolution](#manifest-resource-resolution)
   - [Manifest Source Path Mapping](#manifest-source-path-mapping)
+  - [Kit Overlay Declaration](#kit-overlay-declaration)
+  - [Kit Overlay Normalization](#kit-overlay-normalization)
+  - [Kit Load Without Base Lookup](#kit-load-without-base-lookup)
+  - [Kit Chain Resolution](#kit-chain-resolution)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Kit Authority State](#kit-authority-state)
   - [Kit Installation State](#kit-installation-state)
@@ -59,6 +63,8 @@
   - [Kit Install Copies Files](#kit-install-copies-files)
   - [Kit Update Shows Diffs](#kit-update-shows-diffs)
   - [Kit Validate Checks Integrity](#kit-validate-checks-integrity)
+  - [Kit Overlay Declaration Is Validated](#kit-overlay-declaration-is-validated)
+  - [Kit Overlay Resolution Is Explicit](#kit-overlay-resolution-is-explicit)
 - [6. Implementation Modules](#6-implementation-modules)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
   - [Non-applicable Checklist Domains](#non-applicable-checklist-domains)
@@ -89,6 +95,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 - Workflow-skill folder naming policy in generated agent entry points; that behavior is owned by [project-extensibility.md](./project-extensibility.md).
 - Remote GitHub authority changes beyond kit lifecycle resolution, release-note display, and content-identity tracking already defined here.
 - Regulatory/compliance requirements outside normal CLI validation/reporting behavior.
+- Overlay-kit work beyond the foundation slice (issue constructorfabric/studio#139 phase 1, #427 covering #173), named here only and not specified: constraints entry-level merge (#178), `validate-kits` overlay checks (#179), install and provenance (#180), update and drift (#181), remote bases (#182), and the later phases #428 and #429.
 
 ### 3. Actors
 
@@ -101,7 +108,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 - **PRD**: `cpt-studio-fr-core-kits`, `cpt-studio-fr-core-kit-manifest`, `cpt-studio-fr-core-resource-diff`
 - **Design**: `cpt-studio-component-kit-manager`, `cpt-studio-component-config-manager`, `cpt-studio-component-validator`
-- **ADR**: `cpt-studio-adr-remove-blueprint-system`, `cpt-studio-adr-unified-manifest-hierarchy`
+- **ADR**: `cpt-studio-adr-remove-blueprint-system`, `cpt-studio-adr-unified-manifest-hierarchy`, `cpt-studio-adr-overlay-kits`
 - **DECOMPOSITION**: `cpt-studio-feature-blueprint-system`, `cpt-studio-feature-generic-git-kit-installer`
 
 ---
@@ -966,6 +973,71 @@ Manifest-backed file diff treats the manifest `source` path and the installed re
 
 **Note**: When resolving target path for a file inside a directory resource, compute `relative_path_within_directory = source_rel_path.removeprefix(resource_info[resource_id]["source_base"] + "/")`, then target is `resource_bindings[resource_id] / relative_path_within_directory`.
 
+### Kit Overlay Declaration
+
+An overlay kit declares the single base kit it builds on with a `[kits.extends]` table. This section covers the declaration only: parsing, validating, gating, and preserving it. Resolving the base is specified separately in [Kit Chain Resolution](#kit-chain-resolution). Rationale and the single-base decision are recorded in `cpt-studio-adr-overlay-kits`.
+
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-extends-declaration`
+
+**Input**: One `[[kits]]` entry of a canonical `.cf-studio-kit.toml`, including an optional nested `extends` table
+
+**Output**: `KitModel.extends` as a `KitExtends` declaration, or no declaration when the kit has no `extends`; or a blocking error
+
+**Rules**:
+1. [x] - `p1` - `[kits.extends]` MUST be a table; `source` and `ref` are required strings, `kit` is an optional selector for a multi-kit base, and `suppress` is an optional list of strings naming inherited resource ids to drop - `inst-extends-shape`
+2. [x] - `p1` - A `ref` of `latest` (case-insensitive) is rejected as unpinned; the base MUST be pinned to a tag, branch, or commit so the effective kit does not change silently - `inst-extends-reject-unpinned`
+3. [x] - `p1` - Any key inside `[kits.extends]` other than `source`, `ref`, `kit`, and `suppress` is a blocking error naming the key and the allowed set; it is never silently dropped, because a dropped misspelling of `suppress` would change the effective kit - `inst-extends-reject-unknown-key`
+4. [x] - `p1` - A manifest that declares `extends` on any kit MUST declare `manifest_version = "1.1"`; a `1.0` manifest carrying `extends` stops at the existing manifest-version gate with the `pipx upgrade constructor-studio` hint, so an older CLI that supports only `1.0` stops at the same gate instead of ignoring the table - `inst-extends-version-gate`
+5. [x] - `p1` - A `1.1` manifest without `extends`, and a `1.0` manifest without `extends`, load exactly as before - `inst-extends-optional`
+
+### Kit Overlay Normalization
+
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-extends-normalize`
+
+**Input**: One or more `KitModel` values, any of which may carry `extends`
+
+**Output**: Canonical manifest TOML data
+
+**Steps**:
+1. [x] - `p1` - Emit the `extends` table under each kit that declares it, writing `source` and `ref` always and `kit` and `suppress` only when set; normalizing an already-normalized overlay manifest gives the same output - `inst-extends-normalize-emit`
+2. [x] - `p1` - Emit `manifest_version = "1.1"` when any kit in the output has `extends`, otherwise `"1.0"`, so a manifest without overlays is byte-identical to before - `inst-extends-normalize-version`
+
+### Kit Load Without Base Lookup
+
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-extends-load-declared`
+
+**Input**: Kit source root
+
+**Output**: `KitModel` holding the declared (unresolved) resources and the `extends` declaration
+
+**Steps**:
+1. [x] - `p1` - `load_kit_model` returns the model exactly as declared and performs no network access and no base lookup; it never merges base resources into the result - `inst-extends-load-no-lookup`
+
+Installed-mode readers (info, resolve-vars, generate-agents) are meant to read the persisted installed inventory and never re-resolve the base (`cpt-studio-adr-overlay-kits`). That is a constraint on the later install work, not something this slice changes, so it carries no checkbox here.
+
+### Kit Chain Resolution
+
+Contract for explicit base resolution. NOT YET IMPLEMENTED: no function named `resolve_kit_chain` exists, so every instruction below stays unchecked until the code and its `@cpt-begin`/`@cpt-end` markers land.
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-kit-chain-resolve`
+
+**Input**: Declared `KitModel`, a `locate_base` callable that returns the base kit source for an `extends` declaration
+
+**Output**: Effective `KitModel` with the base merged under the overlay, per-resource owner kit and layer root, and a tool-risk fingerprint over the effective model; or a blocking error
+
+**Steps**:
+1. [ ] - `p1` - Expose `resolve_kit_chain(model, locate_base)`; resolution runs only when called explicitly at install, at update, and in `validate-kits` path mode, never from the loader - `inst-chain-explicit-only`
+2. [ ] - `p1` - **IF** the model has no `extends`, **RETURN** the model itself with identical manifest, resource, and tool-risk hashes - `inst-chain-no-extends-identity`
+3. [ ] - `p1` - Resolve the base first, then apply the overlay on top; where both define a resource id the overlay wins - `inst-chain-order`
+4. [ ] - `p1` - Merge resources by resource id; a resource whose kind differs from the inherited resource of the same id is a blocking error - `inst-chain-kind-mismatch`
+5. [ ] - `p1` - A resource id absent from the base is a blocking error unless the resource declares `additive = true` - `inst-chain-additive-required`
+6. [ ] - `p1` - An additive resource MUST NOT reuse an inherited resource's install path - `inst-chain-additive-path-clash`
+7. [ ] - `p1` - Each `suppress` entry MUST name an id that exists in the base; an unknown suppress target is a blocking error - `inst-chain-suppress-unknown`
+8. [ ] - `p1` - Reject a cycle in the extends chain with an error that renders the full chain, and cap the chain depth so a malformed chain fails instead of recursing without bound - `inst-chain-cycle-depth`
+9. [ ] - `p1` - Public component names are prefixed with the slug of the kit that owns the resource, so an inherited public component keeps the base kit's prefix - `inst-chain-owner-prefix`
+10. [ ] - `p1` - Record the owner kit and layer root per resource and compute every resource file path through one join helper over that layer root, so no caller joins a root and a source path itself - `inst-chain-owner-root`
+11. [ ] - `p1` - Compute the tool-risk fingerprint over the effective model, so a risky tool inherited from the base requires the same approval as one declared locally - `inst-chain-risk-fingerprint`
+
 ---
 
 ## 4. States (CDSL)
@@ -1062,6 +1134,24 @@ Manifest-backed file diff treats the manifest `source` path and the installed re
 3. [x] - `p1` - Both registered and standalone (by-path) kits can be validated
 4. [x] - `p1` - For manifest-driven kits, all registered resource paths verified to exist on disk
 
+### Kit Overlay Declaration Is Validated
+
+- [x] `p1` - **ID**: `cpt-studio-dod-kit-extends-declaration`
+
+1. [x] - `p1` - `[kits.extends]` with `source`, pinned `ref`, optional `kit`, and optional `suppress` loads into `KitModel.extends`; a missing `source` or `ref`, a `latest` ref, a non-table value, a non-string `suppress`, and any unknown key are errors
+2. [x] - `p1` - A manifest with `extends` requires `manifest_version = "1.1"`; a `1.0` manifest with `extends` is stopped at the manifest-version gate with the upgrade hint
+3. [x] - `p1` - `cfs kit normalize` round-trips the `extends` block and emits `manifest_version = "1.1"` only when a kit extends; a kit without `extends` produces unchanged output
+4. [x] - `p1` - `load_kit_model` returns the declared model with no base lookup
+
+### Kit Overlay Resolution Is Explicit
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-kit-chain-resolve`
+
+1. [ ] - `p1` - `resolve_kit_chain(model, locate_base)` merges base then overlay by resource id under the kind, additive, install-path, and suppress rules, and is invoked only at install, update, and `validate-kits` path mode
+2. [ ] - `p1` - Cycles are rejected with the rendered chain and a depth cap
+3. [ ] - `p1` - Owner kit and layer root are recorded per resource behind one join helper, public names carry the owner kit slug, and the tool-risk fingerprint covers the effective model
+4. [ ] - `p1` - A kit with no `extends` resolves to itself with identical hashes
+
 ---
 
 ## 6. Implementation Modules
@@ -1069,7 +1159,7 @@ Manifest-backed file diff treats the manifest `source` path and the installed re
 | Module | Algorithms Implemented |
 |--------|----------------------|
 | `skills/studio/scripts/studio/commands/kit.py` | `cpt-studio-algo-kit-github-helpers`, `cpt-studio-algo-kit-content-mgmt`, `cpt-studio-algo-kit-regen-gen`, `cpt-studio-algo-kit-install`, `cpt-studio-algo-kit-update`, `cpt-studio-algo-kit-config-helpers`, `cpt-studio-algo-kit-manifest-install`, `cpt-studio-algo-kit-manifest-legacy-migration`, `cpt-studio-algo-kit-local-path-install-mode`, `cpt-studio-flow-kit-install-cli`, `cpt-studio-flow-kit-update-cli`, `cpt-studio-flow-kit-dispatch` |
-| `skills/studio/scripts/studio/utils/kit_model.py` | `cpt-studio-algo-kit-model-normalize`, `cpt-studio-algo-kit-canonical-manifest`, `cpt-studio-algo-kit-public-component-generation`, `cpt-studio-algo-kit-tool-permission-risk`, `cpt-studio-algo-kit-manifest-normalize` |
+| `skills/studio/scripts/studio/utils/kit_model.py` | `cpt-studio-algo-kit-model-normalize`, `cpt-studio-algo-kit-canonical-manifest`, `cpt-studio-algo-kit-public-component-generation`, `cpt-studio-algo-kit-tool-permission-risk`, `cpt-studio-algo-kit-manifest-normalize`, `cpt-studio-algo-kit-extends-declaration`, `cpt-studio-algo-kit-extends-normalize`, `cpt-studio-algo-kit-extends-load-declared`, `cpt-studio-algo-kit-chain-resolve` (contract only, not yet implemented) |
 | `skills/studio/scripts/studio/utils/manifest.py` | legacy manifest adapter, `cpt-studio-algo-kit-manifest-resolve`, `cpt-studio-algo-kit-manifest-source-mapping` |
 | `skills/studio/scripts/studio/utils/diff_engine.py` | `cpt-studio-algo-kit-file-update`, `cpt-studio-algo-kit-file-enumerate`, `cpt-studio-algo-kit-file-classify`, `cpt-studio-algo-kit-interactive-review`, `cpt-studio-algo-kit-diff-display`, `cpt-studio-algo-kit-conflict-merge`, `cpt-studio-algo-kit-toc-handling`, `cpt-studio-algo-kit-snapshot` |
 | `skills/studio/scripts/studio/commands/validate_kits.py`, `skills/studio/scripts/studio/commands/self_check.py` | `cpt-studio-algo-kit-validate`, `cpt-studio-algo-kit-validate-by-path`, `cpt-studio-flow-kit-validate-cli` |
@@ -1110,6 +1200,11 @@ Manifest-backed file diff treats the manifest `source` path and the installed re
 - [x] `p1` - Local/path kit operations are outside GitHub authority and reject GitHub selector/ref flags
 - [x] `p1` - Kit install/update/report output shows source, effective source, content identity, authority freshness, and any migration from legacy `conf.toml` metadata
 - [x] `p1` - Offline GitHub fallback uses last-known persisted state and never guesses from installed files or local `conf.toml`
+- [x] `p1` - A `.cf-studio-kit.toml` kit may declare `[kits.extends]` with required `source` and pinned `ref`, optional `kit`, and optional `suppress`; `ref = "latest"`, a missing required key, and any unknown key are errors rather than silent drops
+- [x] `p1` - A manifest with `extends` must declare `manifest_version = "1.1"`; a `1.0` manifest with `extends` fails at the manifest-version gate with the `pipx upgrade constructor-studio` hint
+- [x] `p1` - `cfs kit normalize` preserves the `extends` block and emits `manifest_version = "1.1"` only when a kit extends; manifests without `extends` are unchanged
+- [x] `p1` - `load_kit_model` performs no base lookup and no network access
+- [ ] `p1` - `resolve_kit_chain(model, locate_base)` resolves a base only at install, update, and `validate-kits` path mode, applying base-then-overlay order with overlay winning, merge by resource id, kind-mismatch and additive/install-path/suppress errors, cycle rejection with the rendered chain and a depth cap, owner-slug public names, per-resource owner and layer root behind one join helper, and a tool-risk fingerprint over the effective model; a kit without `extends` resolves to itself with identical hashes (not yet implemented)
 
 ### Non-applicable Checklist Domains
 
