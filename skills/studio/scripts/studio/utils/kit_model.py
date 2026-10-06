@@ -93,6 +93,7 @@ class KitResource:
     subagents: List[Dict[str, Any]] = field(default_factory=list)
     target_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     artifact_bindings: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    additive: bool = False
 
 
 @dataclass(frozen=True)
@@ -223,10 +224,12 @@ def _config_bool(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, de
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
 
 
-def _optional_bool(data: Dict[str, Any], key: str, default: bool = True) -> bool:
+def _optional_bool(data: Dict[str, Any], key: str, default: bool = True, context: str = "") -> bool:
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
     value = data.get(key, default)
     if not isinstance(value, bool):
+        if context:
+            raise ValueError(f"{_CANONICAL_MANIFEST}: {context}.{key} must be a boolean")
         raise ValueError(f"Field '{key}' must be a boolean")
     return value
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
@@ -582,6 +585,8 @@ def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
         "target_configs": resource.target_configs,
         "artifact_bindings": resource.artifact_bindings,
     }
+    if resource.additive:
+        data["additive"] = True
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
     return data
 
@@ -729,6 +734,7 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
             # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
             artifact_bindings=resource.artifact_bindings,
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
+            additive=resource.additive,
         )
         for resource in model.resources
     ]
@@ -816,7 +822,7 @@ def _canonical_model_from_entry(
                 "origin", "prefix_generated_name", "agent", "targets", "permissions",
                 "tools", "disallowed_tools", "mode", "isolation", "model",
                 "skills", "color", "memory_dir", "role", "target", "provider",
-                "reasoning_effort", "context_window", "subagents", "artifacts",
+                "reasoning_effort", "context_window", "subagents", "artifacts", "additive",
             },
             resource_context,
             warnings,
@@ -863,9 +869,10 @@ def _validate_canonical_manifest_version(data: Dict[str, Any]) -> None:
             f"(supported: {supported}). {_UPDATE_CFS_HINT}",
         )
     # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-version-gate
-    if _version_key(version) < _version_key(_EXTENDS_MANIFEST_VERSION) and _declares_extends(data):
+    overlay_field = _declared_overlay_field(data)
+    if _version_key(version) < _version_key(_EXTENDS_MANIFEST_VERSION) and overlay_field:
         raise ValueError(
-            f"{_CANONICAL_MANIFEST}: extends requires manifest_version '{_EXTENDS_MANIFEST_VERSION}' "
+            f"{_CANONICAL_MANIFEST}: {overlay_field} requires manifest_version '{_EXTENDS_MANIFEST_VERSION}' "
             f"(found '{version}'). {_UPDATE_CFS_HINT}",
         )
     # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-version-gate
@@ -876,9 +883,35 @@ def _version_key(version: str) -> Tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
 
-def _declares_extends(data: Dict[str, Any]) -> bool:
+def _declared_overlay_field(data: Dict[str, Any]) -> str:
     raw_kits = data.get("kits")
-    return isinstance(raw_kits, list) and any(isinstance(kit, dict) and "extends" in kit for kit in raw_kits)
+    kits = [kit for kit in raw_kits if isinstance(kit, dict)] if isinstance(raw_kits, list) else []
+    if any("extends" in kit for kit in kits):
+        return "extends"
+    for kit in kits:
+        resources = kit.get("resources")
+        if isinstance(resources, list) and any(isinstance(res, dict) and "additive" in res for res in resources):
+            return "additive"
+    return ""
+
+
+def _has_additive(model: KitModel) -> bool:
+    return any(resource.additive for resource in model.resources)
+
+
+_OVERLAY_UNRESOLVED_MESSAGE = (
+    "Kit '{slug}' extends base kit '{source}' at '{ref}', but kit overlays cannot be used yet: "
+    "base resolution is not implemented (it lands with #180), so the declared resources alone "
+    "would be a partial kit"
+)
+
+
+def overlay_unresolved_errors(model: Any) -> List[str]:
+    """Return a blocking error while a kit declares a base that cannot be resolved yet."""
+    extends = getattr(model, "extends", None)
+    if extends is None:
+        return []
+    return [_OVERLAY_UNRESOLVED_MESSAGE.format(slug=model.slug, source=extends.source, ref=extends.ref)]
 
 
 # @cpt-algo:cpt-studio-algo-kit-canonical-manifest:p1
@@ -1090,6 +1123,7 @@ def _canonical_resource_from_raw(
         subagents=_config_subagents(raw, agent_config, f"resources.{resource_id}.subagents"),
         target_configs=_config_table(raw, "targets", f"resources.{resource_id}.targets"),
         artifact_bindings=artifact_bindings,
+        additive=_optional_bool(raw, "additive", False, resource_context),
     )
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
 
@@ -1649,6 +1683,7 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
             subagents=list(source_resource.subagents),
             target_configs=dict(source_resource.target_configs),
             artifact_bindings=core_resource.artifact_bindings or source_resource.artifact_bindings,
+            additive=source_resource.additive,
         ))
     return KitModel(
         slug=core_model.slug,
@@ -1722,6 +1757,8 @@ def _resource_to_toml_item(resource: KitResource) -> Dict[str, Any]:
         item["mode"] = resource.mode
     if resource.isolation:
         item["isolation"] = resource.isolation
+    if resource.additive:
+        item["additive"] = True
     if resource.role != _DEFAULT_ROLE:
         item["role"] = resource.role
     if resource.target != _DEFAULT_TARGET:
@@ -1763,7 +1800,7 @@ def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
     # @cpt-begin:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-version
     manifest_version = (
         _EXTENDS_MANIFEST_VERSION
-        if any(model.extends is not None for model in models)
+        if any(model.extends is not None or _has_additive(model) for model in models)
         else _CANONICAL_MANIFEST_VERSION
     )
     # @cpt-end:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-version

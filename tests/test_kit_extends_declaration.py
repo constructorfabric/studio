@@ -1,6 +1,7 @@
 import shutil
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -343,6 +344,118 @@ class TestExtendsSurvivesCoreMerge(unittest.TestCase):
             with patch.object(km, "_load_core_model", return_value=core):
                 model = load_installed_kit_model(kit, {"install_mode": "copy"}, kit_slug="team-sdlc")
         self.assertEqual(model.extends.ref, "v2.3.0")
+
+
+_PLAIN_BASELINE = {
+    "resource_hashes": {"skill": "883da389eb93be7b06c2b32d4da6fef75e96d25c7841a0695f7bd88510790e07"},
+    "tool_risk_fingerprint": "3bdcd30d3029ad80e74c76eb0b57d80ad617a51191eb9d9307b2921c65f5dc16",
+    "manifest_bytes_hash": "ad550fbae3b718e35f69b5622bc4e61a262cb29b0bd7299786fe938a4353c4b7",
+    "toml": {
+        "manifest_version": "1.0",
+        "kits": [{
+            "slug": "team-sdlc",
+            "name": "Team SDLC",
+            "version": "1.2.3",
+            "resources": [{
+                "id": "skill",
+                "kind": "skill",
+                "source": "SKILL.md",
+                "install_path": "SKILL.md",
+                "type": "file",
+                "user_modifiable": True,
+                "public": True,
+                "generated_targets": ["installed"],
+            }],
+        }],
+    },
+}
+
+
+def _additive_kit(td: Path, version: str = "1.1", value: str = "true") -> Path:
+    kit = _copy_fixture(td, "plain")
+    manifest = kit / _MANIFEST
+    text = manifest.read_text(encoding="utf-8")
+    manifest.write_text(
+        text.replace('manifest_version = "1.0"', f'manifest_version = "{version}"')
+        + f"additive = {value}\n",
+        encoding="utf-8",
+    )
+    return kit
+
+
+class TestAdditiveFlag(unittest.TestCase):
+    def test_additive_parsed(self):
+        with TemporaryDirectory() as td:
+            model = load_kit_model(_additive_kit(Path(td)))
+        self.assertTrue(model.resources[0].additive)
+        self.assertEqual(model.warnings, [])
+
+    def test_additive_defaults_false(self):
+        with TemporaryDirectory() as td:
+            model = load_kit_model(_copy_fixture(Path(td), "plain"))
+        self.assertFalse(model.resources[0].additive)
+
+    def test_non_bool_additive_is_error(self):
+        with TemporaryDirectory() as td:
+            kit = _additive_kit(Path(td), value='"yes"')
+            with self.assertRaisesRegex(ValueError, r"\.cf-studio-kit\.toml: .*resources\[0\]\.additive must be a boolean"):
+                load_kit_model(kit)
+
+    def test_additive_requires_manifest_1_1(self):
+        with TemporaryDirectory() as td:
+            kit = _additive_kit(Path(td), version="1.0")
+            with self.assertRaisesRegex(ValueError, r"additive requires manifest_version '1\.1' \(found '1\.0'\)"):
+                load_kit_model(kit)
+
+    def test_additive_false_on_1_0_still_gated(self):
+        with TemporaryDirectory() as td:
+            kit = _additive_kit(Path(td), version="1.0", value="false")
+            with self.assertRaisesRegex(ValueError, "additive requires manifest_version"):
+                load_kit_model(kit)
+
+    def test_additive_round_trips_through_normalize(self):
+        with TemporaryDirectory() as td:
+            kit = _additive_kit(Path(td))
+            model = load_kit_model(kit)
+            data = kit_models_to_toml_data([model])
+            _model, text = normalize_kit_source(kit, "manifest")
+        self.assertEqual(data["manifest_version"], "1.1")
+        self.assertIs(data["kits"][0]["resources"][0]["additive"], True)
+        self.assertIn("additive = true", text)
+
+    def test_normalize_is_idempotent_with_additive(self):
+        with TemporaryDirectory() as td:
+            kit = _additive_kit(Path(td))
+            _model, first = normalize_kit_source(kit, "manifest")
+            (kit / _MANIFEST).write_text(first, encoding="utf-8")
+            _model, second = normalize_kit_source(kit, "manifest")
+        self.assertEqual(first, second)
+
+    def test_additive_enters_semantic_data_only_when_true(self):
+        with TemporaryDirectory() as td:
+            plain = load_kit_model(_copy_fixture(Path(td), "plain")).resources[0]
+        self.assertNotIn("additive", km._semantic_resource_data(plain))
+        self.assertIs(km._semantic_resource_data(replace(plain, additive=True))["additive"], True)
+
+    def test_additive_survives_core_merge(self):
+        with TemporaryDirectory() as td:
+            source = load_kit_model(_additive_kit(Path(td)))
+        core = KitModel(
+            slug=source.slug, name=source.name, version=source.version,
+            manifest_source="core", resources=[replace(source.resources[0], additive=False)],
+        )
+        merged = km._merge_core_authoritative_model(core, source)
+        self.assertTrue(merged.resources[0].additive)
+
+
+class TestPlainKitUnchangedByAdditive(unittest.TestCase):
+    def test_plain_hashes_and_normalize_output_pinned(self):
+        with TemporaryDirectory() as td:
+            model = load_kit_model(_copy_fixture(Path(td), "plain"))
+        self.assertEqual(model.resource_hashes, _PLAIN_BASELINE["resource_hashes"])
+        self.assertEqual(model.tool_risk_fingerprint, _PLAIN_BASELINE["tool_risk_fingerprint"])
+        self.assertEqual(model.manifest_bytes_hash, _PLAIN_BASELINE["manifest_bytes_hash"])
+        self.assertEqual(kit_models_to_toml_data([model]), _PLAIN_BASELINE["toml"])
 
 
 if __name__ == "__main__":

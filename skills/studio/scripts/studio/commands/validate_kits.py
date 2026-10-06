@@ -1126,6 +1126,32 @@ def _new_path_kit_report(
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-result
 
 
+def _apply_overlay_unresolved(
+    model: Any,
+    kit_dir: Path,
+    slug: str,
+    verbose: bool,
+    kit_report: Dict[str, object],
+    all_errors: List[Dict[str, object]],
+) -> None:
+    from ..utils.kit_model import overlay_unresolved_errors
+
+    for message in overlay_unresolved_errors(model):
+        err = constraints_error(
+            "resources",
+            message,
+            code=EC.KIT_MODEL_INVALID,
+            path=kit_dir,
+            line=1,
+            kit=slug,
+        )
+        all_errors.append(err)
+        kit_report["status"] = "FAIL"
+        kit_report["error_count"] = int(kit_report.get("error_count", 0)) + 1
+        if verbose:
+            kit_report.setdefault("errors", []).append(err)
+
+
 # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
 def _apply_path_model_info(
     *,
@@ -1139,6 +1165,7 @@ def _apply_path_model_info(
     all_errors: List[Dict[str, object]],
 ) -> None:
     if model is not None:
+        _apply_overlay_unresolved(model, kit_dir, slug, verbose, kit_report, all_errors)
         if verbose:
             kit_report["manifest_source"] = model.manifest_source
             kit_report["resource_count"] = len(model.resources)

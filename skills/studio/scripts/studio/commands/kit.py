@@ -2549,11 +2549,18 @@ def _load_manifest_install_artifacts(
 ) -> Tuple[Optional[_ManifestInstallArtifacts], Optional[Dict[str, Any]]]:
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-load-artifacts
     try:
-        from ..utils.kit_model import load_kit_model
+        from ..utils.kit_model import load_kit_model, overlay_unresolved_errors
 
         kit_model = load_kit_model(kit_source, kit_slug=kit_slug)
     except (OSError, ValueError) as exc:
         return None, _install_result_fail(kit_slug, [str(exc)])
+    overlay_errors = overlay_unresolved_errors(kit_model)
+    if overlay_errors:
+        return None, _install_result_fail(
+            kit_slug,
+            overlay_errors,
+            install_mode=install_context.install_mode,
+        )
     risk_errors = _tool_risk_approval_errors(
         kit_model,
         interactive=install_context.interactive,
@@ -6094,12 +6101,17 @@ def _load_manifest_update_risk_model(
 ) -> Optional[Any]:
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-update-path-load-kitmodel
     try:
-        from ..utils.kit_model import load_kit_model
+        from ..utils.kit_model import load_kit_model, overlay_unresolved_errors
 
-        return load_kit_model(source_dir, kit_slug=kit_slug)
+        model = load_kit_model(source_dir, kit_slug=kit_slug)
     except (OSError, ValueError) as exc:
         _result_with_failure(result, [str(exc)])
         return None
+    overlay_errors = overlay_unresolved_errors(model)
+    if overlay_errors:
+        _result_with_failure(result, overlay_errors)
+        return None
+    return model
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-update-path-load-kitmodel
 
 

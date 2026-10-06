@@ -121,12 +121,14 @@ suppress = ["prd-metrics"]   # optional: inherited resource ids to drop
 
 `ref` is mandatory and `latest` is rejected, because an unpinned base would make
 the effective kit change without any change to the overlay. `manifest_version =
-"1.1"` is required whenever `extends` is present. The
+"1.1"` is required whenever `extends` is present or a resource declares `additive`. The
 extends-requires-1.1 check is a new check inside the manifest version validation
 (`_validate_canonical_manifest_version` in `utils/kit_model.py`). An older CLI, which
 supports only `1.0`, stops at the existing unsupported-version check of that
 validation with its upgrade hint, instead of installing a partial kit while warning
-about an unknown key.
+about an unknown key. Until base resolution is implemented, install, update and
+`validate-kits` also reject any kit that declares `extends`, so an overlay never
+installs as a partial kit.
 
 ### Resolution is explicit, not inside the loader
 

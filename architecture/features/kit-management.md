@@ -708,7 +708,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Rules**:
 1. [x] - `p1` - The file is valid at any kit root and may describe any directory structure exclusively by enumerating resources; fixed folders such as `artifacts/`, `workflows/`, or `scripts/` are conventions only, not requirements - `inst-canonical-any-layout`
-2. [x] - `p1` - The file MUST declare top-level `manifest_version = "1.0"`; missing or unsupported manifest versions are blocking errors that instruct the user to update Constructor Studio with `pipx upgrade constructor-studio` before retrying - `inst-canonical-version-gate`
+2. [x] - `p1` - The file MUST declare top-level `manifest_version` as a supported version, `"1.0"` or `"1.1"`; `"1.1"` is required when any kit declares `extends` or any resource declares `additive` (see `inst-extends-version-gate`); missing or unsupported manifest versions are blocking errors that instruct the user to update Constructor Studio with `pipx upgrade constructor-studio` before retrying - `inst-canonical-version-gate`
 3. [x] - `p1` - Manifest metadata declares at least slug/name/version-compatible display metadata and may declare description, source, targets, defaults, and compatibility fields - `inst-canonical-metadata`
 4. [x] - `p1` - A canonical file always uses `[[kits]]` entries with nested `[[kits.resources]]`; the file may contain one kit or multiple selectable kits, and kit slugs must be unique - `inst-canonical-multi-kit`
 5. [x] - `p1` - `[[kits.resources]]` entries require `id`, `kind`, and `source`; optional fields include `install_path`, `type`, `public`, `description`, `user_modifiable`, `aliases`, `generated_targets`, and nested configuration tables; `public`, `prefix_generated_name`, and `generated_targets` are valid only when the resource is public - `inst-canonical-resource-shape`
@@ -987,8 +987,12 @@ An overlay kit declares the single base kit it builds on with a `[kits.extends]`
 1. [x] - `p1` - `[kits.extends]` MUST be a table; `source` and `ref` are required strings, `kit` is an optional selector for a multi-kit base, and `suppress` is an optional list of strings naming inherited resource ids to drop - `inst-extends-shape`
 2. [x] - `p1` - A `ref` of `latest` (case-insensitive) is rejected as unpinned; the base MUST be pinned to a tag, branch, or commit so the effective kit does not change silently - `inst-extends-reject-unpinned`
 3. [x] - `p1` - Any key inside `[kits.extends]` other than `source`, `ref`, `kit`, and `suppress` is a blocking error naming every unknown key (sorted) and the allowed set in one message; it is never silently dropped, because a dropped misspelling of `suppress` would change the effective kit - `inst-extends-reject-unknown-key`
-4. [x] - `p1` - A manifest that declares `extends` on any kit MUST declare `manifest_version = "1.1"`; the extends-requires-1.1 check is a new check inside the manifest-version validation, so a `1.0` manifest carrying `extends` stops there with the `pipx upgrade constructor-studio` hint, while an older CLI that supports only `1.0` stops at the existing unsupported-version check of that validation instead of ignoring the table - `inst-extends-version-gate`
+4. [x] - `p1` - A manifest that declares `extends` on any kit, or `additive` on any resource, MUST declare `manifest_version = "1.1"`; the overlay-fields-require-1.1 check is a new check inside the manifest-version validation, so a `1.0` manifest carrying `extends` or `additive` stops there with the `pipx upgrade constructor-studio` hint, while an older CLI that supports only `1.0` stops at the existing unsupported-version check of that validation instead of ignoring the table - `inst-extends-version-gate`
 5. [x] - `p1` - A `1.1` manifest without `extends`, and a `1.0` manifest without `extends`, load exactly as before - `inst-extends-optional`
+
+Note: `additive` is an optional boolean on a `[[kits.resources]]` entry (default `false`, a non-boolean value is a blocking error). It marks a resource id as new relative to the base. It is carried on the resource model, written by normalize only when `true`, and added to the resource semantic data only when `true`, so kits that do not use it keep identical hashes. Checking it against the base is part of resolution, not of this declaration.
+
+Note: until base resolution lands with #180, `cfs kit install` (both install modes and every source type), `cfs kit update`, and `validate-kits` path mode reject a kit whose loaded model declares `extends`, with an error that names the base and points at #180, because installing only the declared resources would produce a partial kit. `cfs kit normalize` and `load_kit_model` are unaffected. This guard carries no checkbox and is removed when `resolve_kit_chain` is implemented.
 
 ### Kit Overlay Normalization
 
@@ -1002,7 +1006,7 @@ Note: only manifest-sourced normalization carries the `extends` block; `cfs kit 
 
 **Steps**:
 1. [x] - `p1` - Emit the `extends` table under each kit that declares it, writing `source` and `ref` always and `kit` and `suppress` only when set; normalizing an already-normalized overlay manifest gives the same output - `inst-extends-normalize-emit`
-2. [x] - `p1` - Emit `manifest_version = "1.1"` when any kit in the output has `extends`, otherwise `"1.0"`, so a manifest without overlays is byte-identical to before - `inst-extends-normalize-version`
+2. [x] - `p1` - Emit `manifest_version = "1.1"` when any kit in the output has `extends` or any resource is `additive`, otherwise `"1.0"`, so a manifest without overlays is byte-identical to before - `inst-extends-normalize-version`
 
 ### Kit Load Without Base Lookup
 
@@ -1141,7 +1145,7 @@ Contract for explicit base resolution. NOT YET IMPLEMENTED: no function named `r
 - [x] `p1` - **ID**: `cpt-studio-dod-kit-extends-declaration`
 
 1. [x] - `p1` - `[kits.extends]` with `source`, pinned `ref`, optional `kit`, and optional `suppress` loads into `KitModel.extends`; a missing `source` or `ref`, a `latest` ref, a non-table value, a non-string `suppress`, and any unknown key are errors
-2. [x] - `p1` - A manifest with `extends` requires `manifest_version = "1.1"`; a `1.0` manifest with `extends` is stopped at the manifest-version gate with the upgrade hint
+2. [x] - `p1` - A manifest with `extends` or `additive` requires `manifest_version = "1.1"`; a `1.0` manifest with either is stopped at the manifest-version gate with the upgrade hint
 3. [x] - `p1` - `cfs kit normalize` round-trips the `extends` block and emits `manifest_version = "1.1"` only when a kit extends; a kit without `extends` produces unchanged output
 4. [x] - `p1` - `load_kit_model` returns the declared model with no base lookup
 
@@ -1203,7 +1207,7 @@ Contract for explicit base resolution. NOT YET IMPLEMENTED: no function named `r
 - [x] `p1` - Kit install/update/report output shows source, effective source, content identity, authority freshness, and any migration from legacy `conf.toml` metadata
 - [x] `p1` - Offline GitHub fallback uses last-known persisted state and never guesses from installed files or local `conf.toml`
 - [x] `p1` - A `.cf-studio-kit.toml` kit may declare `[kits.extends]` with required `source` and pinned `ref`, optional `kit`, and optional `suppress`; `ref = "latest"`, a missing required key, and any unknown key are errors rather than silent drops
-- [x] `p1` - A manifest with `extends` must declare `manifest_version = "1.1"`; a `1.0` manifest with `extends` fails at the manifest-version gate with the `pipx upgrade constructor-studio` hint
+- [x] `p1` - A manifest with `extends` or `additive` must declare `manifest_version = "1.1"`; a `1.0` manifest with either fails at the manifest-version gate with the `pipx upgrade constructor-studio` hint
 - [x] `p1` - `cfs kit normalize` preserves the `extends` block and emits `manifest_version = "1.1"` only when a kit extends; manifests without `extends` are unchanged
 - [x] `p1` - `load_kit_model` performs no base lookup and no network access
 - [ ] `p1` - `resolve_kit_chain(model, locate_base)` resolves a base only at install, update, and `validate-kits` path mode, applying base-then-overlay order with overlay winning, merge by resource id, kind-mismatch and additive/install-path/suppress errors, cycle rejection with the rendered chain and a depth cap, owner-slug public names, per-resource owner and layer root behind one join helper, and a tool-risk fingerprint over the effective model; a kit without `extends` resolves to itself with identical hashes (not yet implemented)
