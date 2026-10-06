@@ -20,6 +20,7 @@ _CANONICAL_MANIFEST_VERSION = "1.0"
 _EXTENDS_MANIFEST_VERSION = "1.1"
 _SUPPORTED_CANONICAL_MANIFEST_VERSIONS = {_CANONICAL_MANIFEST_VERSION, _EXTENDS_MANIFEST_VERSION}
 _UNPINNED_REF = "latest"
+_EXTENDS_KEYS = frozenset({"source", "ref", "kit", "suppress"})
 _LEGACY_CONTENT_DIRS = ("artifacts", "codebase", "scripts", "workflows")
 _LEGACY_CONTENT_FILES = ("constraints.toml", "SKILL.md", "AGENTS.md")
 _PUBLIC_KINDS = {"skill", "agent", "rule"}
@@ -425,13 +426,19 @@ def _warn_unknown_keys(
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-warnings
 
 
-def _parse_extends(raw: Any, context: str, warnings: List[str]) -> Optional[KitExtends]:
+def _parse_extends(raw: Any, context: str) -> Optional[KitExtends]:
     """Validate a ``[kits.extends]`` table into a declaration; no base is fetched."""
     if raw is None:
         return None
     if not isinstance(raw, dict):
         raise ValueError(f"{_CANONICAL_MANIFEST}: {context} must be a table")
-    _warn_unknown_keys(raw, {"source", "ref", "kit", "suppress"}, context, warnings)
+    unknown = sorted(set(raw) - _EXTENDS_KEYS)
+    if unknown:
+        # A dropped key (a misspelt `suppress`) would silently change the effective kit.
+        raise ValueError(
+            f"{_CANONICAL_MANIFEST}: {context} has unknown field '{unknown[0]}' "
+            f"(allowed: {', '.join(sorted(_EXTENDS_KEYS))})",
+        )
     source = _require_string(raw, "source", context)
     ref = _require_string(raw, "ref", context)
     if ref.lower() == _UNPINNED_REF:
@@ -764,7 +771,7 @@ def _canonical_model_from_entry(
         warnings,
     )
     slug = _require_string(meta, "slug", kit_context)
-    extends = _parse_extends(meta.get("extends"), f"{kit_context}.extends", warnings)
+    extends = _parse_extends(meta.get("extends"), f"{kit_context}.extends")
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-metadata
 
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape

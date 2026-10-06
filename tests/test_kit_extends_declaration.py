@@ -101,11 +101,11 @@ class TestExtendsParsing(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "suppress.*list of strings"):
                     load_kit_model(kit)
 
-    def test_unknown_extends_key_warns_like_other_unknown_keys(self):
+    def test_unknown_extends_key_is_an_error_not_a_silent_drop(self):
         with TemporaryDirectory() as td:
-            kit = _copy_fixture(Path(td), "extends-full", ('kit = "sdlc"\n', 'kit = "sdlc"\nbranch = "x"\n'))
-            model = load_kit_model(kit)
-        self.assertIn("unknown optional field 'branch' ignored", " ".join(model.warnings))
+            kit = _copy_fixture(Path(td), "extends-full", ('kit = "sdlc"\n', 'kit = "sdlc"\nsupress = ["a"]\n'))
+            with self.assertRaisesRegex(ValueError, r"extends.*unknown field 'supress'.*suppress"):
+                load_kit_model(kit)
 
     def test_extends_must_be_a_table(self):
         with TemporaryDirectory() as td:
