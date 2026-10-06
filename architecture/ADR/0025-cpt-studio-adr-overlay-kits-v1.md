@@ -46,7 +46,9 @@ hand, so forks drift and are rarely updated.
 GitHub issue constructorfabric/studio#139 asks for overlay kits: a kit declares one
 base kit, overrides, adds or suppresses resources by id, and keeps receiving
 upstream changes. It is delivered in three phases (#427 foundation, #428 behaviour,
-#429 lifecycle); this record is the foundation decision (#427, covering #173). The
+#429 lifecycle); this record is the foundation decision (#427). This slice covers the declaration,
+version gate and normalize part of #173; the resolver contract is specified here but
+not implemented, and lands in a later slice of phase 1 (#427) before #428 builds on it. The
 design has to satisfy five requirements from the issue: a kit with no base must
 resolve exactly as today; resolution must be deterministic; unsafe inputs (cycles,
 unknown override targets, unpinned bases) must be rejected before anything is
@@ -119,9 +121,12 @@ suppress = ["prd-metrics"]   # optional: inherited resource ids to drop
 
 `ref` is mandatory and `latest` is rejected, because an unpinned base would make
 the effective kit change without any change to the overlay. `manifest_version =
-"1.1"` is required whenever `extends` is present. An older CLI then fails at the
-existing manifest version gate (`utils/manifest.py`) with its upgrade hint, instead
-of installing a partial kit while warning about an unknown key.
+"1.1"` is required whenever `extends` is present. The
+extends-requires-1.1 check is a new check inside the manifest version validation
+(`_validate_canonical_manifest_version` in `utils/kit_model.py`). An older CLI, which
+supports only `1.0`, stops at the existing unsupported-version check of that
+validation with its upgrade hint, instead of installing a partial kit while warning
+about an unknown key.
 
 ### Resolution is explicit, not inside the loader
 
@@ -130,7 +135,8 @@ of installing a partial kit while warning about an unknown key.
 returning the declared model, because it is also read by `cfs info`,
 `cfs resolve-vars`, `cfs kit normalize`, the update risk model and the
 public-component gate, none of which may reach the network. Installed-mode readers
-use the persisted inventory, which already holds the effective resources.
+are meant to use the persisted inventory and must be moved onto it by a later phase
+(#428/#429); `load_installed_kit_model` still ends in `load_kit_model` today.
 `cfs kit normalize` round-trips the `extends` block rather than erasing it.
 
 ### Merge by resource id
@@ -196,12 +202,22 @@ separately in the later phases. This record fixes only the contract they build o
 
 ### Confirmation
 
-- Unit tests cover chain order, override, kind mismatch, additive, path collision,
-  unknown suppress target, cycle and depth cap, and unpinned `latest`.
-- A golden test asserts that a kit without `extends` resolves identically before
+Present in this change (#427):
+
+- Unit tests cover declaration parsing, rejection of `latest` and unpinned refs,
+  rejection of unknown keys, the manifest `1.1` version gate, normalize round trip
+  and idempotence, and that the output of a kit without `extends` is pinned.
+- A test asserts that `load_kit_model` performs no network or base lookup.
+
+To land with the resolver:
+
+- Unit tests for chain order, override, kind mismatch, additive, path collision,
+  unknown suppress target, and cycle and depth cap.
+- A golden test asserting that a kit without `extends` resolves identically before
   and after the change.
-- A test asserts that `load_kit_model` performs no base lookup, and that
-  `cfs kit normalize` preserves the `extends` block.
+
+Ongoing:
+
 - Review of any new `load_kit_model` caller checks which model it needs, declared
   or effective.
 

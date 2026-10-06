@@ -10,7 +10,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import toml_utils
 from ._tomllib_compat import tomllib
@@ -127,12 +127,12 @@ class PublicComponent:
 
 @dataclass(frozen=True)
 class KitExtends:
-    """The declared base of an overlay kit; declaration only, never resolved by the loader."""
+    """Declared base of an overlay kit."""
 
     source: str
     ref: str
     kit: str = ""
-    suppress: List[str] = field(default_factory=list)
+    suppress: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -431,7 +431,6 @@ def _warn_unknown_keys(
 
 # @cpt-algo:cpt-studio-algo-kit-extends-declaration:p1
 def _parse_extends(raw: Any, context: str) -> Optional[KitExtends]:
-    """Validate a ``[kits.extends]`` table into a declaration; no base is fetched."""
     # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-shape
     # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-optional
     if raw is None:
@@ -442,9 +441,9 @@ def _parse_extends(raw: Any, context: str) -> Optional[KitExtends]:
     # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unknown-key
     unknown = sorted(set(raw) - _EXTENDS_KEYS)
     if unknown:
-        # A dropped key (a misspelt `suppress`) would silently change the effective kit.
+        names = ", ".join(f"'{key}'" for key in unknown)
         raise ValueError(
-            f"{_CANONICAL_MANIFEST}: {context} has unknown field '{unknown[0]}' "
+            f"{_CANONICAL_MANIFEST}: {context} has unknown field(s) {names} "
             f"(allowed: {', '.join(sorted(_EXTENDS_KEYS))})",
         )
     # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unknown-key
@@ -457,11 +456,14 @@ def _parse_extends(raw: Any, context: str) -> Optional[KitExtends]:
             "pin the base to a tag, branch or commit so the effective kit does not change silently",
         )
     # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unpinned
+    raw_kit = raw.get("kit")
+    if raw_kit is not None and not isinstance(raw_kit, str):
+        raise ValueError(f"{_CANONICAL_MANIFEST}: {context}.kit must be a string")
     return KitExtends(
         source=source,
         ref=ref,
         kit=_optional_string(raw, "kit"),
-        suppress=_string_list(raw.get("suppress"), f"{context}.suppress"),
+        suppress=tuple(_string_list(raw.get("suppress"), f"{context}.suppress")),
     )
     # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-shape
 
@@ -861,13 +863,17 @@ def _validate_canonical_manifest_version(data: Dict[str, Any]) -> None:
             f"(supported: {supported}). {_UPDATE_CFS_HINT}",
         )
     # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-version-gate
-    if version != _EXTENDS_MANIFEST_VERSION and _declares_extends(data):
+    if _version_key(version) < _version_key(_EXTENDS_MANIFEST_VERSION) and _declares_extends(data):
         raise ValueError(
             f"{_CANONICAL_MANIFEST}: extends requires manifest_version '{_EXTENDS_MANIFEST_VERSION}' "
             f"(found '{version}'). {_UPDATE_CFS_HINT}",
         )
     # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-version-gate
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-version-gate
+
+
+def _version_key(version: str) -> Tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
 
 
 def _declares_extends(data: Dict[str, Any]) -> bool:
@@ -1651,6 +1657,7 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
         manifest_source="core",
         resources=merged_resources,
         warnings=list(dict.fromkeys(list(core_model.warnings) + list(source_model.warnings))),
+        extends=source_model.extends,
     )
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-merge-core-authority
 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert

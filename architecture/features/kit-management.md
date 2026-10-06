@@ -95,7 +95,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 - Workflow-skill folder naming policy in generated agent entry points; that behavior is owned by [project-extensibility.md](./project-extensibility.md).
 - Remote GitHub authority changes beyond kit lifecycle resolution, release-note display, and content-identity tracking already defined here.
 - Regulatory/compliance requirements outside normal CLI validation/reporting behavior.
-- Overlay-kit work beyond the foundation slice (issue constructorfabric/studio#139 phase 1, #427 covering #173), named here only and not specified: constraints entry-level merge (#178), `validate-kits` overlay checks (#179), install and provenance (#180), update and drift (#181), remote bases (#182), and the later phases #428 and #429.
+- Overlay-kit work beyond the foundation slice (issue constructorfabric/studio#139 phase 1, #427 covers the declaration, version gate and normalize part of #173; the resolver contract is specified but not implemented and lands in a later slice of phase 1 (#427) before #428 builds on it), named here only and not specified: constraints entry-level merge (#178), `validate-kits` overlay checks (#179), install and provenance (#180), update and drift (#181), remote bases (#182), and the later phases #428 and #429.
 
 ### 3. Actors
 
@@ -986,8 +986,8 @@ An overlay kit declares the single base kit it builds on with a `[kits.extends]`
 **Rules**:
 1. [x] - `p1` - `[kits.extends]` MUST be a table; `source` and `ref` are required strings, `kit` is an optional selector for a multi-kit base, and `suppress` is an optional list of strings naming inherited resource ids to drop - `inst-extends-shape`
 2. [x] - `p1` - A `ref` of `latest` (case-insensitive) is rejected as unpinned; the base MUST be pinned to a tag, branch, or commit so the effective kit does not change silently - `inst-extends-reject-unpinned`
-3. [x] - `p1` - Any key inside `[kits.extends]` other than `source`, `ref`, `kit`, and `suppress` is a blocking error naming the key and the allowed set; it is never silently dropped, because a dropped misspelling of `suppress` would change the effective kit - `inst-extends-reject-unknown-key`
-4. [x] - `p1` - A manifest that declares `extends` on any kit MUST declare `manifest_version = "1.1"`; a `1.0` manifest carrying `extends` stops at the existing manifest-version gate with the `pipx upgrade constructor-studio` hint, so an older CLI that supports only `1.0` stops at the same gate instead of ignoring the table - `inst-extends-version-gate`
+3. [x] - `p1` - Any key inside `[kits.extends]` other than `source`, `ref`, `kit`, and `suppress` is a blocking error naming every unknown key (sorted) and the allowed set in one message; it is never silently dropped, because a dropped misspelling of `suppress` would change the effective kit - `inst-extends-reject-unknown-key`
+4. [x] - `p1` - A manifest that declares `extends` on any kit MUST declare `manifest_version = "1.1"`; the extends-requires-1.1 check is a new check inside the manifest-version validation, so a `1.0` manifest carrying `extends` stops there with the `pipx upgrade constructor-studio` hint, while an older CLI that supports only `1.0` stops at the existing unsupported-version check of that validation instead of ignoring the table - `inst-extends-version-gate`
 5. [x] - `p1` - A `1.1` manifest without `extends`, and a `1.0` manifest without `extends`, load exactly as before - `inst-extends-optional`
 
 ### Kit Overlay Normalization
@@ -997,6 +997,8 @@ An overlay kit declares the single base kit it builds on with a `[kits.extends]`
 **Input**: One or more `KitModel` values, any of which may carry `extends`
 
 **Output**: Canonical manifest TOML data
+
+Note: only manifest-sourced normalization carries the `extends` block; `cfs kit normalize --source-hint layout` and `--source-hint core` ignore the manifest and therefore drop the base.
 
 **Steps**:
 1. [x] - `p1` - Emit the `extends` table under each kit that declares it, writing `source` and `ref` always and `kit` and `suppress` only when set; normalizing an already-normalized overlay manifest gives the same output - `inst-extends-normalize-emit`
