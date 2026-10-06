@@ -129,73 +129,80 @@ The `make update` command runs `cfs update --source . --force`, which:
 
 ## Versioning
 
-Constructor Studio has **two independent version tracks**.
+A release is a **GitHub Release and its tag**, and nothing else (ADR-0021). No file in the
+repository is bumped to make a release.
 
 ### Version Locations
 
-| File | Example (pre-release) | Example (stable) | What it versions | When to bump |
-|------|----------------------|------------------|------------------|--------------|
-| `skills/studio/scripts/studio/__init__.py` | `vX.Y.Z-beta` | `vX.Y.Z` | **Skill engine** — the core validation/generation logic | Any change to skill engine code |
-| `pyproject.toml` (`version`) | `X.Y.Z-beta` | `X.Y.Z` | **CLI proxy** — installed via `pipx` | Changes to proxy routing, caching, or resolution |
+| What | Where the version comes from |
+|------|------------------------------|
+| **CLI proxy** (`constructor-studio`, installed with `pipx`) | The Git tag, through `setuptools_scm` (`dynamic = ["version"]` in `pyproject.toml`). A build from `vX.Y.Z` reports `X.Y.Z`. |
+| **Skill bundle** in the user's cache, and the core installed in a project | The latest published GitHub Release, or the ref the user asked for, recorded with its provenance (`cfs --version` shows it). |
+| `skills/studio/scripts/studio/__init__.py` (`__version__`) | Not a release version. `make check-versions` uses it only to check that `.bootstrap/` is in sync, so it is not bumped for a release. |
+| `.bootstrap/version.toml`, `.bootstrap/whatsnew.toml` | This repository's own pinned Studio version. They are updated **after** a release, in step 8 below. |
 
 ### Releasing a New Version
 
-1. **Create a release branch** from `main`:
+1. **Choose the cut point.** Pick a commit on `main` whose CI is green, and decide which merged
+   pull requests the release includes. Anything merged after the cut point waits for the next one.
+
+2. **Cut the release branch from `main`**, never from the previous tag. A release built from an
+   older tag and assembled by cherry-picks ships a tree that is not on `main` (#257).
    ```bash
-   git checkout main && git pull --rebase
-   git checkout -b vX.Y.Z-beta
+   git push origin <sha>:refs/heads/release/vX.Y.Z
    ```
+   CI runs on `release/**`, so the branch is tested as soon as it exists.
 
-2. **Bump the skill engine version** in `skills/studio/scripts/studio/__init__.py`:
-   ```python
-   __version__ = "vX.Y.Z-beta"
-   ```
-
-3. **If proxy changed**, bump version in `pyproject.toml`:
-   ```toml
-   # pyproject.toml
-   version = "X.Y.Z-beta"
-   ```
-
-4. **Sync bootstrap**:
+3. **Stabilise, fixes first on `main`.** A fix lands on `main` by pull request, then goes into the
+   release branch with `git cherry-pick -x`. Before tagging, the branch must hold nothing `main`
+   lacks, so this prints nothing:
    ```bash
-   make update
+   git log --cherry-pick --right-only --no-merges origin/main...origin/release/vX.Y.Z
    ```
 
-5. **Verify** everything passes:
+4. **Verify locally** on the release branch head:
    ```bash
+   make check-versions validate self-check validate-kits spec-coverage declared-stops test-gates
    make test
-   make validate
-   make self-check
    ```
 
-6. **Tag and release** after merge to `main`:
-   - For a pre-release:
-     ```bash
-     git tag vX.Y.Z-beta
-     git push origin vX.Y.Z-beta
-     ```
-   - For a stable release (drop the `-beta` suffix):
-     ```bash
-     git tag vX.Y.Z
-     git push origin vX.Y.Z
-     ```
+5. **Write the release notes.** They are user-facing only and in English: what changed for
+   someone using `cfs` and the skills, not CI, tests or refactors. They are shown to users by
+   `cfs update` as "What's New", so state behaviour changes plainly and check each claim
+   against the release branch. Follow the shape of the previous release: `## What's New`,
+   `## Bug Fixes`, and a **Full Changelog** link.
+
+6. **Publish the GitHub Release.** This creates the tag on the release branch head:
+   ```bash
+   gh release create vX.Y.Z --target <release-branch-head-sha> \
+       --title vX.Y.Z --notes-file notes.md --latest
+   ```
+
+7. **Smoke-test the published release** in an isolated home, the way a user installs it:
+   ```bash
+   export HOME=$(mktemp -d) PIPX_HOME=$HOME/pipx PIPX_BIN_DIR=$HOME/bin
+   pipx install "git+https://github.com/constructorfabric/studio.git@vX.Y.Z"
+   $HOME/bin/cfs --version   # package X.Y.Z; skill cache vX.Y.Z, verified
+   ```
+
+8. **Bump this repository's own pin** in a pull request to `main`. Set `version` and
+   `requested_ref` in `.bootstrap/version.toml` to `vX.Y.Z`, and add the release's
+   `[whatsnew."vX.Y.Z"]` section to the top of `.bootstrap/whatsnew.toml`. Copy that section
+   from the `whatsnew.toml` the smoke test's `cfs` wrote under `$HOME/.cf-studio/cache/`, so it
+   is the same text users see.
 
 ---
 
 ## Branch and Release Workflow
 
 ```
-main                          # Stable, all CI must pass
-├── vX.Y.Z-beta               # Pre-release feature/release branch
-└── vX.Y.Z                    # Stable release branch (no -beta suffix)
+main                          # Every change lands here first; CI must pass
+└── release/vX.Y.Z            # Cut from main at the release's cut point; tagged vX.Y.Z
 ```
 
-- Branch from `main` for each version
-- All work happens on the version branch
-- Merge to `main` via PR after CI passes
-- Tag `main` after merge
-- Pre-release tags use the `-beta` suffix (e.g. `v1.1.0-beta`); stable releases omit it (e.g. `v1.1.0`)
+- Feature and fix branches start from `main` and merge into `main` by pull request.
+- A release branch receives only cherry-picks of fixes already on `main`.
+- The tag `vX.Y.Z` is created on the release branch head by publishing the GitHub Release.
 
 ---
 
@@ -281,7 +288,7 @@ All CI is driven through `make`. No virtual environment required — tools run v
 
 ### GitHub Actions
 
-CI runs on pushes and PRs for `main`, `release/**`, and `v[0-9]*` branches. The workflow has nine job definitions; the Python matrices expand them into separate runner jobs:
+CI runs on pushes and PRs for `main` and `release/**` branches. The workflow has ten job definitions; the Python matrices expand them into separate runner jobs:
 
 1. **Test** — uninstrumented `make test` on Python 3.11, 3.12, 3.13, and 3.14
 2. **Coverage** — `make test-coverage` on Python 3.14 (≥90% gate)
@@ -290,8 +297,9 @@ CI runs on pushes and PRs for `main`, `release/**`, and `v[0-9]*` branches. The 
 5. **Pylint** — `make pylint` static analysis (staged rollout configured in `pyproject.toml`)
 6. **Vulture** — `make vulture-ci` dead code scan
 7. **Versions** — `make check-versions` (proxy sync, bootstrap sync)
-8. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)
-9. **Validate Artifacts and Kits** — `make validate`, `make self-check`, and `make validate-kits` in one job per Python 3.11–3.14 version; later checks still run after an earlier validation failure unless cancelled
+8. **Declared Stops** — `make declared-stops`: fails when a workflow declares more stops than `architecture/baselines/declared-stops.json` records, or is missing from it
+9. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)
+10. **Validate Artifacts and Kits** — `make validate`, `make self-check`, and `make validate-kits` in one job per Python 3.11–3.14 version; later checks still run after an earlier validation failure unless cancelled
 
 All applicable checks should pass before merge.
 
