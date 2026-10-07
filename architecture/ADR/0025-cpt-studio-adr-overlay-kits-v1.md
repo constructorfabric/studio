@@ -51,18 +51,18 @@ version gate and normalize part of #173; the resolver contract is specified here
 not implemented, and lands in a later slice of phase 1 (#427) before #428 builds on it. The
 design has to satisfy five requirements from the issue: a kit with no base must
 resolve exactly as today; resolution must be deterministic; unsafe inputs (cycles,
-unknown override targets, unpinned bases) must be rejected before anything is
+unknown override targets, `latest` bases) must be rejected before anything is
 installed; it must work in register and copy mode with local and remote bases; and
 every effective resource must be traceable to its owner kit.
 
 The kit loader is read by many commands, several of which must never touch the
-network. Where resolution happens, and what pins the base, are the decisions that
+network. Where resolution happens, and what identifies the base, are the decisions that
 are expensive to reverse once overlays exist in the wild.
 
 ## Decision Drivers
 
 - A kit with no base resolves byte-for-byte as today.
-- Same overlay plus same pinned base always yields the same effective kit.
+- Same overlay plus same base content (the declared ref plus the resolved commit identity recorded at install and update, landing with #180 and #182) always yields the same effective kit.
 - Unsafe overlays fail before any file is installed, never leaving a partial kit.
 - An older CLI must refuse an overlay rather than install it incompletely. Today an
   unknown kit-level manifest key only warns.
@@ -96,8 +96,10 @@ demonstrated need for them.
 ### Resolution order
 
 Layers apply base first, then overlay; the overlay wins. Resolution is a pure
-function of the overlay and the pinned base, so the same inputs always produce the
-same effective kit.
+function of the overlay and the base content, so the same inputs always produce the
+same effective kit. The base content is identified by the declared ref plus the
+resolved commit identity recorded at install and update, which land with #180 and
+#182; nothing is recorded by this slice.
 
 ```mermaid
 flowchart LR
@@ -114,19 +116,27 @@ manifest_version = "1.1"
 
 [kits.extends]
 source   = "github:org/studio-sdlc"
-ref      = "v2.3.0"          # required; "latest" is rejected as unpinned
+ref      = "v2.3.0"          # required; only "latest" is rejected
 kit      = "sdlc"            # optional: selects one kit of a multi-kit base manifest
 suppress = ["prd-metrics"]   # optional: inherited resource ids to drop
 ```
 
-`ref` is mandatory and `latest` is rejected, because an unpinned base would make
-the effective kit change without any change to the overlay. `manifest_version =
+`ref` is mandatory and `latest` is rejected, because `latest` names no particular
+base. Any other non-empty ref is accepted at declaration, including a branch or a
+symbolic ref such as `main` or `HEAD`: kit sources already accept a tag, branch, ref
+or commit SHA, and the offline loader cannot tell a tag from a branch. Determinism
+comes from the ref plus the resolved commit identity recorded at install and update
+(landing with #180 and #182), not from the declaration alone; update and drift
+reporting (#181) is what surfaces a base that has moved. `manifest_version =
 "1.1"` is required whenever `extends` is present or a resource declares `additive`. The
 extends-requires-1.1 check is a new check inside the manifest version validation
 (`_validate_canonical_manifest_version` in `utils/kit_model.py`). An older CLI, which
 supports only `1.0`, stops at the existing unsupported-version check of that
 validation with its upgrade hint, instead of installing a partial kit while warning
-about an unknown key. Until base resolution is implemented, install, update and
+about an unknown key. `manifest_version` is a single file-level field, so when any
+kit in a multi-kit manifest declares `extends` or `additive` the whole file needs
+`1.1` and an older CLI cannot read any kit in it; authors who need sibling kits
+readable by an older CLI ship them in a separate manifest. Until base resolution is implemented, install, update and
 `validate-kits` also reject any kit that declares `extends`, so an overlay never
 installs as a partial kit.
 
@@ -199,14 +209,15 @@ separately in the later phases. This record fixes only the contract they build o
 - Bad, because materialising layers duplicates inherited files on disk per overlay.
 - Bad, because the additive flag adds a line the author must write for every new
   resource.
-- Bad, because pinning means an overlay author must bump `ref` deliberately to take
-  an upstream change.
+- Bad, because an overlay author on a tag must bump `ref` deliberately to take an
+  upstream change, while an author on a branch sees a moved base only through update
+  and drift reporting (#181).
 
 ### Confirmation
 
 Present in this change (#427):
 
-- Unit tests cover declaration parsing, rejection of `latest` and unpinned refs,
+- Unit tests cover declaration parsing, rejection of `latest` variants, acceptance of branch-like refs such as `main` and `HEAD` by design,
   rejection of unknown keys, the manifest `1.1` version gate, normalize round trip
   and idempotence, and that the output of a kit without `extends` is pinned.
 - A test asserts that `load_kit_model` performs no network or base lookup.
@@ -245,7 +256,7 @@ Ongoing:
 - Good, because it allows composing several upstream kits.
 - Bad, because two bases defining the same id need conflict-resolution rules, and
   there is no demonstrated need for them.
-- Bad, because ordering between bases becomes part of the pin and of every diff.
+- Bad, because ordering between bases becomes part of the base identity and of every diff.
 
 ### Resolve inside the loader from a shared cache
 

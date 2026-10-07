@@ -1,6 +1,9 @@
+import io
+import json
 import shutil
 import sys
 import unittest
+from contextlib import redirect_stdout
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -8,7 +11,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
+from studio.cli import main as cli_main
 from studio.utils import kit_model as km
+from studio.utils import ui
 from studio.utils.kit_model import (
     KitExtends,
     KitModel,
@@ -81,12 +86,18 @@ class TestExtendsParsing(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, r"extends.*missing or invalid string field 'ref'"):
                 load_kit_model(kit)
 
-    def test_latest_ref_is_rejected_as_unpinned(self):
+    def test_only_latest_variants_are_rejected_as_unpinned(self):
         for value in ("latest", "LATEST", "Latest", " latest ", "latest "):
             with self.subTest(ref=value), TemporaryDirectory() as td:
                 kit = _copy_fixture(Path(td), "extends-full", ('ref = "v2.3.0"', f'ref = "{value}"'))
-                with self.assertRaisesRegex(ValueError, r"unpinned.*pin.*tag, branch or commit"):
+                with self.assertRaisesRegex(ValueError, r"unpinned.*'latest' is not accepted.*tag, branch or commit"):
                     load_kit_model(kit)
+
+    def test_branch_like_refs_are_accepted_by_design_at_declaration(self):
+        for value in ("main", "HEAD", "develop", "release/1.x", "a1b2c3d", "v2.3.0"):
+            with self.subTest(ref=value), TemporaryDirectory() as td:
+                kit = _copy_fixture(Path(td), "extends-full", ('ref = "v2.3.0"', f'ref = "{value}"'))
+                self.assertEqual(load_kit_model(kit).extends.ref, value)
 
     def test_empty_and_blank_ref_are_rejected(self):
         for value in ("", "   "):
@@ -456,6 +467,116 @@ class TestPlainKitUnchangedByAdditive(unittest.TestCase):
         self.assertEqual(model.tool_risk_fingerprint, _PLAIN_BASELINE["tool_risk_fingerprint"])
         self.assertEqual(model.manifest_bytes_hash, _PLAIN_BASELINE["manifest_bytes_hash"])
         self.assertEqual(kit_models_to_toml_data([model]), _PLAIN_BASELINE["toml"])
+
+
+class KitNormalizeReportOverlayTest(unittest.TestCase):
+    def _run(self, kit: Path, *flags: str) -> tuple[int, str]:
+        buf = io.StringIO()
+        saved = ui.is_json_mode()
+        try:
+            ui.set_json_mode(False)
+            with redirect_stdout(buf):
+                rc = cli_main([*flags, "kit", "normalize", str(kit), "--dry-run"])
+        finally:
+            ui.set_json_mode(saved)
+        return rc, buf.getvalue()
+
+    def _report(self, kit: Path) -> dict:
+        rc, out = self._run(kit, "--json")
+        self.assertEqual(rc, 0)
+        return json.loads(out)["report"]
+
+    def test_plain_kit_report_is_unchanged(self):
+        with TemporaryDirectory() as td:
+            kit = _copy_fixture(Path(td), "plain")
+            self.assertEqual(
+                self._report(kit),
+                {
+                    "manifest_source": "canonical",
+                    "resources": 1,
+                    "public_resources": 1,
+                    "public_components": [
+                        {
+                            "id": "skill",
+                            "kind": "skill",
+                            "source": "SKILL.md",
+                            "generated_name": "cf-team-sdlc-skill",
+                            "name_mode": "prefixed",
+                            "generated_targets": ["installed"],
+                            "aliases": [],
+                            "origin": "",
+                            "subagents": [],
+                        },
+                    ],
+                    "warnings": [],
+                },
+            )
+            rc, out = self._run(kit)
+            self.assertEqual(rc, 0)
+            head = out.split("  Generated .cf-studio-kit.toml preview:")[0]
+            self.assertEqual(
+                head,
+                "\n  Kit Normalize\n"
+                "    Kit: team-sdlc\n"
+                f"    Output: {(kit / _MANIFEST).resolve().as_posix()}\n"
+                "    Source: canonical\n"
+                "    Resources: 1\n"
+                "\n  \u2713 Dry run - no files written.\n\n",
+            )
+
+    def test_extends_is_reported_in_json_and_human(self):
+        with TemporaryDirectory() as td:
+            kit = _copy_fixture(Path(td), "extends-full")
+            report = self._report(kit)
+            self.assertEqual(
+                report["extends"],
+                {
+                    "source": "github:org/studio-sdlc",
+                    "ref": "v2.3.0",
+                    "kit": "sdlc",
+                    "suppress": ["prd-metrics", "adr-extras"],
+                },
+            )
+            self.assertNotIn("additive_resources", report)
+            _, out = self._run(kit)
+            self.assertIn(
+                "    Extends: github:org/studio-sdlc @ v2.3.0 (kit sdlc), suppress: prd-metrics, adr-extras\n",
+                out,
+            )
+            self.assertNotIn("Additive resources", out)
+
+    def test_optional_extends_fields_are_omitted_from_report_when_unset(self):
+        with TemporaryDirectory() as td:
+            kit = _copy_fixture(Path(td), "extends-full")
+            manifest = kit / _MANIFEST
+            lines = manifest.read_text(encoding="utf-8").splitlines(keepends=True)
+            manifest.write_text(
+                "".join(ln for ln in lines if not ln.startswith(("kit =", "suppress ="))),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                self._report(kit)["extends"],
+                {"source": "github:org/studio-sdlc", "ref": "v2.3.0"},
+            )
+
+    def test_additive_resources_are_reported_in_json_and_human(self):
+        with TemporaryDirectory() as td:
+            kit = _copy_fixture(
+                Path(td),
+                "plain",
+                ('manifest_version = "1.0"', 'manifest_version = "1.1"'),
+            )
+            manifest = kit / _MANIFEST
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace('public = true', 'public = true\nadditive = true'),
+                encoding="utf-8",
+            )
+            report = self._report(kit)
+            self.assertEqual(report["additive_resources"], ["skill"])
+            self.assertNotIn("extends", report)
+            _, out = self._run(kit)
+            self.assertIn("    Additive resources: skill\n", out)
+            self.assertNotIn("Extends", out)
 
 
 if __name__ == "__main__":

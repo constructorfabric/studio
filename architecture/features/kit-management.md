@@ -985,10 +985,12 @@ An overlay kit declares the single base kit it builds on with a `[kits.extends]`
 
 **Rules**:
 1. [x] - `p1` - `[kits.extends]` MUST be a table; `source` and `ref` are required strings, `kit` is an optional selector for a multi-kit base, and `suppress` is an optional list of strings naming inherited resource ids to drop - `inst-extends-shape`
-2. [x] - `p1` - A `ref` of `latest` (case-insensitive) is rejected as unpinned; the base MUST be pinned to a tag, branch, or commit so the effective kit does not change silently - `inst-extends-reject-unpinned`
+2. [x] - `p1` - A `ref` of `latest` (case-insensitive) is rejected as unpinned; any other non-empty `ref` is accepted at declaration, whether tag, branch, symbolic ref, or commit, because kit sources already accept those and the offline loader cannot tell a tag from a branch; reproducibility comes from the ref plus the resolved commit identity recorded at install and update, not from the declaration alone - `inst-extends-reject-unpinned`
 3. [x] - `p1` - Any key inside `[kits.extends]` other than `source`, `ref`, `kit`, and `suppress` is a blocking error naming every unknown key (sorted) and the allowed set in one message; it is never silently dropped, because a dropped misspelling of `suppress` would change the effective kit - `inst-extends-reject-unknown-key`
 4. [x] - `p1` - A manifest that declares `extends` on any kit, or `additive` on any resource, MUST declare `manifest_version = "1.1"`; the overlay-fields-require-1.1 check is a new check inside the manifest-version validation, so a `1.0` manifest carrying `extends` or `additive` stops there with the `pipx upgrade constructor-studio` hint, while an older CLI that supports only `1.0` stops at the existing unsupported-version check of that validation instead of ignoring the table - `inst-extends-version-gate`
 5. [x] - `p1` - A `1.1` manifest without `extends`, and a `1.0` manifest without `extends`, load exactly as before - `inst-extends-optional`
+
+Note: `manifest_version` is a single file-level field, so when any kit in a multi-kit manifest declares `extends` or `additive` the whole file needs `1.1` and an older CLI cannot read any kit in it; authors who need sibling kits readable by an older CLI ship them in a separate manifest.
 
 Note: `additive` is an optional boolean on a `[[kits.resources]]` entry (default `false`, a non-boolean value is a blocking error). It marks a resource id as new relative to the base. It is carried on the resource model, written by normalize only when `true`, and added to the resource semantic data only when `true`, so kits that do not use it keep identical hashes. Checking it against the base is part of resolution, not of this declaration.
 
@@ -1144,7 +1146,7 @@ Contract for explicit base resolution. NOT YET IMPLEMENTED: no function named `r
 
 - [x] `p1` - **ID**: `cpt-studio-dod-kit-extends-declaration`
 
-1. [x] - `p1` - `[kits.extends]` with `source`, pinned `ref`, optional `kit`, and optional `suppress` loads into `KitModel.extends`; a missing `source` or `ref`, a `latest` ref, a non-table value, a non-string `suppress`, and any unknown key are errors
+1. [x] - `p1` - `[kits.extends]` with `source`, `ref`, optional `kit`, and optional `suppress` loads into `KitModel.extends`; a missing `source` or `ref`, a `latest` ref, a non-table value, a non-string `suppress`, and any unknown key are errors
 2. [x] - `p1` - A manifest with `extends` or `additive` requires `manifest_version = "1.1"`; a `1.0` manifest with either is stopped at the manifest-version gate with the upgrade hint
 3. [x] - `p1` - `cfs kit normalize` round-trips the `extends` block and emits `manifest_version = "1.1"` only when a kit extends; a kit without `extends` produces unchanged output
 4. [x] - `p1` - `load_kit_model` returns the declared model with no base lookup
@@ -1206,7 +1208,7 @@ Contract for explicit base resolution. NOT YET IMPLEMENTED: no function named `r
 - [x] `p1` - Local/path kit operations are outside GitHub authority and reject GitHub selector/ref flags
 - [x] `p1` - Kit install/update/report output shows source, effective source, content identity, authority freshness, and any migration from legacy `conf.toml` metadata
 - [x] `p1` - Offline GitHub fallback uses last-known persisted state and never guesses from installed files or local `conf.toml`
-- [x] `p1` - A `.cf-studio-kit.toml` kit may declare `[kits.extends]` with required `source` and pinned `ref`, optional `kit`, and optional `suppress`; `ref = "latest"`, a missing required key, and any unknown key are errors rather than silent drops
+- [x] `p1` - A `.cf-studio-kit.toml` kit may declare `[kits.extends]` with required `source` and `ref`, optional `kit`, and optional `suppress`; `ref = "latest"`, a missing required key, and any unknown key are errors rather than silent drops
 - [x] `p1` - A manifest with `extends` or `additive` must declare `manifest_version = "1.1"`; a `1.0` manifest with either fails at the manifest-version gate with the `pipx upgrade constructor-studio` hint
 - [x] `p1` - `cfs kit normalize` preserves the `extends` block and emits `manifest_version = "1.1"` only when a kit extends; manifests without `extends` are unchanged
 - [x] `p1` - `load_kit_model` performs no base lookup and no network access

@@ -456,7 +456,7 @@ def _parse_extends(raw: Any, context: str) -> Optional[KitExtends]:
     if ref.lower() == _UNPINNED_REF:
         raise ValueError(
             f"{_CANONICAL_MANIFEST}: {context}.ref '{ref}' is unpinned; "
-            "pin the base to a tag, branch or commit so the effective kit does not change silently",
+            "'latest' is not accepted, declare a tag, branch or commit",
         )
     # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unpinned
     raw_kit = raw.get("kit")

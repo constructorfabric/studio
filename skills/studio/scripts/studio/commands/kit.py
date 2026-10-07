@@ -5592,11 +5592,35 @@ def _kit_normalize_report(model: Any) -> Dict[str, Any]:
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview
         "warnings": list(model.warnings),
     }
+    extends = getattr(model, "extends", None)
+    if extends is not None:
+        report["extends"] = {"source": extends.source, "ref": extends.ref}
+        if extends.kit:
+            report["extends"]["kit"] = extends.kit
+        if extends.suppress:
+            report["extends"]["suppress"] = list(extends.suppress)
+    additive_ids = [r.id for r in model.resources if r.additive]
+    if additive_ids:
+        report["additive_resources"] = additive_ids
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
     return report
 
 
 # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-human-output
+def _human_kit_overlay_details(report: dict) -> None:
+    extends = report.get("extends")
+    if isinstance(extends, dict):
+        text = f"{extends.get('source', '?')} @ {extends.get('ref', '?')}"
+        if extends.get("kit"):
+            text += f" (kit {extends['kit']})"
+        if extends.get("suppress"):
+            text += f", suppress: {', '.join(str(i) for i in extends['suppress'])}"
+        ui.detail("Extends", text)
+    additive = report.get("additive_resources")
+    if isinstance(additive, list) and additive:
+        ui.detail("Additive resources", ", ".join(str(i) for i in additive))
+
+
 def _human_kit_normalize(data: dict) -> None:
     ui.header("Kit Normalize")
     kits = data.get("kits", [])
@@ -5609,6 +5633,7 @@ def _human_kit_normalize(data: dict) -> None:
     if isinstance(report, dict):
         ui.detail("Source", str(report.get("manifest_source", "?")))
         ui.detail("Resources", str(report.get("resources", 0)))
+        _human_kit_overlay_details(report)
         warnings = report.get("warnings", [])
         for warning in warnings if isinstance(warnings, list) else []:
             ui.warn(str(warning))
