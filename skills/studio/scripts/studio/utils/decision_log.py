@@ -44,6 +44,7 @@ import json
 import logging
 import os
 import re
+import stat
 import unicodedata
 import uuid
 from dataclasses import dataclass
@@ -109,6 +110,11 @@ _BRAND_DIR = ".cf-studio"               # per-user home dir for the opt-out sent
 _OPT_OUT_SENTINEL = "decisions.off"
 _CACHE_SUBDIR = ".cache"
 _LOG_NAME = "decisions.jsonl"
+#: The run-correlation id a whole run shares, beside the log. Written once at a run's start
+#: (`start_run`) and read by every command of that run (`current_run_id`), so a run that spans
+#: many separate `cfs` processes can scope its events to one id -- the per-process `_RUN_ID` below
+#: cannot, because each process gets a fresh one.
+_RUN_ID_NAME = "run-id"
 
 #: Rotate once the log passes this size, keeping a single ``.1`` backup.
 _MAX_BYTES = 5 * 1024 * 1024
@@ -131,8 +137,37 @@ _MAX_SEGMENT_BYTES = _MAX_BYTES + 64 * 1024
 #: this one restated for the reader.
 _MAX_EVENT_BYTES = 64 * 1024
 
-#: Fixed for the life of the process, so every event of one invocation shares it.
+#: Fixed for the life of the process, so every event of one invocation shares it. The fallback when
+#: no shared run-id file is present -- preserving the historical per-process behaviour exactly.
 _RUN_ID = uuid.uuid4().hex[:12]
+
+#: A run id from the shared file is accepted only if it is a short, safe token: this value is
+#: interpolated into the `run_id` JSON field, so a hand-edited or corrupt file must not be able to
+#: inject whitespace, control characters, or an unbounded string. A value that fails this falls back
+#: to the per-process `_RUN_ID` (fail-safe), never raises.
+_RUN_ID_FILE_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+#: A valid run-id file holds a <=64-char token plus perhaps a trailing newline; read at most this
+#: many bytes so a large malformed file cannot be loaded whole into memory just to be rejected.
+_RUN_ID_READ_LIMIT = 128
+
+#: `O_NONBLOCK` is POSIX-only, so it is taken with a default rather than named directly --
+#: `os.O_RDONLY | os.O_NONBLOCK` raises `AttributeError` on Windows while *evaluating the
+#: expression*, which would break every ordinary read rather than only the hazard it guards.
+#: The same reasoning, and the same pair, as `gate_surface`. Losing it on Windows loses
+#: nothing: it exists to stop a FIFO open waiting for a writer, and Windows named pipes do
+#: not live in the filesystem namespace. The `S_ISREG` check is what carries the guarantee,
+#: and that is platform-independent.
+_RUN_ID_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
+_RUN_ID_BINARY = getattr(os, "O_BINARY", 0)
+
+#: `O_NOFOLLOW` refuses to open a **symlink** at the run-id path. `S_ISREG` on the descriptor is not
+#: enough on its own: for a symlink it describes the file the link points at, so a link to an
+#: ordinary file passes it and the id is read from wherever the link aims. Owner-only permissions on
+#: the directory do not close this either -- they are applied only when `start_run` *creates* the
+#: directory, so an install whose `.cache` predates that keeps whatever mode it had. POSIX-only, so
+#: taken with a default like the others; on Windows the open simply does not carry the flag.
+_RUN_ID_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 #: Correlation id for the current context. The dispatcher sets this once per run so
 #: events recorded deep inside a command (e.g. validation) share the run's decision.
@@ -154,16 +189,170 @@ def new_decision_id() -> str:
     """Return a fresh id used to chain the events (routing → dispatch → …) of one decision."""
     return uuid.uuid4().hex[:16]
 
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-id
 
-def current_run_id() -> str:
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-path
+
+def run_id_path(start: Optional[Path] = None) -> Optional[Path]:
+    """The shared run-id file's location — beside the decision log — or ``None`` when there is nowhere
+    to share an id: outside a project, or **logging is disabled** (an off-value or the opt-out
+    sentinel). Honouring the opt-out here means a disabled run neither writes nor reads a run-id file,
+    exactly the per-process fallback the rest of this module keeps for a disabled log."""
+    if not is_enabled():
+        return None
+    log = default_log_path(start)
+    if log is None:
+        return None
+    return log.parent / _RUN_ID_NAME
+
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-path
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-scope
+
+def process_run_id() -> str:
+    """This process's own id, never the shared file's.
+
+    `current_run_id` prefers the shared run-id file, which is **project-wide and mutable**: a second
+    `run-start` in the same checkout replaces it, and every later command — including one belonging to
+    the *first* run — then reads the second run's id. For a report that is an acceptable
+    approximation. For a **gate** it is not: reading another run's id means reading another run's
+    *answers*, and `verify-completion` blocks an item only when its key is unanswered, so a run could
+    be shown complete on an answer it never gave.
+
+    So the rule this exists to enforce: **the shared file is good enough for a report, never for a
+    gate.** A gate takes the run it was explicitly told (`--run-id`) or this, which matches nothing it
+    did not record itself and therefore fails toward "incomplete".
+    """
+    return _RUN_ID
+
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-scope
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-read
+
+def current_run_id(start: Optional[Path] = None) -> str:
     """The id every event this process records is stamped with (``run_id``).
 
     A reader that must not mix one run's events with another's — the open-questions register,
     where one run's answer must never clear a different run's blocker — scopes its read to this,
     so the default is the run it is called from rather than the whole shared log.
+
+    A single ``cfs`` command is one process, but a *run* is many: ``cfs gate-log`` during the run,
+    ``cfs verify-completion`` at its close, each a fresh process with its own ``_RUN_ID``. So when a
+    run has declared itself via ``start_run`` (writing the shared run-id file), every command of that
+    run reads the **same** id here and its events scope together. Absent or unreadable file, a
+    malformed value, or no project at all — fall back to this process's own ``_RUN_ID``, exactly the
+    historical behaviour. Fail-safe: this never raises.
     """
+    try:
+        # `start` is the log the caller is actually writing to. Without it this resolved the sidecar
+        # from the *current working directory*, so an event written to an explicitly-passed log was
+        # stamped with an id read from somewhere else entirely.
+        path = run_id_path(start)
+    except Exception as exc:  # pylint: disable=broad-except
+        # `run_id_path()` reaches `is_enabled()` -> `opt_out_sentinel_path()` -> `Path.home()`, which
+        # raises `RuntimeError` -- not an `OSError` -- when no home can be resolved (a container run
+        # as a uid with no passwd entry). The contract above says this never raises, so the catch is
+        # as broad as `record()`'s for the same reason: an id this cannot resolve is the fallback
+        # case, never a crash in the caller's command.
+        logger.debug("could not locate the run-id file: %s", _describe(exc))
+        return _RUN_ID
+    if path is not None:
+        try:
+            # Opened non-blocking, and judged on the **descriptor** rather than a prior `stat()` of
+            # the path: a FIFO at this path would make a blocking `open` wait for a writer that never
+            # arrives -- no exception, no timeout, and the read bound and `OSError` handler below
+            # both sit *after* the open, so neither could take effect. Since every decision-log write
+            # calls this, that would hang every command. Checking the descriptor rather than the path
+            # also closes the swap between the check and the open.
+            fd = os.open(path, os.O_RDONLY | _RUN_ID_NONBLOCK | _RUN_ID_BINARY | _RUN_ID_NOFOLLOW)
+            try:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    raise OSError(f"{path.name} is not a regular file")
+                raw = os.read(fd, _RUN_ID_READ_LIMIT + 1)  # one over the bound detects an oversize file
+            finally:
+                os.close(fd)
+            # A valid id fits the bound; a larger file is malformed -- reject it without decoding the
+            # rest, so a huge `.cache/run-id` cannot exhaust memory. `UnicodeError` (a `ValueError`,
+            # not an `OSError`) from invalid UTF-8 degrades to the per-process id, never crashes.
+            shared = raw.decode("utf-8").strip() if len(raw) <= _RUN_ID_READ_LIMIT else ""
+        except (OSError, UnicodeError):
+            shared = ""
+        if _RUN_ID_FILE_RE.match(shared):
+            return shared
     return _RUN_ID
 
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-read
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-write
+
+def start_run(start: Optional[Path] = None) -> Optional[str]:
+    """Begin a run: write a fresh shared run id so every ``cfs`` command of this run scopes together.
+
+    Returns the id written, or ``None`` when there is nowhere to write it (outside a project, or
+    logging disabled) — in which case commands fall back to their per-process ids, as before.
+    Overwrites any previous run's id, so each run-start begins a clean run. Fail-safe: a write that
+    cannot complete is swallowed and reported as ``None`` rather than aborting the run.
+    """
+    try:
+        path = run_id_path(start)
+    except Exception as exc:  # pylint: disable=broad-except
+        # Same chain, same reason as `current_run_id`: `Path.home()` can raise `RuntimeError`. The
+        # command documents exit 0 on success and 2 only on a malformed argument -- an unresolvable
+        # home must report "nowhere to write", not crash with an undocumented traceback.
+        logger.debug("could not locate the run-id file: %s", _describe(exc))
+        return None
+    if path is None:
+        return None
+    run_id = uuid.uuid4().hex[:12]
+    try:
+        from .atomic_io import atomic_write_text  # pylint: disable=import-outside-toplevel
+        # `atomic_write_text` creates the parent with ambient umask permissions and no hardening, so
+        # the same sequence `record()` uses is applied here: note whether the directory is new before
+        # the write, restrict it after. A run marker another account can read or replace lets event
+        # attribution be altered, which is the one property this id exists to make trustworthy.
+        parent_is_new = not path.parent.exists()
+        atomic_write_text(path, run_id + "\n")
+        if parent_is_new:
+            _restrict_to_owner(path.parent, 0o700)
+        _restrict_to_owner(path, 0o600)
+    except OSError as exc:
+        # Fail-safe, like the writer itself: a run whose id file cannot be written falls back to
+        # per-command ids rather than aborting. Surfaced at debug, never raised into the caller.
+        logger.debug("could not write the run-id file at %s: %s",
+                     _capped(str(path)), _describe(exc))
+        # A failed replacement leaves any *previous* run's id in place, which `current_run_id` would
+        # then hand to this run's commands -- scoping them to a stale run. Best-effort remove it so
+        # the fallback is genuinely per-process, matching what this `None` return reports.
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as unlink_exc:
+            logger.debug("could not remove the stale run-id file at %s: %s",
+                         _capped(str(path)), _describe(unlink_exc))
+            # Returning `None` tells the caller this run fell back to per-process ids. A previous
+            # run's id left readable on disk makes that a lie: the next `current_run_id()` reads it
+            # and scopes this run's events to *that* run. If the file cannot be removed, overwrite it
+            # with a value the reader refuses -- the regex rejects it, so the read falls back exactly
+            # as the `None` promises. Best-effort in turn: if even that fails there is nothing further
+            # this can do, and it still must not raise.
+            try:
+                # The value must be one `_RUN_ID_FILE_RE` REFUSES. A plausible-looking word does not
+                # qualify -- the pattern accepts any `[A-Za-z0-9_-]{1,64}`, so "invalid" is itself a
+                # perfectly valid id and would simply be adopted. Spaces are outside the class.
+                path.write_text("write failed - not a run id\n", encoding="utf-8")
+            except OSError as poison_exc:
+                logger.debug("could not invalidate the stale run-id file at %s: %s",
+                             _capped(str(path)), _describe(poison_exc))
+        return None
+    return run_id
+
+# @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-write
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-id
 
 def set_current_decision_id(decision_id: str) -> None:
     """Set the correlation id for the current context.
@@ -651,7 +840,7 @@ def _write_rotation_link(path: Path, backup: Path) -> None:
         line = _bounded_event({
             "schema": SCHEMA_VERSION,
             "ts": datetime.now(timezone.utc).isoformat(),
-            "run_id": _RUN_ID,
+            "run_id": current_run_id(path),
             "decision_id": "",
             "event": "rotate",
             "command": "",
@@ -783,7 +972,7 @@ def record(
         record_obj = {
             "schema": SCHEMA_VERSION,
             "ts": datetime.now(timezone.utc).isoformat(),
-            "run_id": _RUN_ID,
+            "run_id": current_run_id(target),
             "decision_id": decision_id or _CURRENT_DECISION_ID.get(),
             "event": event,
             "command": _redact(command),

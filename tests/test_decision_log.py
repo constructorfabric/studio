@@ -189,6 +189,27 @@ def test_home_path_is_redacted(log_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # rotation
 
+def test_a_rotation_event_carries_the_shared_run_id(log_path: Path,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review (NIT): `_write_rotation_link`'s `current_run_id(...)` -> `_RUN_ID` passed every test,
+    because no test asserted the rotate event's run id. A rotate line that is not scoped to the run
+    drops out of that run's history exactly when the history is being split, which is the moment it
+    matters most."""
+    monkeypatch.setattr(dl, "_RUN_ID", "ffffffffffff")   # the per-process id, which must NOT appear
+    run_id = dl.start_run(log_path.parent)
+    assert run_id is not None
+    assert run_id != "ffffffffffff"   # the shared id, not the per-process one
+
+    monkeypatch.setattr(dl, "_MAX_BYTES", 200)
+    for i in range(50):
+        dl.record("routing", {"pad": "x" * 20, "i": i}, path=log_path)
+
+    rotations = [e for e in dl.read_events(path=log_path) if e.get("event") == "rotate"]
+    assert rotations, "no rotate event was written"
+    assert all(e.get("run_id") == run_id for e in rotations), (
+        "a rotate event carries the per-process id, not the run's shared id")
+
+
 def test_rotation_keeps_single_backup(log_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dl, "_MAX_BYTES", 200)
     for i in range(50):

@@ -292,6 +292,34 @@ _NEEDS_PHASE = "## Acceptance Criteria\n- [ ] PRD approved (needs: pricing_model
 _NEEDS_ITEM = "PRD approved (needs: pricing_model)"
 
 
+def test_a_second_run_in_the_same_project_cannot_complete_the_first(tmp_path: Path,
+                                                                   monkeypatch: pytest.MonkeyPatch
+                                                                   ) -> None:
+    # Reported by review: the run-id file is project-wide and `run-start` replaces it, so run B
+    # starting in the same checkout re-scoped run A's close -- and because an item blocks only while
+    # its key is UNANSWERED, A was shown complete on an answer B gave. The gate must take its scope
+    # from what it was told (`--run-id`) or from this process, never from that mutable file.
+    log = tmp_path / "log.jsonl"
+    monkeypatch.setenv("CFS_DECISION_LOG", str(log))
+
+    run_a = dl.start_run()                 # run A begins
+    assert run_a is not None
+    _defer("pricing_model", log)           # A parks its question, under A's id
+    run_b = dl.start_run()                 # run B begins in the SAME project, replacing the file
+    assert run_b is not None
+    assert run_b != run_a   # B really did replace A's id
+    _answer("pricing_model", log)          # B answers the same key, under B's id
+
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdict(_NEEDS_ITEM, "satisfied"))
+    result = vc.assess(plan_dir, vpath, log_path=log)
+
+    # B's answer must not complete A's item. Fail-safe: unscoped, nothing is answered, so it blocks.
+    assert result.status == "INCOMPLETE"
+    assert result.exit_code == 2
+    assert result.blocked_on_question == [_NEEDS_ITEM]
+
+
 def test_item_waiting_on_an_open_question_is_incomplete_even_if_satisfied(tmp_path: Path) -> None:
     # The dependency overrides the verdict: a satisfied item that still waits on an
     # unanswered question cannot be shown done.

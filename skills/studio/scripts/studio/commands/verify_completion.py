@@ -259,7 +259,15 @@ def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = No
     # that uses no `(needs: …)` marker must not pay a log read, and behaves exactly as before.
     # The read is scoped to one run (`run_id`, defaulting to the current run), so another run's
     # answer can never clear this run's blocker.
-    register = (open_questions.read_open_questions(log_path, run_id=run_id)
+    # The scope is the run this was **told** about, never the shared run-id file. That file is
+    # project-wide and mutable: a second `run-start` in the same checkout replaces it, so a later
+    # command of the *first* run would read the second run's id -- and with it the second run's
+    # answers. Since an item blocks only while its key is unanswered, that shows a run complete on an
+    # answer it never gave. Falling back to this process's own id instead matches nothing this run did
+    # not record, so an unscoped check fails toward INCOMPLETE. A report may approximate; a gate may
+    # not. `#400` passes the executing run's id and makes it exact.
+    scope = run_id or decision_log.process_run_id()
+    register = (open_questions.read_open_questions(log_path, run_id=scope)
                 if any(item.depends_on_question for item in items.items)
                 else open_questions.OpenQuestions())
     unsatisfied, unstated, blocked_on_question = _reconcile(items, verdicts, register, log_path)
