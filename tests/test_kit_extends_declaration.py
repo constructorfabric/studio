@@ -545,6 +545,29 @@ class KitNormalizeReportOverlayTest(unittest.TestCase):
             )
             self.assertNotIn("Additive resources", out)
 
+    def test_multi_kit_human_output_labels_overlay_details_per_kit(self):
+        resource = (
+            '[[kits.resources]]\nid = "{rid}"\nkind = "skill"\nsource = "SKILL.md"\n'
+            'install_path = "{rid}.md"\ntype = "file"\npublic = true\n{extra}'
+        )
+        manifest = (
+            'manifest_version = "1.1"\n\n'
+            '[[kits]]\nslug = "plain-kit"\nname = "Plain"\nversion = "1.0.0"\n\n'
+            + resource.format(rid="plain-skill", extra="")
+            + '\n[[kits]]\nslug = "overlay-kit"\nname = "Overlay"\nversion = "1.0.0"\n\n'
+            '[kits.extends]\nsource = "github:org/studio-sdlc"\nref = "v2.3.0"\n\n'
+            + resource.format(rid="overlay-skill", extra="additive = true\n")
+        )
+        with TemporaryDirectory() as td:
+            kit = Path(td)
+            (kit / "SKILL.md").write_text("# skill\n", encoding="utf-8")
+            (kit / _MANIFEST).write_text(manifest, encoding="utf-8")
+            rc, out = self._run(kit)
+        self.assertEqual(rc, 0)
+        self.assertIn("    Extends (overlay-kit): github:org/studio-sdlc @ v2.3.0\n", out)
+        self.assertIn("    Additive resources (overlay-kit): overlay-skill\n", out)
+        self.assertNotIn("(plain-kit)", out)
+
     def test_optional_extends_fields_are_omitted_from_report_when_unset(self):
         with TemporaryDirectory() as td:
             kit = _copy_fixture(Path(td), "extends-full")

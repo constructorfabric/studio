@@ -98,8 +98,8 @@ demonstrated need for them.
 Layers apply base first, then overlay; the overlay wins. Resolution is a pure
 function of the overlay and the base content, so the same inputs always produce the
 same effective kit. The base content is identified by the declared ref plus the
-resolved commit identity recorded at install and update, which land with #180 and
-#182; nothing is recorded by this slice.
+resolved commit identity recorded at install and update, which land with issues #180
+and #182; nothing is recorded by this slice.
 
 ```mermaid
 flowchart LR
@@ -137,8 +137,9 @@ about an unknown key. `manifest_version` is a single file-level field, so when a
 kit in a multi-kit manifest declares `extends` or `additive` the whole file needs
 `1.1` and an older CLI cannot read any kit in it; authors who need sibling kits
 readable by an older CLI ship them in a separate manifest. Until base resolution is implemented, install, update and
-`validate-kits` also reject any kit that declares `extends`, so an overlay never
-installs as a partial kit.
+`validate-kits` in path mode also reject any kit that declares `extends`, so an
+overlay never installs as a partial kit. `validate-kits` in registered mode does not
+apply this check yet; it is part of the later install and validate-kits work.
 
 ### Resolution is explicit, not inside the loader
 

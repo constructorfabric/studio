@@ -1148,7 +1148,7 @@ Contract for explicit base resolution. NOT YET IMPLEMENTED: no function named `r
 
 1. [x] - `p1` - `[kits.extends]` with `source`, `ref`, optional `kit`, and optional `suppress` loads into `KitModel.extends`; a missing `source` or `ref`, a `latest` ref, a non-table value, a non-string `suppress`, and any unknown key are errors
 2. [x] - `p1` - A manifest with `extends` or `additive` requires `manifest_version = "1.1"`; a `1.0` manifest with either is stopped at the manifest-version gate with the upgrade hint
-3. [x] - `p1` - `cfs kit normalize` round-trips the `extends` block and emits `manifest_version = "1.1"` only when a kit extends; a kit without `extends` produces unchanged output
+3. [x] - `p1` - `cfs kit normalize` round-trips the `extends` block and the `additive` flag and emits `manifest_version = "1.1"` only when a kit extends or a resource is additive; a kit with neither produces unchanged output
 4. [x] - `p1` - `load_kit_model` returns the declared model with no base lookup
 
 ### Kit Overlay Resolution Is Explicit
@@ -1210,7 +1210,7 @@ Contract for explicit base resolution. NOT YET IMPLEMENTED: no function named `r
 - [x] `p1` - Offline GitHub fallback uses last-known persisted state and never guesses from installed files or local `conf.toml`
 - [x] `p1` - A `.cf-studio-kit.toml` kit may declare `[kits.extends]` with required `source` and `ref`, optional `kit`, and optional `suppress`; `ref = "latest"`, a missing required key, and any unknown key are errors rather than silent drops
 - [x] `p1` - A manifest with `extends` or `additive` must declare `manifest_version = "1.1"`; a `1.0` manifest with either fails at the manifest-version gate with the `pipx upgrade constructor-studio` hint
-- [x] `p1` - `cfs kit normalize` preserves the `extends` block and emits `manifest_version = "1.1"` only when a kit extends; manifests without `extends` are unchanged
+- [x] `p1` - `cfs kit normalize` preserves the `extends` block and the `additive` flag and emits `manifest_version = "1.1"` only when a kit extends or a resource is additive; manifests with neither are unchanged
 - [x] `p1` - `load_kit_model` performs no base lookup and no network access
 - [ ] `p1` - `resolve_kit_chain(model, locate_base)` resolves a base only at install, update, and `validate-kits` path mode, applying base-then-overlay order with overlay winning, merge by resource id, kind-mismatch and additive/install-path/suppress errors, cycle rejection with the rendered chain and a depth cap, owner-slug public names, per-resource owner and layer root behind one join helper, and a tool-risk fingerprint over the effective model; a kit without `extends` resolves to itself with identical hashes (not yet implemented)
 

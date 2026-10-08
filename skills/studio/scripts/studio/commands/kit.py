@@ -5607,7 +5607,8 @@ def _kit_normalize_report(model: Any) -> Dict[str, Any]:
 
 
 # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-human-output
-def _human_kit_overlay_details(report: dict) -> None:
+def _human_kit_overlay_details(report: dict, slug: str = "") -> None:
+    suffix = f" ({slug})" if slug else ""
     extends = report.get("extends")
     if isinstance(extends, dict):
         text = f"{extends.get('source', '?')} @ {extends.get('ref', '?')}"
@@ -5615,10 +5616,10 @@ def _human_kit_overlay_details(report: dict) -> None:
             text += f" (kit {extends['kit']})"
         if extends.get("suppress"):
             text += f", suppress: {', '.join(str(i) for i in extends['suppress'])}"
-        ui.detail("Extends", text)
+        ui.detail(f"Extends{suffix}", text)
     additive = report.get("additive_resources")
     if isinstance(additive, list) and additive:
-        ui.detail("Additive resources", ", ".join(str(i) for i in additive))
+        ui.detail(f"Additive resources{suffix}", ", ".join(str(i) for i in additive))
 
 
 def _human_kit_normalize(data: dict) -> None:
@@ -5634,6 +5635,10 @@ def _human_kit_normalize(data: dict) -> None:
         ui.detail("Source", str(report.get("manifest_source", "?")))
         ui.detail("Resources", str(report.get("resources", 0)))
         _human_kit_overlay_details(report)
+        per_kit = report.get("kits")
+        for entry in per_kit if isinstance(per_kit, list) else []:
+            if isinstance(entry, dict) and isinstance(entry.get("report"), dict):
+                _human_kit_overlay_details(entry["report"], str(entry.get("slug", "?")))
         warnings = report.get("warnings", [])
         for warning in warnings if isinstance(warnings, list) else []:
             ui.warn(str(warning))
