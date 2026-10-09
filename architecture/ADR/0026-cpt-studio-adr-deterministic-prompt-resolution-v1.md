@@ -122,9 +122,12 @@ Working position (PROPOSAL, pending open question 5): the resolved bundle is
 always produced and is the source of truth. "Optional" refers to tailoring only:
 the controller MAY tailor or compress the bundle for a specific dispatch, but the
 final dispatch prompt always cites the bundle digest and is never a bare
-unreferenced prompt. When no tailoring happens, a leaf receives the bundle's
-prompt content as the fully materialized prompt, consistent with the spec's rule
-that leaf agents receive a fully materialized prompt.
+unreferenced prompt. Dispatch rule: the controller MUST resolve every
+deferred branch that applies before dispatching to a leaf. A bundle may be
+dispatched directly only when `deferred[]` is empty (or every entry has been
+resolved or ruled not applicable by the controller). A leaf never receives an
+unresolved bundle and never resolves a deferred branch itself, consistent with
+the spec's leaf boundary and the maintainer review of 2026-10-06 on #310.
 
 ```mermaid
 flowchart LR
@@ -225,10 +228,13 @@ The digest is SHA-256 over canonical JSON (LF newlines) containing: schema
 version, prompt id, normalized args, per-asset content hash in order, appends
 with owning layer, and only the substituted variables. The per-asset content hash
 is computed over LF-normalized text, so a CRLF checkout of the same content gives
-the same digest. File mtime and size are only a cache fast path, never part of
-the digest. The cache lives in a per-project cache directory (location decided at
-implementation). The fast path skips re-reading only when size and mtime are
-unchanged; a mismatch, or any argument or schema change, forces a re-hash.
+the same digest. PROPOSAL (revises the earlier "mtime/size as cache fast path"
+wording from the #310 discussion): the resolver always re-reads and hashes the
+current content of every asset it includes. Any cache holds only derived results
+(e.g. parsed structure) keyed by the content digest, lives in a per-project cache
+directory (location decided at implementation) and is safe to delete. Mtime and
+size are never used to validate a cached text or digest and are never part of the
+digest.
 
 - Rationale: content-addressed input makes the digest stable across machines and
   checkouts; including only substituted variables keeps unrelated state out.
@@ -353,6 +359,13 @@ closure, including `requirements/` and `architecture/specs` targets. The
 resolver has its own configurable scan roots. Gate behaviour and its scan roots
 are unchanged.
 
+PROPOSAL: a directive of the form `LOAD <target> as the controlling protocol`
+(used by workflow shims and presets) is a control-transfer edge, not an ordinary
+asset edge. In Phase 1 the resolver reports it as a control-transfer entry in the
+bundle for the controller to honour, or rejects the entrypoint; it must not
+flatten the target into an ordinary asset as if no transfer occurred (open
+question 11).
+
 - Rationale: the closure is what a skill would otherwise open by hand. Leaving
   gate behaviour and its scan roots alone avoids coupling a gate to a new
   consumer.
@@ -361,7 +374,12 @@ are unchanged.
 ### path_confinement
 
 Every `LOAD` target is canonicalized and confined: symlinks are resolved first,
-then the resolved path must lie inside the core or kit root. Any path that
+then the resolved path must lie inside the core or kit root. The core root is the
+installed core tree that contains `skills/`, `workflows/`, `requirements/` and
+`architecture/`, so `requirements/` and `architecture/specs/` targets are inside
+it. Every transitive `LOAD` target is checked for containment in that core root
+or, for kit prompts, the kit root; a future asset root outside these must be
+listed explicitly. Any path that
 escapes is a hard failure. Phase 1 covers `LOAD` edges only; AGENTS.md "open and
 follow" rules are a documented gap. `LOAD` targets are controlled by prompt
 authors (kit authors, for kit prompts), so a kit is an untrusted-input source
@@ -384,7 +402,7 @@ for this check.
 - Good, because the path-escape risk is closed for `LOAD` edges before any disk
   read exists.
 - Bad, because at least 21 guarded loads still defer to the controller, so the
-  controller still reads some instructions itself; more defer if typed-guard
+  controller still reads and resolves them before any leaf dispatch; more defer if typed-guard
   state is not supplied.
 - Bad, because the lint that enforces "`get` is controller-only" is not yet
   defined (open question 1), so for now that boundary rests on the spec alone.
@@ -395,10 +413,9 @@ for this check.
 - Risk: the 82.5% ceiling is a point-in-time measurement from one regex pass over
   the entrypoint population only.
   Mitigation: the static pre-check snapshots guard classes in CI.
-- Risk: a stale cache hash (size and mtime unchanged but content changed) would
-  yield a wrong digest. Mitigation: the fast path only skips re-reading when size
-  and mtime are unchanged, a mismatch or any argument or schema change forces a
-  re-hash, and the cache is safe to delete.
+- Risk: a stale cache entry would yield a wrong digest. Mitigation (PROPOSAL): the
+  resolver always re-hashes current content, the cache holds only derived results
+  keyed by content digest, and it is safe to delete.
 - Risk: the resolver reading installed kit layers (interim) diverges from the
   persisted inventory later. Mitigation: one lookup function.
 
@@ -419,10 +436,9 @@ for this check.
   bundle), an unknown prompt ID (asserts the exit code 2 only, until the stdout
   shape is decided: open question 4), and a parser-rejected argument (exit 2,
   nothing on stdout).
-- A cache test: a file changed with the same size and mtime is a known limit of
-  the fast path (document it); a changed size or mtime, or a changed argument or
-  schema version, forces a re-hash and a new digest; deleting the cache does not
-  change the digest.
+- A cache test: an edit that preserves size and mtime must change the digest; a
+  changed argument or schema version changes the digest; deleting the cache does
+  not change the digest.
 - A test covers class (b) phrasings: "<Unit> is not yet loaded" with a mapped
   unit, with an unmapped unit (deferred as free text), and the bare
   "WHEN not yet loaded" form.
@@ -500,7 +516,11 @@ counted.
    `../../etc/x.md`. The existing use is safe because the captured target is only
    used as an in-memory dictionary key. A resolver that reads the target from
    disk is not safe, hence `path_confinement`.
-2. **`LOAD` volume.** 266 files were scanned; 165 of them contain at least one
+2. **`LOAD` volume.** The 522 matched lines come from the `LOAD_TARGET` regex; 9
+   further lines of the form `LOAD and REMEMBER rules from
+   {cf-studio-path}/.core/...md` in the same trees are not matched by it (about
+   1.7% more; measured 2026-10-09), and the 28/71/21 split and the other figures
+   exclude those 9. 266 files were scanned; 165 of them contain at least one
    `LOAD` line and 57 contain a guarded `LOAD`. There are 522 `LOAD` lines across
    165 of 266 scanned files; 402 unguarded and 120 guarded. An earlier
    prose-inclusive grep count (about 1316 lines across 426 files) overcounts and
@@ -540,7 +560,8 @@ A separate change amends `architecture/specs/shared-context-pack.md`. It will:
   tool. The exact rewording is for the amendment and is not decided here.
 
 The leaf boundary (`LeafAgentExecutionBoundary`) is unchanged: a dispatched
-sub-agent still receives a fully materialized prompt and loads nothing itself.
+sub-agent still receives a fully materialized prompt, with no unresolved
+deferred branch, and loads nothing itself.
 
 ## Delivery Order
 
@@ -574,10 +595,10 @@ Checklist domains not addressed elsewhere in this record:
   skills migrate in stage three.
 - PERF: N/A; no runtime performance requirement is set. The
   resolver is a local file scan (unverified: no timing measurement was taken).
-- REL: N/A; the resolver keeps no durable state of record (an optional cache that
-  is safe to delete) and fails closed on bad input (`unknown_state_rule`).
-- DATA: N/A; no durable data store is added (the optional per-project cache is
-  safe to delete and is never part of the digest).
+- REL: N/A; the resolver keeps no durable state of record (an optional cache of
+  derived results that is safe to delete and never validates content) and fails closed on bad input (`unknown_state_rule`).
+- DATA: N/A; no durable data store is added (the optional per-project cache holds
+  only derived results, is safe to delete and is never part of the digest).
 - OPS: no deployment change; a CI pre-check and a lint rule are added in later
   stages.
 - COMPL: N/A; no compliance requirement applies.
@@ -616,8 +637,10 @@ decided before the stage-two (core resolver) PR is opened.
 4. **Output schema.** The exact JSON output schema for `get` (milestone: delivery
    stage 2). The stdout shape for the unknown-prompt-ID (exit 2) and error cases
    is also undecided.
-5. **Controller synthesis.** Is the controller required to produce a synthesized
-   prompt, or may the bundle be dispatched as is?
+5. **Controller synthesis.** Must the controller always produce a synthesized
+   prompt, or may a bundle with empty (or fully resolved) `deferred[]` be
+   dispatched as is? (The rule that deferred branches are resolved first is
+   decided above as a proposal.)
 6. **Unit-less form.** What is the outcome of the bare unit-less "WHEN not yet
    loaded" form?
 7. **Mixed guards.** How is a guard that combines class (b) with class (a), for
@@ -630,6 +653,8 @@ decided before the stage-two (core resolver) PR is opened.
 10. **Canonical form.** The exact canonical JSON form (for example RFC 8785), the
     traversal order, and whether `deferred[]` is a digest input. "Canonical JSON,
     LF" in `digest_definition` is the proposal.
+11. **Control transfer.** Should Phase 1 preserve `LOAD <target> as the controlling
+    protocol` as a typed transfer entry, or reject the entrypoint?
 
 ## More Information
 
