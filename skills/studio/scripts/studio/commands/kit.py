@@ -2549,11 +2549,18 @@ def _load_manifest_install_artifacts(
 ) -> Tuple[Optional[_ManifestInstallArtifacts], Optional[Dict[str, Any]]]:
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-load-artifacts
     try:
-        from ..utils.kit_model import load_kit_model
+        from ..utils.kit_model import load_kit_model, overlay_unresolved_errors
 
         kit_model = load_kit_model(kit_source, kit_slug=kit_slug)
     except (OSError, ValueError) as exc:
         return None, _install_result_fail(kit_slug, [str(exc)])
+    overlay_errors = overlay_unresolved_errors(kit_model)
+    if overlay_errors:
+        return None, _install_result_fail(
+            kit_slug,
+            overlay_errors,
+            install_mode=install_context.install_mode,
+        )
     risk_errors = _tool_risk_approval_errors(
         kit_model,
         interactive=install_context.interactive,
@@ -5585,11 +5592,36 @@ def _kit_normalize_report(model: Any) -> Dict[str, Any]:
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview
         "warnings": list(model.warnings),
     }
+    extends = getattr(model, "extends", None)
+    if extends is not None:
+        report["extends"] = {"source": extends.source, "ref": extends.ref}
+        if extends.kit:
+            report["extends"]["kit"] = extends.kit
+        if extends.suppress:
+            report["extends"]["suppress"] = list(extends.suppress)
+    additive_ids = [r.id for r in model.resources if r.additive]
+    if additive_ids:
+        report["additive_resources"] = additive_ids
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
     return report
 
 
 # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-human-output
+def _human_kit_overlay_details(report: dict, slug: str = "") -> None:
+    suffix = f" ({slug})" if slug else ""
+    extends = report.get("extends")
+    if isinstance(extends, dict):
+        text = f"{extends.get('source', '?')} @ {extends.get('ref', '?')}"
+        if extends.get("kit"):
+            text += f" (kit {extends['kit']})"
+        if extends.get("suppress"):
+            text += f", suppress: {', '.join(str(i) for i in extends['suppress'])}"
+        ui.detail(f"Extends{suffix}", text)
+    additive = report.get("additive_resources")
+    if isinstance(additive, list) and additive:
+        ui.detail(f"Additive resources{suffix}", ", ".join(str(i) for i in additive))
+
+
 def _human_kit_normalize(data: dict) -> None:
     ui.header("Kit Normalize")
     kits = data.get("kits", [])
@@ -5602,6 +5634,11 @@ def _human_kit_normalize(data: dict) -> None:
     if isinstance(report, dict):
         ui.detail("Source", str(report.get("manifest_source", "?")))
         ui.detail("Resources", str(report.get("resources", 0)))
+        _human_kit_overlay_details(report)
+        per_kit = report.get("kits")
+        for entry in per_kit if isinstance(per_kit, list) else []:
+            if isinstance(entry, dict) and isinstance(entry.get("report"), dict):
+                _human_kit_overlay_details(entry["report"], str(entry.get("slug", "?")))
         warnings = report.get("warnings", [])
         for warning in warnings if isinstance(warnings, list) else []:
             ui.warn(str(warning))
@@ -6094,12 +6131,17 @@ def _load_manifest_update_risk_model(
 ) -> Optional[Any]:
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-update-path-load-kitmodel
     try:
-        from ..utils.kit_model import load_kit_model
+        from ..utils.kit_model import load_kit_model, overlay_unresolved_errors
 
-        return load_kit_model(source_dir, kit_slug=kit_slug)
+        model = load_kit_model(source_dir, kit_slug=kit_slug)
     except (OSError, ValueError) as exc:
         _result_with_failure(result, [str(exc)])
         return None
+    overlay_errors = overlay_unresolved_errors(model)
+    if overlay_errors:
+        _result_with_failure(result, overlay_errors)
+        return None
+    return model
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-update-path-load-kitmodel
 
 

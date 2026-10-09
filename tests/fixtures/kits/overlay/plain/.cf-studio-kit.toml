@@ -1,0 +1,14 @@
+manifest_version = "1.0"
+
+[[kits]]
+slug = "team-sdlc"
+name = "Team SDLC"
+version = "1.2.3"
+
+[[kits.resources]]
+id = "skill"
+kind = "skill"
+source = "SKILL.md"
+install_path = "SKILL.md"
+type = "file"
+public = true

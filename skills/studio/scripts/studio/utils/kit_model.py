@@ -1,4 +1,7 @@
-"""Normalized kit package model and canonical manifest conversion."""
+"""Normalized kit package model and canonical manifest conversion.
+
+@cpt-dod:cpt-studio-dod-kit-extends-declaration:p1
+"""
 
 from __future__ import annotations
 
@@ -7,7 +10,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import toml_utils
 from ._tomllib_compat import tomllib
@@ -17,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 _CANONICAL_MANIFEST = ".cf-studio-kit.toml"
 _CANONICAL_MANIFEST_VERSION = "1.0"
-_SUPPORTED_CANONICAL_MANIFEST_VERSIONS = {_CANONICAL_MANIFEST_VERSION}
+_EXTENDS_MANIFEST_VERSION = "1.1"
+_SUPPORTED_CANONICAL_MANIFEST_VERSIONS = {_CANONICAL_MANIFEST_VERSION, _EXTENDS_MANIFEST_VERSION}
+_UNPINNED_REF = "latest"
+_EXTENDS_KEYS = frozenset({"source", "ref", "kit", "suppress"})
 _LEGACY_CONTENT_DIRS = ("artifacts", "codebase", "scripts", "workflows")
 _LEGACY_CONTENT_FILES = ("constraints.toml", "SKILL.md", "AGENTS.md")
 _PUBLIC_KINDS = {"skill", "agent", "rule"}
@@ -87,6 +93,7 @@ class KitResource:
     subagents: List[Dict[str, Any]] = field(default_factory=list)
     target_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     artifact_bindings: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    additive: bool = False
 
 
 @dataclass(frozen=True)
@@ -120,6 +127,16 @@ class PublicComponent:
 
 
 @dataclass(frozen=True)
+class KitExtends:
+    """Declared base of an overlay kit."""
+
+    source: str
+    ref: str
+    kit: str = ""
+    suppress: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class KitModel:
     """Normalized kit metadata and resources."""
 
@@ -134,6 +151,7 @@ class KitModel:
     resource_hashes: Dict[str, str] = field(default_factory=dict)
     tool_risk_fingerprint: str = ""
     tool_risk_summary: Dict[str, Any] = field(default_factory=dict)
+    extends: Optional[KitExtends] = None
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-datamodel
 
 
@@ -206,10 +224,12 @@ def _config_bool(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, de
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
 
 
-def _optional_bool(data: Dict[str, Any], key: str, default: bool = True) -> bool:
+def _optional_bool(data: Dict[str, Any], key: str, default: bool = True, context: str = "") -> bool:
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
     value = data.get(key, default)
     if not isinstance(value, bool):
+        if context:
+            raise ValueError(f"{_CANONICAL_MANIFEST}: {context}.{key} must be a boolean")
         raise ValueError(f"Field '{key}' must be a boolean")
     return value
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
@@ -412,6 +432,45 @@ def _warn_unknown_keys(
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-warnings
 
 
+# @cpt-algo:cpt-studio-algo-kit-extends-declaration:p1
+def _parse_extends(raw: Any, context: str) -> Optional[KitExtends]:
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-shape
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-optional
+    if raw is None:
+        return None
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-optional
+    if not isinstance(raw, dict):
+        raise ValueError(f"{_CANONICAL_MANIFEST}: {context} must be a table")
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unknown-key
+    unknown = sorted(set(raw) - _EXTENDS_KEYS)
+    if unknown:
+        names = ", ".join(f"'{key}'" for key in unknown)
+        raise ValueError(
+            f"{_CANONICAL_MANIFEST}: {context} has unknown field(s) {names} "
+            f"(allowed: {', '.join(sorted(_EXTENDS_KEYS))})",
+        )
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unknown-key
+    source = _require_string(raw, "source", context)
+    ref = _require_string(raw, "ref", context)
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unpinned
+    if ref.lower() == _UNPINNED_REF:
+        raise ValueError(
+            f"{_CANONICAL_MANIFEST}: {context}.ref '{ref}' is unpinned; "
+            "'latest' is not accepted, declare a tag, branch or commit",
+        )
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-reject-unpinned
+    raw_kit = raw.get("kit")
+    if raw_kit is not None and not isinstance(raw_kit, str):
+        raise ValueError(f"{_CANONICAL_MANIFEST}: {context}.kit must be a string")
+    return KitExtends(
+        source=source,
+        ref=ref,
+        kit=_optional_string(raw, "kit"),
+        suppress=tuple(_string_list(raw.get("suppress"), f"{context}.suppress")),
+    )
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-shape
+
+
 def _validate_relative_source(kit_source: Path, resource: KitResource) -> None:
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
     source_path = PurePosixPath(resource.source)
@@ -526,6 +585,8 @@ def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
         "target_configs": resource.target_configs,
         "artifact_bindings": resource.artifact_bindings,
     }
+    if resource.additive:
+        data["additive"] = True
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
     return data
 
@@ -673,6 +734,7 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
             # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
             artifact_bindings=resource.artifact_bindings,
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
+            additive=resource.additive,
         )
         for resource in model.resources
     ]
@@ -704,6 +766,7 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
             json.dumps(risk_summary, sort_keys=True, separators=(",", ":")).encode("utf-8"),
         ),
         tool_risk_summary=risk_summary,
+        extends=model.extends,
     )
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
 
@@ -722,12 +785,13 @@ def _canonical_model_from_entry(
         meta,
         {
             "slug", "name", "version", "description", "source", "targets",
-            "defaults", "compatibility", "resources",
+            "defaults", "compatibility", "resources", "extends",
         },
         kit_context,
         warnings,
     )
     slug = _require_string(meta, "slug", kit_context)
+    extends = _parse_extends(meta.get("extends"), f"{kit_context}.extends")
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-metadata
 
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
@@ -758,7 +822,7 @@ def _canonical_model_from_entry(
                 "origin", "prefix_generated_name", "agent", "targets", "permissions",
                 "tools", "disallowed_tools", "mode", "isolation", "model",
                 "skills", "color", "memory_dir", "role", "target", "provider",
-                "reasoning_effort", "context_window", "subagents", "artifacts",
+                "reasoning_effort", "context_window", "subagents", "artifacts", "additive",
             },
             resource_context,
             warnings,
@@ -785,6 +849,7 @@ def _canonical_model_from_entry(
             manifest_source="canonical",
             resources=resources,
             warnings=warnings,
+            extends=extends,
         ),
     )
 
@@ -803,7 +868,50 @@ def _validate_canonical_manifest_version(data: Dict[str, Any]) -> None:
             f"{_CANONICAL_MANIFEST}: unsupported manifest_version '{version}' "
             f"(supported: {supported}). {_UPDATE_CFS_HINT}",
         )
+    # @cpt-begin:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-version-gate
+    overlay_field = _declared_overlay_field(data)
+    if _version_key(version) < _version_key(_EXTENDS_MANIFEST_VERSION) and overlay_field:
+        raise ValueError(
+            f"{_CANONICAL_MANIFEST}: {overlay_field} requires manifest_version '{_EXTENDS_MANIFEST_VERSION}' "
+            f"(found '{version}'). {_UPDATE_CFS_HINT}",
+        )
+    # @cpt-end:cpt-studio-algo-kit-extends-declaration:p1:inst-extends-version-gate
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-version-gate
+
+
+def _version_key(version: str) -> Tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def _declared_overlay_field(data: Dict[str, Any]) -> str:
+    raw_kits = data.get("kits")
+    kits = [kit for kit in raw_kits if isinstance(kit, dict)] if isinstance(raw_kits, list) else []
+    if any("extends" in kit for kit in kits):
+        return "extends"
+    for kit in kits:
+        resources = kit.get("resources")
+        if isinstance(resources, list) and any(isinstance(res, dict) and "additive" in res for res in resources):
+            return "additive"
+    return ""
+
+
+def _has_additive(model: KitModel) -> bool:
+    return any(resource.additive for resource in model.resources)
+
+
+_OVERLAY_UNRESOLVED_MESSAGE = (
+    "Kit '{slug}' extends base kit '{source}' at '{ref}', but kit overlays cannot be used yet: "
+    "base resolution is not implemented (it lands with #180), so the declared resources alone "
+    "would be a partial kit"
+)
+
+
+def overlay_unresolved_errors(model: Any) -> List[str]:
+    """Return a blocking error while a kit declares a base that cannot be resolved yet."""
+    extends = getattr(model, "extends", None)
+    if extends is None:
+        return []
+    return [_OVERLAY_UNRESOLVED_MESSAGE.format(slug=model.slug, source=extends.source, ref=extends.ref)]
 
 
 # @cpt-algo:cpt-studio-algo-kit-canonical-manifest:p1
@@ -1015,6 +1123,7 @@ def _canonical_resource_from_raw(
         subagents=_config_subagents(raw, agent_config, f"resources.{resource_id}.subagents"),
         target_configs=_config_table(raw, "targets", f"resources.{resource_id}.targets"),
         artifact_bindings=artifact_bindings,
+        additive=_optional_bool(raw, "additive", False, resource_context),
     )
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
 
@@ -1497,8 +1606,10 @@ def _load_core_model(kit_source: Path) -> KitModel:
 
 
 # @cpt-algo:cpt-studio-algo-kit-model-normalize:p1
+# @cpt-algo:cpt-studio-algo-kit-extends-load-declared:p1
 def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") -> KitModel:
     """Load a kit source through canonical, legacy manifest, or layout adapters."""
+    # @cpt-begin:cpt-studio-algo-kit-extends-load-declared:p1:inst-extends-load-no-lookup
     # @cpt-begin:cpt-studio-state-kit-manifest:p1:inst-manifest-source-state
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-single-boundary
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-canonical-manifest
@@ -1521,6 +1632,7 @@ def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") 
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-single-boundary
     # @cpt-end:cpt-studio-state-kit-manifest:p1:inst-manifest-source-state
+    # @cpt-end:cpt-studio-algo-kit-extends-load-declared:p1:inst-extends-load-no-lookup
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
@@ -1571,6 +1683,7 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
             subagents=list(source_resource.subagents),
             target_configs=dict(source_resource.target_configs),
             artifact_bindings=core_resource.artifact_bindings or source_resource.artifact_bindings,
+            additive=source_resource.additive,
         ))
     return KitModel(
         slug=core_model.slug,
@@ -1579,6 +1692,7 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
         manifest_source="core",
         resources=merged_resources,
         warnings=list(dict.fromkeys(list(core_model.warnings) + list(source_model.warnings))),
+        extends=source_model.extends,
     )
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-merge-core-authority
 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
@@ -1643,6 +1757,8 @@ def _resource_to_toml_item(resource: KitResource) -> Dict[str, Any]:
         item["mode"] = resource.mode
     if resource.isolation:
         item["isolation"] = resource.isolation
+    if resource.additive:
+        item["additive"] = True
     if resource.role != _DEFAULT_ROLE:
         item["role"] = resource.role
     if resource.target != _DEFAULT_TARGET:
@@ -1656,6 +1772,18 @@ def _resource_to_toml_item(resource: KitResource) -> Dict[str, Any]:
 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
 
 
+# @cpt-algo:cpt-studio-algo-kit-extends-normalize:p1
+def _extends_to_toml_item(extends: KitExtends) -> Dict[str, Any]:
+    # @cpt-begin:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-emit
+    item: Dict[str, Any] = {"source": extends.source, "ref": extends.ref}
+    if extends.kit:
+        item["kit"] = extends.kit
+    if extends.suppress:
+        item["suppress"] = list(extends.suppress)
+    return item
+    # @cpt-end:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-emit
+
+
 # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
     """Convert one or more KitModels to canonical manifest TOML data."""
@@ -1663,17 +1791,20 @@ def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
         raise ValueError("At least one kit model is required")
     kits: List[Dict[str, Any]] = []
     for model in models:
-        kits.append({
-            "slug": model.slug,
-            "name": model.name,
-            "version": model.version,
-            "resources": [_resource_to_toml_item(resource) for resource in model.resources],
-        })
+        entry: Dict[str, Any] = {"slug": model.slug, "name": model.name, "version": model.version}
+        if model.extends is not None:
+            entry["extends"] = _extends_to_toml_item(model.extends)
+        entry["resources"] = [_resource_to_toml_item(resource) for resource in model.resources]
+        kits.append(entry)
 
-    return {
-        "manifest_version": _CANONICAL_MANIFEST_VERSION,
-        "kits": kits,
-    }
+    # @cpt-begin:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-version
+    manifest_version = (
+        _EXTENDS_MANIFEST_VERSION
+        if any(model.extends is not None or _has_additive(model) for model in models)
+        else _CANONICAL_MANIFEST_VERSION
+    )
+    # @cpt-end:cpt-studio-algo-kit-extends-normalize:p1:inst-extends-normalize-version
+    return {"manifest_version": manifest_version, "kits": kits}
 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
 

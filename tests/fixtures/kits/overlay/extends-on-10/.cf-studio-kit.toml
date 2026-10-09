@@ -1,0 +1,20 @@
+manifest_version = "1.0"
+
+[[kits]]
+slug = "team-sdlc"
+name = "Team SDLC"
+version = "1.2.3"
+
+[kits.extends]
+source = "github:org/studio-sdlc"
+ref = "v2.3.0"
+kit = "sdlc"
+suppress = ["prd-metrics", "adr-extras"]
+
+[[kits.resources]]
+id = "skill"
+kind = "skill"
+source = "SKILL.md"
+install_path = "SKILL.md"
+type = "file"
+public = true
