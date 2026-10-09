@@ -315,3 +315,10 @@ from studio.utils.plan_items import PlanItem  # noqa: E402
 _plan_item = PlanItem(phase=0, ordinal=0, text="", authored_done=False)
 _ = _plan_item.authored_done
 _ = _plan_item.verify_kind
+
+# artifact-quality structural detectors (HYP-2720 T2): the public detector entry point is
+# consumed by the `cfs artifact-quality` command, which lands in a later task. Until then it
+# has no production caller. REMOVAL TRIGGER -- delete once the command imports it (grep
+# `detect_exact_duplication` outside artifact_quality_detectors.py and its tests).
+from studio.utils.artifact_quality_detectors import detect_exact_duplication  # noqa: E402
+_ = detect_exact_duplication

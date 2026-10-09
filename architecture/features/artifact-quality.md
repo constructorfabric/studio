@@ -11,6 +11,7 @@
   - [Assess Artifact Quality](#assess-artifact-quality)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Artifact-Quality Finding Model](#artifact-quality-finding-model)
+  - [Structural Detectors](#structural-detectors)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Finding Lifecycle](#finding-lifecycle)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -82,6 +83,23 @@ Studio's deterministic layer assures code (`validate`, `spec-coverage`, CPT mark
 - [x] - `p1` - Module imports and the model constants: `SCHEMA_VERSION`, the detector / severity / kind vocabularies, and the shared `unjudgeable` verdict - `inst-aq-imports`
 - [x] - `p1` - The versioned wire contract, handed out as a fresh deep copy by `finding_json_schema()` (never a mutable shared global) — `schema_version` pinned to the supported contract, the kind↔verdict rule encoded on the wire (structural carries no verdict or judged-only metadata, judged requires a verdict), path and non-blank patterns that mirror the constructor exactly (explicit whitespace class, not ECMA `\s`), optional keys only when set, and no score field or edit payload - `inst-aq-schema`
 
+### Structural Detectors
+
+- [x] `p1` - **ID**: `cpt-studio-algo-artifact-quality-detectors`
+
+**Input**: the registered artifacts to scan (`(path, kind)` pairs) and the project root
+
+**Output**: a list of structural `ArtifactFinding`s (advisory, read-only, `verdict = None`)
+
+**Steps**:
+1. [x] - `p1` - Build a section's locus and evidence leak-safely: a project-relative POSIX path (never absolute), an anchor only when the heading title is non-empty, bounded, and control-char-free, and a grep-verifiable quote from the first non-heading source line - `inst-aqd-locus`
+2. [x] - `p1` - Split each artifact into heading-scoped sections — a maximal run of lines sharing one heading stack — dropping fragments below a minimum domain-token count - `inst-aqd-sections`
+3. [x] - `p1` - Score two sections' domain-word sets by Jaccard overlap (shared tokens over the union), in [0, 1], 0 when either set is empty - `inst-aqd-jaccard`
+4. [x] - `p1` - Emit one structural `duplication` finding for a flagged pair — naming both loci, a grep-verifiable quote **from the primary section** (the two overlap by word set, not line for line), and a suggested action, with advisory severity only (never `error`) and no combined score or edit payload - `inst-aqd-emit`
+5. [x] - `p1` - Scan each artifact once (a path listed twice is deduplicated), then compare every pair of distinct sections — skipping a pair that shares one locus, since a finding cannot relate a section to itself, and pruning pairs whose size ratio already bounds Jaccard below the threshold; at or above the threshold record a finding, in deterministic order, rewriting no artifact - `inst-aqd-compare`
+
+**Scale**: pairwise over sections is O(n²); the size-ratio prune and the per-section token floor keep a project-scale scan within the in-core budget. Semantic (meaning-level) duplication is out of scope — routed to the embedding service — and the ambiguous-purpose, gap, traceability, and contradiction detectors land in later tasks.
+
 ## 4. States (CDSL)
 
 ### Finding Lifecycle
@@ -103,6 +121,7 @@ The finding model is done when every detector can express its result as one `Art
 | Module | Path | Responsibility |
 |---|---|---|
 | Artifact-Quality Finding Model | `skills/studio/scripts/studio/utils/artifact_quality.py` | The shared `ArtifactFinding` / `Locus` model, its `to_dict`, and the versioned JSON schema every detector and the presentation layer share |
+| Structural Detectors | `skills/studio/scripts/studio/utils/artifact_quality_detectors.py` | Deterministic, stdlib-only detectors emitting structural `ArtifactFinding`s; v1 ships exact / near-exact duplication by section word-set overlap |
 
 ## 7. Acceptance Criteria
 
@@ -110,3 +129,4 @@ The finding model is done when every detector can express its result as one `Art
 - [x] A structural finding has `verdict = None`; a judged finding carries a detector-namespaced verdict (or `unjudgeable`) — construction raises otherwise — verified by `test_structural_with_a_verdict_raises`, `test_judged_without_a_verdict_raises`, `test_unjudgeable_is_a_legal_judged_verdict`, `test_judged_finding_rejects_blank_verdict`
 - [x] `to_dict` emits the required keys plus `schema_version`, and omits `related` / `verdict` / `confidence` when unset — verified by `test_structural_to_dict_omits_optional_fields`, `test_judged_to_dict_includes_optionals_when_set`, `test_serialised_finding_keys_are_all_allowed_properties`
 - [x] `finding_json_schema()` returns the versioned wire contract (a fresh copy) that validates a serialised finding, versioned by `schema_version` — verified by `test_schema_is_versioned_and_well_formed`, `test_schema_pins_schema_version_and_encodes_kind_verdict_rule`, `test_finding_json_schema_returns_a_fresh_deep_copy`
+- [x] The duplication detector flags near-exact section pairs across and within artifacts, never a section against itself, respects the overlap threshold, emits a structural finding (`verdict = None`, advisory severity, grep-verifiable evidence, no combined score), and is deterministic — verified by `test_identical_sections_across_two_artifacts_are_flagged`, `test_a_lone_section_is_never_compared_to_itself`, `test_partial_overlap_respects_the_threshold`, `test_within_one_document_duplication_is_flagged`, `test_findings_are_structural_and_advisory`, `test_evidence_is_a_substring_of_the_primary_source`, `test_output_is_deterministic`
