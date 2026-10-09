@@ -116,6 +116,16 @@ _LOG_NAME = "decisions.jsonl"
 #: cannot, because each process gets a fresh one.
 _RUN_ID_NAME = "run-id"
 
+#: Environment variables naming the **driving session** -- the agent session or terminal issuing a
+#: run's commands. A run spans many `cfs` processes, and nothing the processes can see about
+#: themselves identifies it: measured on this harness, the POSIX session id differs between
+#: consecutive commands (63491 -> 63534) and each gets a fresh parent shell, so the only stable
+#: signal is one set *above* the commands and inherited by them. A `cfs` subprocess cannot set an
+#: environment variable for its siblings, so the driver supplies it rather than this module.
+#: `CFS_RUN_SESSION` is checked first so any driver can opt in without this module learning its
+#: name, and so the behaviour is reachable in a test without pretending to be one vendor.
+_SESSION_ENV_VARS = ("CFS_RUN_SESSION", "CLAUDE_CODE_SESSION_ID")
+
 #: Rotate once the log passes this size, keeping a single ``.1`` backup.
 _MAX_BYTES = 5 * 1024 * 1024
 
@@ -194,17 +204,46 @@ def new_decision_id() -> str:
 
 # @cpt-begin:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-path
 
+def session_key() -> Optional[str]:
+    """A short, filename-safe digest of the driving session, or ``None`` when none is advertised.
+
+    ``None`` means the pre-#434 behaviour: **one** run-id file for the whole project, which a
+    second run's ``start_run`` overwrites -- and that overwrite is the defect, because every later
+    command of the *first* run then reads the second run's id and its answers are attributed there.
+    So the absence of a session must be **visible** to whoever starts a run rather than quietly
+    degrading: ``run-start`` reports which mode it used. A guard that disappears silently is worse
+    than one that was never added, because it is trusted anyway.
+    """
+    for name in _SESSION_ENV_VARS:
+        raw = os.environ.get(name, "")
+        if raw.strip():
+            # Digested rather than used literally. The value is arbitrary environment text, so a
+            # filename built from it could escape the directory (`../`), collide after filesystem
+            # case-folding, or exceed the OS name limit. A digest is none of those and still
+            # distinguishes two sessions.
+            return hashlib.sha256(raw.strip().encode("utf-8", "surrogateescape")).hexdigest()[:16]
+    return None
+
+
 def run_id_path(start: Optional[Path] = None) -> Optional[Path]:
-    """The shared run-id file's location — beside the decision log — or ``None`` when there is nowhere
+    """The run-id file's location — beside the decision log — or ``None`` when there is nowhere
     to share an id: outside a project, or **logging is disabled** (an off-value or the opt-out
     sentinel). Honouring the opt-out here means a disabled run neither writes nor reads a run-id file,
-    exactly the per-process fallback the rest of this module keeps for a disabled log."""
+    exactly the per-process fallback the rest of this module keeps for a disabled log.
+
+    **Keyed by the driving session when one is advertised.** Two sessions running concurrently in
+    one checkout then hold separate ids and cannot overwrite each other, which is the shape the
+    overlap actually takes. Within a single session runs are sequential, so a later ``start_run``
+    replacing the earlier id is correct and still happens. Without a session the path is the single
+    shared file, exactly as before — see ``session_key`` for why that case must be reported.
+    """
     if not is_enabled():
         return None
     log = default_log_path(start)
     if log is None:
         return None
-    return log.parent / _RUN_ID_NAME
+    key = session_key()
+    return log.parent / (f"{_RUN_ID_NAME}-{key}" if key else _RUN_ID_NAME)
 
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-id-path
 

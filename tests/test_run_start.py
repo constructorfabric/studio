@@ -329,6 +329,46 @@ def test_cmd_run_start_rejects_a_bad_argument(log_env: Path) -> None:
     assert rs.cmd_run_start(["--no-such-flag"]) == 2
 
 
+class TestTheSessionIsolationReport:
+    """GH #434: whether a run's id is private to its session decides whether a concurrent run can
+    overwrite it. The command says which it got, because the unprotected case is the defect and a
+    guard that disappears silently is trusted all the same."""
+
+    def test_an_isolated_run_says_so_and_does_not_warn(
+            self, log_env: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        monkeypatch.setenv("CFS_RUN_SESSION", "a-session")
+        assert rs.cmd_run_start([]) == 0
+        out = capsys.readouterr().out
+        assert "no driving session" not in out, "an isolated run was warned about anyway"
+
+    def test_a_shared_run_warns_and_says_what_could_go_wrong(
+            self, log_env: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        for name in dl._SESSION_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        assert rs.cmd_run_start([]) == 0, "a shared id is a weaker guard, not a failure"
+        out = capsys.readouterr().out
+        assert "no driving session" in out, (
+            "the project-wide fallback was not reported, so the guard goes missing silently")
+        assert "replace it" in out, "the warning does not say what actually goes wrong"
+
+    @pytest.mark.parametrize("session, expected", [("a-session", True), (None, False)],
+                             ids=["isolated", "shared"])
+    def test_the_flag_is_machine_readable(self, log_env: Path, monkeypatch: pytest.MonkeyPatch,
+                                          session, expected: bool) -> None:
+        # A caller deciding whether to trust this run's attribution must not have to parse prose.
+        # The payload is asserted rather than the rendered line, because `--json` is a global CLI
+        # flag rather than one of this command's own arguments.
+        for name in dl._SESSION_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        if session:
+            monkeypatch.setenv("CFS_RUN_SESSION", session)
+        captured: dict = {}
+        monkeypatch.setattr(rs.ui, "result",
+                            lambda payload, **kw: captured.update(payload))
+        rs.cmd_run_start([])
+        assert captured.get("session_isolated") is expected
+
+
 class TestRegistration:
     def test_handler_is_mapped(self) -> None:
         assert cli._COMMAND_HANDLERS["run-start"] == "_cmd_run_start"

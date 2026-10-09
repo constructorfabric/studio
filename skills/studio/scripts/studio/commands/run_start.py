@@ -38,8 +38,18 @@ def cmd_run_start(argv: List[str]) -> int:
                    "message": "no project decision log here, so per-command ids are used"},
                   human_fn=lambda d: ui.info(f"run-start: {d['message']}"))
         return 0
-    ui.result({"status": "started", "run_id": run_id,
-               "message": f"run started ({run_id})"},
-              human_fn=lambda d: ui.success(f"run-start: {d['message']}"))
+    # Whether this run's id is private to its session decides whether a concurrent run can
+    # overwrite it, so it is reported rather than assumed. Without a session the id is the one
+    # project-wide file and a second run-start in the same checkout replaces it -- the attribution
+    # defect -- so that case is a **warning**, not a quiet success. A guard that vanishes silently
+    # is worse than one never added, because it is trusted all the same.
+    isolated = decision_log.session_key() is not None
+    ui.result({"status": "started", "run_id": run_id, "session_isolated": isolated,
+               "message": (f"run started ({run_id})" if isolated else
+                           f"run started ({run_id}) — no driving session is advertised, so this "
+                           "id is shared project-wide and another run starting here will replace "
+                           "it; answers given during this run could then be attributed to that one")},
+              human_fn=lambda d: (ui.success if d["session_isolated"] else ui.warn)(
+                  f"run-start: {d['message']}"))
     return 0
 # @cpt-end:cpt-studio-algo-core-infra-decision-log:p1:inst-log-run-start
