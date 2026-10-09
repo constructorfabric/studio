@@ -3729,3 +3729,185 @@ def test_no_gate_key_is_declared_at_more_than_one_site() -> None:
         "these declared gate keys are each used at more than one site; a key must be unique "
         f"so a plan resolves exactly one gate: {duplicates}"
     )
+
+
+#: Roots holding authored gate modules. Anchored at `REPO_ROOT` for the same reason the
+#: rest of this suite is: a relative path makes the test depend on the caller's cwd.
+_GATE_ROOTS = ("skills", "workflows")
+
+#: A gate that declares a `KEY:` can be named by a plan item's `(needs: <key>)` marker, so
+#: the run's close asks whether that key was answered. The plan's own answers are recorded
+#: by `SimpleModeAutonomous`; an answer the USER gives is recorded only if the gate's own
+#: module says to. Without it the close holds the item on a decision that was in fact made.
+_RECORD_KIND = "gate-log --kind exception-asked"
+
+#: ...but only when the user was actually asked. Every gate carrying one of these recordings
+#: declares TYPE `confirmation` or `decision`, which is exactly the eligibility test
+#: `simple-mode-autonomous.md` uses: in the DEFAULT mode such a gate is resolved by *taking
+#: the option*, which runs the option's actions. An unconditional recording therefore fired
+#: on the autonomous path too, writing a second ruling that claimed a consultation which
+#: never happened -- next to the `plan-resolved` one that was already correct. Review caught
+#: it; the condition is what keeps the ledger honest, so it is asserted, not assumed.
+_RECORD_CONDITION = "WHEN this gate was emitted and the user chose this option"
+
+
+def _keyed_menus() -> list[tuple[Path, str, str, list[str]]]:
+    """Every `(path, menu, key, option_lines)` whose MENU block declares a decision key.
+
+    The option lines are collected because *where* the recording sits is the whole point:
+    an instruction in the owning `DO:` block is unreachable once that block hits a
+    `CONTINUE` or a `WAIT`/`STOP_TURN`, which the execution card states outright. Only an
+    option branch runs at the moment the answer is known.
+    """
+    found: list[tuple[Path, str, str, list[str]]] = []
+    for root in _GATE_ROOTS:
+        for path in sorted((REPO_ROOT / root).rglob("*.md")):
+            if any(part in CORPUS_GENERATED_DIRECTORIES for part in path.parts):
+                continue
+            menu = key = None
+            options: list[str] = []
+            collecting = False
+            for line in path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if stripped.startswith("MENU "):
+                    if menu and key:
+                        found.append((path, menu, key, options))
+                    menu, key, options, collecting = stripped.split(None, 1)[1].strip(), None, [], False
+                elif stripped.startswith("KEY:") and menu:
+                    key = stripped.split(":", 1)[1].strip()
+                elif stripped == "OPTIONS:" and menu:
+                    collecting = True
+                elif collecting:
+                    if not line.startswith("  ") or stripped.startswith(("MENU ", "UNIT ", "```")):
+                        collecting = False
+                        continue
+                    if stripped and not stripped.startswith("INVALID"):
+                        options.append(stripped)
+            if menu and key:
+                found.append((path, menu, key, options))
+    return found
+
+
+def test_the_corpus_still_declares_keys() -> None:
+    # Guards the tests below against passing vacuously if `KEY:` is ever renamed or the
+    # roots move: an empty corpus would make every assertion trivially true.
+    assert _keyed_menus(), "no MENU declares a KEY: — the recording tests would be vacuous"
+
+
+@pytest.mark.parametrize("path, menu, key, options", _keyed_menus(),
+                         ids=lambda v: v if isinstance(v, str) else str(v)[-30:])
+def test_every_answer_to_a_key_declaring_gate_is_recorded_where_it_is_known(
+        path: Path, menu: str, key: str, options: list[str]) -> None:
+    """Reachability, not presence.
+
+    The first version of this test asserted only that the file *contained* a `gate-log`
+    line. It passed while all four recordings sat in a `DO:` block after a `CONTINUE` or a
+    `WAIT`/`STOP_TURN` and could never run — a guard that pinned text rather than
+    behaviour. Mutation could not catch it either, because deleting the text correctly
+    failed a presence test. So the assertion is now per **option branch**: the only place
+    that executes at the moment the user's answer is known.
+    """
+    assert options, (
+        f"{path.relative_to(REPO_ROOT)}: MENU {menu} declares KEY: {key} but no valid "
+        f"option branches were parsed — the check below would pass vacuously.")
+    for option in options:
+        unreachable_note = (
+            f"{path.relative_to(REPO_ROOT)}: MENU {menu} option {option.split(' -> ')[0]!r} "
+            f"does not record the user's answer. An instruction in the owning DO: block "
+            f"cannot substitute — once that block reaches a CONTINUE or a WAIT/STOP_TURN "
+            f"it is unreachable, so the answer would never be logged and a plan item "
+            f"written `(needs: {key})` would be held on a decision the user actually made.")
+        assert _RECORD_KIND in option, unreachable_note
+        assert f"--gate {menu}" in option, unreachable_note
+        assert f"--decision-key {key}" in option, (
+            f"{path.relative_to(REPO_ROOT)}: MENU {menu} option "
+            f"{option.split(' -> ')[0]!r} records a different key than the one it declares "
+            f"({key}), so the close could never match it.")
+        assert "--status resolved" in option, (
+            f"{path.relative_to(REPO_ROOT)}: MENU {menu} option "
+            f"{option.split(' -> ')[0]!r} must record `--status resolved`; an "
+            f"`exception-asked` with any other status is not an answer.")
+        assert _RECORD_CONDITION in option, (
+            f"{path.relative_to(REPO_ROOT)}: MENU {menu} option "
+            f"{option.split(' -> ')[0]!r} records an exception ask unconditionally. This "
+            f"gate's declared TYPE makes it eligible for autonomous plan resolution, which "
+            f"resolves it by TAKING this option -- so the recording would also fire on the "
+            f"path where the plan answered, logging a user consultation that never happened "
+            f"beside the `plan-resolved` event that is already correct. Guard it with "
+            f"`{_RECORD_CONDITION}`.")
+
+
+@pytest.mark.parametrize("path, menu, key, options", _keyed_menus(),
+                         ids=lambda v: v if isinstance(v, str) else str(v)[-30:])
+def test_a_recording_is_never_left_where_it_cannot_run(
+        path: Path, menu: str, key: str, options: list[str]) -> None:
+    """The regression guard for the defect this PR shipped and review caught.
+
+    A `gate-log` for this menu sitting in a `DO:` block is the exact shape that looked
+    correct, passed the old test, and ran never.
+    """
+    in_do = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped == "DO:":
+            in_do = True
+        elif stripped in ("RULES:", "OPTIONS:", "INVARIANTS:", "NOTES:", "STATE:", "WHEN:"):
+            in_do = False
+        elif in_do and _RECORD_KIND in stripped and f"--gate {menu}" in stripped:
+            raise AssertionError(
+                f"{path.relative_to(REPO_ROOT)}: MENU {menu}'s recording sits in a DO: "
+                f"block. The execution card states a CONTINUE after WAIT/STOP_TURN is "
+                f"unreachable, and the same holds here: the answer is not known yet, and "
+                f"the block has already transferred control. Put it in each option branch.")
+
+
+#: The close rule's three obligations, each pinned separately so deleting any one fails.
+_CLOSE_RULE_PARTS = (
+    "verify-completion",                      # the check is actually run
+    "`run_id` field",                         # the scope travels in the run's own artifact
+    "NEVER report a run successful when that check does not exit `0`",  # and it is honoured
+)
+
+
+@pytest.mark.parametrize("fragment", _CLOSE_RULE_PARTS)
+def test_the_execution_card_carries_the_run_close_check(fragment: str) -> None:
+    # The close check is the point of the verification-before-completion work: a run that can
+    # report success without it has had the check deleted, not moved. The card is where it
+    # lives because it is the universal authority over terminal shape, and because every
+    # workflow that is not an exempted thin entrypoint must load it (asserted separately by
+    # `THIN_ENTRYPOINT_EXECUTION_CARD_EXEMPTIONS` above).
+    card = (REPO_ROOT / "skills/studio/modules/runtime/pdsl-execution-card.md").read_text(
+        encoding="utf-8")
+    assert fragment in card, (
+        f"the run-close rule in pdsl-execution-card.md no longer states {fragment!r}. "
+        "Without all three parts -- run the check, carry the run id, refuse success on a "
+        "non-zero exit -- a run can report success unverified.")
+
+
+@pytest.mark.parametrize("path, menu, key, options", _keyed_menus(),
+                         ids=lambda v: v if isinstance(v, str) else str(v)[-30:])
+def test_a_recording_gate_resolves_the_command_it_records_through(
+        path: Path, menu: str, key: str, options: list[str]) -> None:
+    """The recording runs `{cfs_cmd}`, so that must be resolved before the menu is emitted.
+
+    Review finding: most bootstraps reach these gates before `CommandResolution` has run, and
+    nine workflows never run it at all — so the instruction would execute with `{cfs_cmd}`
+    unexpanded. Position was fixed first and resolution was not checked; this asserts both.
+    The resolution must sit in the owning `DO:` **before** the menu, since an option branch
+    runs too late to help itself.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    menu_at = next(i for i, line in enumerate(lines) if line.startswith(f"MENU {menu}"))
+    do_at = max((i for i, line in enumerate(lines[:menu_at]) if line.strip() == "DO:"), default=-1)
+    assert do_at >= 0, f"{path.relative_to(REPO_ROOT)}: MENU {menu} has no owning DO: block"
+
+    block = [line.strip() for line in lines[do_at + 1:menu_at]]
+    resolves = [line for line in block if "RUN CommandResolution" in line]
+    assert resolves, (
+        f"{path.relative_to(REPO_ROOT)}: MENU {menu} records the user's answer through "
+        f"`{{cfs_cmd}}`, but nothing resolves it in the DO: block that runs before the menu. "
+        f"Most bootstraps reach this gate before CommandResolution has run, and several never "
+        f"run it at all, so the recording would execute with `{{cfs_cmd}}` unexpanded.")
+    assert "command-resolution.md" in resolves[0], (
+        f"{path.relative_to(REPO_ROOT)}: MENU {menu} runs CommandResolution without loading "
+        f"its module when absent; the workflows that never resolve a command also never load it.")

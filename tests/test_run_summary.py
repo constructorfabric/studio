@@ -131,14 +131,29 @@ def test_unspecified_sentinel_does_not_leak_into_rulings(log_path: Path) -> None
     assert row["detail"] == "resolved"  # no supplied fields -> the neutral default
 
 
-def test_an_exception_asked_gate_appears_as_a_ruling(log_path: Path) -> None:
+def test_an_exception_asked_that_resolved_appears_as_a_ruling(log_path: Path) -> None:
     # exception-asked is a live gate kind (one of the five GATE_KINDS); it must not silently vanish
-    # from the summary -- it is surfaced under rulings.
+    # from the summary. An ask that RESOLVED is a decision, so it belongs under rulings.
+    dl.record_gate("exception-asked", "RiskGate", "blocking",
+                   GateRuling(decision_key="risk", value="accepted", why="surfaced for review",
+                              status="resolved", cost_if_wrong="re-review"),
+                   command="gate-log", path=log_path)
+    payload = rs._payload(rs.summarise(log_path))
+    assert "RiskGate" in _labels(payload["rulings"])
+
+
+def test_an_exception_asked_that_did_not_resolve_is_an_open_question(log_path: Path) -> None:
+    # It still does not vanish -- it moves to the heading that tells the truth. An ask that
+    # produced no answer is not a decision, and reporting it under rulings would say the gate
+    # was settled when it was not. The register now treats such an ask as reopening its key,
+    # and the summary's reconciliation drops a still-outstanding key from rulings, so the two
+    # agree: "I decided this for you" and "nobody has decided this yet" stay distinguishable.
     dl.record_gate("exception-asked", "RiskGate", "blocking",
                    GateRuling(decision_key="risk", why="surfaced for review"),
                    command="gate-log", path=log_path)
     payload = rs._payload(rs.summarise(log_path))
-    assert "RiskGate" in _labels(payload["rulings"])
+    assert "RiskGate" not in _labels(payload["rulings"])
+    assert "risk" in _labels(payload["open_questions"])
 
 
 def test_corrupt_values_are_sanitized_for_both_json_and_render() -> None:

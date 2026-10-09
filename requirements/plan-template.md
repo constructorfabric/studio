@@ -243,6 +243,64 @@ declare the decisions it `needs`, and must be a snake_case decision key (lowerca
 with a letter; letters, digits and underscores only). The marker is optional: a criterion
 without one behaves exactly as before.
 
+**How the check is run at a run's close.** A run does not report success until it has written its
+verdicts and passed this check. At the close it writes `verdicts.toml` beside the plan — one entry
+per acceptance-criteria item with its verdict and evidence — and names the run that produced it in a
+top-level `run_id` field:
+
+```toml
+run_id = "a1b2c3d4e5f6"
+
+[[verdicts]]
+phase = 1
+item = "PRD approved (needs: pricing_model)"
+verdict = "satisfied"
+evidence = "reviewed and signed off"
+
+[[verdicts]]
+phase = 1
+item = "no unresolved variables"
+verdict = "satisfied"
+evidence = "checked the compiled phase file"
+
+[[verdicts]]
+phase = 2
+item = "no unresolved variables"
+verdict = "satisfied"
+evidence = "checked the compiled phase file"
+```
+
+**Give every entry its `phase`.** An item is looked up by `(phase, item)`. A `phase`-less entry
+is accepted only when its text appears in exactly **one** phase across the whole plan; where the
+same text appears in several, a `phase`-less entry cannot say which one it means, and the check
+holds every one of them not-satisfied rather than guessing. That is not an edge case: Section 8
+requires *every* phase to carry a "no unresolved variables" check criterion, so a plan with more
+than one phase always has repeated criterion text. A multi-phase plan whose verdicts omit `phase`
+will therefore report INCOMPLETE even when the work was done and correctly stated — the fail-safe
+direction, but a wasted run. Write `phase` on every entry and the question never arises.
+
+The `run_id` is what scopes the open-question check to the run being verified, so an answer given in
+a *different* run can never clear this one's blocker. It is optional and a file without one still
+works, falling back to a narrower scope under which every `(needs: …)` item is held — the fail-safe
+direction. A stale `verdicts.toml` left from an earlier run is detected and its `run_id` refused, so
+it cannot complete an item on an older run's answer.
+
+`verify-completion` then exits `0` when the run is complete, `2` when an item is unsatisfied,
+unstated, still waiting on an open question, or when the plan was never approved, and `1` when the
+check could not run — which includes there being no `plan.toml` to check against. Only `0` lets a
+run report success.
+
+**Approval is checked first.** A plan whose `plan.approval_status` is not the exact literal
+`"approved"` exits `2` whatever its criteria say — the same field and the same exact comparison the
+phase dispatcher uses, so a close can never be more permissive than the gate that let the work
+start. A plan carrying no `approval_status` at all predates approvals being recorded; the message
+says so and names the decomposition gate to re-run.
+
+A plan that exists but declares **no acceptance criteria** is the one benign case: the check reports
+it as not-applicable and exits `0`, stating the vacuous pass rather than hiding it. That is not the
+same as a missing plan, which is a fault — and it applies only to an **approved** plan, since the
+approval refusal runs ahead of it: an unapproved plan with no criteria exits `2`, not `0`.
+
 ### Section 9: Output Format
 
 This section MUST be included verbatim:

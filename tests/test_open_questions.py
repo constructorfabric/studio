@@ -30,11 +30,12 @@ def _defer(key: str, log_path: Path, *, gate: str = "PlanGate", why: str = "no p
                    command="gate-log", path=log_path)
 
 
-def _resolve(key: str, log_path: Path, *, kind: str = "plan-resolved") -> None:
+def _resolve(key: str, log_path: Path, *, kind: str = "plan-resolved",
+             status: str = "resolved") -> None:
     """Record an answering event for ``key``."""
     dl.record_gate(kind, "PlanGate", "decision",
                    GateRuling(decision_key=key, value="chosen", provenance="plan",
-                              status="resolved", cost_if_wrong="re-run"),
+                              status=status, cost_if_wrong="re-run"),
                    command="gate-log", path=log_path)
 
 
@@ -91,6 +92,66 @@ def test_auto_proceeded_does_not_close(log_path: Path) -> None:
     _defer("retry_policy", log_path)
     _resolve("retry_policy", log_path, kind="auto-proceeded")
     assert oq.read_open_questions(log_path).is_open("retry_policy") is True
+
+
+def test_an_exception_asked_that_resolved_is_an_answer(log_path: Path) -> None:
+    # The plan could not answer the gate, so it asked -- and the user answered. That is an
+    # answer, and the dependent item must be free to complete.
+    _defer("coding_exploration", log_path)
+    _resolve("coding_exploration", log_path, kind="exception-asked")
+    register = oq.read_open_questions(log_path)
+    assert register.is_open("coding_exploration") is False
+    assert register.is_answered("coding_exploration") is True
+
+
+def test_an_exception_asked_that_never_resolved_stays_open(log_path: Path) -> None:
+    # The gate asked but the ask produced nothing (`absent`/`ambiguous` are not resolutions).
+    # Recording the reason for asking is not an answer, so the question stays open -- the
+    # fail-safe direction, exactly as for `auto-proceeded`.
+    _defer("coding_exploration", log_path)
+    _resolve("coding_exploration", log_path, kind="exception-asked", status="absent")
+    register = oq.read_open_questions(log_path)
+    assert register.is_open("coding_exploration") is True
+    assert register.is_answered("coding_exploration") is False
+
+
+def test_an_exception_asked_answer_counts_without_a_prior_open_question(
+        log_path: Path) -> None:
+    # The production case: nothing in the PDSL records an `open-question` event today, so a
+    # user-answered gate arrives with no prior deferral. `verify-completion` asks whether the
+    # key was ANSWERED, so this must register even though the question was never parked.
+    _resolve("interaction_mode", log_path, kind="exception-asked")
+    assert oq.read_open_questions(log_path).is_answered("interaction_mode") is True
+
+
+def test_a_failed_re_ask_withdraws_an_earlier_resolved_answer(log_path: Path) -> None:
+    # Review finding, reproduced: a key answered by an earlier resolved ask stayed answered
+    # through a later ask that produced nothing. Keys such as `interaction_mode` are asked
+    # repeatedly, so a dependent `(needs: K)` item would complete on a resolution that had
+    # since fallen through. The ask happened and resolved nothing, so the question is live.
+    _resolve("interaction_mode", log_path, kind="exception-asked")
+    assert oq.read_open_questions(log_path).is_answered("interaction_mode") is True
+
+    _resolve("interaction_mode", log_path, kind="exception-asked", status="absent")
+    register = oq.read_open_questions(log_path)
+    assert register.is_answered("interaction_mode") is False
+    assert register.is_open("interaction_mode") is True
+
+
+def test_an_unresolved_ask_for_a_never_answered_key_opens_it(log_path: Path) -> None:
+    # The same branch with no prior answer: an ask that resolved nothing leaves the question
+    # open rather than silently absent, so a dependent item is held rather than completed.
+    _resolve("coding_exploration", log_path, kind="exception-asked", status="ambiguous")
+    register = oq.read_open_questions(log_path)
+    assert register.is_open("coding_exploration") is True
+    assert register.is_answered("coding_exploration") is False
+
+
+def test_a_later_resolved_ask_answers_it_again(log_path: Path) -> None:
+    # And the cycle closes: asked, failed, asked again and resolved. The last word wins.
+    _resolve("explore_save", log_path, kind="exception-asked", status="absent")
+    _resolve("explore_save", log_path, kind="exception-asked")
+    assert oq.read_open_questions(log_path).is_answered("explore_save") is True
 
 
 def test_redeferral_reopens_after_an_answer(log_path: Path) -> None:

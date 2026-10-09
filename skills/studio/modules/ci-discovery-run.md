@@ -11,6 +11,7 @@ STATE:
 WHEN:
   REQUIRE CI_DISCOVERY_INTENT is set
 DO:
+  RUN CommandResolution to resolve {cfs_cmd} WHEN {cfs_cmd} is unset, loading {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md first when it is not yet loaded: the option branches below record the user's answer through {cfs_cmd}, and most bootstraps reach this gate before any command has been resolved
   CONTINUE CiDiscoveryProvideTargetsResume WHEN CI_TARGET_CAPTURE_STATE == resume
   SET CI_DISCOVERY_STATUS = provided WHEN REVIEW_TARGET_PATHS is already provided
   CONTINUE CiDiscoveryRunClassifyResult WHEN CI_DISCOVERY_STATUS == provided
@@ -30,8 +31,8 @@ TITLE: CI discovery — find relevant CI targets automatically or skip? Discover
 TYPE: confirmation
 KEY: ci_discovery
 OPTIONS:
-  1 discover -> CONTINUE CiDiscoveryRunExecute
-  2 skip -> SET CI_DISCOVERY_STATUS = skipped; CONTINUE CiDiscoveryRunClassifyResult
+  1 discover -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate CiDiscoverySkipMenu --declared-type confirmation --decision-key ci_discovery --value discover --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then CONTINUE CiDiscoveryRunExecute
+  2 skip -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate CiDiscoverySkipMenu --declared-type confirmation --decision-key ci_discovery --value skip --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then SET CI_DISCOVERY_STATUS = skipped; CONTINUE CiDiscoveryRunClassifyResult
   INVALID -> EMIT_MENU CiDiscoverySkipMenu
 
 UNIT CiDiscoveryRunExecute

@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils import decision_log, open_questions, plan_items, ui
 from ..utils.plan_decisions import PLAN_FILE, _bounded, _load_plan
@@ -40,6 +40,15 @@ from ..utils.plan_decisions import PLAN_FILE, _bounded, _load_plan
 #: The run writes its verdicts here, beside the plan's own ``plan.toml`` by default.
 # @cpt-begin:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-model
 VERDICTS_FILE = "verdicts.toml"
+
+#: Where a plan records that its decomposition was authorised, and the one value that counts.
+#: The same field and value the phase dispatcher requires before it will run any phase -- a run
+#: must not be able to report success against a plan no dispatcher would have run in the first
+#: place. A plan carrying no `approval_status` at all predates approvals being recorded; that is
+#: still not an approval, and saying so names the remedy rather than leaving a bare refusal.
+_APPROVAL_TABLE = "plan"
+_APPROVAL_FIELD = "approval_status"
+_APPROVED = "approved"
 
 #: The array a verdicts file declares its per-item verdicts in.
 _VERDICTS_TABLE = "verdicts"
@@ -65,8 +74,11 @@ class Verdicts:
     across the plan (resolved in ``_verdict_for``). ``duplicates`` names keys a file answered
     more than once: a conflicting double-answer is no trustworthy answer, not the last one.
     ``error`` is set when the file itself could not be read, which is a fault, not a verdict.
+    ``declared_run_id`` is the run the file says produced it -- the scope hint, trusted only
+    after the cross-check in ``_scope_from_verdicts``.
     """
 
+    declared_run_id: Optional[str] = None
     by_key: Dict[Tuple[Optional[int], str], _Verdict] = field(default_factory=dict)
     duplicates: Set[Tuple[Optional[int], str]] = field(default_factory=set)
     error: Optional[str] = None
@@ -100,6 +112,49 @@ class Completion:
 
 # @cpt-end:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-model
 
+# @cpt-begin:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-run-scope
+#: The key a verdicts file names the run that produced it under.
+_RUN_ID_FIELD = "run_id"
+
+
+def _declared_run_id(data: Dict[str, Any]) -> Optional[str]:
+    """The run a verdicts file says produced it, or ``None``. A hint, never yet trusted."""
+    raw = data.get(_RUN_ID_FIELD)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def _scope_from_verdicts(verdicts: Verdicts, log_path: Optional[Path]) -> Optional[str]:
+    """The verdicts file's own run id, used only while it still matches the shared file.
+
+    The scope must match the **evidence being checked**, and the verdicts file is that
+    evidence: the run writes it immediately before this check and nothing else produces it.
+
+    Taking that id on its word would be **worse than taking none**. A stale verdicts file left
+    in a plan directory names an older run, and scoping to it makes that run's answers visible
+    to this one: measured, an item this run never answered reports COMPLETE where it is
+    otherwise held. So the id is used only while it still equals ``current_run_id``.
+
+    **What this check does and does not establish.** An earlier version of this docstring
+    called the comparison "two independent artifacts agreeing". That was wrong, and review
+    caught it. The gate events are stamped by ``record()`` from the **same** project-wide
+    run-id file this compares against, so the two sources are one source read twice -- not
+    independent witnesses. The comparison therefore detects a verdicts file left behind by an
+    **earlier** run (its id no longer matches what the file says now) and nothing more. It
+    does **not** establish that the events it will go on to read belong to the run named,
+    because a ``run-start`` landing mid-run restamps later events without changing either side
+    of this comparison. That remaining hole is tracked separately and blocks the close being
+    relied on as a gate.
+
+    No grammar check is needed: equality with ``current_run_id`` is the validation, because
+    that value is either the validated shared-file id or this process's own.
+    """
+    declared = verdicts.declared_run_id
+    if declared is None:
+        return None
+    return declared if declared == decision_log.current_run_id(log_path) else None
+# @cpt-end:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-run-scope
+
+
 # @cpt-begin:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-read-verdicts
 def _read_verdicts(path: Path) -> Verdicts:
     """The verdicts a run recorded, or a ``Verdicts`` carrying the reason the file failed.
@@ -117,7 +172,7 @@ def _read_verdicts(path: Path) -> Verdicts:
         if _VERDICTS_TABLE in data:
             return Verdicts(error=(f"`{_VERDICTS_TABLE}` in {path.name} is not an array, "
                                    "so no verdicts can be read"))
-        return Verdicts()
+        return Verdicts(declared_run_id=_declared_run_id(data))
     by_key: Dict[Tuple[Optional[int], str], _Verdict] = {}
     duplicates: Set[Tuple[Optional[int], str]] = set()
     for entry in entries:
@@ -136,7 +191,7 @@ def _read_verdicts(path: Path) -> Verdicts:
             verdict=_bounded(entry.get("verdict", "")),
             evidence=_bounded(entry.get("evidence", "")),
         )
-    return Verdicts(by_key=by_key, duplicates=duplicates)
+    return Verdicts(declared_run_id=_declared_run_id(data), by_key=by_key, duplicates=duplicates)
 
 
 # @cpt-end:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-read-verdicts
@@ -237,6 +292,68 @@ def _unmatched(items: plan_items.PlanItems, verdicts: Verdicts) -> List[str]:
 
 
 # @cpt-begin:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-assess
+# @cpt-begin:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-approval
+def _approval_refusal(plan_dir: Path) -> Optional[Completion]:
+    """Why this plan may not report success, or ``None`` when it was approved.
+
+    The close is what stands between a run and declaring itself done, so it must not pass a
+    plan nobody authorised. The phase dispatcher already refuses to run a phase for one; a
+    close that accepts the same plan would let the work be reported complete without ever
+    having been allowed to start.
+
+    Not knowing whether a plan was approved is different from knowing it was not, so the two
+    outcomes carry different exit codes: a plan that will not load here is a **fault**, while
+    one that loads and lacks the field is a failed check.
+    """
+    data, _reason, _verdict = _load_plan(plan_dir / PLAN_FILE)
+    if data is None:
+        # Review finding: this used to return `None`, on the reasoning that an unreadable plan
+        # is "a fault the caller reports". The caller cannot report it -- `read_plan_items`
+        # already read the file successfully, which is the only way control reaches here, so
+        # the second read failing is a race the caller has no second chance to see. `None`
+        # means approved, so a plan that became unreadable between the two reads was silently
+        # treated as authorised and could report COMPLETE. The intent was right and the
+        # mechanism was not; the fault is now returned instead of described.
+        return Completion(status="ERROR", exit_code=1,
+                          message=("the plan could not be read to check its approval; it was "
+                                   "readable a moment earlier, so it changed mid-check"))
+    table = data.get(_APPROVAL_TABLE)
+    status = table.get(_APPROVAL_FIELD) if isinstance(table, dict) else None
+    if status == _APPROVED:
+        # Compared **exactly**, because the dispatcher compares exactly: both
+        # `plan-native-dispatch.md` and `plan-compiler-dispatch.md` refuse a phase unless
+        # `plan.approval_status != "approved"` is false, and `plan-compile.md` only ever
+        # writes the literal `"approved"`. Accepting `" Approved "` here would let a
+        # hand-edited plan report success that the dispatcher would never have let start --
+        # a close more permissive than the gate it is meant to be closing behind.
+        return None
+    # A failed check, not a fault: the plan is readable, it simply was never authorised.
+    # Exit 2 keeps it with the other "this run may not report success" causes, so a caller
+    # already keying on 2 needs no change.
+    if status is None:
+        return Completion(status="INCOMPLETE", exit_code=2, message=(
+            f"this plan records no {_APPROVAL_TABLE}.{_APPROVAL_FIELD}, so it was written "
+            "before approvals were recorded; re-run the decomposition gate to approve it"))
+    return Completion(status="INCOMPLETE", exit_code=2, message=(
+        f"this plan's {_APPROVAL_TABLE}.{_APPROVAL_FIELD} is {str(status)!r}, not "
+        f"{_APPROVED!r}, so it may not report success"))
+# @cpt-end:cpt-studio-algo-execution-plans-verify-completion:p1:inst-verify-approval
+
+
+def _plan_refusal(plan_dir: Path, items: plan_items.PlanItems) -> Optional[Completion]:
+    """Why this plan cannot be assessed at all, or ``None`` to carry on.
+
+    Two refusals, kept together because both are answered before any verdict is read and both
+    are about the plan rather than the run: it could not be read, or it was never approved.
+    They map to different exit codes on purpose -- an unreadable plan is a fault the check
+    could not perform, while an unapproved one is a check that failed.
+    """
+    if items.error is not None:
+        return Completion(status="ERROR", exit_code=1,
+                          message=f"the plan could not be read: {items.error}")
+    return _approval_refusal(plan_dir)
+
+
 def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = None,
            run_id: Optional[str] = None) -> Completion:
     """Reconcile the plan's items against the run's verdicts and decide if the run is complete.
@@ -247,9 +364,9 @@ def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = No
     is an ``ERROR`` (a fault), not an incomplete run.
     """
     items = plan_items.read_plan_items(plan_dir)
-    if items.error is not None:
-        return Completion(status="ERROR", exit_code=1,
-                          message=f"the plan could not be read: {items.error}")
+    refusal = _plan_refusal(plan_dir, items)
+    if refusal is not None:
+        return refusal
     verdicts = _read_verdicts(verdicts_path)
     if verdicts.error is not None:
         return Completion(status="ERROR", exit_code=1,
@@ -259,31 +376,36 @@ def assess(plan_dir: Path, verdicts_path: Path, *, log_path: Optional[Path] = No
     # that uses no `(needs: …)` marker must not pay a log read, and behaves exactly as before.
     # The read is scoped to one run (`run_id`, defaulting to the current run), so another run's
     # answer can never clear this run's blocker.
-    # The scope is the run this was **told** about, never the shared run-id file. That file is
-    # project-wide and mutable: a second `run-start` in the same checkout replaces it, so a later
-    # command of the *first* run would read the second run's id -- and with it the second run's
-    # answers. Since an item blocks only while its key is unanswered, that shows a run complete on an
-    # answer it never gave. Falling back to this process's own id instead matches nothing this run did
-    # not record, so an unscoped check fails toward INCOMPLETE. A report may approximate; a gate may
-    # not. `#400` passes the executing run's id and makes it exact.
-    scope = run_id or decision_log.process_run_id()
+    # Scope precedence, widest trust first: what this was **told** (`--run-id`), then the run the
+    # verdicts file says produced it -- but only while `_scope_from_verdicts` finds that id still
+    # current -- and otherwise this process's own id. That middle tier detects a verdicts file left
+    # by an EARLIER run; it does not establish that the events read belong to the run named, since
+    # both sides of its comparison come from the same shared file. See its docstring. The shared run-id file is still
+    # never trusted ALONE: it is project-wide and mutable, so a second `run-start` in the same
+    # checkout replaces it, and a later command of the *first* run would read the second run's id and
+    # with it the second run's answers. Since an item blocks only while its key is unanswered, that
+    # shows a run complete on an answer it never gave. The per-process fallback matches nothing this
+    # run did not record, so an unscoped check fails toward INCOMPLETE. A report may approximate; a
+    # gate may not.
+    scope = (run_id
+             or _scope_from_verdicts(verdicts, log_path)
+             or decision_log.process_run_id())
     register = (open_questions.read_open_questions(log_path, run_id=scope)
                 if any(item.depends_on_question for item in items.items)
                 else open_questions.OpenQuestions())
     unsatisfied, unstated, blocked_on_question = _reconcile(items, verdicts, register, log_path)
     unmatched = _unmatched(items, verdicts)
 
-    # A phase whose criteria could not be read means an item may be missing entirely, so the
-    # run cannot be shown complete -- fail-safe toward more friction, never toward a pass.
-    blocked = (bool(unsatisfied) or bool(unstated) or bool(blocked_on_question)
-               or bool(items.read_problems))
     if not items.items and not items.read_problems:
         return Completion(status="COMPLETE", exit_code=0, checked=0, applicable=False,
                           read_problems=list(items.read_problems),
                           phases_without_criteria=list(items.phases_without_criteria),
                           unmatched_verdicts=unmatched,
                           message="the plan declares no deliverable items to verify")
-    status, code = ("INCOMPLETE", 2) if blocked else ("COMPLETE", 0)
+    # A phase whose criteria could not be read means an item may be missing entirely, so the
+    # run cannot be shown complete -- fail-safe toward more friction, never toward a pass.
+    status, code = ("INCOMPLETE", 2) if (unsatisfied or unstated or blocked_on_question
+                                         or items.read_problems) else ("COMPLETE", 0)
     return Completion(
         status=status, exit_code=code, checked=len(items.items),
         unsatisfied=unsatisfied, unstated=unstated, blocked_on_question=blocked_on_question,
@@ -370,12 +492,13 @@ def _parser() -> ui.JsonSafeArgumentParser:
     parser.add_argument("--verdicts", default=None,
                         help=f"the verdicts file (default: {VERDICTS_FILE} under the plan dir)")
     parser.add_argument("--run-id", default=None,
-                        help="the run whose open questions scope the check; defaults to this "
-                             "command's own run. The log is shared across runs, so the check is "
-                             "confined to one run. Run stand-alone with no --run-id this run has "
-                             "answered nothing, so every (needs: …) item blocks and the run reports "
-                             "incomplete (fail-safe); pass the executing run's id to check the "
-                             "dependencies against the run that actually answered them")
+                        help="the run whose open questions scope the check. The log is shared "
+                             "across runs, so the check is confined to one. Scope is taken, widest "
+                             "trust first, from this option; else from a run_id the verdicts file "
+                             "declares, used only when it still matches the current run id; else "
+                             "this command's own run. Stand-alone against a verdicts file naming "
+                             "no run, this run has answered nothing, so every (needs: …) item "
+                             "blocks and the run reports incomplete (fail-safe)")
     return parser
 
 

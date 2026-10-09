@@ -18,7 +18,11 @@ from studio import cli  # noqa: E402
 from studio.commands import verify_completion as vc  # noqa: E402
 from studio.utils import decision_log as dl  # noqa: E402
 
-_MANIFEST = '[plan]\ntask = "t"\n[[phases]]\nnumber = 1\nfile = "p.md"\n'
+#: An **approved** plan: the close refuses to report success for one that was never
+#: authorised, the same field and value the phase dispatcher requires before it will run
+#: a phase. Tests of the unapproved cases pass their own manifest.
+_MANIFEST = '[plan]\ntask = "t"\napproval_status = "approved"\n[[phases]]\nnumber = 1\nfile = "p.md"\n'
+_UNAPPROVED = '[plan]\ntask = "t"\n[[phases]]\nnumber = 1\nfile = "p.md"\n'
 _TWO_CRITERIA = "## Acceptance Criteria\n- [ ] A exists\n- [ ] B passes\n"
 
 
@@ -206,7 +210,8 @@ def test_say_routes_each_status_to_the_right_ui_call(
         assert details == []
 
 
-_TWO_PHASE_SHARED = ('[plan]\ntask = "t"\n[[phases]]\nnumber = 1\nfile = "p1.md"\n'
+_TWO_PHASE_SHARED = ('[plan]\ntask = "t"\napproval_status = "approved"\n'
+                     '[[phases]]\nnumber = 1\nfile = "p1.md"\n'
                      '[[phases]]\nnumber = 2\nfile = "p2.md"\n')
 
 
@@ -441,3 +446,283 @@ class TestRegistration:
 
     def test_command_has_a_description(self) -> None:
         assert "verify-completion" in cli._COMMAND_DESCRIPTIONS
+
+
+def _verdicts_naming(run: str, item: str, verdict: str = "satisfied") -> str:
+    """A verdicts file that names the run which produced it, as #400's close writes it."""
+    return f'run_id = "{run}"\n' + _verdict(item, verdict)
+
+
+def test_the_run_id_a_verdicts_file_declares_scopes_the_check(tmp_path: Path,
+                                                              monkeypatch: pytest.MonkeyPatch
+                                                              ) -> None:
+    # The scope must match the EVIDENCE being checked, and the verdicts file is that evidence.
+    # Carrying the run id there lets the close see the answers its own run recorded, without
+    # trusting the project-wide run-id file on its own.
+    log = tmp_path / "log.jsonl"
+    monkeypatch.setenv("CFS_DECISION_LOG", str(log))
+    run = dl.start_run()
+    assert run is not None
+    _defer("pricing_model", log)
+    _answer("pricing_model", log)
+
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdicts_naming(run, _NEEDS_ITEM))
+    result = vc.assess(plan_dir, vpath, log_path=log)
+    assert result.status == "COMPLETE"
+    assert result.exit_code == 0
+
+
+def test_a_stale_verdicts_run_id_is_refused_and_the_item_is_held(tmp_path: Path,
+                                                                 monkeypatch: pytest.MonkeyPatch
+                                                                 ) -> None:
+    # Measured before this guard existed: taking the declared id on its word reported COMPLETE
+    # here, where the per-process fallback holds the item. A verdicts file left behind by an
+    # earlier run names that run, and scoping to it makes ITS answers visible to this one. The
+    # cross-check against `current_run_id` refuses an id nothing else still agrees with.
+    log = tmp_path / "log.jsonl"
+    monkeypatch.setenv("CFS_DECISION_LOG", str(log))
+    run_a = dl.start_run()
+    assert run_a is not None
+    _defer("pricing_model", log)
+    _answer("pricing_model", log)      # only A ever answered it
+    run_b = dl.start_run()             # B begins; the shared file no longer says A
+    assert run_b != run_a
+
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdicts_naming(run_a, _NEEDS_ITEM))
+    result = vc.assess(plan_dir, vpath, log_path=log)
+    assert result.status == "INCOMPLETE"
+    assert result.exit_code == 2
+    assert result.blocked_on_question == [_NEEDS_ITEM]
+
+
+def test_an_explicit_run_id_still_overrides_the_verdicts_file(tmp_path: Path,
+                                                              monkeypatch: pytest.MonkeyPatch
+                                                              ) -> None:
+    # `--run-id` is what the caller was told; it outranks a hint read out of a file. The
+    # declared id here is one that PASSES the cross-check, so only the precedence can decide
+    # the outcome -- naming an id that fails the cross-check would leave both orders agreeing
+    # and prove nothing.
+    log = tmp_path / "log.jsonl"
+    monkeypatch.setenv("CFS_DECISION_LOG", str(log))
+    run = dl.start_run()
+    assert run is not None
+    _defer("pricing_model", log)
+    _answer("pricing_model", log)       # answered under `run`, which the verdicts file names
+
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdicts_naming(run, _NEEDS_ITEM))
+    # Told to check a different run, which recorded nothing: the told id must win and hold.
+    result = vc.assess(plan_dir, vpath, log_path=log, run_id="a-run-with-no-events")
+    assert result.status == "INCOMPLETE"
+    assert result.exit_code == 2
+    assert result.blocked_on_question == [_NEEDS_ITEM]
+
+
+def test_a_verdicts_file_naming_no_run_behaves_exactly_as_before(tmp_path: Path,
+                                                                 monkeypatch: pytest.MonkeyPatch
+                                                                 ) -> None:
+    # Backward compatibility: every verdicts file written before #400 names no run, and must
+    # keep falling back to the per-process id rather than becoming an error.
+    log = tmp_path / "log.jsonl"
+    monkeypatch.setenv("CFS_DECISION_LOG", str(log))
+    assert dl.start_run() is not None
+    _defer("pricing_model", log)
+    _answer("pricing_model", log)
+
+    plan_dir, vpath = _plan(tmp_path, phase=_NEEDS_PHASE,
+                            verdicts=_verdict(_NEEDS_ITEM, "satisfied"))
+    assert vc.assess(plan_dir, vpath, log_path=log).exit_code == 2
+
+
+class TestAPlanNobodyApprovedCannotReportSuccess:
+    """The close is what stands between a run and declaring itself done.
+
+    Review finding: it never looked at `plan.approval_status`, so a run could report success
+    against a plan the phase dispatcher would have refused to run in the first place. Not a
+    fault — the plan reads fine — so it joins the other "may not report success" causes at
+    exit 2, and a caller already keying on 2 needs no change.
+    """
+
+    def test_a_plan_with_no_approval_field_is_held(self, tmp_path: Path) -> None:
+        plan_dir, vpath = _plan(tmp_path, manifest=_UNAPPROVED,
+                                verdicts=_verdict("A exists", "satisfied")
+                                + _verdict("B passes", "satisfied"))
+        result = vc.assess(plan_dir, vpath)
+        assert result.status == "INCOMPLETE"
+        assert result.exit_code == 2
+        # The remedy is named, not just the refusal: a plan with no field at all predates
+        # approvals being recorded, which is a different situation from one marked revised.
+        assert "before approvals were recorded" in result.message
+
+    @pytest.mark.parametrize("value", ["revised", "draft", "pending", "rejected", ""])
+    def test_a_plan_approved_as_anything_else_is_held(self, tmp_path: Path, value: str) -> None:
+        manifest = f'[plan]\ntask = "t"\napproval_status = "{value}"\n[[phases]]\nnumber = 1\nfile = "p.md"\n'
+        plan_dir, vpath = _plan(tmp_path, manifest=manifest,
+                                verdicts=_verdict("A exists", "satisfied")
+                                + _verdict("B passes", "satisfied"))
+        result = vc.assess(plan_dir, vpath)
+        assert result.status == "INCOMPLETE"
+        assert result.exit_code == 2
+        assert "not 'approved'" in result.message
+
+    @pytest.mark.parametrize("written", ['"  Approved "', '"APPROVED"', '"approved "'])
+    def test_an_approval_the_dispatcher_would_reject_is_rejected_here(
+            self, tmp_path: Path, written: str) -> None:
+        # Review finding, confirmed in the modules: `plan-native-dispatch.md` and
+        # `plan-compiler-dispatch.md` both refuse a phase unless `plan.approval_status` is the
+        # exact literal `"approved"`, and `plan-compile.md` writes nothing else. An earlier
+        # version of this check accepted `" Approved "`, so a hand-edited plan the dispatcher
+        # would never have started could still be reported complete. The close must not be
+        # more permissive than the gate.
+        manifest = f'[plan]\ntask = "t"\napproval_status = {written}\n[[phases]]\nnumber = 1\nfile = "p.md"\n'
+        plan_dir, vpath = _plan(tmp_path, manifest=manifest,
+                                verdicts=_verdict("A exists", "satisfied")
+                                + _verdict("B passes", "satisfied"))
+        result = vc.assess(plan_dir, vpath)
+        assert result.exit_code == 2, "a near-miss approval was accepted as an approval"
+        assert "not 'approved'" in result.message
+
+    def test_the_exact_literal_the_dispatcher_writes_is_accepted(self, tmp_path: Path) -> None:
+        # The other edge: holding the comparison exact must not reject the ordinary case that
+        # `plan-compile.md` actually writes.
+        manifest = '[plan]\ntask = "t"\napproval_status = "approved"\n[[phases]]\nnumber = 1\nfile = "p.md"\n'
+        plan_dir, vpath = _plan(tmp_path, manifest=manifest,
+                                verdicts=_verdict("A exists", "satisfied")
+                                + _verdict("B passes", "satisfied"))
+        assert vc.assess(plan_dir, vpath).exit_code == 0
+
+    def test_a_non_string_approval_is_held_not_crashed(self, tmp_path: Path) -> None:
+        # `approval_status = true` is an author's defect, not an approval, and not a traceback.
+        manifest = '[plan]\ntask = "t"\napproval_status = true\n[[phases]]\nnumber = 1\nfile = "p.md"\n'
+        plan_dir, vpath = _plan(tmp_path, manifest=manifest,
+                                verdicts=_verdict("A exists", "satisfied")
+                                + _verdict("B passes", "satisfied"))
+        assert vc.assess(plan_dir, vpath).exit_code == 2
+
+    def test_the_approval_read_reports_a_plan_it_cannot_parse_as_a_fault(self,
+                                                                        tmp_path: Path) -> None:
+        # Called directly, because `assess` reads the plan first and reports an unreadable one
+        # before this helper runs. The branch exists for the narrow race where the file becomes
+        # unreadable between those two reads. Not knowing whether a plan was approved must stay
+        # a FAULT — never "not approved", which would turn a transient read error into an
+        # accusation that the plan lacks sign-off, and never `None`, which means approved.
+        (tmp_path / "plan.toml").write_text("this is not toml = = =", encoding="utf-8")
+        refusal = vc._approval_refusal(tmp_path)
+        assert refusal is not None, "an unreadable plan was treated as an approved one"
+        assert refusal.exit_code == 1, "a fault was reported as a failed check"
+        assert refusal.status == "ERROR"
+
+    def test_a_plan_that_becomes_unreadable_mid_check_cannot_report_complete(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Review finding, reproduced: `assess` reads the plan twice — once for its items, once
+        # for its approval. The first read decided whether an unreadable plan was reported, so
+        # a plan that broke between them returned `None` from the approval read, which means
+        # "approved". With every verdict satisfied, the run reported COMPLETE having never had
+        # its approval confirmed. Only the SECOND read is made to fail here; the first must
+        # succeed, or the test proves nothing about the race.
+        plan_dir, vpath = _plan(tmp_path,
+                                verdicts=_verdict("A exists", "satisfied")
+                                + _verdict("B passes", "satisfied"))
+        assert vc.assess(plan_dir, vpath).exit_code == 0, (
+            "control: this plan completes cleanly when both reads succeed")
+
+        # Keyed on the PATH, not on call order. `read_plan_items` binds `_load_plan` from
+        # `plan_decisions`, so patching the name here cannot affect the first read — but the
+        # verdicts file is loaded through this same binding, and an earlier version of this
+        # test failed the second CALL, which was the verdicts read. It then reported exit 1
+        # for the wrong reason and passed whether or not the approval fix was present.
+        real_load = vc._load_plan
+        plan_reads: list[Path] = []
+
+        def _only_the_plan_breaks(path: Path):
+            if path.name == vc.PLAN_FILE:
+                plan_reads.append(path)
+                return None, "unreadable", "ERROR"
+            return real_load(path)
+
+        monkeypatch.setattr(vc, "_load_plan", _only_the_plan_breaks)
+        result = vc.assess(plan_dir, vpath)
+        assert result.exit_code != 0, (
+            "a plan that became unreadable before its approval check reported success")
+        assert result.exit_code == 1, "the unread approval is a fault, not a failed check"
+        assert plan_reads, "the approval read never happened, so this proves nothing"
+        assert "approval" in result.message
+
+    def test_an_unreadable_plan_stays_a_fault_not_an_approval_verdict(self, tmp_path: Path) -> None:
+        # Not knowing whether a plan was approved is different from knowing it was not: the
+        # caller's own read reports it as a fault (exit 1), and this check stays out of it.
+        (tmp_path / "plan.toml").write_text("this is not toml = = =", encoding="utf-8")
+        (tmp_path / "p.md").write_text(_TWO_CRITERIA, encoding="utf-8")
+        vpath = tmp_path / "verdicts.toml"
+        vpath.write_text("", encoding="utf-8")
+        assert vc.assess(tmp_path, vpath).exit_code == 1
+
+
+class TestTheAuthorFacingTemplateMatchesTheMatchingRule:
+    """The template is where an author learns the verdicts schema, so it must not teach a
+    shape the check rejects. Review finding: the example showed `item`/`verdict`/`evidence`
+    only, while `_verdict_for` falls back to a phase-less entry *only* for text unique across
+    the plan -- and Section 8 of the same template requires every phase to carry a "no
+    unresolved variables" criterion, so repeated text is guaranteed in any multi-phase plan.
+    An author following the example exactly got INCOMPLETE for work genuinely done.
+    """
+
+    TEMPLATE = Path(__file__).resolve().parents[1] / "requirements/plan-template.md"
+
+    def _example(self) -> str:
+        text = self.TEMPLATE.read_text(encoding="utf-8")
+        marker = 'run_id = "a1b2c3d4e5f6"'
+        assert marker in text, "the verdicts example moved; this guard is reading the wrong block"
+        start = text.index(marker)
+        return text[start:text.index("```", start)]
+
+    def test_every_verdict_entry_in_the_example_names_its_phase(self) -> None:
+        example = self._example()
+        entries = example.count("[[verdicts]]")
+        assert entries >= 2, "a single-entry example cannot show why `phase` is needed"
+        assert example.count("phase = ") == entries, (
+            "an example entry omits `phase`; an author copying it writes verdicts the check "
+            "cannot attribute once any criterion text repeats across phases")
+
+    def test_the_example_shows_text_repeated_across_phases(self) -> None:
+        # The trap only appears with repeated text, so an example without it demonstrates
+        # nothing: it would pass whether or not `phase` mattered.
+        example = self._example()
+        assert example.count('item = "no unresolved variables"') >= 2, (
+            "the example must show the mandated per-phase criterion in more than one phase, "
+            "which is the case that makes `phase` load-bearing")
+        assert "phase = 1" in example, "the example never names a first phase"
+        assert "phase = 2" in example, "the example never names a second phase"
+
+    def test_the_prose_states_when_a_phase_less_entry_is_accepted(self) -> None:
+        text = self.TEMPLATE.read_text(encoding="utf-8")
+        assert "appears in exactly **one** phase" in text, (
+            "the rule `_verdict_for` applies is not stated anywhere an author will read it")
+
+
+class TestApprovalPrecedesTheVacuousPass:
+    """Review finding: both docs described the zero-criteria plan as an unconditional benign
+    exit 0, but the approval refusal is checked first, so an *unapproved* zero-criteria plan
+    exits 2. The existing vacuous-pass test only passed because the shared manifest helper is
+    already approved -- the suite was treating approval as a silent precondition.
+    """
+
+    def test_an_unapproved_plan_with_no_criteria_is_refused_not_passed(
+            self, tmp_path: Path) -> None:
+        plan_dir, vpath = _plan(tmp_path, manifest=_UNAPPROVED,
+                                phase="## Acceptance Criteria\n")
+        result = vc.assess(plan_dir, vpath)
+        assert result.exit_code == 2, "an unapproved plan reported the benign vacuous pass"
+        assert result.applicable is not False, (
+            "the refusal must not be dressed up as a not-applicable result")
+        assert "approval_status" in result.message
+
+    def test_an_approved_plan_with_no_criteria_is_still_the_benign_case(
+            self, tmp_path: Path) -> None:
+        # The other edge: the refusal must not swallow the vacuous pass it runs ahead of.
+        plan_dir, vpath = _plan(tmp_path, phase="## Acceptance Criteria\n")
+        result = vc.assess(plan_dir, vpath)
+        assert result.exit_code == 0, "the approval refusal swallowed the vacuous pass"
+        assert result.applicable is False, "the vacuous pass was not stated as not-applicable"

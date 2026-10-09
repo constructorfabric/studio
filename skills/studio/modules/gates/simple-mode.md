@@ -10,6 +10,7 @@ STATE:
 WHEN:
   REQUIRE a non-exempt cf workflow is loading
 DO:
+  RUN CommandResolution to resolve {cfs_cmd} WHEN {cfs_cmd} is unset, loading {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md first when it is not yet loaded: the option branches below record the user's answer through {cfs_cmd}, and most bootstraps reach this gate before any command has been resolved
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-simple.md WHEN SIMPLE_MODE == simple
   CONTINUE SimpleModeSimpleEntry WHEN SIMPLE_MODE == simple
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-debug.md WHEN SIMPLE_MODE == debug
@@ -29,10 +30,10 @@ TITLE: Choose interaction mode for this session — reply with a number. You can
 TYPE: confirmation
 KEY: interaction_mode
 OPTIONS:
-  1 assistant — explains each step, why it is happening, and which path is recommended -> SET SIMPLE_MODE = simple; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-simple.md; CONTINUE SimpleModeSimpleEntry
-  2 normal — run autonomously: resolve routine decisions from the approved plan and ask only where it must (suggested) -> SET SIMPLE_MODE = normal; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-autonomous.md; CONTINUE SimpleModeAutonomous
-  3 debug — debugger overlay in run mode, for workflow development only -> SET SIMPLE_MODE = debug; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-debug.md; CONTINUE SimpleModeDebug
-  4 guided — today's step-by-step behavior; every menu, gate, and stop is shown -> SET SIMPLE_MODE = guided; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-guided.md; CONTINUE SimpleModeGuided
+  1 assistant — explains each step, why it is happening, and which path is recommended -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate SimpleModeChoice --declared-type confirmation --decision-key interaction_mode --value assistant --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then SET SIMPLE_MODE = simple; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-simple.md; CONTINUE SimpleModeSimpleEntry
+  2 normal — run autonomously: resolve routine decisions from the approved plan and ask only where it must (suggested) -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate SimpleModeChoice --declared-type confirmation --decision-key interaction_mode --value normal --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then SET SIMPLE_MODE = normal; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-autonomous.md; CONTINUE SimpleModeAutonomous
+  3 debug — debugger overlay in run mode, for workflow development only -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate SimpleModeChoice --declared-type confirmation --decision-key interaction_mode --value debug --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then SET SIMPLE_MODE = debug; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-debug.md; CONTINUE SimpleModeDebug
+  4 guided — today's step-by-step behavior; every menu, gate, and stop is shown -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate SimpleModeChoice --declared-type confirmation --decision-key interaction_mode --value guided --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then SET SIMPLE_MODE = guided; LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-guided.md; CONTINUE SimpleModeGuided
   INVALID -> EMIT_MENU SimpleModeChoice
 ```
 

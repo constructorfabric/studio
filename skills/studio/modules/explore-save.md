@@ -6,6 +6,7 @@ PURPOSE: Offer orchestrator-owned persistence after the resource map is shown.
 WHEN:
   REQUIRE the synthesized resource_context has been received and summarized
 DO:
+  RUN CommandResolution to resolve {cfs_cmd} WHEN {cfs_cmd} is unset, loading {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md first when it is not yet loaded: the option branches below record the user's answer through {cfs_cmd}, and most bootstraps reach this gate before any command has been resolved
   LOAD {cf-studio-path}/.core/skills/studio/modules/explore-next-dispatch.md
   RUN ExploreSaveContextPrep
   RUN TemplateVarResolution before resolving default_save_dir
@@ -27,9 +28,9 @@ TITLE: Save this exploration bundle?
 TYPE: decision
 KEY: explore_save
 OPTIONS:
-  1 save -> WRITE the bundle to default_save_dir, then CONTINUE ExploreNextActions
-  2 folder:<path> | folder -> WRITE the bundle to the user path, then CONTINUE ExploreNextActions
-  3 skip -> write nothing, then CONTINUE ExploreNextActions
-  4 cancel -> write nothing, then CONTINUE ExploreNextActions
+  1 save -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate ExploreSaveMenu --declared-type decision --decision-key explore_save --value save --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then WRITE the bundle to default_save_dir, then CONTINUE ExploreNextActions
+  2 folder:<path> | folder -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate ExploreSaveMenu --declared-type decision --decision-key explore_save --value folder --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then WRITE the bundle to the user path, then CONTINUE ExploreNextActions
+  3 skip -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate ExploreSaveMenu --declared-type decision --decision-key explore_save --value skip --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then write nothing, then CONTINUE ExploreNextActions
+  4 cancel -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate ExploreSaveMenu --declared-type decision --decision-key explore_save --value cancel --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then write nothing, then CONTINUE ExploreNextActions
   INVALID -> EMIT "Reply with 1-4, save, skip, or folder: <path> (e.g., folder: /tmp/explore)." and EMIT_MENU ExploreSaveMenu
 ```

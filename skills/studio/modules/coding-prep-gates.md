@@ -6,6 +6,7 @@ PURPOSE: Offer task-relevant context discovery before any code is authored or re
 WHEN:
   REQUIRE ORIGINAL_INTENT != unset
 DO:
+  RUN CommandResolution to resolve {cfs_cmd} WHEN {cfs_cmd} is unset, loading {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md first when it is not yet loaded: the option branches below record the user's answer through {cfs_cmd}, and most bootstraps reach this gate before any command has been resolved
   SET WORKFLOW_PREP_EXPLORE_MENU = CodingExploreMenu
   SET WORKFLOW_PREP_BRAINSTORM_GATE = CodingBrainstormGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/workflow-prep.md
@@ -17,8 +18,8 @@ TITLE: Before writing or reviewing code, discover task-relevant project context 
 TYPE: confirmation
 KEY: coding_exploration
 OPTIONS:
-  1 explore -> INVOKE skill `cf-explore` with intent=workflow-prep, task=ORIGINAL_INTENT, return_context=true; require it to return resource_context only and not perform review/authoring, SET RESOURCE_CONTEXT = provided, then CONTINUE CodingBrainstormGate
-  2 skip -> CONTINUE CodingBrainstormGate
+  1 explore -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate CodingExploreMenu --declared-type confirmation --decision-key coding_exploration --value explore --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then INVOKE skill `cf-explore` with intent=workflow-prep, task=ORIGINAL_INTENT, return_context=true; require it to return resource_context only and not perform review/authoring, SET RESOURCE_CONTEXT = provided, then CONTINUE CodingBrainstormGate
+  2 skip -> RUN `{cfs_cmd} gate-log --kind exception-asked --gate CodingExploreMenu --declared-type confirmation --decision-key coding_exploration --value skip --status resolved --why <why the plan did not answer it>` WHEN this gate was emitted and the user chose this option, then CONTINUE CodingBrainstormGate
   INVALID -> EMIT_MENU CodingExploreMenu
 ```
 
