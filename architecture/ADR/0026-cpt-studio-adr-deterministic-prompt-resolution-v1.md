@@ -49,8 +49,8 @@ decision-makers: project maintainer
 Public skills obtain their instructions by opening prompt files one at a time and
 re-deriving variables themselves. Each skill follows `LOAD` directives, decides
 which guarded branches apply, and rebuilds the same context on every run. The
-work is repeated, it is not reproducible (two runs can load different files for
-the same inputs), and nothing records which instructions a run actually saw.
+work is repeated, it is not reproducible (observation, unmeasured: two runs can
+load different files for the same inputs), and nothing records which instructions a run actually saw.
 Issue #310 (https://github.com/constructorfabric/studio/issues/310) asks for `cfs prompts get|list|search|help|explain`, a resolver that
 returns fully resolved instructions in one call.
 
@@ -88,9 +88,9 @@ In priority order:
    supplied, and a later synthesis step can cite them.
 3. The Shared Context Pack must stay consistent: the controller keeps the final
    say over a dispatch prompt.
-4. Token savings must survive: as many guarded `LOAD` lines as possible must
-   resolve without model involvement. The measured 82.5% is a ceiling, not a
-   forecast (see Evidence).
+4. As many guarded `LOAD` lines as possible must resolve without model
+   involvement (a line-share goal; no token measurement exists, open question 2).
+   The 82.5% ceiling is not a forecast (see Evidence for its population).
 5. A resolver that reads from disk must not be steerable outside the core or kit
    root.
 6. The change must be adoptable in stages, in the order set by the review.
@@ -138,12 +138,17 @@ flowchart LR
 boundary (`scp_boundary`). The other 13 keys are constraints that make that
 boundary implementable (shape of the bundle, ID scheme, guard evaluation, error
 handling, kit handling, confinement). They are kept in one record because they
-are interdependent (for example, the digest depends on the guard grammar through
-bundle ordering) and a reviewer needs to judge them together. Proposal, open to
-reviewer change at PR review: the implementation-level keys (for example
-`digest_definition`, `guard_grammar`, `output_convention`, `asset_scope`) may be
-split into a separate record or moved to the spec. No decision is removed by this
-proposal.
+constrain one another: the digest, the deferred branches and the callers cannot
+be accepted separately from the boundary (for example, the digest depends on the
+guard grammar through bundle ordering).
+
+Waiver request (PROPOSAL): the ADR rules ask for one decision per record and to
+skip implementation-detail decisions. This record REQUESTS a maintainer waiver of
+that rule; no waiver has been granted. If it is not granted, the proposed split
+is: ADR A = `scp_boundary`, `bundle_vs_pack`, `get_callers`, `decision_record`,
+`digest_definition`, `guard_grammar`, `unknown_state_rule`; ADR B =
+`core_prompt_ids`, `core_layer`, `kit_registration`, `kit_source_of_truth`,
+`output_convention`, `asset_scope`, `path_confinement`.
 
 The 14 decisions follow. Each is keyed as in the #310 discussion. This ADR is the self-contained record
 of the decisions and restates every one of them; the discussion is summarized in
@@ -242,7 +247,7 @@ The resolver prepends core as an implicit bottom layer and reuses
 ### guard_grammar
 
 **Proposed amendment, pending maintainer confirmation.** This decision amends the
-#310 discussion, using measurements taken on 2026-10-07 and re-measured on
+#310 discussion, using measurements taken on 2026-10-07 and repeated on
 2026-10-08 (see Evidence). The #310 discussion evaluated only a typed subset
 (`state_var ==/!= literal` with AND/OR/NOT) and treated everything else as free
 text. The measurements show that subset alone defers most guarded loads, so the
@@ -265,14 +270,17 @@ Two requirements apply:
   text and deferred.
 
 Resolution ceiling: 99 of 120 guarded loads (82.5%) if all 71 membership guards
-resolve; the range is 0 to 99 of 120 (0% to 82.5%). The ceiling of 99 requires ALL 28
+resolve; the range is 0 to 99 of 120 (0% to 82.5%). The population is the guarded
+loads counted in `skills/` and `workflows/` (the entrypoint population); files
+reached only through the wider closure (e.g. under `requirements/` or
+`architecture/specs/`) were not measured. The ceiling of 99 requires ALL 28
 typed guards AND ALL 71 membership guards to resolve; the floor is 0 (no state
 supplied and no unit mapping). 21 defer in every case. The static
 pre-check remains a required test: it snapshots the three class counts across the
 scanned tree so a change in the ratio is visible in CI.
 
-- Rationale: a typed-only grammar would defer 92 of 120 (76.7%) and undo most of
-  the token savings. Class (b) is cheap to evaluate against the bundle because
+- Rationale: a typed-only grammar would defer 92 of 120 (76.7%) and leave a
+  much smaller resolvable line share. Class (b) is cheap to evaluate against the bundle because
   the bundle knows which assets it holds, subject to the unit-to-asset mapping.
 - Consequence: a bundle's contents depend on the order in which assets are added
   (membership is evaluated against assets already present), so ordering must be
@@ -287,7 +295,9 @@ Only `LOAD`s can be deferred or omitted; `RULES` and gates are always inlined.
 
 - Exit codes follow `architecture/specs/cli.md`: invalid or missing arguments
   detected by the command are exit 1; an unknown prompt ID ("item not found") is
-  exit 2; an argument the parser itself rejects is exit 2 with nothing on stdout.
+  exit 2; an argument the parser itself rejects is exit 2 with nothing on stdout
+  (this holds if `cfs prompts` uses argparse like the query commands in cli.md;
+  adding `prompts` to cli.md is part of the stage-two change).
   This corrects the earlier #310 wording, which gave exit 2 for a
   missing required arg.
 - Rationale: failing closed on missing input prevents a bundle that looks
@@ -321,8 +331,8 @@ moves to the persisted inventory when #428/#429 ship
 
 ### output_convention
 
-JSON on stdout for all five subcommands; the standard
-`{"status":"ERROR",...}` shape; no human mode for now. Exit codes follow
+JSON on stdout for all five subcommands; the per-command
+`{"status":"ERROR","message":...}` shape used in cli.md; no human mode for now. Exit codes follow
 `architecture/specs/cli.md` ("Exit Codes" and the per-command **Exit** lines):
 
 - 0: success, item found.
@@ -340,15 +350,13 @@ This corrects the earlier #310 wording on exit codes.
 
 Entrypoints are `skills/` and `workflows/`. Assets are the transitive `LOAD`
 closure, including `requirements/` and `architecture/specs` targets. The
-resolver has its own configurable scan roots. Gate behaviour and `gate_surface`'s
-own scan roots are unchanged.
+resolver has its own configurable scan roots. Gate behaviour and its scan roots
+are unchanged.
 
 - Rationale: the closure is what a skill would otherwise open by hand. Leaving
   gate behaviour and its scan roots alone avoids coupling a gate to a new
   consumer.
-- Consequence: the module that holds the `LOAD` scan may be refactored to expose
-  its parsing primitives under public names; that refactor is stage-two
-  implementation work and does not change gate behaviour.
+- Consequence: the resolver's scan scope can differ from the gates' scan scope.
 
 ### path_confinement
 
@@ -369,9 +377,10 @@ for this check.
 
 - Good, because skills obtain resolved instructions in one call, and a run can
   state the digest of the instructions it used.
-- Good, because up to 82.5% of guarded loads (a ceiling that requires all 28
-  typed and all 71 membership guards to resolve; the floor is 0%) can resolve without the model, preserving the token
-  savings the feature exists for.
+- Good, because up to 82.5% of the guarded loads counted in `skills/` and
+  `workflows/` (a ceiling that requires all 28 typed and all 71 membership guards
+  to resolve; the floor is 0%) can resolve without the model. This is a line
+  share; no token measurement exists (open question 2).
 - Good, because the path-escape risk is closed for `LOAD` edges before any disk
   read exists.
 - Bad, because at least 21 guarded loads still defer to the controller, so the
@@ -383,7 +392,8 @@ for this check.
   confinement in phase 1.
 - Risk: the dedupe class (b) makes bundle content order-dependent. Mitigation:
   deterministic ordering, with order captured in the digest.
-- Risk: the 82.5% ceiling is a point-in-time measurement from one regex pass.
+- Risk: the 82.5% ceiling is a point-in-time measurement from one regex pass over
+  the entrypoint population only.
   Mitigation: the static pre-check snapshots guard classes in CI.
 - Risk: a stale cache hash (size and mtime unchanged but content changed) would
   yield a wrong digest. Mitigation: the fast path only skips re-reading when size
@@ -398,7 +408,9 @@ for this check.
   snapshot of the three class counts (typed, loaded-set, free-text) and fails if
   a count differs from the snapshot or if a guard fails to parse.
 - A test covers path confinement, including the `..` example in Evidence item 1
-  and a symlink inside the root that points outside it (must fail).
+  and a symlink inside the root that points outside it (must fail), and the
+  prefix case: a sibling directory whose name starts with the root's name (for
+  example `root-evil` next to `root`) must fail.
 - Tests pin the digest inputs: the same inputs produce the same digest, and a
   change to any listed input changes it. A CRLF-versus-LF test checks that the
   same content with CRLF and with LF line endings gives the same per-asset hash
@@ -428,8 +440,9 @@ large share of guards without a typed-only grammar, up to a ceiling).
 ### Keep model-driven loading
 
 - Good, because nothing changes and no new surface needs maintenance.
-- Neutral, because the guard classes above show the model is currently doing
-  mostly mechanical work (dedupe checks and state comparisons).
+- Neutral, because the guard classes above suggest the model is doing
+  mechanical work (dedupe checks and state comparisons); this is an observation,
+  unmeasured.
 - Bad, because the same files are re-opened and the same variables re-derived on
   every run.
 - Bad, because there is no record of which instructions a run saw, and no
@@ -445,9 +458,12 @@ large share of guards without a typed-only grammar, up to a ceiling).
 - Neutral, because the 21 free-text guards would need a policy (defer or drop)
   in any design; a compiler has no model to interpret them.
 - Bad, and decisive, because the controller loses the ability to tailor the
-  dispatch to task state, and the spec reversal is larger: it contradicts the
-  non-goal and `FinalPromptSynthesis`, and the reversal touches the lifecycle
-  statements in the spec, not just one rule.
+  dispatch to task state. The rejection rests mainly on this loss, not on the
+  size of the spec change.
+- Spec impact (same lines as the chosen option, see the follow-up): this option
+  would replace the non-goal, the `FinalPromptSynthesis` rule and the two
+  lifecycle statements outright (the controller no longer synthesizes); the chosen
+  option narrows the same four lines.
 
 ### Two-stage design (chosen)
 
@@ -464,10 +480,12 @@ large share of guards without a typed-only grammar, up to a ceiling).
 
 ## Evidence
 
-Measured on 2026-10-07 and re-measured by the controller on 2026-10-08 on the
-source tree (`skills/` and `workflows/`).
+Measured on 2026-10-07 and repeated on 2026-10-08, on the tree of upstream/main
+commit 797cb625 (2026-10-08), over `skills/` and `workflows/`. The figures below
+are the entrypoint population; files reached only through the wider closure (e.g.
+under `requirements/` or `architecture/specs/`) were not measured.
 
-Method: for each file, the text inside `pdsl` code fences was scanned with
+Method (stated once, for all figures): for each file, the text inside `pdsl` code fences was scanned with
 the `LOAD_TARGET` regex. A guarded `LOAD` is a `LOAD` line that contains `WHEN`.
 Guarded lines were classified by a regex heuristic into three classes: typed
 state comparison (`VAR ==/!= literal`, alone or combined with AND/OR/NOT),
@@ -479,7 +497,7 @@ counted.
 
 1. **Path traversal.** The `LOAD_TARGET` regex class `[\w./-]+` captures `..`
    segments: `LOAD {cf-studio-path}/.core/../../etc/x.md` yields
-   `../../etc/x.md`. `gate_surface` is safe because the captured target is only
+   `../../etc/x.md`. The existing use is safe because the captured target is only
    used as an in-memory dictionary key. A resolver that reads the target from
    disk is not safe, hence `path_confinement`.
 2. **`LOAD` volume.** 266 files were scanned; 165 of them contain at least one
@@ -490,10 +508,10 @@ counted.
 3. **Guard classes of the 120 guarded loads.** 28 typed state comparisons
    (`VAR ==/!= literal`, with AND/OR/NOT); 71 "<Unit> is not yet loaded"
    idempotence guards; 21 other (free text). This split comes from a regex
-   heuristic in one pass and is not independently confirmed. A typed-only grammar
+   heuristic in one pass; no hand-checked sample confirmed the 28/71/21 split. A typed-only grammar
    would defer 92 of 120 (76.7%). With the proposed grammar, 99 of 120 (82.5%)
    resolve if ALL 28 typed guards and ALL 71 membership guards resolve, and 21
-   defer. 82.5% is a ceiling, and the range is 0 to 99 of 120 (0% to 82.5%): it
+   defer. 82.5% is a ceiling for the entrypoint population, and the range is 0 to 99 of 120 (0% to 82.5%): it
    assumes the guard state values are known at resolve time, and which of the 28
    typed guards can be satisfied by `--arg key=value` is not yet measured.
 
@@ -507,9 +525,10 @@ A separate change amends `architecture/specs/shared-context-pack.md`. It will:
 - change the non-goal ("forcing a deterministic slot-filling compiler for
   final prompt assembly", as of the current spec at line 49), and the matching
   `NEVER require deterministic slot-filling semantics` rule in
-  `FinalPromptSynthesis`, from forbidding any deterministic assembly to "no deterministic
-  assembly of the final dispatch prompt; deterministic resolution of prompt
-  assets into a bundle is in scope";
+  `FinalPromptSynthesis`, by keeping the spec's "do not require" phrasing and ADDING that
+  deterministic resolution of prompt assets into a bundle is in scope (no
+  strengthening to "forbid"; any text in this record saying otherwise is
+  superseded by this line);
 - reconcile the bundle `etag` (content hash) with the spec's `etag` form
   `sha256(path:size:mtime-or-content)` and decide which spec asset fields
   (asset_type, path, title, tags, body) a bundle entry carries;
@@ -540,15 +559,30 @@ Stage order, as set in the maintainer review of 2026-10-06 on issue #310:
 
 Checklist domains not addressed elsewhere in this record:
 
-- PERF: N/A beyond token savings; no runtime performance requirement is set. The
+- SEC: handled by `path_confinement`. Residual risks, PROPOSALS open to
+  maintainer review: (1) check-then-read race between canonicalization and read
+  (mitigation: read through the resolved path, never re-resolve); (2) path-prefix
+  comparison (use a separator-aware containment test on resolved paths, and a
+  case-aware comparison on case-insensitive filesystems); (3) kit-supplied prompt
+  content flows into controller prompts (kit content is untrusted input; the
+  resolver does not sanitize or interpret it, and the bundle's provenance names
+  the contributing kit); (4) `--arg` values are substituted into prompts and enter
+  the digest (values are treated as data; only declared variables are
+  substituted).
+- INT: a new CLI contract and JSON output (`output_convention`); a spec
+  amendment; five existing consumers of `prompt_context_view` (see Traceability);
+  skills migrate in stage three.
+- PERF: N/A; no runtime performance requirement is set. The
   resolver is a local file scan (unverified: no timing measurement was taken).
 - REL: N/A; the resolver keeps no durable state of record (an optional cache that
   is safe to delete) and fails closed on bad input (`unknown_state_rule`).
 - DATA: N/A; no durable data store is added (the optional per-project cache is
   safe to delete and is never part of the digest).
-- OPS: N/A; no deployment or runtime operation changes.
+- OPS: no deployment change; a CI pre-check and a lint rule are added in later
+  stages.
 - COMPL: N/A; no compliance requirement applies.
-- UX: N/A; the callers are skills and controllers (`output_convention`).
+- UX: skill authors are affected by the stage-three migration; end-user UX is
+  unchanged (the callers are skills and controllers, `output_convention`).
 - BIZ: N/A; internal tooling.
 - MAINT: handled by reuse of existing primitives (driver 7) and by the
   single-lookup-function rule for kits; the maintenance cost is the new CLI
@@ -558,9 +592,11 @@ Checklist domains not addressed elsewhere in this record:
 Supersession: this record supersedes no earlier ADR, and no earlier ADR is
 superseded by it.
 
-Review triggers: revisit this record if (a) the guard-resolvable ratio drops
-below an agreed figure (the figure is to be set at PR review); (b) the spec
-amendment is rejected; (c) the overlay-kit registration model changes.
+Review triggers (PROPOSAL): revisit this record if (a) the resolvable share of
+guarded loads measured on the implementation falls below 50% (provisional figure,
+to be confirmed at review); (b) the spec amendment is rejected; (c) the
+overlay-kit registration model changes. First scheduled review: when the
+stage-two PR is opened.
 
 Assumptions: the 2026-10-08 measurements describe the tree as it will be when the
 resolver ships; ADR-0025 (overlay kits) lands in roughly its planned shape; kit
@@ -568,17 +604,18 @@ authors are not fully trusted for `LOAD` targets.
 
 ## Open Questions
 
+Owner for every question (PROPOSED): issue #310 assignee until reassigned; to be
+decided before the stage-two (core resolver) PR is opened.
+
 1. **Lint definition.** What counts as a "direct prompt read" when skills use
-   `LOAD` directives themselves? Owner or milestone: to be assigned at PR review.
+   `LOAD` directives themselves?
 2. **Measurement baseline.** `decision_log.record_read()` has no production
-   callers, so no "before" exists to measure savings against. Owner or
-   milestone: to be assigned at PR review.
+   callers, so no "before" exists to measure savings against.
 3. **Extension slots.** The slot syntax, and the project-level opt-in trust
-   contract for core extensions. Owner or milestone: delivery stage 5; owner to
-   be assigned at PR review.
-4. **Output schema.** The exact JSON output schema for `get`. Owner or
-   milestone: delivery stage 2; owner to be assigned at PR review. The stdout
-   shape for the unknown-prompt-ID (exit 2) and error cases is also undecided.
+   contract for core extensions (milestone: delivery stage 5).
+4. **Output schema.** The exact JSON output schema for `get` (milestone: delivery
+   stage 2). The stdout shape for the unknown-prompt-ID (exit 2) and error cases
+   is also undecided.
 5. **Controller synthesis.** Is the controller required to produce a synthesized
    prompt, or may the bundle be dispatched as is?
 6. **Unit-less form.** What is the outcome of the bare unit-less "WHEN not yet
@@ -610,14 +647,18 @@ authors are not fully trusted for `LOAD` targets.
 - Related, planned: ADR-0025 (overlay kits, issue #427). Renumbering rule: the
   number changes only if another record takes 0026; then only the title and
   filename change, because the `**ID**` line has no number.
-- The `LOAD` scan primitives live in `gate_surface.py` under
-  `skills/studio/scripts/studio/utils/`; the implementation notes belong in the
-  stage-two change, not here.
 - The rules.md p1-p9 marker is omitted from the ID line to match ADR-0023 and
   ADR-0024.
 
 ## Traceability
 
+- **Design**: [DESIGN.md](../DESIGN.md) — two entries were added there for this
+  decision.
+- **Issues**: [#310](https://github.com/constructorfabric/studio/issues/310)
+  (the resolver request); [#427](https://github.com/constructorfabric/studio/issues/427)
+  (overlay kits); [#428](https://github.com/constructorfabric/studio/issues/428)
+  and [#429](https://github.com/constructorfabric/studio/issues/429) (persisted
+  kit inventory).
 - **Spec amended by follow-up**: [shared-context-pack.md](../specs/shared-context-pack.md)
   — gains the two-stage boundary and `prompt_context_view`; its leaf boundary is
   unchanged.
