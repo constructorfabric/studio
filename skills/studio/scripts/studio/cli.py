@@ -165,6 +165,11 @@ def _cmd_run_start(argv: List[str]) -> int:
     from .commands.run_start import cmd_run_start
     return cmd_run_start(argv)
 
+
+def _cmd_verify_subagent_work(argv: List[str]) -> int:
+    from .commands.verify_subagent_work import cmd_verify_subagent_work
+    return cmd_verify_subagent_work(argv)
+
 def _cmd_run_summary(argv: List[str]) -> int:
     from .commands.run_summary import cmd_run_summary
     return cmd_run_summary(argv)
@@ -282,6 +287,7 @@ _COMMAND_DESCRIPTIONS = {
     "spec-coverage": "Measure CDSL marker coverage in code",
     "declared-stops": "Fail when a workflow declares more stops than its baseline",
     "run-start": "Begin a run: write the shared run-correlation id every command of the run scopes to",
+    "verify-subagent-work": "Check a dispatched sub-agent's work against the tree, not its report",
     "verify-completion": "Verify a run against its plan before it may report success",
     "run-summary": "Project a run's close into four headings (defaults, rulings, open questions, completed actions)",
     "check-language": "Check artifacts for disallowed Unicode scripts (LANG001)",
@@ -322,7 +328,8 @@ _COMMAND_DESCRIPTIONS = {
 _COMMAND_SECTIONS = [
     ("Setup & Configuration", ["init", "update", "info", "resolve-vars", "generate-agents", "agents"]),
     ("Validation", ["validate", "validate-kits", "validate-toc", "spec-coverage",
-                    "declared-stops", "run-start", "verify-completion", "run-summary",
+                    "declared-stops", "run-start", "verify-completion", "verify-subagent-work",
+                    "run-summary",
                     "check-language"]),
     ("Search & Navigation", ["list-ids", "list-id-kinds", "get-content", "where-defined", "where-used"]),
     ("Kit Management", ["kit"]),
@@ -362,6 +369,7 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "spec-coverage": "_cmd_spec_coverage",
     "declared-stops": "_cmd_declared_stops",
     "run-start": "_cmd_run_start",
+    "verify-subagent-work": "_cmd_verify_subagent_work",
     "verify-completion": "_cmd_verify_completion",
     "run-summary": "_cmd_run_summary",
     "chunk-input": "_cmd_chunk_input",
@@ -409,6 +417,7 @@ _COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
     _cmd_declared_stops,
     _cmd_verify_completion,
     _cmd_run_start,
+    _cmd_verify_subagent_work,
     _cmd_run_summary,
     _cmd_chunk_input,
     _cmd_doc_index,

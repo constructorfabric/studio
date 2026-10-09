@@ -45,7 +45,6 @@ to be declared, and re-resolving it here would duplicate that gate for cosmetic 
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import sys
 import threading
@@ -56,7 +55,7 @@ from pathlib import Path
 from typing import Any, Container, Dict, List, Optional, Tuple
 
 from . import codebase
-from . import decision_log
+from . import decision_log, git_read
 from . import document
 from . import error_codes as EC
 
@@ -107,70 +106,10 @@ _LOG_GIT_STREAM_FAILED = "change-summary git query stream failed: %s"
 #: The second **changes what git reports about the right repository**, and is described
 #: at the group below. Every variable here is cleared, so the answer describes the
 #: project the caller named, in the state that project is actually in.
-_GIT_REDIRECT_VARS = (
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_COMMON_DIR",
-    "GIT_CEILING_DIRECTORIES",
-    # Widens the upward search instead of narrowing it: with this set, discovery crosses
-    # a mount boundary and can settle on an ancestor repository on another filesystem
-    # rather than stopping at the requested project's own. Cleared for symmetry with
-    # ``GIT_CEILING_DIRECTORIES`` above — leaving the variable that widens the walk while
-    # clearing the one that restricts it would make the search depend on the ambient
-    # environment in exactly the direction that hurts.
-    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
-    # The second mechanism: git also takes *configuration* from the environment, and
-    # config reaches these queries even though it cannot redirect discovery. Measured —
-    # with `core.excludesFile` injected through any of the three below,
-    # `ls-files --others --exclude-standard` returned **nothing** for a repository whose
-    # untracked file it otherwise lists. That is the silent omission this module exists
-    # to prevent, arriving through the environment rather than through the code, so the
-    # digest would have called a brand-new file absent while reporting itself complete.
-    #
-    # `core.worktree` is *not* the vector it first appears to be: injected this way it
-    # is set (``git config core.worktree`` echoes it back) but ignored for discovery, so
-    # `--show-toplevel` and the listings stay with the directory git was pointed at. It
-    # only redirects once `GIT_DIR` is also set — verified, and that is cleared above,
-    # which is what makes the two groups here complementary rather than overlapping.
-    "GIT_CONFIG_PARAMETERS",
-    # Gates the indexed `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` pairs: verified that
-    # without a count git ignores them entirely, so clearing the count clears the family
-    # and no unbounded scan for indices is needed.
-    "GIT_CONFIG_COUNT",
-    "GIT_CONFIG_GLOBAL",
-    "GIT_CONFIG_SYSTEM",
-    # Toggles whether system config participates at all, so it changes the answer in the
-    # opposite direction to the two above — and directly reverses them. Measured:
-    # `GIT_CONFIG_SYSTEM=<file setting core.excludesFile>` emptied the untracked sweep,
-    # and adding `GIT_CONFIG_NOSYSTEM=1` brought the file back. Left inherited, an
-    # ambient value would decide whether the machine's real ``/etc/gitconfig`` is
-    # consulted, which is the same ambient dependence as the rest of this tuple.
-    #
-    # With this, the set is the whole documented config surface — `git help config`
-    # lists exactly ``GIT_CONFIG_COUNT``, ``GIT_CONFIG_KEY_n``, ``GIT_CONFIG_VALUE_n``,
-    # ``GIT_CONFIG_GLOBAL``, ``GIT_CONFIG_SYSTEM`` and ``GIT_CONFIG_NOSYSTEM``, plus the
-    # undocumented ``GIT_CONFIG_PARAMETERS`` above, which was verified by measurement.
-    "GIT_CONFIG_NOSYSTEM",
-    # A ref *namespace*, and the honest note is that it changes **nothing these queries
-    # answer**. Measured against every command above -- `rev-parse --is-inside-work-tree`,
-    # `--absolute-git-dir`, `--verify HEAD`, `symbolic-ref --short HEAD`, and plain ref
-    # lookups -- and the output is identical with and without it. `GIT_NAMESPACE` is a
-    # ref-advertisement mechanism: it bites `fetch`, `ls-remote` and the pack protocols,
-    # not local resolution.
-    #
-    # It is here because it is one of git's redirection variables and this tuple is the
-    # place they are removed, so the shared list holds the union rather than the larger of
-    # two partial lists -- the reversal fixtures were sanitising it locally and adopting
-    # this tuple dropped it. Not because it affects the queries below; an earlier version
-    # of this comment claimed it did, which was written without measuring.
-    #
-    # Where it *would* bite is `git_utils._run_git`, which runs `fetch` and passes no
-    # sanitised environment at all. That is a separate exposure this tuple does not reach.
-    "GIT_NAMESPACE",
-)
+#: The variables git must not be allowed to redirect through. Defined once in
+#: `git_read`, which every git reader in this package shares; aliased here because
+#: this module and its tests have always named it this way.
+_GIT_REDIRECT_VARS = git_read.REDIRECT_VARS
 
 #: Refs tried in order when the caller names no base.
 #:
@@ -315,55 +254,28 @@ class EventSelection:
 # @cpt-begin:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-query
 def _git_env() -> Dict[str, str]:
     """The ambient environment with git's repository-redirecting variables removed."""
-    env = dict(os.environ)
-    for name in _GIT_REDIRECT_VARS:
-        env.pop(name, None)
-    return env
+    return git_read.env()
 
 
 def _git_query(project_root: Path, args: List[str]) -> Tuple[Optional[str], bool]:
     """Run a read-only git query, returning ``(first line or None, tool_failed)``.
 
-    The two halves of "no answer" are kept apart, because conflating them lets a
-    transient tool failure be reported as a conclusion about history — "no merge base"
-    when git simply timed out.
+    The invocation and its hardening live in :mod:`studio.utils.git_read`, which the
+    sub-agent work check also uses -- one place for the timeout, the redirect-variable
+    stripping and the decode, rather than two that can drift apart. The two halves of "no
+    answer" it keeps apart matter here too: a transient tool failure must never be reported
+    as a conclusion about history -- "no merge base" when git simply timed out.
 
-    * **Tool failure** is git not launching, or timing out. Nothing was learned.
-    * **A non-zero exit is a valid negative**, not a failure: ``merge-base`` exits 1
-      when two histories genuinely have no common ancestor, and
-      ``rev-parse --verify --quiet`` exits 1 when a ref genuinely does not exist. Those
-      are answers, and treating them as breakage would be just as misleading in the
-      other direction.
+    This module wants the **first line**; the shared reader returns what git wrote.
 
     Never raises.
     """
-    try:
-        result = subprocess.run(
-            ["git"] + args,
-            cwd=str(project_root),
-            env=_git_env(),
-            capture_output=True,
-            text=True,
-            # Git refs and paths are bytes and need not be UTF-8, so `text=True`'s
-            # strict default would raise UnicodeDecodeError past the handler below and
-            # break the never-raises contract. The filesystem codec is the one Python
-            # uses for paths, so a value round-trips to the same bytes -- and every
-            # reader in this module decodes with it, so one path is one string.
-            encoding=_PATH_ENCODING,
-            errors=_PATH_ERRORS,
-            timeout=_GIT_TIMEOUT,
-            check=False,
-        )
-    except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
-        # Warning, not debug: git not launching is an environment fault an operator
-        # should see, unlike the routine non-zero exit below.
-        logger.warning(_LOG_GIT_FAILED, type(exc).__name__)
-        return None, True
-    if result.returncode:
-        logger.debug(_LOG_GIT_EXITED, result.returncode)
-        return None, False
-    line = result.stdout.strip().splitlines()
-    return (line[0].strip() if line else None), False
+    out, failed = git_read.query(project_root, args,
+                                 failed_log=_LOG_GIT_FAILED, exited_log=_LOG_GIT_EXITED)
+    if failed or out is None:
+        return None, failed
+    lines = out.strip().splitlines()
+    return (lines[0].strip() if lines else None), False
 # @cpt-end:cpt-studio-algo-developer-experience-change-summary:p1:inst-change-summary-git-query
 
 

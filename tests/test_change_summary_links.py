@@ -649,11 +649,20 @@ class TestTheListingIsAboutTheProjectNamedAndNothingElse:
         """Structural: a new call site that forgets `env=_git_env()` fails here rather
         than in review — which is how the record query slipped through the first time."""
         import inspect
+        from studio.utils import git_read
+
         source = inspect.getsource(cs)
-        launches = source.count("subprocess.run(") + source.count("subprocess.Popen(")
+        # The single-line reader's launch now lives in `git_read`, shared with the
+        # sub-agent work check so the hardening has one home. The guard still has to
+        # cover every launch, so it counts across both modules rather than dropping
+        # the one that moved -- a weaker count here is how a forgotten call site gets in.
+        shared = inspect.getsource(git_read)
+        launches = (source.count("subprocess.run(") + source.count("subprocess.Popen(")
+                    + shared.count("subprocess.run(") + shared.count("subprocess.Popen("))
+        sanitised = source.count("env=_git_env()") + shared.count("env=env()")
 
         assert launches >= 3
-        assert source.count("env=_git_env()") == launches, "every launch, not most of them"
+        assert sanitised == launches, "every launch, not most of them"
         # And no reader of a *path* may use `text=True`, which switches on universal
         # newlines as well as decoding and so translated CR inside a filename. Only
         # `_git_query` may, because it reads refs, shas and timestamps -- values git
@@ -662,7 +671,11 @@ class TestTheListingIsAboutTheProjectNamedAndNothingElse:
         # Counted with the trailing comma, which is the keyword-argument form: the
         # comments here discuss `text=True` several times, and a bare substring count
         # measured the prose as well as the code.
-        assert source.count("text=True,") == 1, "only the single-line reader may translate"
+        # The single-line reader moved to `git_read`, so the count follows it. Still exactly
+        # one across both modules: it reads refs, shas and timestamps, values git itself
+        # forbids a control character in. Every path reader decodes raw slices instead.
+        assert source.count("text=True,") + shared.count("text=True,") == 1, (
+            "only the single-line reader may translate")
         assert source.count(".decode(_PATH_ENCODING, _PATH_ERRORS)") == 2, (
             "the captured record reader and the streamed one, each decoding for itself"
         )

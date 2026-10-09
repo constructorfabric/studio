@@ -35,6 +35,7 @@
   - [Decision Log](#decision-log)
   - [Assert an Armed Reversal](#assert-an-armed-reversal)
   - [The Gate Chain](#the-gate-chain)
+  - [Ask Git a Read-Only Question](#ask-git-a-read-only-question)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Project Installation State](#project-installation-state)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -794,6 +795,20 @@ Enables users to install Studio globally, initialize it in any project with sens
 12. [x] - `p1` - Parse a TOML file bounded and non-raising to the caller — `{}` on any OS or decode error — so a missing or malformed plan declares nothing rather than crashing the safety path - `inst-scope-toml`
 13. [x] - `p1` - Find a phase's `[phase]` frontmatter by a **linear** scan of fenced blocks — no backtracking regex over author-controlled text — taking the first fence that actually declares a `[phase]` table, so an example or `pdsl` fence ahead of the real frontmatter does not mis-declare a phase's outputs - `inst-scope-fences`
 14. [x] - `p1` - Normalise a path to one canonical form before comparing a written file against a declared one — stripped, forward-slashed, `.`/`..` and duplicate slashes collapsed — while **preserving case**, since two paths differing only in case are two files on the platforms this must be safe on and folding them would clear an undeclared write - `inst-filter-normalize`
+
+### Ask Git a Read-Only Question
+
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-git-read`
+
+**Input**: A project root and the git arguments to run
+
+**Output**: What git wrote, or nothing — paired with whether the **tool** failed, kept apart from a valid negative
+
+**Steps**:
+1. [x] - `p1` - Fix the read's limits as named constants, shared by every git reader in the package so they cannot drift apart: the per-query timeout, so a hung repository cannot hang a command; the variables git must not be allowed to redirect through, so two reads of "the same tree" cannot silently read two trees — including the config interfaces by name, since git gained the indexed form after `GIT_DIR` and a behavioural check alone would pass a future one only by accident, and the variable that *widens* the upward search as well as the one that narrows it, because clearing only the narrowing one would make discovery depend on the ambient environment in the direction that hurts; and the filesystem codec, because refs and paths are bytes and need not be UTF-8, so a strict decode would raise where this must not - `inst-git-read-limits`
+2. [x] - `p1` - Build the child environment by removing exactly those variables from the ambient one, leaving everything else untouched: the caller's git configuration is theirs, and only the redirection is the hazard - `inst-git-read-env`
+3. [x] - `p1` - Run the query with those limits and that environment, **never raising**, returning what git wrote paired with whether the tool failed. Keep the two halves of "no answer" apart, because conflating them lets a transient tool failure be reported as a conclusion about history — "no merge base" when git simply timed out. Git not launching, timing out, or writing undecodable bytes is a **tool failure** from which nothing was learned; a **non-zero exit is a valid negative**, since `merge-base` exits 1 when two histories genuinely have no common ancestor and `rev-parse` exits non-zero outside a repository, and treating those as breakage would mislead just as badly in the other direction. Each caller supplies its own log lines: the hardening is shared, the voice is not — a line naming which command degraded tells an operator more than a generic one from a shared helper. Interpret nothing; a caller wanting the first line takes the first line - `inst-git-read-query`
+
 
 ## 4. States (CDSL)
 

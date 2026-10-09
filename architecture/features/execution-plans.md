@@ -25,6 +25,7 @@
   - [Read a Run's Outstanding Open Questions](#read-a-runs-outstanding-open-questions)
   - [Verify a Run Against Its Plan Before Completion](#verify-a-run-against-its-plan-before-completion)
   - [Project a Run's Close Into Four Headings](#project-a-runs-close-into-four-headings)
+  - [Verify a Sub-Agent's Work From the Tree](#verify-a-sub-agents-work-from-the-tree)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Raw Input Package Lifecycle](#raw-input-package-lifecycle)
   - [Plan Lifecycle](#plan-lifecycle)
@@ -390,6 +391,23 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 3. [x] - `p1` - Project the run's close by reading the ledger once, **scoped to a single run** (the given run id, or the current run) for the same reason the open-questions register is: the log is shared across runs. Bucket `gate` events into defaults/rulings, `verification` events that are `satisfied` plus `invocation`/`validation` events into completed actions, and read the outstanding open questions from the register at the same run scope. Re-read every call; never cache - `inst-summary-project`
 4. [x] - `p1` - Render one structured shape — each heading as a list of label/detail — and a human form that prints each heading in order, stating an empty heading as "none" rather than omitting it - `inst-summary-report`
 5. [x] - `p1` - Expose the projection as a command whose argument is an optional run id (defaulting to the current run); it is a report, not a gate, so it exits 0 on success — with the one standard exception every command shares, a malformed argument emitting the structured error and exiting 2 (parsed through the shared JSON-safe helper, never a raw crash) - `inst-summary-cli`
+
+### Verify a Sub-Agent's Work From the Tree
+
+- [x] `p1` - **ID**: `cpt-studio-algo-execution-plans-subagent-work`
+
+**Input**: A project root, and (when comparing) the tree mark taken before the sub-agent was dispatched
+
+**Output**: A verdict — the tree changed, did not change, or could not be read — with the reason behind it, and the contract exit code it maps to
+
+**Steps**:
+1. [x] - `p1` - Fix the read's limits as named constants: the per-query timeout (matched to the change-summary reader's bound rather than chosen afresh, so the two git readers in this package time out alike); the environment variables that would redirect git at a *different* repository than the path given, removed so a mark and its comparison always read the same tree; the filesystem codec, because refs and paths are bytes and need not be UTF-8 and a strict decode would raise where this must not; and the mark's prefix and digest length, since the mark is a **digest and never the status text** — that text names every dirty path in the project, while the mark is passed on a command line and may be logged - `inst-subagent-work-limits`
+2. [x] - `p1` - Model the verdict as three cases — changed, unchanged, and **could not be asked** — carried with the reason behind it so no caller has to infer why, and expose which of them blocks: only a tree that demonstrably did not move blocks, and not knowing never does. Keeping the third case distinct is the point: reporting "nothing changed" when the question was never answered would turn a missing check into a false accusation and hold a run on it - `inst-subagent-work-verdict`
+3. [x] - `p1` - Run each git read with those limits, returning its output and whether the **tool** failed, keeping that apart from a non-zero exit: a non-zero exit is a valid negative — `rev-parse` exits non-zero outside a repository, which is an answer — while git failing to launch, timing out, or returning undecodable bytes is a fault from which nothing was learned. Never raise, so a caller's run is never broken by the check meant to support it - `inst-subagent-work-git`
+4. [x] - `p1` - Take a fingerprint of the tree covering the committed and uncommitted halves **together** — the commit, and the porcelain status — because a run may be configured to commit or to leave work in place, and reading only one would call the other "nothing happened". List untracked files individually rather than in git's default per-directory summary: a sub-agent's whole contribution may be new files, and a second file added inside an already-untracked directory leaves the summarised status byte-identical. No commit yet is not an error — a repository before its first commit still has a working tree, which is exactly when a first contribution must be visible. Carry the **contents** of the dirty paths as a third part, because the status names which paths are dirty and never what is in them: a file already modified before dispatch keeps the same path and the same status code when an agent edits it again, so the first two parts are byte-identical across genuine work. Read each such file whole — a bound that stops partway turns "the check did not look" into "nothing happened", which is the false accusation this exists to prevent. Return nothing whenever the fingerprint cannot be taken honestly: no tree to read, no repository root to read the paths against, or more dirty paths than the check will fingerprint — a mark that covered only some of them would read as unchanged for work done in the rest - `inst-subagent-work-mark`
+5. [x] - `p1` - Compare the tree against the mark taken before dispatch, returning **could not be asked** with its own reason for every way of not knowing — no mark was taken, the mark is not one this check wrote, or the tree cannot be read now — and never returning unchanged for any of them - `inst-subagent-work-compare`
+6. [x] - `p1` - Expose both halves as one command — take a mark, or compare against one — because they share the fingerprint's definition and splitting them would let the two drift. Exit **0** when the tree moved or the question could not be asked, and **2** only when the tree did not move; there is no fault exit, because a project with no repository is an ordinary case here rather than a breakage. Not-knowing exits 0 deliberately: refusing to proceed wherever there is no git checkout would make the common case unusable, and the trust this replaces was worth nothing anyway — but the reason is always stated, so a degraded check is visible rather than silent - `inst-subagent-work-cli`
+
 
 ## 4. States (CDSL)
 
