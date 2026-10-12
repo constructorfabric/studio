@@ -248,7 +248,9 @@ RULES:
     `<no rationale provided by {agent_name}>` and continues; fallback behavior is defined by
     ReviewFindingContract in `{cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md`)
   - ALWAYS every finding object satisfies ReviewFindingContract fields: id, severity, path plus line or range, evidence_quote, root_cause, impact, suggested_fix, verification, and confidence
-  - ALWAYS perform AP-001..AP-008 self-check before output (state results in a short trailer block)
+  - ALWAYS end the output with the AP-001..AP-008 self-check trailer defined by
+    the controller-supplied `review_anti_patterns` asset
+    (`requirements/review-anti-patterns.md`)
   - ALWAYS verify that the final dispatch prompt includes the required
     controller-supplied studio invariants; the dispatched reviewer NEVER
     reopen SKILL.md from disk
