@@ -266,6 +266,14 @@ resolver is proposed to evaluate three classes deterministically:
   from earlier calls) stays with the controller, outside the resolver;
 - (c) everything else is free text and is deferred.
 
+Invalid guards (PROPOSAL): a guard is *invalid*, not free text, only when it cannot
+be read as a guard at all: an empty `WHEN`, an unterminated quote, or a dangling
+`AND`, `OR` or `NOT` at its start or end. A well-formed guard that the grammar
+does not cover is free text, not invalid; that includes prose and mixed guards
+(typed terms plus prose, open question 7). The resolver defers an invalid guard
+like free text (fail closed, never inlined silently), and the static pre-check
+fails on it so that it is fixed at the source.
+
 Two requirements apply:
 
 - Typed-guard state (class a) is supplied as arguments to `get`
@@ -295,7 +303,7 @@ scanned tree so a change in the ratio is visible in CI.
 
 ### unknown_state_rule
 
-An unknown-state or free-text guard goes to `deferred[]`. A missing required arg
+An unknown-state, free-text or invalid guard goes to `deferred[]`. A missing required arg
 detected by the command returns a JSON ERROR with exit 1, with no partial bundle.
 Only `LOAD`s can be deferred or omitted; `RULES` and gates are always inlined.
 
@@ -433,7 +441,8 @@ for this check.
 
 - The static pre-check over the scanned tree is a required test. It compares a
   snapshot of the three class counts (typed, loaded-set, free-text) and fails if
-  a count differs from the snapshot or if a guard fails to parse.
+  a count differs from the snapshot or if any guard is invalid (see
+  `guard_grammar`).
 - A test covers path confinement, including the `..` example in Evidence item 1
   and a symlink inside the root that points outside it (must fail), and the
   prefix case: a sibling directory whose name starts with the root's name (for
