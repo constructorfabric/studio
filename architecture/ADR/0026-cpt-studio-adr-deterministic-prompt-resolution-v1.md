@@ -118,16 +118,21 @@ bundle with a composite digest. Stage two is optional controller tailoring that
 cites the digest and then dispatches. The bundle is inputs to synthesis, not the
 dispatch prompt itself.
 
-Working position (PROPOSAL, pending open question 5): the resolved bundle is
-always produced and is the source of truth. "Optional" refers to tailoring only:
-the controller MAY tailor or compress the bundle for a specific dispatch, but the
-final dispatch prompt always cites the bundle digest and is never a bare
-unreferenced prompt. Dispatch rule: the controller MUST resolve every
-deferred branch that applies before dispatching to a leaf. A bundle may be
-dispatched directly only when `deferred[]` is empty (or every entry has been
-resolved or ruled not applicable by the controller). A leaf never receives an
-unresolved bundle and never resolves a deferred branch itself, consistent with
-the spec's leaf boundary and the maintainer review of 2026-10-06 on #310.
+Working position (PROPOSAL, pending open question 5): this ADR does not by itself
+change the current controller and leaf contract in `shared-context-pack.md`,
+under which the controller synthesizes the final dispatch prompt and dispatches
+only that prompt. The resolved bundle is always produced and is the source of
+truth, and the final dispatch prompt always cites its digest. Whether the
+controller may instead dispatch a resolved bundle as is, without synthesis, would
+change that contract and is open question 5; until it is decided the current
+contract holds, and "optional" in the title describes that proposal, not a rule in
+force. In either reading the dispatch rule is the same: the controller MUST
+resolve every deferred branch that applies before dispatching to a leaf (and, if
+question 5 is decided in favour of direct dispatch, only a bundle whose
+`deferred[]` is empty, or whose entries have all been resolved or ruled not
+applicable, may be dispatched that way). A leaf never receives an unresolved
+bundle and never resolves a deferred branch itself, consistent with the spec's
+leaf boundary and the maintainer review of 2026-10-06 on #310.
 
 ```mermaid
 flowchart LR
@@ -349,7 +354,8 @@ JSON on stdout for all five subcommands; the per-command
 `{"status":"ERROR","message":...}` shape used in cli.md; no human mode for now. Exit codes follow
 `architecture/specs/cli.md` ("Exit Codes" and the per-command **Exit** lines):
 
-- 0: success, item found.
+- 0: success: an item was found, or a `list` or `search` query matched nothing
+  (see the zero-match proposal below).
 - 1: runtime error or invalid argument detected by the command, including a
   missing or invalid prompt argument (JSON ERROR on stdout).
 - 2: item not found (unknown prompt ID), or an argument the parser rejects (the
@@ -656,10 +662,12 @@ decided before the stage-two (core resolver) PR is opened.
 4. **Output schema.** The exact JSON output schema for `get` (milestone: delivery
    stage 2). The stdout shape for the unknown-prompt-ID (exit 2) and error cases
    is also undecided.
-5. **Controller synthesis.** Must the controller always produce a synthesized
-   prompt, or may a bundle with empty (or fully resolved) `deferred[]` be
-   dispatched as is? (The rule that deferred branches are resolved first is
-   decided above as a proposal.)
+5. **Controller synthesis.** The current contract has the controller always
+   synthesize the final prompt. Should it stay that way, or may a bundle with
+   empty (or fully resolved) `deferred[]` be dispatched as is, which would change
+   that contract? Until decided, the current contract holds. (The rule that
+   deferred branches are resolved first applies either way and is proposed
+   above.)
 6. **Unit-less form.** What is the outcome of the bare unit-less "WHEN not yet
    loaded" form?
 7. **Mixed guards.** How is a guard that combines class (b) with class (a), for
