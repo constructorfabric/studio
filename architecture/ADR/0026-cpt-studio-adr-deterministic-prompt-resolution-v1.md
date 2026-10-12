@@ -104,7 +104,7 @@ In priority order:
 - **A resolver that returns a final dispatch prompt** — one deterministic
   compiler produces the text that is dispatched.
 - **Two-stage design: deterministic resolution, then optional controller
-  synthesis** (chosen).
+  tailoring** (chosen).
 
 ## Decision Outcome
 
@@ -347,6 +347,11 @@ JSON on stdout for all five subcommands; the per-command
 - 2: item not found (unknown prompt ID), or an argument the parser rejects (the
   latter prints nothing on stdout).
 
+PROPOSAL (zero matches): `list` and `search` returning no result is an answer, not
+a failure: exit 0 with an empty result, as the query commands in cli.md do ("No
+match is an answer"). `help` and `explain` given an unknown prompt ID are "item
+not found": exit 2. The stdout shape for these cases is part of open question 4.
+
 This corrects the earlier #310 wording on exit codes.
 
 - Rationale: callers are skills and controllers, not people at a terminal.
@@ -359,9 +364,14 @@ closure, including `requirements/` and `architecture/specs` targets. The
 resolver has its own configurable scan roots. Gate behaviour and its scan roots
 are unchanged.
 
-PROPOSAL: a directive of the form `LOAD <target> as the controlling protocol`
-(used by workflow shims and presets) is a control-transfer edge, not an ordinary
-asset edge. In Phase 1 the resolver reports it as a control-transfer entry in the
+PROPOSAL: a directive that hands control to its target is a control-transfer edge,
+not an ordinary asset edge. PDSL spells it `LOAD and RUN <target> as controlling
+protocol` (`architecture/specs/PDSL.md`); the literal form occurs only in the
+shims that `cfs generate-agents` writes, which are outside the entrypoint scope
+above. A related delegation form, `LOAD <target> as the controlling <kind>
+workflow` (for example "...as the controlling generation workflow"), does occur in
+`workflows/` presets (27 lines, measured 2026-10-12 on tracked files, by a regex
+over `LOAD` lines inside PDSL fences) and is in scope. In Phase 1 the resolver reports it as a control-transfer entry in the
 bundle for the controller to honour, or rejects the entrypoint; it must not
 flatten the target into an ordinary asset as if no transfer occurred (open
 question 11).
@@ -653,8 +663,16 @@ decided before the stage-two (core resolver) PR is opened.
 10. **Canonical form.** The exact canonical JSON form (for example RFC 8785), the
     traversal order, and whether `deferred[]` is a digest input. "Canonical JSON,
     LF" in `digest_definition` is the proposal.
-11. **Control transfer.** Should Phase 1 preserve `LOAD <target> as the controlling
-    protocol` as a typed transfer entry, or reject the entrypoint?
+11. **Control transfer.** Should Phase 1 preserve a control-transfer directive
+    (`LOAD and RUN <target> as controlling protocol`, and the `as the controlling
+    <kind> workflow` delegation form used by presets) as a typed transfer entry, or
+    reject the entrypoint? Do generated shims belong in scope at all?
+12. **Prompt id stability.** Core ids are derived from file paths
+    (`core/<kind>/<path>`), and the id is a digest input, so renaming or moving a
+    prompt file changes its id and the digest of every bundle that includes it. The
+    alias table covers entrypoints only. Should ids instead be declared (for
+    example in front matter), or is a digest reproducible only against a given
+    tree? Raised in review; not decided here.
 
 ## More Information
 
