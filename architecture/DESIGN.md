@@ -346,6 +346,7 @@ The following architecture decision records (ADRs) drive the design:
 - `cpt-studio-adr-thin-skills-module-first` — thin standalone skills, shared runtime modules, canonical artifacts, and unified result envelopes for the AI runtime
 - `cpt-studio-adr-autonomous-default-and-gate-risk` — autonomous interaction mode as the default, with each gate declaring a static risk type (`confirmation`/`decision`/`blocking`); undeclared gates are treated as `blocking`; a `decision` gate resolves only against an explicitly keyed source by exact match, never by inferring intent, and a `blocking` gate is passable only by a fresh explicit authorisation satisfying that gate; a mode selects how already-declared authority is exercised rather than granting any new authority
 - `cpt-studio-adr-validation-severity-policy` — validation severity declared in kit and project configuration; a kit's own opinion settles first (entry, per-kind, whole-kit, built-in default) and the project layer is then admitted under a raise/lower rule; a project may raise freely and may lower only what the kit has not marked `locked`, no CLI flag may lower anything, and every lowering and every refusal is named in the report; an unrecognised severity value fails the load because it would disable checking; an unrecognised key or rule code is a `constraints-unknown-key` warning in a kit's `constraints.toml`, so a kit written for a newer engine stays installable, and a hard error in the project's own `core.toml`, where no forward-compatibility case exists
+- `cpt-studio-adr-deterministic-prompt-resolution` — `cfs prompts` resolves a skill's instructions into a reproducible bundle (content digest, provenance, structured deferred branches) that the top-level controller is intended to request (spec and lint enforcement; the lint is not yet defined); controller tailoring of the final dispatch prompt stays optional and cites the bundle digest; `core/*` is reserved and kit prompts register under their own or, for overlay-inherited prompts, their owner's slug (proposed)
 
 ### 1.3 Architecture Layers
 
@@ -1621,6 +1622,7 @@ The following design domains do not require dedicated architecture sections. Eac
   - `cpt-studio-adr-thin-skills-module-first` — thin standalone skills with a module-first runtime and canonical artifact/result contracts
   - `cpt-studio-adr-autonomous-default-and-gate-risk` — autonomous interaction mode as the default, with each gate declaring a static risk type
   - `cpt-studio-adr-validation-severity-policy` — validation severity as declared, reviewable policy, lowerable only where the kit has not locked it and always reported
+  - `cpt-studio-adr-deterministic-prompt-resolution` — deterministic prompt resolution producing an auditable bundle with a content digest, with optional controller tailoring downstream of it (proposed)
 - **Features**: [features/](./features/) — `core-infra.md`, `kit-management.md`, `traceability-validation.md`, `agent-integration.md`, `version-config.md`, `developer-experience.md`, `spec-coverage.md`, `v2-v3-migration.md`, `workspace.md`, `ralphex-delegation.md`, `subagent-registration.md`
 
 ### Specifications
