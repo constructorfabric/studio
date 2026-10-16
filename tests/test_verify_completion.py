@@ -800,3 +800,46 @@ class TestTheDocumentedExitCausesMatchTheCode:
         assert condition in source, (
             "the exit-2 condition changed shape; re-derive CAUSES above from it and check both "
             "enumerations still name every branch")
+
+
+class TestTheCommittedPlanFixturePair:
+    """End-to-end cover for the command against a realistic committed plan.
+
+    Every other test here builds its plan in `tmp_path`: small, synthetic, and shaped to
+    exercise one branch. That is the right way to pin a branch and the wrong way to notice
+    the command breaking as a whole, because a fixture written to exercise a branch is also
+    written to pass it. This pair is a plan as an author would actually write one -- phase
+    file, acceptance criteria, and a `verdicts.toml` in the `[[verdicts]]` shape
+    `requirements/plan-template.md` documents, `phase` field included -- so it exercises the
+    `(phase, text)` keying the inline form skips.
+
+    It is committed rather than generated because it serves three readers at once: this test,
+    an author who wants a runnable example of the pair the template describes in prose, and
+    QA, whose run card has to name an input reachable from a clean clone.
+
+    The pair has to stay a *pair*. One passing fixture cannot show the check is checking -- a
+    check that never looks also exits 0. The incomplete twin is what gives the passing one its
+    meaning, so both exit codes are pinned together rather than in separate tests.
+    """
+
+    FIXTURES = Path(__file__).resolve().parents[1] / "tests/fixtures/verify-completion"
+
+    def test_the_complete_fixture_passes(self) -> None:
+        assert vc.cmd_verify_completion([str(self.FIXTURES / "complete")]) == 0
+
+    def test_the_incomplete_fixture_is_refused(self) -> None:
+        assert vc.cmd_verify_completion([str(self.FIXTURES / "incomplete")]) == 2
+
+    def test_the_incomplete_fixture_names_the_criterion_it_is_missing(self) -> None:
+        # The card tells the tester which line to expect. If the check stops naming the item,
+        # the card's "Prove it works" step becomes unwatchable even though the exit code holds.
+        result = vc.assess(self.FIXTURES / "incomplete",
+                           self.FIXTURES / "incomplete" / "verdicts.toml")
+        assert result.unstated == ["the run recorded a verdict for every criterion above"]
+
+    def test_the_two_fixtures_differ_only_in_their_verdicts(self) -> None:
+        # The pair's whole argument is that one variable changed. If the plans or phase files
+        # drift apart, a failure stops being attributable to the missing verdict.
+        for name in ("plan.toml", "phase-1.md"):
+            assert (self.FIXTURES / "complete" / name).read_text(encoding="utf-8") == \
+                   (self.FIXTURES / "incomplete" / name).read_text(encoding="utf-8")

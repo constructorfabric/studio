@@ -1,0 +1,19 @@
+# The deliberately-incomplete twin of ../complete, in the same documented shape.
+#
+# The third criterion has NO entry here, so the check must refuse the run and name that
+# criterion. If this ever exits 0, the check has stopped checking — which is the whole reason
+# this fixture is committed beside its passing twin rather than alone. A single green fixture
+# cannot tell "it checked and passed" from "it looked at nothing and passed".
+run_id = "f1x7u4e0c0de"
+
+[[verdicts]]
+phase = 1
+item = "`step-1.out` exists in the run directory"
+verdict = "satisfied"
+evidence = "step-1.out present, 42 bytes"
+
+[[verdicts]]
+phase = 1
+item = "`step-1.out` names the phase it came from"
+verdict = "satisfied"
+evidence = "first line reads 'phase 1'"

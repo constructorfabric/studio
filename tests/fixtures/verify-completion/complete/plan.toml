@@ -1,0 +1,8 @@
+[plan]
+task = "demo run for the completion check"
+approval_status = "approved"
+total_phases = 1
+
+[[phases]]
+number = 1
+file = "phase-1.md"

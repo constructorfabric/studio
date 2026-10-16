@@ -1,0 +1,26 @@
+# What the run claims it achieved — the shape `requirements/plan-template.md` documents.
+#
+# `run_id` names the run that produced this file. The check honours it only while it still
+# equals the current run id, so a file left behind by an earlier run cannot lend its answers
+# to a later one. Run by hand, this id matches nothing and the check falls back to the calling
+# process's own run, which is harmless here because no criterion declares a `(needs: …)`
+# dependency. That fallback is the fail-safe direction, not a defect.
+run_id = "f1x7u4e0c0de"
+
+[[verdicts]]
+phase = 1
+item = "`step-1.out` exists in the run directory"
+verdict = "satisfied"
+evidence = "step-1.out present, 42 bytes"
+
+[[verdicts]]
+phase = 1
+item = "`step-1.out` names the phase it came from"
+verdict = "satisfied"
+evidence = "first line reads 'phase 1'"
+
+[[verdicts]]
+phase = 1
+item = "the run recorded a verdict for every criterion above"
+verdict = "satisfied"
+evidence = "this file, 3 entries"
