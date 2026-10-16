@@ -52,17 +52,23 @@ Studio's deterministic layer assures code (`validate`, `spec-coverage`, CPT mark
 
 ### Assess Artifact Quality
 
-- [ ] `p1` - **ID**: `cpt-studio-flow-artifact-quality-assess`
+- [x] `p1` - **ID**: `cpt-studio-flow-artifact-quality-assess`
 
 **Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
 - User runs `cfs artifact-quality` → registered artifacts are scanned, findings are emitted as JSON plus a one-line human summary, nothing is rewritten and no exit code changes
 
-**Steps**:
-1. [ ] - `p1` - User invokes `cfs artifact-quality [--detectors ...]`; registered artifacts are scanned and findings emitted as JSON plus a one-line summary, nothing is rewritten (command lands in a later task; the finding model below is the contract it emits) - `inst-aq-assess-invoke`
+**Success Scenario**: User invokes `cfs artifact-quality [--detectors ...] [--max-findings N] [--output FILE]`; registered artifacts are scanned by the selected detectors and findings are emitted as JSON plus a one-line human summary, nothing is rewritten and the exit code never changes on findings (advisory).
 
-**Scale**: corpus size, per-artifact size, and finding-output bounds are the `cfs artifact-quality` command task's contract (the later task above) — this feature delivers only the finding model and its wire schema, which impose no scan and no output volume of their own.
+**Steps**:
+1. [x] - `p1` - Parse the command arguments — the detector selection, the `--max-findings` output cap, and the optional `--output` file - `inst-aq-assess-parse`
+2. [x] - `p1` - Resolve the requested detectors to (known, unknown), defaulting to all registered detectors, and report an unknown name rather than silently assessing nothing - `inst-aq-assess-select`
+3. [x] - `p1` - Scan the registered artifacts once with each selected detector, collecting the advisory findings - `inst-aq-assess-scan`
+4. [x] - `p1` - Bound the output with `--max-findings` (the deterministic first N; `0` disables), reporting `total_findings` and `truncated` on the wire - `inst-aq-assess-bound`
+5. [x] - `p1` - Emit the report as JSON or a one-line human summary (or write JSON to `--output`), never changing the exit code on findings - `inst-aq-assess-emit`
+
+**Scale**: corpus size, per-artifact size, and finding-output bounds are the `cfs artifact-quality` command task's contract — this feature's model and schema impose no scan or output volume of their own. The command bounds them: the scan is kept in-core by the structural detector's per-section token floor and size-ratio prune, and the **output** is bounded by `--max-findings` (default 200; `0` disables), with `total_findings` and `truncated` on the wire so a consumer sees when the cap bit.
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -122,6 +128,7 @@ The finding model is done when every detector can express its result as one `Art
 |---|---|---|
 | Artifact-Quality Finding Model | `skills/studio/scripts/studio/utils/artifact_quality.py` | The shared `ArtifactFinding` / `Locus` model, its `to_dict`, and the versioned JSON schema every detector and the presentation layer share |
 | Structural Detectors | `skills/studio/scripts/studio/utils/artifact_quality_detectors.py` | Deterministic, stdlib-only detectors emitting structural `ArtifactFinding`s; v1 ships exact / near-exact duplication by section word-set overlap |
+| Artifact-Quality CLI | `skills/studio/scripts/studio/commands/artifact_quality.py` | The read-only `cfs artifact-quality` command: scans registered artifacts with the selected structural detectors, emits advisory findings as JSON plus a one-line summary, bounds output with `--max-findings`, and never changes the exit code |
 
 ## 7. Acceptance Criteria
 
@@ -130,3 +137,4 @@ The finding model is done when every detector can express its result as one `Art
 - [x] `to_dict` emits the required keys plus `schema_version`, and omits `related` / `verdict` / `confidence` when unset — verified by `test_structural_to_dict_omits_optional_fields`, `test_judged_to_dict_includes_optionals_when_set`, `test_serialised_finding_keys_are_all_allowed_properties`
 - [x] `finding_json_schema()` returns the versioned wire contract (a fresh copy) that validates a serialised finding, versioned by `schema_version` — verified by `test_schema_is_versioned_and_well_formed`, `test_schema_pins_schema_version_and_encodes_kind_verdict_rule`, `test_finding_json_schema_returns_a_fresh_deep_copy`
 - [x] The duplication detector flags near-exact section pairs across and within artifacts, never a section against itself, respects the overlap threshold, emits a structural finding (`verdict = None`, advisory severity, grep-verifiable evidence, no combined score), and is deterministic — verified by `test_identical_sections_across_two_artifacts_are_flagged`, `test_a_lone_section_is_never_compared_to_itself`, `test_partial_overlap_respects_the_threshold`, `test_within_one_document_duplication_is_flagged`, `test_findings_are_structural_and_advisory`, `test_evidence_is_a_substring_of_the_primary_source`, `test_output_is_deterministic`
+- [x] `cfs artifact-quality` scans the registered artifacts with the selected detectors, emits findings as JSON plus a one-line human summary, bounds output with `--max-findings` (reporting `total_findings` and `truncated`), reports an unknown detector rather than silently skipping it, and never changes the exit code on findings — verified by `test_duplicated_sections_are_reported`, `test_findings_never_gate_the_exit_code`, `test_max_findings_caps_output_and_flags_truncation`, `test_unknown_detector_is_reported_not_silently_skipped`, `test_command_is_registered_in_the_cli`
