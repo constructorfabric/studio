@@ -193,7 +193,8 @@ RULES:
   - ALWAYS fail closed when any finding omits mechanical_rationale:
     the response is incomplete, NEVER be surfaced as fix-ready output,
     and ALWAYS be rejected for re-run rather than patched by orchestrator substitution
-  - ALWAYS perform AP-001..AP-008 self-check before output
-    (results in a short trailer block)
+  - ALWAYS end the output with the AP-001..AP-008 self-check trailer defined by
+    the controller-supplied `review_anti_patterns` asset
+    (`requirements/review-anti-patterns.md`)
   - ALWAYS satisfy the SKILL.md invariant
 ```
