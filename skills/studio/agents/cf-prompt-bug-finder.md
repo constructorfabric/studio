@@ -186,7 +186,9 @@ MENU TerminalStates:
       REQUIRE findings JSON is present
       REQUIRE every finding satisfies ReviewFindingContract fields: id, severity, path plus line or range, evidence_quote, root_cause, impact, suggested_fix, verification, and confidence
       REQUIRE residual risk summary is present
-      REQUIRE AP-001..AP-008 self-check performed after all findings/table/summary
+      REQUIRE AP-001..AP-008 self-check trailer, as defined by the controller-supplied
+        `review_anti_patterns` asset (`requirements/review-anti-patterns.md`),
+        emitted after all findings/table/summary
       REQUIRE controller-supplied studio invariants were included in the final
         dispatch prompt; the dispatched agent NEVER reopen SKILL.md from disk
     2 partial_run ->
