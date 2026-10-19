@@ -153,6 +153,10 @@ def _cmd_spec_coverage(argv: List[str]) -> int:
     from .commands.spec_coverage import cmd_spec_coverage
     return cmd_spec_coverage(argv)
 
+def _cmd_artifact_quality(argv: List[str]) -> int:
+    from .commands.artifact_quality import cmd_artifact_quality
+    return cmd_artifact_quality(argv)
+
 def _cmd_declared_stops(argv: List[str]) -> int:
     from .commands.declared_stops import cmd_declared_stops
     return cmd_declared_stops(argv)
@@ -285,6 +289,7 @@ _COMMAND_DESCRIPTIONS = {
     "validate-kits": "Validate kit structure, templates, and examples",
     "validate-toc": "Validate Table of Contents in Markdown files",
     "spec-coverage": "Measure CDSL marker coverage in code",
+    "artifact-quality": "Scan Project artifacts for advisory semantic-quality findings (read-only)",
     "declared-stops": "Fail when a workflow declares more stops than its baseline",
     "run-start": "Begin a run: write the shared run-correlation id every command of the run scopes to",
     "verify-subagent-work": "Check a dispatched sub-agent's work against the tree, not its report",
@@ -328,6 +333,7 @@ _COMMAND_DESCRIPTIONS = {
 _COMMAND_SECTIONS = [
     ("Setup & Configuration", ["init", "update", "info", "resolve-vars", "generate-agents", "agents"]),
     ("Validation", ["validate", "validate-kits", "validate-toc", "spec-coverage",
+                    "artifact-quality",
                     "declared-stops", "run-start", "verify-completion", "verify-subagent-work",
                     "run-summary",
                     "check-language"]),
@@ -367,6 +373,7 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "toc": "_cmd_toc",
     "validate-toc": "_cmd_validate_toc",
     "spec-coverage": "_cmd_spec_coverage",
+    "artifact-quality": "_cmd_artifact_quality",
     "declared-stops": "_cmd_declared_stops",
     "run-start": "_cmd_run_start",
     "verify-subagent-work": "_cmd_verify_subagent_work",
@@ -414,6 +421,7 @@ _COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
     _cmd_toc,
     _cmd_validate_toc,
     _cmd_spec_coverage,
+    _cmd_artifact_quality,
     _cmd_declared_stops,
     _cmd_verify_completion,
     _cmd_run_start,
