@@ -181,6 +181,8 @@ RULES:
       OR checkpoint.type = "PARTIAL_CHECKPOINT" with unread files /
         uncovered categories enumerated and no PASS claim for uncovered categories
   - ALWAYS findings JSON ALWAYS be present in both output shapes
-  - ALWAYS AP-001..AP-008 self-check ALWAYS be present
+  - ALWAYS end the output with the AP-001..AP-008 self-check trailer defined by
+    the controller-supplied `review_anti_patterns` asset
+    (`requirements/review-anti-patterns.md`)
   - ALWAYS satisfy the SKILL.md invariant
 ```

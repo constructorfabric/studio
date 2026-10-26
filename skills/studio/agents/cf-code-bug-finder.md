@@ -169,7 +169,9 @@ MENU TerminalStates:
       REQUIRE hotspot table is present (per Additional Output Sections)
       REQUIRE findings JSON is present
       REQUIRE residual risk summary is present
-      REQUIRE AP-001..AP-008 self-check performed after all findings/table/summary
+      REQUIRE AP-001..AP-008 self-check trailer, as defined by the controller-supplied
+        `review_anti_patterns` asset (`requirements/review-anti-patterns.md`),
+        emitted after all findings/table/summary
       REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md invariant satisfied
     2 partial_run ->
       REQUIRE PARTIAL_CHECKPOINT JSON is present with:

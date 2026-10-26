@@ -221,8 +221,9 @@ RULES:
     this is the contract requirement, and the orchestrator fallback of
     "<no rationale provided by {agent_name}>" exists only as a last-resort
     containment path when the agent violates that requirement
-  - ALWAYS perform AP-001..AP-008 self-check before output;
-    state results in a short trailer block
+  - ALWAYS end the output with the AP-001..AP-008 self-check trailer defined by
+    the controller-supplied `review_anti_patterns` asset
+    (`requirements/review-anti-patterns.md`)
   - ALWAYS satisfy the SKILL.md invariant
 - ALWAYS SEE_ALSO: ConsistencyReviewerOutput
 ```
